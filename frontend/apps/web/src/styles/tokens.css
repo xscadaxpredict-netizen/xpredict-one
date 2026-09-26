@@ -1,0 +1,184 @@
+/*
+ * Design tokens — the single source of truth for the look.
+ *
+ * Components reference tokens, never raw values. A hex code in a component is a
+ * review comment, every time: tokens are what keep four people's screens looking
+ * like one product, and what makes dark mode and any future per-dealer branding
+ * (Q9) a change to this file rather than a rewrite.
+ *
+ * Every text colour here clears 4.5:1 against its intended background. The
+ * --color-text-disabled value does not, deliberately — it is for decorative and
+ * non-essential text only, never body copy and never a form label.
+ */
+
+:root {
+  /* ---- Neutrals ------------------------------------------------------- */
+  --color-canvas: #f4f6f8;          /* app background */
+  --color-surface: #ffffff;         /* cards, tables, topbar */
+  --color-surface-alt: #ebeef2;     /* subtle fills, skeletons */
+  --color-border: #dde2e8;
+  --color-border-strong: #c3cbd5;   /* inputs, secondary buttons */
+
+  --color-text: #10161d;            /* 16.8:1 on surface */
+  --color-text-2: #4e5a67;          /* 6.9:1  — labels, secondary body */
+  --color-text-3: #6f7b89;          /* 4.6:1  — captions, metadata */
+  --color-text-disabled: #9aa5b1;   /* 2.9:1  — DECORATIVE ONLY */
+
+  /* ---- Primary — the only decorative accent --------------------------- */
+  --color-primary-800: #16307a;
+  --color-primary-700: #1c3e9b;
+  --color-primary: #2450b5;         /* white on this: 7.4:1 */
+  --color-primary-hover: #1c3e9b;
+  --color-primary-text: #ffffff;
+  --color-primary-100: #dce6fa;
+  --color-primary-050: #eff4fe;
+
+  /* ---- Semantic — meaning only, never decoration ---------------------- */
+  --color-success-700: #0e5638;
+  --color-success: #13694a;
+  --color-success-100: #dcf0e7;
+
+  --color-attention-700: #8a4b06;
+  --color-attention: #a85d07;
+  --color-attention-100: #fcebd4;
+  --color-attention-050: #fdf6ec;
+
+  --color-danger-700: #8f1d17;
+  --color-danger: #b3261e;
+  --color-danger-100: #fbe4e2;
+  --color-danger-border: #e9b6b2;
+
+  /* ---- Typography ------------------------------------------------------
+   * Plex was drawn for dense interfaces and holds up at 13px where a display
+   * face falls apart. Mono is not decoration: references, registration plates,
+   * VINs and money go in it so digits align in a column and a transposed
+   * character is visible.
+   */
+  --font-sans: "IBM Plex Sans", system-ui, -apple-system, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, "Cascadia Code", monospace;
+
+  --text-xs: 0.75rem;    /* 12px — captions, badges */
+  --text-sm: 0.8125rem;  /* 13px — labels, table cells */
+  --text-base: 0.875rem; /* 14px — the admin default */
+  --text-md: 1rem;       /* 16px — long-form body */
+  --text-lg: 1.125rem;   /* 18px — section headings */
+  --text-xl: 1.25rem;    /* 20px */
+  --text-2xl: 1.5rem;    /* 24px — page titles */
+  --text-3xl: 2.125rem;  /* 34px — display */
+
+  /* ---- Space — 4px base ----------------------------------------------- */
+  --space-1: 0.25rem;   /* 4  — icon gap */
+  --space-2: 0.5rem;    /* 8  — label to field */
+  --space-3: 0.75rem;   /* 12 — inside a control */
+  --space-4: 1rem;      /* 16 — between fields */
+  --space-5: 1.25rem;   /* 20 */
+  --space-6: 1.5rem;    /* 24 — card padding */
+  --space-8: 2rem;      /* 32 — page gutter */
+  --space-12: 3rem;     /* 48 — between sections */
+
+  /* ---- Radius ---------------------------------------------------------- */
+  --radius-sm: 4px;     /* badges */
+  --radius-md: 6px;     /* buttons, inputs */
+  --radius-lg: 10px;    /* cards */
+  --radius-pill: 999px; /* status pills */
+
+  /* ---- Elevation -------------------------------------------------------
+   * Shadows carry meaning. Flat for content in the page, sm for something
+   * floating above it, md only for true overlays. Nothing else casts a shadow.
+   */
+  --shadow-sm: 0 1px 2px rgb(16 22 29 / 0.06);
+  --shadow-md: 0 8px 24px rgb(16 22 29 / 0.12);
+  --shadow-lg: 0 16px 48px rgb(16 22 29 / 0.22);
+
+  /* ---- Layout ---------------------------------------------------------- */
+  --topbar-height: 56px;
+  --sidebar-width: 240px;
+  --sidebar-width-collapsed: 64px;
+  --control-height: 44px;   /* touch target floor — never go below this */
+  --table-row-height: 52px;
+  --form-max-width: 660px;  /* forms never run full-bleed; tables always do */
+}
+
+/*
+ * Dark mode. Only the colours change — space, type and layout are identical,
+ * so a component written against these tokens needs no dark-mode CSS of its own.
+ */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --color-canvas: #0d1117;
+    --color-surface: #161b22;
+    --color-surface-alt: #21262d;
+    --color-border: #2d333b;
+    --color-border-strong: #444c56;
+
+    --color-text: #e6edf3;
+    --color-text-2: #adbac7;
+    --color-text-3: #8b949e;
+    --color-text-disabled: #6e7681;
+
+    --color-primary-800: #cddffb;
+    --color-primary-700: #9dc0f7;
+    --color-primary: #4b8bf5;
+    --color-primary-hover: #6ea2f8;
+    --color-primary-text: #0b1220;
+    --color-primary-100: #17325c;
+    --color-primary-050: #121f36;
+
+    --color-success-700: #a7e0c4;
+    --color-success: #2ea472;
+    --color-success-100: #123527;
+
+    --color-attention-700: #f2c78c;
+    --color-attention: #d08a1f;
+    --color-attention-100: #3a2a12;
+    --color-attention-050: #2a2015;
+
+    --color-danger-700: #f4b5b0;
+    --color-danger: #e5534b;
+    --color-danger-100: #3d1d1b;
+    --color-danger-border: #5c2b28;
+
+    --shadow-sm: 0 1px 2px rgb(0 0 0 / 0.4);
+    --shadow-md: 0 8px 24px rgb(0 0 0 / 0.5);
+    --shadow-lg: 0 16px 48px rgb(0 0 0 / 0.6);
+  }
+}
+
+:root[data-theme="dark"] {
+  --color-canvas: #0d1117;
+  --color-surface: #161b22;
+  --color-surface-alt: #21262d;
+  --color-border: #2d333b;
+  --color-border-strong: #444c56;
+
+  --color-text: #e6edf3;
+  --color-text-2: #adbac7;
+  --color-text-3: #8b949e;
+  --color-text-disabled: #6e7681;
+
+  --color-primary-800: #cddffb;
+  --color-primary-700: #9dc0f7;
+  --color-primary: #4b8bf5;
+  --color-primary-hover: #6ea2f8;
+  --color-primary-text: #0b1220;
+  --color-primary-100: #17325c;
+  --color-primary-050: #121f36;
+
+  --color-success-700: #a7e0c4;
+  --color-success: #2ea472;
+  --color-success-100: #123527;
+
+  --color-attention-700: #f2c78c;
+  --color-attention: #d08a1f;
+  --color-attention-100: #3a2a12;
+  --color-attention-050: #2a2015;
+
+  --color-danger-700: #f4b5b0;
+  --color-danger: #e5534b;
+  --color-danger-100: #3d1d1b;
+  --color-danger-border: #5c2b28;
+
+  --shadow-sm: 0 1px 2px rgb(0 0 0 / 0.4);
+  --shadow-md: 0 8px 24px rgb(0 0 0 / 0.5);
+  --shadow-lg: 0 16px 48px rgb(0 0 0 / 0.6);
+}

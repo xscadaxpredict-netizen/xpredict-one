@@ -1,0 +1,55 @@
+.page {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-6);
+  background: var(--color-canvas);
+}
+
+.card {
+  width: 100%;
+  max-width: 420px;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-6);
+  padding: var(--space-8) var(--space-8) var(--space-6);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 12px;
+  box-shadow: var(--shadow-md);
+}
+
+.header { display: flex; flex-direction: column; gap: var(--space-5); }
+
+.brand { display: flex; align-items: center; gap: var(--space-2); }
+
+.mark {
+  width: 34px;
+  height: 34px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+  background: var(--color-primary);
+  color: var(--color-primary-text);
+  font-size: var(--text-md);
+  font-weight: 600;
+}
+
+.brandName { font-size: 17px; font-weight: 600; letter-spacing: -0.01em; }
+
+.titleBlock { display: flex; flex-direction: column; gap: var(--space-1); }
+
+.title { margin: 0; font-size: 22px; line-height: 1.36; font-weight: 600; letter-spacing: -0.01em; }
+
+.subtitle { margin: 0; font-size: var(--text-sm); line-height: 1.45; color: var(--color-text-3); }
+
+.footer {
+  padding-top: var(--space-4);
+  border-top: 1px solid var(--color-surface-alt);
+  font-size: var(--text-xs);
+  line-height: 1.5;
+  color: var(--color-text-3);
+  text-align: center;
+}

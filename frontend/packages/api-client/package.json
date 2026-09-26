@@ -1,0 +1,19 @@
+{
+  "name": "@xpredict/api-client",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "scripts": {
+    "lint": "eslint .",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@tanstack/react-query": "^5.62.0",
+    "@xpredict/auth": "*"
+  },
+  "peerDependencies": {
+    "react": "^19.0.0"
+  }
+}

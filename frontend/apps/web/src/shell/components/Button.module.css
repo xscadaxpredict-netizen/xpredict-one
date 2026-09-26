@@ -1,0 +1,36 @@
+.button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  height: var(--control-height);
+  padding: 0 var(--space-5);
+  border-radius: var(--radius-md);
+  border: 1px solid transparent;
+  font-family: inherit;
+  font-size: var(--text-base);
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.button:disabled { cursor: not-allowed; opacity: 0.65; }
+
+.button:focus-visible { outline: 2px solid var(--color-primary); outline-offset: 2px; }
+
+.primary { background: var(--color-primary); border-color: var(--color-primary); color: var(--color-primary-text); }
+.primary:hover:not(:disabled) { background: var(--color-primary-hover); border-color: var(--color-primary-hover); }
+
+.secondary { background: var(--color-surface); border-color: var(--color-border-strong); color: var(--color-text); }
+.secondary:hover:not(:disabled) { background: var(--color-surface-alt); }
+
+.ghost { background: transparent; color: var(--color-primary); }
+.ghost:hover:not(:disabled) { background: var(--color-primary-050); }
+
+.spinner { animation: spin 0.7s linear infinite; }
+
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* Respect the OS setting: a spinning element is a migraine trigger for some. */
+@media (prefers-reduced-motion: reduce) {
+  .spinner { animation: none; }
+}

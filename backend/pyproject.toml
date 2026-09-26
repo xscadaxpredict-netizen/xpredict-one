@@ -1,0 +1,123 @@
+[project]
+name = "xpredict-one-backend"
+version = "0.1.0"
+description = "Xpredict One --- multi-tenant platform backend (DMS, CRM, E-commerce)"
+requires-python = ">=3.12"
+
+dependencies = [
+    "Django>=5.2,<5.3",
+    "djangorestframework>=3.16",
+    "djangorestframework-simplejwt>=5.5",
+    "psycopg[binary]>=3.2",
+    "celery[redis]>=5.4",
+    "redis>=5.0",
+    "drf-spectacular>=0.28",
+    "django-environ>=0.12",
+    "django-cors-headers>=4.7",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "pytest-django>=4.9",
+    "pytest-cov>=6.0",
+    "import-linter>=2.1",
+    "ruff>=0.9",
+    "mypy>=1.14",
+    "django-stubs[compatible-mypy]",
+    "factory-boy>=3.3",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+extend-exclude = ["*/migrations/*"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "N", "UP", "B", "C4", "DJ", "S", "RUF"]
+ignore = [
+    "S101",  # assert --- used throughout the test suite
+]
+
+[tool.ruff.lint.per-file-ignores]
+"*/tests/*" = ["S105", "S106"]     # hardcoded test credentials are fine
+"config/settings/*" = ["F403", "F405"]  # star imports are the settings idiom
+# RUF012 wants ClassVar on mutable class attributes. Django and DRF `Meta`
+# inner classes are pure declarative config (fields, ordering, indexes), and
+# annotating every one adds noise without catching anything. The rule stays
+# active everywhere else, where a shared mutable default is a real bug.
+"**/models.py" = ["RUF012"]
+"**/serializers.py" = ["RUF012"]
+
+[tool.pytest.ini_options]
+DJANGO_SETTINGS_MODULE = "config.settings.dev"
+python_files = ["test_*.py", "*_test.py"]
+testpaths = ["core", "products", "shared", "tests"]
+addopts = "-ra --strict-markers"
+
+[tool.mypy]
+python_version = "3.12"
+plugins = ["mypy_django_plugin.main"]
+warn_unused_ignores = true
+warn_redundant_casts = true
+disallow_untyped_defs = false   # tighten per-module as modules stabilise
+exclude = ["migrations/"]
+
+[tool.django-stubs]
+django_settings_module = "config.settings.dev"
+
+
+# --------------------------------------------------------------------------
+# Module boundaries (CLAUDE.md "Working conventions").
+#
+# These contracts are the machine-checked version of the rules. Run with
+# `lint-imports`. They are what stops the modular monolith quietly becoming
+# a tangle --- a product importing another product's models is the single
+# change that would make later extraction impossible.
+# --------------------------------------------------------------------------
+
+[tool.importlinter]
+root_packages = ["core", "products", "shared", "config"]
+
+[[tool.importlinter.contracts]]
+name = "Products never import from each other"
+type = "independence"
+modules = ["products.dms", "products.crm"]
+
+[[tool.importlinter.contracts]]
+name = "Layered: products -> core -> shared"
+type = "layers"
+layers = ["products", "core", "shared"]
+containers = []
+
+# A module never reaches into another module's models --- it calls that
+# module's service functions, so the owner enforces its own numbering,
+# validation, audit and events. These contracts are that rule, checked.
+# Add one per new DMS module, listing its siblings as sources.
+
+[[tool.importlinter.contracts]]
+name = "DMS: nobody imports dms.sales models/selectors directly"
+type = "forbidden"
+source_modules = ["products.dms.service", "products.dms.tech_support"]
+forbidden_modules = ["products.dms.sales.models", "products.dms.sales.selectors"]
+
+[[tool.importlinter.contracts]]
+name = "DMS: nobody imports dms.service models/selectors directly"
+type = "forbidden"
+source_modules = ["products.dms.sales", "products.dms.tech_support"]
+forbidden_modules = ["products.dms.service.models", "products.dms.service.selectors"]
+
+[[tool.importlinter.contracts]]
+name = "DMS: nobody imports dms.tech_support models/selectors directly"
+type = "forbidden"
+source_modules = ["products.dms.sales", "products.dms.service"]
+forbidden_modules = [
+    "products.dms.tech_support.models",
+    "products.dms.tech_support.selectors",
+]
+
+[[tool.importlinter.contracts]]
+name = "shared/ holds no business logic and imports nothing local"
+type = "forbidden"
+source_modules = ["shared"]
+forbidden_modules = ["core", "products", "config"]

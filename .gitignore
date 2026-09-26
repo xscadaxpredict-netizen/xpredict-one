@@ -1,0 +1,53 @@
+# Local-only, never pushed (owner's decision, 2026-09-24).
+# The Claude Code setup and the project context/decision history stay on this
+# machine. See context/05-SESSION-LOG.md for the backup caveat: these files are
+# NOT version-controlled, so losing the drive loses the decision history.
+.claude/
+context/
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.import_linter_cache/
+htmlcov/
+.coverage
+
+# Django
+*.sqlite3
+/media/
+/staticfiles/
+
+# Node
+node_modules/
+dist/
+.vite/
+*.tsbuildinfo
+
+# Environment
+.env
+.env.*
+!.env.example
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+
+# Backend
+backend/.venv/
+backend/staticfiles/
+backend/media/
+
+# Frontend
+frontend/node_modules/
+frontend/**/node_modules/
+frontend/**/dist/
+frontend/openapi.yaml
+frontend/packages/api-client/src/generated/

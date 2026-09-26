@@ -1,0 +1,76 @@
+# Local development stack.
+#
+# Postgres is reached through PgBouncer on 6432, not directly on 5432.
+# Database-per-tenant (C1) means connection count grows with the number of
+# organizations, so the pool is part of the design rather than a later addition.
+# Port 5432 stays exposed for psql and migrations that need to bypass the pool.
+
+name: xpredict-one
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-xpredict_control}
+      POSTGRES_USER: ${POSTGRES_USER:-xpredict}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-xpredict}
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-xpredict}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  pgbouncer:
+    image: edoburu/pgbouncer:latest
+    environment:
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_USER: ${POSTGRES_USER:-xpredict}
+      DB_PASSWORD: ${POSTGRES_PASSWORD:-xpredict}
+      # transaction pooling: required for many tenant databases on few
+      # server-side connections. Note it disallows session-level features
+      # such as server-side prepared statements and LISTEN/NOTIFY.
+      POOL_MODE: transaction
+      MAX_CLIENT_CONN: 1000
+      DEFAULT_POOL_SIZE: 25
+      AUTH_TYPE: scram-sha-256
+    ports:
+      - "6432:5432"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--appendonly", "yes"]
+    ports:
+      - "6379:6379"
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  # Celery services are commented out until Phase 2 gives them real work.
+  # They need a backend image, which arrives with the Dockerfile in Phase 2;
+  # run the worker on the host with `celery -A config worker -l info` for now.
+  #
+  # celery-worker:
+  #   build: ./backend
+  #   command: celery -A config worker -l info
+  #   depends_on: [redis, pgbouncer]
+  #
+  # celery-beat:
+  #   build: ./backend
+  #   command: celery -A config beat -l info
+  #   depends_on: [redis, pgbouncer]
+
+volumes:
+  pgdata:
+  redisdata:
