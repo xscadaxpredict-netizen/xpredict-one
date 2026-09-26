@@ -227,6 +227,39 @@ const FAKE_ME: Me = {
         },
       ],
     },
+    /*
+     * A SECOND ORGANISATION, so the switcher is visible while the UI is being
+     * built — it only appears with two or more (C13).
+     *
+     * Not the expected shape of a real account: people are expected to belong
+     * to one organisation each, which is why there is no picker screen. Delete
+     * this entry to see the single-organisation case, where the topbar renders
+     * plain text instead of a button.
+     *
+     * Deliberately different from Acme: fewer DMS modules and no Administration,
+     * so switching visibly changes the sidebar and hides "Manage". A second
+     * organisation identical to the first would prove nothing.
+     */
+    {
+      org_id: "1a2b3c4d-0000-0000-0000-000000000002",
+      org_name: "Northway Auto Group",
+      org_slug: "northway-auto",
+      role: "admin",
+      unit_name: "Bangalore — Whitefield",
+      apps: [
+        {
+          key: "dms",
+          subscribed: true,
+          accessible: true,
+          summary: "Sales · Service across 3 dealers",
+          modules: ["sales", "service"],
+          permissions: ["dms.enquiry.create"],
+        },
+        { key: "crm", subscribed: false, accessible: false, summary: null, modules: [], permissions: [] },
+        { key: "ecommerce", subscribed: false, accessible: false, summary: null, modules: [], permissions: [] },
+        { key: "admin", subscribed: true, accessible: false, summary: null, modules: [], permissions: [] },
+      ],
+    },
   ],
 };
 
