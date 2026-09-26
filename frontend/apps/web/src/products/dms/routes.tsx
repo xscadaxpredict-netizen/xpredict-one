@@ -1,35 +1,38 @@
-import { Navigate, Route, Routes } from "react-router-dom";
-
 /**
  * DMS --- dealership management. The only unit-aware app (C5).
  *
  * Records are scoped to the user's dealer by the backend; the frontend never
  * filters by unit itself.
  *
- * THE MODULE LIST IS NOT SETTLED (Q19 in context/04-OPEN-QUESTIONS.md). These
- * three are the ones with backend scaffolding behind them. The original design
- * docs name a longer set, and org-level dealer management has no home here yet
- * even though C3 requires one.
+ * Modules per C18: Sales, Service and Tech support are the modules, and
+ * enquiries, quotations and the rest are screens INSIDE them. Org-level dealer
+ * management lives in Administration (C17), which is why there is no Dealers
+ * entry here — but a dealer admin manages their own dealer's people in
+ * "Dealer settings" below, because that is a different, smaller job (C3).
  *
- * The placeholders exist so the sidebar does not link to blank pages. They are
- * deliberately empty of everything except a heading: a placeholder that invents
- * a table or a filter bar is a design decision made by accident.
+ * EVERY SCREEN DECLARES ITS MODULE. The field is required, so a new screen
+ * cannot be added without saying what it needs; `shell/routing.tsx` is the
+ * only thing that turns this list into routes, and it drops the ones this
+ * person may not open.
  *
- * Also unwired, on purpose: `sales/screens/EnquiryListScreen` is fully built and
- * reachable from nothing. Pointing `sales` at it is a real decision — it would
- * start calling an API that does not exist yet — so it waits for an answer
- * rather than being quietly switched on here.
+ * Still unwired, on purpose: `sales/screens/EnquiryListScreen` is fully built
+ * and reachable from nothing. Per C18 its home is `sales/enquiries` — a screen
+ * inside Sales, not a module of its own. Pointing at it would start calling an
+ * API that does not exist, so it waits for a decision rather than being
+ * quietly switched on here.
  */
+
+import { ModuleRoutes, type ModuleRoute } from "../../shell/routing";
+
+const routes: ModuleRoute[] = [
+  { path: "sales", module: "sales", element: <Placeholder name="Sales" /> },
+  { path: "service", module: "service", element: <Placeholder name="Service" /> },
+  { path: "tech-support", module: "tech-support", element: <Placeholder name="Tech support" /> },
+  { path: "settings", module: "settings", element: <Placeholder name="Dealer settings" /> },
+];
+
 export default function DmsRoutes() {
-  return (
-    <Routes>
-      <Route index element={<Navigate to="sales" replace />} />
-      <Route path="sales" element={<Placeholder name="Sales" />} />
-      <Route path="service" element={<Placeholder name="Service" />} />
-      <Route path="tech-support" element={<Placeholder name="Tech support" />} />
-      <Route path="*" element={<Placeholder name="Not found" />} />
-    </Routes>
-  );
+  return <ModuleRoutes routes={routes} />;
 }
 
 function Placeholder({ name }: { name: string }) {

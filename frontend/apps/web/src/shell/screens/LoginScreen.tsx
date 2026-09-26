@@ -16,7 +16,7 @@
 import { useState } from "react";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm } from "react-hook-form";
-import { useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import { z } from "zod";
 import { asProblem } from "@xpredict/api-client";
 
@@ -37,6 +37,7 @@ type LoginFormFields = z.infer<typeof loginFormSchema>;
 
 export function LoginScreen() {
   const navigate = useNavigate();
+  const location = useLocation();
   const { mutateAsync: signIn, isPending, } = useLogin();
   const [formError, setFormError] = useState<{ message: string; traceId?: string } | null>(null);
   const {register, handleSubmit, formState: { errors }, } = useForm<LoginFormFields>({
@@ -67,8 +68,12 @@ export function LoginScreen() {
        * But NOT straight into an app. `/${slug}` is the launcher, because
        * which apps exist depends on the organisation's subscriptions and this
        * person's role — landing in DMS is only right for people who have DMS.
+       *
+       * Unless they were going somewhere specific: the shell puts the page
+       * they were blocked from into `state.from`, so a deep link survives the
+       * sign-in rather than dumping them on the launcher to find it again.
        */
-      void navigate(`/${first.org_slug}`, { replace: true });
+      void navigate(returnTo(location.state, `/${first.org_slug}`), { replace: true });
     } catch (error) {
       const problem = asProblem(error);
       setFormError({
@@ -122,4 +127,26 @@ export function LoginScreen() {
       </form>
     </AuthLayout>
   );
+}
+
+/**
+ * Where to go after signing in.
+ *
+ * Only ever an in-app path. `state` is reachable from the address bar — anyone
+ * can push history state — so a value from it is untrusted input. Accepting an
+ * absolute URL here would turn the login screen into an open redirect: a link
+ * that signs someone in and lands them on a copy of this app that keeps what
+ * they type next.
+ *
+ * "//evil.example" is the case that catches people out: it has no scheme, so a
+ * naive "must start with /" check passes it, and the browser reads it as a
+ * protocol-relative URL to another host.
+ */
+function returnTo(state: unknown, fallback: string): string {
+  const from = (state as { from?: unknown } | null)?.from;
+
+  if (typeof from !== "string") return fallback;
+  if (!from.startsWith("/") || from.startsWith("//")) return fallback;
+
+  return from;
 }

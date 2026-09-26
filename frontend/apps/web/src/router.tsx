@@ -2,6 +2,7 @@ import { lazy, Suspense } from "react";
 import { createBrowserRouter, Navigate } from "react-router-dom";
 
 import { AppShell } from "./shell/AppShell";
+import { RedirectIfSignedIn } from "./shell/components/RedirectIfSignedIn";
 import { LauncherScreen } from "./shell/screens/LauncherScreen";
 import { NotFoundScreen } from "./shell/screens/NotFoundScreen";
 import { LoginScreen } from "./shell/screens/LoginScreen";
@@ -22,8 +23,22 @@ function Loading() {
 
 export const router = createBrowserRouter([
   { path: "/", element: <Navigate to="/login" replace />,},
-  { path: "/login", element: <LoginScreen />, },
-  { path: "/signup", element: <SignupScreen />, },
+  {
+    path: "/login",
+    element: (
+      <RedirectIfSignedIn>
+        <LoginScreen />
+      </RedirectIfSignedIn>
+    ),
+  },
+  {
+    path: "/signup",
+    element: (
+      <RedirectIfSignedIn>
+        <SignupScreen />
+      </RedirectIfSignedIn>
+    ),
+  },
   {
     path: "/:orgSlug",
     element: <AppShell />,

@@ -1,25 +1,15 @@
-import { Route, Routes } from "react-router-dom";
-
 /**
  * CRM --- organization level, no business units (C5).
  *
- * Built after DMS ships. Its sidebar is empty in `shell/navigation.ts` and says
- * so, rather than listing modules nobody has agreed on.
+ * Built after DMS ships. It has no modules yet, so the sidebar says so and the
+ * app root sends people back to the launcher rather than showing an empty frame.
  */
-export default function CrmRoutes() {
-  return (
-    <Routes>
-      <Route index element={<CrmPlaceholder />} />
-      <Route path="*" element={<CrmPlaceholder />} />
-    </Routes>
-  );
-}
 
-function CrmPlaceholder() {
-  return (
-    <>
-      <h1>CRM</h1>
-      <p>Not built yet. DMS ships first.</p>
-    </>
-  );
+import { ModuleRoutes, type ModuleRoute } from "../../shell/routing";
+
+// Deliberately empty. Invented module names would be read as decisions.
+const routes: ModuleRoute[] = [];
+
+export default function CrmRoutes() {
+  return <ModuleRoutes routes={routes} />;
 }

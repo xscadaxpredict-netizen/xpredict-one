@@ -14,7 +14,7 @@
 
 import { Link } from "react-router-dom";
 
-import { useShellContext } from "../AppShell";
+import { useShellContext } from "../context";
 import styles from "./NotFoundScreen.module.css";
 
 export function NotFoundScreen() {

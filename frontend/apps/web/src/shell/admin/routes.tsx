@@ -17,22 +17,24 @@
  * warning before someone edits another team's user.
  */
 
-import { Navigate, Route, Routes } from "react-router-dom";
-
+import { ModuleRoutes, type ModuleRoute } from "../routing";
 import styles from "./routes.module.css";
 
+/*
+ * Each screen is its own module, so the whole console is not all-or-nothing.
+ * An organisation could grant somebody People and Audit log without handing
+ * them Apps & billing.
+ */
+const routes: ModuleRoute[] = [
+  { path: "people", module: "people", element: <AdminPlaceholder name="People" audited /> },
+  { path: "dealers", module: "dealers", element: <AdminPlaceholder name="Dealers" /> },
+  { path: "roles", module: "roles", element: <AdminPlaceholder name="Roles" /> },
+  { path: "billing", module: "billing", element: <AdminPlaceholder name="Apps & billing" /> },
+  { path: "audit", module: "audit", element: <AdminPlaceholder name="Audit log" /> },
+];
+
 export default function AdminRoutes() {
-  return (
-    <Routes>
-      <Route index element={<Navigate to="people" replace />} />
-      <Route path="people" element={<AdminPlaceholder name="People" audited />} />
-      <Route path="dealers" element={<AdminPlaceholder name="Dealers" />} />
-      <Route path="roles" element={<AdminPlaceholder name="Roles" />} />
-      <Route path="billing" element={<AdminPlaceholder name="Apps & billing" />} />
-      <Route path="audit" element={<AdminPlaceholder name="Audit log" />} />
-      <Route path="*" element={<AdminPlaceholder name="Not found" />} />
-    </Routes>
-  );
+  return <ModuleRoutes routes={routes} />;
 }
 
 interface AdminPlaceholderProps {

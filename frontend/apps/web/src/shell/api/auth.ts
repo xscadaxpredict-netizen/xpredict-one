@@ -42,6 +42,33 @@ export interface AppAccess {
    * frontend catalog instead — it is copy, not data.
    */
   summary: string | null;
+
+  /**
+   * Module keys inside this app that this person may open — "sales",
+   * "service". A module they may not open is simply absent.
+   *
+   * Module keys are safe for the frontend to know because it already names
+   * them: they are URL segments and they are in the catalog. Contrast
+   * `permissions` below.
+   */
+  modules: string[];
+
+  /**
+   * What this person may DO, as opaque strings — "dms.enquiry.create".
+   *
+   * DELIBERATELY UNTYPED. The backend owns this vocabulary. If the frontend
+   * declared a union of valid permission names, adding one server-side would
+   * mean a frontend release before anybody could be granted it, and the two
+   * lists would drift the first time somebody was in a hurry.
+   *
+   * It also means this mechanism could be built while Q11 (custom roles per
+   * organisation) and Q12 (the permission list per role) are still open. The
+   * machinery does not need the words.
+   *
+   * THIS IS A MIRROR, NOT A SOURCE. The same check exists in Django and Django
+   * is the one that matters. If the two ever disagree, this is the bug.
+   */
+  permissions: string[];
 }
 
 export interface Membership {
@@ -120,18 +147,41 @@ const FAKE_ME: Me = {
           subscribed: true,
           accessible: true,
           summary: "Sales · Service · Tech support across 12 dealers",
+          modules: ["sales", "service", "tech-support", "settings"],
+          permissions: [
+            "dms.enquiry.create",
+            "dms.enquiry.assign",
+            "dms.quotation.create",
+            "dms.unit.manage_people",
+          ],
         },
         {
           key: "crm",
           subscribed: true,
           accessible: true,
           summary: "Organisation-wide — no dealer split",
+          modules: [],
+          permissions: [],
         },
         // Not bought. Shown disabled rather than hidden — see AppAccess above.
-        { key: "ecommerce", subscribed: false, accessible: false, summary: null },
+        {
+          key: "ecommerce",
+          subscribed: false,
+          accessible: false,
+          summary: null,
+          modules: [],
+          permissions: [],
+        },
         // Never "bought": Administration comes with the platform and is gated
         // by role alone. Same two flags, so the launcher needs no special case.
-        { key: "admin", subscribed: true, accessible: true, summary: "Organisation admins only" },
+        {
+          key: "admin",
+          subscribed: true,
+          accessible: true,
+          summary: "Organisation admins only",
+          modules: ["people", "dealers", "roles", "billing", "audit"],
+          permissions: ["org.dealer.create", "org.person.invite", "org.role.assign"],
+        },
       ],
     },
   ],

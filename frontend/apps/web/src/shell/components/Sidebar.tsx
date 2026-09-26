@@ -17,6 +17,7 @@
 import { NavLink } from "react-router-dom";
 
 import type { AppDefinition } from "../navigation";
+import { useAccess } from "../access";
 import { useUiStore } from "../../stores/uiStore";
 import styles from "./Sidebar.module.css";
 
@@ -33,6 +34,25 @@ export function Sidebar({ app, orgSlug }: SidebarProps) {
    */
   const isCollapsed = useUiStore((state) => state.isSidebarCollapsed);
   const toggleSidebar = useUiStore((state) => state.toggleSidebar);
+  const access = useAccess();
+
+  /*
+   * Drop modules this person cannot open, then drop groups that are left
+   * empty — otherwise a heading like "This dealer" hangs over nothing, which
+   * tells the reader precisely what they are not allowed to see.
+   *
+   * SILENTLY. The UI mock showed a line reading "Tech support hidden — your
+   * role has no access", and that was deliberately not copied: C16 settled that
+   * a permission the person lacks is hidden rather than advertised. Naming the
+   * module in order to say they cannot have it gives away the same thing the
+   * hiding was for.
+   */
+  const groups = app.nav
+    .map((group) => ({
+      ...group,
+      items: group.items.filter((item) => item.module === null || access.hasModule(item.module)),
+    }))
+    .filter((group) => group.items.length > 0);
 
   return (
     <nav
@@ -41,7 +61,7 @@ export function Sidebar({ app, orgSlug }: SidebarProps) {
       aria-label={`${app.name} navigation`}
     >
       <div className={styles.groups}>
-        {app.nav.map((group, groupIndex) => (
+        {groups.map((group, groupIndex) => (
           <div
             // Groups have no id of their own and an unlabelled group has no
             // name either, so the index is the only stable key available. Safe
@@ -75,10 +95,11 @@ export function Sidebar({ app, orgSlug }: SidebarProps) {
           </div>
         ))}
 
-        {app.nav.length === 0 && (
+        {groups.length === 0 && (
           <p className={styles.empty}>
-            {/* Honest beats invented. CRM has no modules yet and saying so is
-                better than links that lead nowhere. */}
+            {/* Covers both "this app has no modules yet" (CRM) and "none of
+                them are yours". Deliberately the same sentence: a different
+                message for the second case would confirm that modules exist. */}
             No modules yet.
           </p>
         )}

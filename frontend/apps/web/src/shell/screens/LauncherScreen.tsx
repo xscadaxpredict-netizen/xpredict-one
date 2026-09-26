@@ -19,7 +19,7 @@
 import { useNavigate } from "react-router-dom";
 
 import type { Membership } from "../api/auth";
-import { useShellContext } from "../AppShell";
+import { useShellContext } from "../context";
 import { AppTile } from "../components/AppTile";
 import { visibleApps } from "../navigation";
 import styles from "./LauncherScreen.module.css";

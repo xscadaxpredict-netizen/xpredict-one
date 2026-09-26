@@ -27,9 +27,9 @@
  * A determined visitor can edit the URL, and the backend is what stops them.
  */
 
-import { Navigate, Outlet, useLocation, useOutletContext, useParams } from "react-router-dom";
+import { Navigate, Outlet, useLocation, useParams } from "react-router-dom";
 
-import type { Me, Membership } from "./api/auth";
+import { ShellProvider, type ShellContext } from "./context";
 
 import { Sidebar } from "./components/Sidebar";
 import { Topbar } from "./components/Topbar";
@@ -110,48 +110,31 @@ export function AppShell() {
     return <Navigate to={`/${orgSlug}`} replace />;
   }
 
+  const shellContext: ShellContext = { me, membership, app };
+
   return (
-    <div className={styles.shell}>
-      <Topbar
-        me={me}
-        membership={membership}
-        currentAppKey={app?.key}
-        currentAppName={app?.name}
-      />
+    <ShellProvider value={shellContext}>
+      <div className={styles.shell}>
+        <Topbar
+          me={me}
+          membership={membership}
+          currentAppKey={app?.key}
+          currentAppName={app?.name}
+        />
 
-      <div className={styles.body}>
-        {app && <Sidebar app={app} orgSlug={orgSlug} />}
+        <div className={styles.body}>
+          {app && <Sidebar app={app} orgSlug={orgSlug} />}
 
-        {/* The page. `main` is a landmark screen readers can jump straight to,
+          {/*
+            The page. `main` is a landmark screen readers can jump straight to,
             which matters more here than anywhere else: the topbar and sidebar
-            repeat on every single screen. */}
-        {/*
-          `context` is how a parent route hands data to its children without a
-          provider. The launcher needs `me` and the membership, and the shell
-          has already resolved both — re-fetching them one level down would ask
-          the same question twice.
-        */}
-        <main className={styles.content}>
-          <Outlet context={{ me, membership } satisfies ShellContext} />
-        </main>
+            repeat on every single screen.
+          */}
+          <main className={styles.content}>
+            <Outlet />
+          </main>
+        </div>
       </div>
-    </div>
+    </ShellProvider>
   );
-}
-
-/** What the shell hands down to the routes inside it. */
-export interface ShellContext {
-  me: Me;
-  membership: Membership;
-}
-
-/**
- * Read what the shell resolved, from any screen inside it.
- *
- * Typed, unlike `useOutletContext()` on its own — React Router cannot know what
- * a parent put in there, so without this wrapper every caller writes its own
- * cast and one of them eventually gets it wrong.
- */
-export function useShellContext(): ShellContext {
-  return useOutletContext<ShellContext>();
 }

@@ -35,6 +35,20 @@ export interface NavItem {
    * Choosing them by hand makes a collision a visible decision.
    */
   short: string;
+
+  /**
+   * The module key this link needs, or `null` for a link anyone inside the app
+   * may follow.
+   *
+   * REQUIRED, not optional, and that is the point. An optional field is one a
+   * developer adding a screen at 5pm does not notice; a required one is a
+   * compile error. `null` is allowed but has to be typed deliberately, so it
+   * shows up in a diff as a decision rather than an omission.
+   *
+   * Same reasoning as listing the ESLint exemptions file by file instead of
+   * matching them with a pattern.
+   */
+  module: string | null;
 }
 
 /**
@@ -99,10 +113,21 @@ export const APP_CATALOG: AppDefinition[] = [
       {
         label: null,
         items: [
-          { label: "Sales", path: "sales", short: "SL" },
-          { label: "Service", path: "service", short: "SV" },
-          { label: "Tech support", path: "tech-support", short: "TS" },
+          { label: "Sales", path: "sales", short: "SL", module: "sales" },
+          { label: "Service", path: "service", short: "SV", module: "service" },
+          { label: "Tech support", path: "tech-support", short: "TS", module: "tech-support" },
         ],
+      },
+      {
+        /*
+         * A dealer admin manages their OWN dealer's people here, not in the
+         * organisation's Administration app (C17). Two-level administration
+         * (C3) means these are genuinely different jobs with different scopes,
+         * and putting a dealer admin into the org console to do the smaller one
+         * would hand them a screen listing every dealer's users.
+         */
+        label: "This dealer",
+        items: [{ label: "Dealer settings", path: "settings", short: "DS", module: "settings" }],
       },
     ],
   },
@@ -130,11 +155,11 @@ export const APP_CATALOG: AppDefinition[] = [
       {
         label: "Organisation",
         items: [
-          { label: "People", path: "people", short: "PE" },
-          { label: "Dealers", path: "dealers", short: "DL" },
-          { label: "Roles", path: "roles", short: "RO" },
-          { label: "Apps & billing", path: "billing", short: "AB" },
-          { label: "Audit log", path: "audit", short: "AU" },
+          { label: "People", path: "people", short: "PE", module: "people" },
+          { label: "Dealers", path: "dealers", short: "DL", module: "dealers" },
+          { label: "Roles", path: "roles", short: "RO", module: "roles" },
+          { label: "Apps & billing", path: "billing", short: "AB", module: "billing" },
+          { label: "Audit log", path: "audit", short: "AU", module: "audit" },
         ],
       },
     ],
