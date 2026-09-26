@@ -1,6 +1,10 @@
 /**
  * Navigation within the current app.
  *
+ * Two levels, because a module is not a screen: Sales is a module that owns
+ * Enquiries, Quotations and the rest. A group with no label renders its items
+ * with no heading, which is how DMS looks until those screens exist.
+ *
  * `NavLink` rather than `Link` because it knows whether it is the current page
  * and hands us that as `isActive`. Doing it by hand means comparing pathnames
  * in every link, and getting the trailing-slash and nested-route cases wrong.
@@ -36,35 +40,49 @@ export function Sidebar({ app, orgSlug }: SidebarProps) {
       data-collapsed={isCollapsed || undefined}
       aria-label={`${app.name} navigation`}
     >
-      <ul className={styles.list}>
-        {app.nav.map((item) => (
-          <li key={item.path}>
-            <NavLink
-              to={`/${orgSlug}/${app.key}/${item.path}`.replace(/\/$/, "")}
-              end={item.path === ""}
-              className={({ isActive }) =>
-                isActive ? `${styles.link} ${styles.linkActive}` : styles.link
-              }
-              // The label is hidden when collapsed, so the icon-only link needs
-              // a name a screen reader and a tooltip can both use.
-              title={isCollapsed ? item.label : undefined}
-            >
-              <span className={styles.bullet} aria-hidden="true">
-                {item.short}
-              </span>
-              <span className={styles.linkLabel}>{item.label}</span>
-            </NavLink>
-          </li>
-        ))}
-      </ul>
+      <div className={styles.groups}>
+        {app.nav.map((group, groupIndex) => (
+          <div
+            // Groups have no id of their own and an unlabelled group has no
+            // name either, so the index is the only stable key available. Safe
+            // here because this list is static config, never reordered at runtime.
+            key={group.label ?? `group-${String(groupIndex)}`}
+            className={styles.group}
+          >
+            {group.label && <div className={styles.groupLabel}>{group.label}</div>}
 
-      {app.nav.length === 0 && (
-        <p className={styles.empty}>
-          {/* Honest beats invented. CRM has no modules yet and saying so is
-              better than links that lead nowhere. */}
-          No modules yet.
-        </p>
-      )}
+            <ul className={styles.list}>
+              {group.items.map((item) => (
+                <li key={item.path}>
+                  <NavLink
+                    to={`/${orgSlug}/${app.key}/${item.path}`.replace(/\/$/, "")}
+                    end={item.path === ""}
+                    className={({ isActive }) =>
+                      isActive ? `${styles.link} ${styles.linkActive}` : styles.link
+                    }
+                    // The label is hidden when collapsed, so the icon-only link
+                    // gets a tooltip as well as its clipped accessible name.
+                    title={isCollapsed ? item.label : undefined}
+                  >
+                    <span className={styles.bullet} aria-hidden="true">
+                      {item.short}
+                    </span>
+                    <span className={styles.linkLabel}>{item.label}</span>
+                  </NavLink>
+                </li>
+              ))}
+            </ul>
+          </div>
+        ))}
+
+        {app.nav.length === 0 && (
+          <p className={styles.empty}>
+            {/* Honest beats invented. CRM has no modules yet and saying so is
+                better than links that lead nowhere. */}
+            No modules yet.
+          </p>
+        )}
+      </div>
 
       <button
         type="button"

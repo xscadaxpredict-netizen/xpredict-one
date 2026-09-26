@@ -60,9 +60,15 @@ export function LoginScreen() {
         return;
       }
 
-      // No organisation picker (C13): straight to the first one. The topbar
-      // switcher is how someone with several reaches the others.
-      void navigate(`/${first.org_slug}/dms`, { replace: true });
+      /*
+       * No organisation picker (C13): straight to the first one. The topbar
+       * switcher is how someone with several reaches the others.
+       *
+       * But NOT straight into an app. `/${slug}` is the launcher, because
+       * which apps exist depends on the organisation's subscriptions and this
+       * person's role — landing in DMS is only right for people who have DMS.
+       */
+      void navigate(`/${first.org_slug}`, { replace: true });
     } catch (error) {
       const problem = asProblem(error);
       setFormError({

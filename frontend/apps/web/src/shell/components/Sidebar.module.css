@@ -12,8 +12,35 @@
   width: var(--sidebar-width-collapsed);
 }
 
-.list {
+.groups {
   flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+  min-height: 0;
+}
+
+.group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+/*
+ * The heading names the module the links below belong to. Hidden when the rail
+ * is collapsed: there is no room, and a two-letter heading above two-letter
+ * bullets is noise rather than structure.
+ */
+.groupLabel {
+  padding: 0 var(--space-3);
+  font-size: var(--text-xs);
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--color-text-3);
+}
+
+.list {
   display: flex;
   flex-direction: column;
   gap: 2px;
@@ -121,6 +148,7 @@
 /* These two are safe to remove outright: the collapse button carries its own
    aria-label, and the empty-state sentence has no rail to live in. */
 .sidebar[data-collapsed] .collapseLabel,
+.sidebar[data-collapsed] .groupLabel,
 .sidebar[data-collapsed] .empty {
   display: none;
 }

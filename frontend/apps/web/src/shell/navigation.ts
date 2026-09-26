@@ -1,23 +1,25 @@
 /**
- * What is in the suite, and what is in each app's sidebar.
+ * What is in the suite, what each app's sidebar holds, and who may see what.
  *
- * ONE FILE, ON PURPOSE. Navigation is the thing three developers will each
- * invent separately if it has no obvious home. It has one now.
+ * TWO SOURCES, ON PURPOSE.
  *
- * Why the shell owns this and not each product: the shell is forbidden from
- * importing a product's internals (see eslint.config.js — it may only reach
- * `products/*\/routes`). A URL is not an internal; the router already knows
- * `dms/*` and `crm/*` exist. So the list of links lives here, and a product
- * stays free to change everything behind those URLs.
+ *   This file — copy and structure. Names, one-line descriptions, sidebar
+ *   links. Facts that are the same for every customer.
  *
- * ADDING A LINK IS NOT THE SAME AS BUILDING A SCREEN. A link here with no
- * route behind it in `products/<app>/routes.tsx` renders an empty page. Add
- * the route first.
+ *   `/api/v1/me` — entitlement. Which apps this organisation pays for and
+ *   which ones this person may enter. Never decided here.
  *
- * Nothing here is a permission. The sidebar hides links a user cannot use as a
- * convenience; the backend rejects the request regardless of what was shown.
- * Never treat a hidden link as a control — the URL is still typeable.
+ * Getting that split wrong in either direction hurts. Hardcoding entitlement
+ * means shipping a release to change who can see Administration. Asking the
+ * server for the word "Dealership management" means a copy fix becomes a
+ * backend deploy.
+ *
+ * NOTHING HERE IS A CONTROL. Hiding a tile or a link is a courtesy; the
+ * backend rejects the request regardless of what was drawn. The URL is always
+ * typeable.
  */
+
+import type { AppAccess, AppKey, Membership } from "./api/auth";
 
 export interface NavItem {
   /** Sidebar label. */
@@ -31,72 +33,154 @@ export interface NavItem {
    * start with S, so a `label.slice(0, 2)` rail reads "Sa Se Te" at best and
    * "S S T" at worst — two identical buttons going to different places.
    * Choosing them by hand makes a collision a visible decision.
-   *
-   * These become icons when there is an icon set. Until then, letters that
-   * differ beat icons that are invented on the spot.
    */
   short: string;
 }
 
+/**
+ * A heading in the sidebar with its screens underneath.
+ *
+ * DMS is two levels because a module is not a screen: Sales is a module that
+ * owns Enquiries, Quotations, Confirmed orders and Follow-ups. Flattening them
+ * into one list was the confusion behind Q19 — the two competing module lists
+ * were never competing, they were different levels of the same tree.
+ */
+export interface NavGroup {
+  /** Shown above the group. A single unnamed group renders without a heading. */
+  label: string | null;
+  items: NavItem[];
+}
+
 export interface AppDefinition {
-  /** The URL segment: `/:orgSlug/<key>`. */
-  key: string;
+  key: AppKey;
   name: string;
-  /** One line, shown in the app launcher. */
+  /** One line under the name in the launcher. Copy, not data. */
   description: string;
   /** Two letters for the launcher tile. */
   initials: string;
-  nav: NavItem[];
+  nav: NavGroup[];
 }
 
 /**
- * E-commerce is deliberately absent. It is deferred (see CLAUDE.md) and putting
- * a tile in the launcher for an app nobody is building would promise something
- * that does not exist.
+ * Every app the suite knows how to draw — including ones this organisation has
+ * not bought. A tile cannot be shown disabled if the frontend has never heard
+ * of the app, so E-commerce is listed here despite being deferred. Deferred
+ * means nobody is building it, not that nobody may know it exists.
  */
-export const APPS: AppDefinition[] = [
+export const APP_CATALOG: AppDefinition[] = [
   {
     key: "dms",
     name: "DMS",
     description: "Dealership management",
     initials: "DM",
     /*
-     * UNSETTLED — this is Q19 in context/04-OPEN-QUESTIONS.md.
+     * Q19 answered 2026-09-26 from the owner's UI mock: Sales, Service and
+     * Tech support are the MODULES; enquiries, quotations and the rest are
+     * screens inside them. Org-level dealer management lives in Administration
+     * (C3), which is why there is no Dealers entry here.
      *
-     * These three are the modules that actually have backend scaffolding
-     * behind them. The original design docs list a longer set (dealers,
-     * catalog, enquiries, quotations, inventory, dashboard) and the two lists
-     * have not been reconciled. In particular ORG-LEVEL DEALER MANAGEMENT HAS
-     * NO HOME HERE YET, and C3 makes it non-optional.
-     *
-     * When Q19 is answered, this array is the only thing that changes.
+     * Only the module roots exist as routes today. The screens under them are
+     * listed so the three developers building those modules agree on the names
+     * before they each invent their own.
      */
     nav: [
-      { label: "Sales", path: "sales", short: "SL" },
-      { label: "Service", path: "service", short: "SV" },
-      { label: "Tech support", path: "tech-support", short: "TS" },
+      /*
+       * ONE unlabelled group, not three of one item each — three groups render
+       * as three separate lists, which a screen reader announces as "list, 1
+       * item" three times over.
+       *
+       * When the screens inside a module exist, this becomes one group per
+       * module with a heading:
+       *   { label: "Sales", items: [Enquiries, Quotations, Confirmed orders, Follow-ups] }
+       *   { label: "Service", items: [Appointments, Job cards] }
+       * A module the person's role excludes is dropped from this list by the
+       * backend's answer, never hidden by a check written here.
+       */
+      {
+        label: null,
+        items: [
+          { label: "Sales", path: "sales", short: "SL" },
+          { label: "Service", path: "service", short: "SV" },
+          { label: "Tech support", path: "tech-support", short: "TS" },
+        ],
+      },
     ],
   },
   {
     key: "crm",
     name: "CRM",
-    description: "Customer relationships",
+    description: "Leads & marketing",
     initials: "CR",
     // Built after DMS ships. An empty sidebar is honest; invented links are not.
     nav: [],
   },
+  {
+    key: "ecommerce",
+    name: "E-commerce",
+    description: "Storefront & orders",
+    initials: "EC",
+    nav: [],
+  },
+  {
+    key: "admin",
+    name: "Administration",
+    description: "Dealers, people, billing",
+    initials: "AD",
+    nav: [
+      {
+        label: "Organisation",
+        items: [
+          { label: "People", path: "people", short: "PE" },
+          { label: "Dealers", path: "dealers", short: "DL" },
+          { label: "Roles", path: "roles", short: "RO" },
+          { label: "Apps & billing", path: "billing", short: "AB" },
+          { label: "Audit log", path: "audit", short: "AU" },
+        ],
+      },
+    ],
+  },
 ];
 
 export function findApp(key: string | undefined): AppDefinition | undefined {
-  return APPS.find((app) => app.key === key);
+  return APP_CATALOG.find((app) => app.key === key);
+}
+
+/** An app as the launcher needs it: what to draw, plus whether it can be opened. */
+export interface LauncherApp {
+  definition: AppDefinition;
+  access: AppAccess;
+  /** False when the organisation has not subscribed: visible, but not enterable. */
+  enabled: boolean;
 }
 
 /**
- * Where someone lands when the URL names an organisation but no app —
- * `/acme-motors` on its own, usually from a bookmark or a typed address.
+ * The apps to show this person, in catalog order.
  *
- * A literal, not `APPS[0].key`: `noUncheckedIndexedAccess` makes that
- * `string | undefined`, and a redirect target that might be undefined is a
- * blank screen waiting to happen.
+ * THE ONE PLACE THIS RULE LIVES. It is drawn in two places — the launcher page
+ * and the topbar dropdown — and a rule copied into two components is a rule
+ * that will disagree with itself after somebody edits one of them.
+ *
+ *   org has not subscribed  -> SHOWN, DISABLED. Someone has to know an app
+ *                              exists before they can ask to buy it.
+ *   subscribed, no access   -> HIDDEN. That is a permission, and listing it
+ *                              tells the person what they are not trusted with.
+ *   subscribed and access   -> shown, enterable.
+ *
+ * An app key the server sends that this frontend has never heard of is skipped
+ * rather than crashing the launcher, so the backend can ship a new app before
+ * the frontend knows how to draw it.
  */
-export const DEFAULT_APP_KEY = "dms";
+export function visibleApps(membership: Membership): LauncherApp[] {
+  const result: LauncherApp[] = [];
+
+  for (const definition of APP_CATALOG) {
+    const access = membership.apps.find((app) => app.key === definition.key);
+    if (!access) continue;
+
+    if (access.subscribed && !access.accessible) continue;
+
+    result.push({ definition, access, enabled: access.subscribed && access.accessible });
+  }
+
+  return result;
+}

@@ -24,7 +24,13 @@ import styles from "./OrgSwitcher.module.css";
 interface OrgSwitcherProps {
   memberships: Membership[];
   currentOrgSlug: string;
-  /** The app to stay in when switching, so the user does not lose their place. */
+  /**
+   * The app to stay in when switching, so the user does not lose their place.
+   *
+   * Undefined means they are on the launcher — and switching then lands on the
+   * other organisation's launcher, which is right: the app they were in may
+   * not even exist over there.
+   */
   currentAppKey: string | undefined;
 }
 
@@ -62,9 +68,7 @@ export function OrgSwitcher({ memberships, currentOrgSlug, currentAppKey }: OrgS
               key={membership.org_id}
               className={styles.item}
               data-current={membership.org_slug === currentOrgSlug || undefined}
-              onSelect={() =>
-                void navigate(`/${membership.org_slug}/${currentAppKey ?? "dms"}`)
-              }
+              onSelect={() => void navigate(appPath(membership.org_slug, currentAppKey))}
             >
               <span className={styles.itemName}>{membership.org_name}</span>
               <span className={styles.itemMeta}>
@@ -76,6 +80,16 @@ export function OrgSwitcher({ memberships, currentOrgSlug, currentAppKey }: OrgS
       </DropdownMenu.Portal>
     </DropdownMenu.Root>
   );
+}
+
+/**
+ * Never falls back to a named app. The previous version defaulted to "dms",
+ * which sends someone into an app the other organisation may not subscribe to
+ * — a "no access" screen produced by a switcher that was trying to be helpful.
+ * The launcher always exists.
+ */
+function appPath(orgSlug: string, appKey: string | undefined): string {
+  return appKey ? `/${orgSlug}/${appKey}` : `/${orgSlug}`;
 }
 
 function ChevronIcon() {

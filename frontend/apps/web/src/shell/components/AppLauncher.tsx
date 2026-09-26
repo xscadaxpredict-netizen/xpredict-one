@@ -1,6 +1,10 @@
 /**
  * The grid button in the topbar: which app am I in, and how do I get to another.
  *
+ * Shows exactly what the launcher page shows — same `visibleApps` rule, same
+ * `AppTile`. The dropdown is a shortcut to that screen, not a second opinion
+ * about it.
+ *
  * Built on Radix's dropdown menu rather than a hand-rolled popover. That is not
  * laziness — a menu has to close on Escape, close on outside click, trap and
  * restore focus, move with the arrow keys, and announce itself to a screen
@@ -10,21 +14,20 @@
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import { useNavigate } from "react-router-dom";
 
-import { APPS, type AppDefinition } from "../navigation";
+import type { Membership } from "../api/auth";
+import { visibleApps } from "../navigation";
+import { AppTile } from "./AppTile";
 import styles from "./AppLauncher.module.css";
 
 interface AppLauncherProps {
-  orgSlug: string;
+  membership: Membership;
   /** The app currently open, so its tile can be marked. */
   currentAppKey: string | undefined;
 }
 
-export function AppLauncher({ orgSlug, currentAppKey }: AppLauncherProps) {
+export function AppLauncher({ membership, currentAppKey }: AppLauncherProps) {
   const navigate = useNavigate();
-
-  function open(app: AppDefinition) {
-    void navigate(`/${orgSlug}/${app.key}`);
-  }
+  const apps = visibleApps(membership);
 
   return (
     <DropdownMenu.Root>
@@ -34,24 +37,41 @@ export function AppLauncher({ orgSlug, currentAppKey }: AppLauncherProps) {
 
       <DropdownMenu.Portal>
         <DropdownMenu.Content className={styles.content} sideOffset={8} align="start">
-          <DropdownMenu.Label className={styles.label}>Apps</DropdownMenu.Label>
+          <DropdownMenu.Label className={styles.label}>Your apps</DropdownMenu.Label>
 
           <div className={styles.grid}>
-            {APPS.map((app) => (
+            {apps.map((app) => (
+              /*
+               * `asChild` so the tile's own <button> IS the menu item, rather
+               * than a button nested inside one. Nested interactive elements
+               * are what produce the bug where the first Enter opens the app
+               * and the second does nothing.
+               */
               <DropdownMenu.Item
-                key={app.key}
-                className={styles.tile}
-                data-current={app.key === currentAppKey || undefined}
-                onSelect={() => open(app)}
+                key={app.definition.key}
+                asChild
+                disabled={!app.enabled}
+                onSelect={() => void navigate(`/${membership.org_slug}/${app.definition.key}`)}
               >
-                <span className={styles.mark} aria-hidden="true">
-                  {app.initials}
-                </span>
-                <span className={styles.tileName}>{app.name}</span>
-                <span className={styles.tileDescription}>{app.description}</span>
+                <AppTile
+                  app={app}
+                  isCurrent={app.definition.key === currentAppKey}
+                  // Radix drives selection through onSelect above; the tile's
+                  // own handler would fire a second navigation.
+                  onOpen={() => undefined}
+                />
               </DropdownMenu.Item>
             ))}
           </div>
+
+          <DropdownMenu.Separator className={styles.separator} />
+
+          <DropdownMenu.Item
+            className={styles.allApps}
+            onSelect={() => void navigate(`/${membership.org_slug}`)}
+          >
+            All apps
+          </DropdownMenu.Item>
         </DropdownMenu.Content>
       </DropdownMenu.Portal>
     </DropdownMenu.Root>

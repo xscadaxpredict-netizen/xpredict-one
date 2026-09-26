@@ -27,12 +27,14 @@
  * A determined visitor can edit the URL, and the backend is what stops them.
  */
 
-import { Navigate, Outlet, useLocation, useParams } from "react-router-dom";
+import { Navigate, Outlet, useLocation, useOutletContext, useParams } from "react-router-dom";
+
+import type { Me, Membership } from "./api/auth";
 
 import { Sidebar } from "./components/Sidebar";
 import { Topbar } from "./components/Topbar";
 import { useMe } from "./hooks/useAuth";
-import { findApp } from "./navigation";
+import { findApp, visibleApps } from "./navigation";
 import { NoAccessScreen } from "./screens/NoAccessScreen";
 import styles from "./AppShell.module.css";
 
@@ -91,11 +93,28 @@ export function AppShell() {
     );
   }
 
+  /*
+   * An app in the URL that this person may not open — a stale link, a
+   * colleague's bookmark, or an app the organisation stopped paying for. Send
+   * them to the launcher rather than rendering an empty frame around nothing.
+   *
+   * `replace` so Back does not bounce them straight into it again.
+   *
+   * COURTESY, NOT SECURITY. Every request the app would have made is rejected
+   * by the backend on its own. This exists so the screen makes sense.
+   */
+  const appIsOpenable =
+    app === undefined || visibleApps(membership).some((a) => a.definition.key === app.key && a.enabled);
+
+  if (!appIsOpenable) {
+    return <Navigate to={`/${orgSlug}`} replace />;
+  }
+
   return (
     <div className={styles.shell}>
       <Topbar
         me={me}
-        orgSlug={orgSlug}
+        membership={membership}
         currentAppKey={app?.key}
         currentAppName={app?.name}
       />
@@ -106,10 +125,33 @@ export function AppShell() {
         {/* The page. `main` is a landmark screen readers can jump straight to,
             which matters more here than anywhere else: the topbar and sidebar
             repeat on every single screen. */}
+        {/*
+          `context` is how a parent route hands data to its children without a
+          provider. The launcher needs `me` and the membership, and the shell
+          has already resolved both — re-fetching them one level down would ask
+          the same question twice.
+        */}
         <main className={styles.content}>
-          <Outlet />
+          <Outlet context={{ me, membership } satisfies ShellContext} />
         </main>
       </div>
     </div>
   );
+}
+
+/** What the shell hands down to the routes inside it. */
+export interface ShellContext {
+  me: Me;
+  membership: Membership;
+}
+
+/**
+ * Read what the shell resolved, from any screen inside it.
+ *
+ * Typed, unlike `useOutletContext()` on its own — React Router cannot know what
+ * a parent put in there, so without this wrapper every caller writes its own
+ * cast and one of them eventually gets it wrong.
+ */
+export function useShellContext(): ShellContext {
+  return useOutletContext<ShellContext>();
 }

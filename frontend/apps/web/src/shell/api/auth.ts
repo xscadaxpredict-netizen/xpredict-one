@@ -13,12 +13,49 @@
 
 import { ApiError, type Problem } from "@xpredict/api-client";
 
+/** The apps the suite can offer. Administration is one of them, not a settings page. */
+export type AppKey = "dms" | "crm" | "ecommerce" | "admin";
+
+/**
+ * Whether one app is available, and why not when it is not.
+ *
+ * TWO SEPARATE FACTS, deliberately not collapsed into one `visible` boolean:
+ *
+ *   subscribed — the ORGANISATION pays for this app.
+ *   accessible — THIS PERSON is allowed into it.
+ *
+ * They produce different screens. An app the org has not bought is shown
+ * disabled, because someone has to know it exists before they can ask for it.
+ * An app the person simply lacks access to is hidden, because that is a
+ * permission decision and advertising it is not a sales opportunity.
+ *
+ * Collapsing these into one flag loses that distinction permanently, and the
+ * wrong half is the one that leaks who-can-do-what.
+ */
+export interface AppAccess {
+  key: AppKey;
+  subscribed: boolean;
+  accessible: boolean;
+  /**
+   * A line of fact the SERVER knows and the frontend cannot, such as how many
+   * dealers this org has. Static wording ("Dealership management") lives in the
+   * frontend catalog instead — it is copy, not data.
+   */
+  summary: string | null;
+}
+
 export interface Membership {
   org_id: string;
   org_name: string;
   org_slug: string;
   role: "owner" | "admin" | "member";
   unit_name: string | null;
+  /**
+   * Per organisation, not per user. Subscriptions are bought by an org, so the
+   * same person can have DMS in one and CRM in another. Hanging this off `Me`
+   * would quietly show one organisation's apps while inside the other.
+   */
+  apps: AppAccess[];
 }
 
 export interface Me {
@@ -77,6 +114,25 @@ const FAKE_ME: Me = {
       org_slug: "acme-motors",
       role: "owner",
       unit_name: null,
+      apps: [
+        {
+          key: "dms",
+          subscribed: true,
+          accessible: true,
+          summary: "Sales · Service · Tech support across 12 dealers",
+        },
+        {
+          key: "crm",
+          subscribed: true,
+          accessible: true,
+          summary: "Organisation-wide — no dealer split",
+        },
+        // Not bought. Shown disabled rather than hidden — see AppAccess above.
+        { key: "ecommerce", subscribed: false, accessible: false, summary: null },
+        // Never "bought": Administration comes with the platform and is gated
+        // by role alone. Same two flags, so the launcher needs no special case.
+        { key: "admin", subscribed: true, accessible: true, summary: "Organisation admins only" },
+      ],
     },
   ],
 };

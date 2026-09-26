@@ -24,7 +24,7 @@
 }
 
 .content {
-  min-width: 280px;
+  min-width: 340px;
   padding: var(--space-3);
   background: var(--color-surface);
   border: 1px solid var(--color-border);
@@ -49,54 +49,30 @@
   gap: var(--space-2);
 }
 
-.tile {
-  display: grid;
-  grid-template-columns: auto 1fr;
-  grid-template-rows: auto auto;
-  gap: 0 var(--space-3);
-  padding: var(--space-3);
-  border: 1px solid transparent;
+/* Radix marks the highlighted item; the tile itself draws the rest. */
+.grid [data-highlighted]:not([data-disabled]) {
+  background: var(--color-surface-alt);
+  border-color: var(--color-border-strong);
+  outline: none;
+}
+
+.separator {
+  height: 1px;
+  margin: var(--space-3) calc(-1 * var(--space-3)) var(--space-2);
+  background: var(--color-border);
+}
+
+.allApps {
+  padding: var(--space-2) var(--space-3);
   border-radius: var(--radius-md);
+  font-size: var(--text-md);
+  color: var(--color-text-2);
   cursor: pointer;
-  /* Radix gives the item a default outline on highlight; we style it ourselves. */
   outline: none;
   user-select: none;
 }
 
-.tile[data-highlighted] {
+.allApps[data-highlighted] {
   background: var(--color-surface-alt);
-  border-color: var(--color-border);
-}
-
-.tile[data-current] {
-  background: var(--color-primary-050);
-  border-color: var(--color-primary-100);
-}
-
-.mark {
-  grid-row: 1 / span 2;
-  align-self: center;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 32px;
-  height: 32px;
-  border-radius: var(--radius-md);
-  background: var(--color-primary);
-  color: var(--color-primary-text);
-  font-size: var(--text-xs);
-  font-weight: 700;
-  letter-spacing: 0.02em;
-}
-
-.tileName {
-  font-size: var(--text-md);
-  font-weight: 600;
   color: var(--color-text);
-}
-
-.tileDescription {
-  font-size: var(--text-xs);
-  line-height: 1.4;
-  color: var(--color-text-3);
 }
