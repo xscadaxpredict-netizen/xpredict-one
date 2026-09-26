@@ -73,21 +73,27 @@
   font-weight: 600;
 }
 
-.bullet {
+/*
+ * No tinted box behind the icon any more. The two-letter codes needed one to
+ * read as a unit; a drawn shape does not, and a column of filled squares was
+ * competing with the link labels for attention.
+ *
+ * The icon inherits the link's colour, so the active state tints the icon and
+ * the label together with no rule of its own.
+ */
+.icon {
   flex: none;
   display: flex;
   align-items: center;
   justify-content: center;
   width: 22px;
   height: 22px;
-  border-radius: var(--radius-sm);
-  background: var(--color-surface-alt);
-  font-size: var(--text-xs);
-  font-weight: 700;
+  color: var(--color-text-3);
 }
 
-.linkActive .bullet {
-  background: var(--color-primary-100);
+.link:hover .icon,
+.linkActive .icon {
+  color: inherit;
 }
 
 .empty {

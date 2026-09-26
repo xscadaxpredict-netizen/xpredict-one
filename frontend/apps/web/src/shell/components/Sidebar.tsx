@@ -19,6 +19,7 @@ import { NavLink } from "react-router-dom";
 import type { AppDefinition } from "../navigation";
 import { useAccess } from "../access";
 import { useUiStore } from "../../stores/uiStore";
+import { NavIcon } from "./NavIcon";
 import styles from "./Sidebar.module.css";
 
 interface SidebarProps {
@@ -98,8 +99,8 @@ export function Sidebar({ app, orgSlug, inDrawer = false, onNavigate }: SidebarP
                     title={isCollapsed ? item.label : undefined}
                     onClick={onNavigate}
                   >
-                    <span className={styles.bullet} aria-hidden="true">
-                      {item.short}
+                    <span className={styles.icon}>
+                      <NavIcon name={item.icon} />
                     </span>
                     <span className={styles.linkLabel}>{item.label}</span>
                   </NavLink>

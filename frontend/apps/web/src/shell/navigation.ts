@@ -20,6 +20,7 @@
  */
 
 import type { AppAccess, AppKey, Membership } from "./api/auth";
+import type { NavIconName } from "./components/NavIcon";
 
 export interface NavItem {
   /** Sidebar label. */
@@ -27,14 +28,15 @@ export interface NavItem {
   /** Path relative to `/:orgSlug/<app key>/`. Empty string means the app root. */
   path: string;
   /**
-   * Two letters for the collapsed rail, where there is no room for the label.
+   * The icon beside the label, and the only thing left once the rail is
+   * collapsed to 64px.
    *
-   * Spelled out rather than sliced off `label`: "Sales" and "Service" both
-   * start with S, so a `label.slice(0, 2)` rail reads "Sa Se Te" at best and
-   * "S S T" at worst — two identical buttons going to different places.
-   * Choosing them by hand makes a collision a visible decision.
+   * Required, like `module` below — a new screen has to choose one, and a
+   * missing icon is a compile error rather than a blank square nobody spots.
+   * Icons are named by what they draw, so picking one is not a claim that no
+   * other module may use it.
    */
-  short: string;
+  icon: NavIconName;
 
   /**
    * The module key this link needs, or `null` for a link anyone inside the app
@@ -113,9 +115,14 @@ export const APP_CATALOG: AppDefinition[] = [
       {
         label: null,
         items: [
-          { label: "Sales", path: "sales", short: "SL", module: "sales" },
-          { label: "Service", path: "service", short: "SV", module: "service" },
-          { label: "Tech support", path: "tech-support", short: "TS", module: "tech-support" },
+          { label: "Sales", path: "sales", icon: "tag", module: "sales" },
+          { label: "Service", path: "service", icon: "wrench", module: "service" },
+          {
+            label: "Tech support",
+            path: "tech-support",
+            icon: "headset",
+            module: "tech-support",
+          },
         ],
       },
       {
@@ -127,7 +134,9 @@ export const APP_CATALOG: AppDefinition[] = [
          * would hand them a screen listing every dealer's users.
          */
         label: "This dealer",
-        items: [{ label: "Dealer settings", path: "settings", short: "DS", module: "settings" }],
+        items: [
+          { label: "Dealer settings", path: "settings", icon: "sliders", module: "settings" },
+        ],
       },
     ],
   },
@@ -155,11 +164,11 @@ export const APP_CATALOG: AppDefinition[] = [
       {
         label: "Organisation",
         items: [
-          { label: "People", path: "people", short: "PE", module: "people" },
-          { label: "Dealers", path: "dealers", short: "DL", module: "dealers" },
-          { label: "Roles", path: "roles", short: "RO", module: "roles" },
-          { label: "Apps & billing", path: "billing", short: "AB", module: "billing" },
-          { label: "Audit log", path: "audit", short: "AU", module: "audit" },
+          { label: "People", path: "people", icon: "users", module: "people" },
+          { label: "Dealers", path: "dealers", icon: "store", module: "dealers" },
+          { label: "Roles", path: "roles", icon: "key", module: "roles" },
+          { label: "Apps & billing", path: "billing", icon: "card", module: "billing" },
+          { label: "Audit log", path: "audit", icon: "history", module: "audit" },
         ],
       },
     ],
