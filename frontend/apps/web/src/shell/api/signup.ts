@@ -11,6 +11,8 @@
 
 import { ApiError, type Problem } from "@xpredict/api-client";
 
+import { fakeSignIn } from "./auth";
+
 export interface SignupDetails {
   organisation_name: string;
   first_name: string;
@@ -133,6 +135,10 @@ export async function createOrganisation(
     if (details.email.trim().toLowerCase() === "taken@example.com") {
       throw problem(409, "email_taken", "An account with this email already exists.");
     }
+    // Signing up signs you in — the real endpoint sets the cookie in its
+    // response, so the fake has to do the equivalent or the new owner lands on
+    // the launcher and is bounced straight back out to /login.
+    fakeSignIn();
     return { org_slug: toSlug(details.organisation_name), is_ready: false };
   }
 

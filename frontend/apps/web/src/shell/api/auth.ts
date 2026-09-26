@@ -106,9 +106,52 @@ export interface Credentials {
  * applied by the browser). So this pretends, purely so the screen is usable
  * while we build it.
  *
- * To see the failure path, sign in with the password: wrong
+ * To see the failure path, sign in with the password: wrong@123
+ *
+ * IT HAS A REAL SIGNED-OUT STATE. An earlier version answered `/me` with a
+ * user unconditionally, which made `/login` and `/signup` unreachable the
+ * moment the shell started redirecting signed-in people away from them — you
+ * could no longer look at the two screens you most want to look at while
+ * building the UI.
+ *
+ * So the fake keeps a session flag. Sign in sets it, sign out clears it, and
+ * `/me` refuses without it. `sessionStorage`, not `localStorage`: a fake
+ * session should not outlive the browser tab and quietly convince somebody
+ * the backend is working.
  * ------------------------------------------------------------------------ */
 const USE_FAKE_AUTH = true;
+
+const FAKE_SESSION_KEY = "xpredict-fake-session";
+
+/** Storage throws in some privacy modes, and a dev fake must not crash the app. */
+function setFakeSession(signedIn: boolean) {
+  try {
+    if (signedIn) sessionStorage.setItem(FAKE_SESSION_KEY, "1");
+    else sessionStorage.removeItem(FAKE_SESSION_KEY);
+  } catch {
+    // Ignored: the fake degrades to "signed out", which is the safe direction.
+  }
+}
+
+function hasFakeSession(): boolean {
+  try {
+    return sessionStorage.getItem(FAKE_SESSION_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+
+/** What the real `/me` returns when nobody is signed in. */
+function fakeUnauthenticated(): ApiError {
+  return new ApiError({
+    type: "https://api.xpredict.one/errors/not-authenticated",
+    title: "Authentication required",
+    status: 401,
+    detail: "Sign in to continue.",
+    code: "not_authenticated",
+    trace_id: "fake-0000",
+  });
+}
 
 function wait(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -218,6 +261,7 @@ export async function login(credentials: Credentials): Promise<void> {
   if (USE_FAKE_AUTH) {
     await wait(700);
     if (credentials.password === "wrong@123") throw fakeProblem();
+    setFakeSession(true);
     return;
   }
 
@@ -232,14 +276,26 @@ export async function login(credentials: Credentials): Promise<void> {
 export async function fetchMe(): Promise<Me> {
   if (USE_FAKE_AUTH) {
     await wait(250);
+    if (!hasFakeSession()) throw fakeUnauthenticated();
     return FAKE_ME;
   }
   return request<Me>("/api/v1/me");
 }
 
+/**
+ * Sign the fake session in without a password.
+ *
+ * Only for sign-up, which creates an account and must land in it. Exported so
+ * `signup.ts` does not reach into this module's storage key.
+ */
+export function fakeSignIn(): void {
+  if (USE_FAKE_AUTH) setFakeSession(true);
+}
+
 export async function logout(): Promise<void> {
   if (USE_FAKE_AUTH) {
     await wait(200);
+    setFakeSession(false);
     return;
   }
   await request<void>("/api/v1/auth/logout", { method: "POST" });
