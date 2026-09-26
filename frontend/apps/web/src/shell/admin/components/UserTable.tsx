@@ -1,89 +1,82 @@
 /**
- * The organisation's people.
+ * The organisation's people: person, role, status. Nothing else.
  *
- * A real `<table>` with `<th scope>`, not divs with ARIA roles. A screen
- * reader can then announce "row 3 of 6, Scope, Chennai — Guindy" as you move
- * about, which is the entire reason tabular data goes in a table.
+ * IT USED TO CARRY SCOPE AND APPS TOO, and at four columns of real content it
+ * needed 720px and scrolled sideways on anything smaller. Scanning a list of
+ * people is a different job from reading one of them: the list answers "who
+ * is here and are they switched on", and everything else belongs to the row
+ * you picked. Both now live in the detail panel.
  *
- * SCOPE IS A COLUMN, and it is the column that makes the model visible: most
- * people are organisation-wide, and the ones that are not are scoped to a
- * dealer inside DMS (C5). Somebody scanning this list should be able to see
- * at a glance who can see everything.
+ * A real `<table>` with `<th scope>`, not divs with ARIA roles — a screen
+ * reader can then announce "row 3 of 7, Role, Admin" as you move about, which
+ * is the entire reason tabular data goes in a table.
+ *
+ * THE LINK IS THE NAME, not the row. A `<tr onClick>` is invisible to the
+ * keyboard and announces nothing; a real link is focusable, reachable by tab,
+ * works with middle-click and can be copied. The row's own click handler is a
+ * convenience layered on top, and it goes to the same place, so a stray double
+ * fire changes nothing.
  */
 
+import { Link } from "react-router-dom";
+
 import type { OrgUser } from "../api/users";
-import { APP_CATALOG } from "../../navigation";
 import styles from "./UserTable.module.css";
 
 interface UserTableProps {
   users: OrgUser[];
+  /** Base path for a person's detail, e.g. `/acme-motors/admin/users`. */
+  basePath: string;
+  /** The person currently open in the detail panel, if any. */
+  selectedId: string | undefined;
+  onSelect: (userId: string) => void;
 }
 
-export function UserTable({ users }: UserTableProps) {
+export function UserTable({ users, basePath, selectedId, onSelect }: UserTableProps) {
   return (
     <div className={styles.wrapper}>
       <table className={styles.table}>
         <caption className={styles.srOnly}>
-          Everyone in this organisation, with the apps they can open and their status
+          Everyone in this organisation. Select a person to see their apps and scope.
         </caption>
 
         <thead>
           <tr>
             <th scope="col">Person</th>
-            <th scope="col">Scope</th>
-            <th scope="col">Apps &amp; role</th>
+            <th scope="col">Role</th>
             <th scope="col">Status</th>
           </tr>
         </thead>
 
         <tbody>
           {users.map((user) => (
-            <tr key={user.id}>
+            <tr
+              key={user.id}
+              className={styles.row}
+              data-selected={user.id === selectedId || undefined}
+              onClick={() => onSelect(user.id)}
+            >
               <th scope="row" className={styles.personCell}>
                 <span className={styles.avatar} aria-hidden="true">
                   {initials(user)}
                 </span>
 
                 <span className={styles.person}>
-                  <span className={styles.nameLine}>
-                    <span className={styles.name}>
-                      {user.first_name} {user.last_name}
-                    </span>
-                    {/* Only the owner is marked. "Member" on everybody else
-                        would be noise on the majority of rows. */}
-                    {user.role === "owner" && <span className={styles.ownerBadge}>Owner</span>}
-                    {user.role === "admin" && <span className={styles.adminBadge}>Admin</span>}
-                  </span>
+                  <Link
+                    to={`${basePath}/${user.id}`}
+                    className={styles.name}
+                    // The row handler fires too; stopping it here would mean
+                    // the link and the row disagreed about what a click does.
+                    onClick={(event) => event.stopPropagation()}
+                  >
+                    {user.first_name} {user.last_name}
+                  </Link>
                   <span className={styles.email}>{user.email}</span>
                 </span>
               </th>
 
               <td>
-                {user.unit_name ? (
-                  <span className={styles.unit}>{user.unit_name}</span>
-                ) : (
-                  /*
-                   * Worth stating rather than leaving blank. An empty cell
-                   * reads as missing data; "Organisation" is the actual
-                   * answer, and it is the wider of the two scopes.
-                   */
-                  <span className={styles.orgScope}>Organisation</span>
-                )}
-              </td>
-
-              <td>
-                {user.apps.length === 0 ? (
-                  <span className={styles.noApps}>No apps</span>
-                ) : (
-                  <ul className={styles.appList}>
-                    {user.apps.map((entry) => (
-                      <li key={entry.app} className={styles.appEntry}>
-                        <span className={styles.appName}>{appName(entry.app)}</span>
-                        <span className={styles.appRole}>{entry.role}</span>
-                      </li>
-                    ))}
-                  </ul>
-                )}
+                <RolePill role={user.role} />
               </td>
 
               <td>
@@ -97,10 +90,21 @@ export function UserTable({ users }: UserTableProps) {
   );
 }
 
+function RolePill({ role }: { role: OrgUser["role"] }) {
+  const label = role === "owner" ? "Owner" : role === "admin" ? "Admin" : "Member";
+
+  return (
+    <span className={styles.role} data-role={role}>
+      {label}
+    </span>
+  );
+}
+
 function StatusPill({ status }: { status: OrgUser["status"] }) {
   /*
    * Colour is never the only signal — each pill says its state in words too.
-   * Roughly one man in twelve cannot separate the green from the amber.
+   * Roughly one man in twelve cannot separate the green from the amber, and
+   * "is this person switched off" is not a guess worth making.
    */
   const label =
     status === "active" ? "Active" : status === "invited" ? "Invitation sent" : "Disabled";
@@ -112,18 +116,7 @@ function StatusPill({ status }: { status: OrgUser["status"] }) {
   );
 }
 
-/**
- * The app's display name, falling back to whatever the server called it.
- *
- * A key the frontend has not heard of still renders — the backend can add an
- * app before this release knows how to draw it, and a blank cell would be a
- * worse answer than the raw key.
- */
-function appName(key: string): string {
-  return APP_CATALOG.find((app) => app.key === key)?.name ?? key;
-}
-
-function initials(user: OrgUser): string {
+export function initials(user: Pick<OrgUser, "first_name" | "last_name" | "email">): string {
   const letters = [user.first_name, user.last_name]
     .map((part) => part.trim()[0])
     .filter((letter): letter is string => Boolean(letter));

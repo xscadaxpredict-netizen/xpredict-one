@@ -14,7 +14,15 @@
 
 import { useOrgMutation, useOrgQuery } from "@xpredict/api-client";
 
-import { fetchUnits, fetchUsers, inviteUser, type NewInvitation } from "../api/users";
+import {
+  fetchUnits,
+  fetchUsers,
+  inviteUser,
+  resendInvitation,
+  setUserStatus,
+  type NewInvitation,
+  type UserStatus,
+} from "../api/users";
 
 /**
  * Module-relative cache keys. The organisation is prepended by the hooks, so
@@ -55,5 +63,34 @@ export function useInviteUser() {
     // Org-prefixed by the hook, so this refetches THIS organisation's users —
     // not every org cached in the browser session.
     invalidates: [adminKeys.users()],
+  });
+}
+
+/**
+ * Switch a person off, or back on.
+ *
+ * One hook, two transitions, because they are the same user action seen from
+ * either end — unlike invite, which is a different action with a different
+ * rule behind it.
+ */
+export function useSetUserStatus() {
+  return useOrgMutation({
+    mutationFn: (
+      orgSlug,
+      variables: { userId: string; status: Extract<UserStatus, "active" | "disabled"> },
+    ) => setUserStatus(orgSlug, variables.userId, variables.status),
+    invalidates: [adminKeys.users()],
+  });
+}
+
+/**
+ * Send the invitation email again.
+ *
+ * Invalidates nothing: resending changes no data on this screen, and a
+ * refetch that cannot change anything is a request nobody needed.
+ */
+export function useResendInvitation() {
+  return useOrgMutation({
+    mutationFn: (orgSlug, userId: string) => resendInvitation(orgSlug, userId),
   });
 }

@@ -17,11 +17,13 @@
  */
 
 import { useState } from "react";
+import { useNavigate, useParams } from "react-router-dom";
 import { asProblem } from "@xpredict/api-client";
 import { EmptyState, ErrorState, TableSkeleton } from "@xpredict/ui";
 
 import { useShellContext } from "../../context";
 import { InviteUserDialog } from "../components/InviteUserDialog";
+import { UserDetailPanel } from "../components/UserDetailPanel";
 import { UserTable } from "../components/UserTable";
 import { useUsers } from "../hooks/useUsers";
 import styles from "./UsersScreen.module.css";
@@ -31,7 +33,24 @@ export function UsersScreen() {
   const { data: users, isPending, isError, error, refetch } = useUsers();
   const [query, setQuery] = useState("");
 
+  /*
+   * The open person lives in the URL, not in state. Back closes the panel, a
+   * link to one person can be pasted into a message, and a refresh keeps it
+   * open — none of which a `useState` would give, and it would disagree with
+   * the address bar the first time somebody pressed Back.
+   */
+  const { userId } = useParams<{ userId: string }>();
+  const navigate = useNavigate();
+  const basePath = `/${membership.org_slug}/admin/users`;
+
   const filtered = users?.filter((user) => matches(user.first_name, user.last_name, user.email, query));
+
+  /*
+   * Looked up in the list that is already loaded rather than fetched again.
+   * There is no detail endpoint yet, and while the whole list is in the cache
+   * a second request would ask for something it already has.
+   */
+  const selected = userId ? users?.find((user) => user.id === userId) : undefined;
 
   return (
     <div className={styles.page}>
@@ -115,7 +134,34 @@ export function UsersScreen() {
         />
       )}
 
-      {filtered && filtered.length > 0 && <UserTable users={filtered} />}
+      {filtered && filtered.length > 0 && (
+        <div className={styles.layout} data-detail={selected ? true : undefined}>
+          <UserTable
+            users={filtered}
+            basePath={basePath}
+            selectedId={selected?.id}
+            onSelect={(id) => void navigate(`${basePath}/${id}`)}
+          />
+
+          {selected && (
+            <UserDetailPanel user={selected} onClose={() => void navigate(basePath)} />
+          )}
+        </div>
+      )}
+
+      {/*
+        A URL naming somebody who is not in the list: a stale link, or a person
+        removed since it was sent. Said plainly rather than silently dropping
+        the panel, which would look like the link had worked.
+      */}
+      {userId && users && !selected && (
+        <p className={styles.missing} role="status">
+          That person is no longer in {membership.org_name}.{" "}
+          <button type="button" className={styles.linkButton} onClick={() => void navigate(basePath)}>
+            Back to all users
+          </button>
+        </p>
+      )}
     </div>
   );
 }

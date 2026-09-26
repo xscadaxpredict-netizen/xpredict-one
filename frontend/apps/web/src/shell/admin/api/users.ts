@@ -159,6 +159,19 @@ const FAKE_USERS: OrgUser[] = [
 /** Mutated by the fake invite so a new row appears without a page reload. */
 let fakeUsers = [...FAKE_USERS];
 
+function fakeNotFound(): ApiError {
+  return new ApiError({
+    type: "https://api.xpredict.one/errors/not-found",
+    title: "Not found",
+    status: 404,
+    // Cross-scope access answers 404, never 403: a record the caller may not
+    // see has to be indistinguishable from one that never existed.
+    detail: "That user does not exist.",
+    code: "not_found",
+    trace_id: "fake-0000",
+  });
+}
+
 function fakeConflict(email: string): ApiError {
   return new ApiError({
     type: "https://api.xpredict.one/errors/email-taken",
@@ -214,6 +227,44 @@ export async function fetchUnits(orgSlug: string): Promise<Unit[]> {
   }
 
   return request<Unit[]>(`/api/v1/orgs/${orgSlug}/admin/units`);
+}
+
+export async function setUserStatus(
+  orgSlug: string,
+  userId: string,
+  status: Extract<UserStatus, "active" | "disabled">,
+): Promise<OrgUser> {
+  if (USE_FAKE_USERS) {
+    await wait(500);
+    fakeUsers = fakeUsers.map((user) => (user.id === userId ? { ...user, status } : user));
+
+    const updated = fakeUsers.find((user) => user.id === userId);
+    if (!updated) throw fakeNotFound();
+    return updated;
+  }
+
+  /*
+   * Two endpoints rather than one PATCH with a status field. The backend has a
+   * rule per transition — you cannot disable the last owner — and one endpoint
+   * per user action is what lets it enforce that rule by name (C9 and the
+   * services convention). A generic patch turns "deactivate a person" into
+   * "write any value into a column".
+   */
+  return request<OrgUser>(
+    `/api/v1/orgs/${orgSlug}/admin/users/${userId}/${status === "active" ? "activate" : "deactivate"}`,
+    { method: "POST" },
+  );
+}
+
+export async function resendInvitation(orgSlug: string, userId: string): Promise<void> {
+  if (USE_FAKE_USERS) {
+    await wait(500);
+    return;
+  }
+
+  await request<void>(`/api/v1/orgs/${orgSlug}/admin/users/${userId}/resend-invitation`, {
+    method: "POST",
+  });
 }
 
 export async function inviteUser(orgSlug: string, body: NewInvitation): Promise<OrgUser> {

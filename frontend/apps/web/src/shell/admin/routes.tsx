@@ -28,6 +28,12 @@ import styles from "./routes.module.css";
  */
 const routes: ModuleRoute[] = [
   { path: "users", module: "users", element: <UsersScreen /> },
+  /*
+   * The same screen with a person open beside the list. Two entries rather
+   * than one optional segment, because `ModuleRoutes` redirects the app root
+   * to the first route's literal path and ":userId?" is not an address.
+   */
+  { path: "users/:userId", module: "users", element: <UsersScreen /> },
   { path: "dealers", module: "dealers", element: <AdminPlaceholder name="Dealers" /> },
   { path: "roles", module: "roles", element: <AdminPlaceholder name="Roles" /> },
   { path: "billing", module: "billing", element: <AdminPlaceholder name="Apps & billing" /> },
