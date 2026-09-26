@@ -76,6 +76,7 @@ is on the machine.
 | File | What it covers |
 |---|---|
 | **`frontend/CONTRIBUTING.md`** | How we build screens. **Read this first.** |
+| **`WORKFLOW.md`** | Branches, pull requests, the two conflicts you will hit |
 | `CLAUDE.md` | Architecture, backend conventions, error handling |
 
 `frontend/CONTRIBUTING.md` is the important one. It covers the folder shape, the
