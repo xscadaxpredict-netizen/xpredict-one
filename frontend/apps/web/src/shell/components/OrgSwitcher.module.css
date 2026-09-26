@@ -56,7 +56,7 @@
 /* ---- The panel ---------------------------------------------------------- */
 
 .panel {
-  width: 380px;
+  width: 420px;
   /* Never taller than the space below the topbar, and scrolls inside itself
      instead — an organisation list can grow and the close button must stay
      reachable. */
@@ -217,18 +217,33 @@
 }
 
 /*
- * Mono, like every other identifier in this product. The slug appears in every
- * URL of this organisation, so it is the thing somebody reads out or pastes
- * into a message — and a monospaced face is what makes a transposed character
- * visible.
+ * Mono, like every other identifier in this product: it is what makes a
+ * transposed character visible in something nobody reads as a word.
+ *
+ * WRAPS RATHER THAN TRUNCATES. A UUID is 36 characters and did not fit — it
+ * clipped at about half. Half an identifier is worse than none: it looks
+ * complete, and somebody will read it out. Two tidy lines beat one tidy lie.
  */
-.slug {
+.orgId {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
   font-family: var(--font-mono);
   font-size: var(--text-xs);
+  line-height: 1.45;
   color: var(--color-text-3);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  overflow-wrap: anywhere;
+}
+
+/* Says what the string is, without spending the width that spelling out
+   "Organisation ID" would cost inside the row. */
+.orgIdLabel {
+  flex: none;
+  font-family: var(--font-sans);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  color: var(--color-text-disabled);
 }
 
 .check {

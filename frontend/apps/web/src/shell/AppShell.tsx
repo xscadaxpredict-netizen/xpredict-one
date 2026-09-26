@@ -115,12 +115,7 @@ export function AppShell() {
   return (
     <ShellProvider value={shellContext}>
       <div className={styles.shell}>
-        <Topbar
-          me={me}
-          membership={membership}
-          currentAppKey={app?.key}
-          currentAppName={app?.name}
-        />
+        <Topbar me={me} membership={membership} app={app} />
 
         <div className={styles.body}>
           {app && <Sidebar app={app} orgSlug={orgSlug} />}

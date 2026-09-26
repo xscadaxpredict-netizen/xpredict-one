@@ -159,11 +159,24 @@
   padding-inline: var(--space-2);
 }
 
-/* No room for a rail on a phone. The launcher and the topbar still work, so
-   this hides rather than reinventing the whole thing as a drawer — that is a
-   separate piece of work, not a media query. */
+/*
+ * No room for a permanent rail on a phone, so the rail is hidden and the same
+ * nav is reached through the drawer behind the topbar's menu button.
+ *
+ * `:not([data-drawer])` matters: without it this rule would hide the copy
+ * INSIDE the drawer too, which is the only way to reach navigation on a phone
+ * at all — the bug this replaced.
+ */
 @media (max-width: 640px) {
-  .sidebar {
+  .sidebar:not([data-drawer]) {
     display: none;
   }
+}
+
+/* In the drawer the panel owns the sizing, so the rail's fixed width and its
+   own border would fight it. */
+.sidebar[data-drawer] {
+  width: 100%;
+  border-right: none;
+  padding: var(--space-3) var(--space-2) var(--space-4);
 }

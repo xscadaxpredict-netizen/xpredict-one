@@ -41,7 +41,7 @@ interface OrgSwitcherProps {
 
 export function OrgSwitcher({ memberships, currentOrgSlug, currentAppKey }: OrgSwitcherProps) {
   const navigate = useNavigate();
-  const [copiedSlug, setCopiedSlug] = useState<string | null>(null);
+  const [copiedId, setCopiedId] = useState<string | null>(null);
   const current = memberships.find((m) => m.org_slug === currentOrgSlug);
   const label = current?.org_name ?? currentOrgSlug;
 
@@ -63,20 +63,20 @@ export function OrgSwitcher({ memberships, currentOrgSlug, currentAppKey }: OrgS
     ? visibleApps(current).some((app) => app.definition.key === "admin" && app.enabled)
     : false;
 
-  async function copySlug(slug: string) {
+  async function copyOrgId(orgId: string) {
     try {
-      await navigator.clipboard.writeText(slug);
-      setCopiedSlug(slug);
+      await navigator.clipboard.writeText(orgId);
+      setCopiedId(orgId);
       // Reverts on its own. A "Copied" that stays forever stops meaning
       // anything the second time somebody presses it.
-      setTimeout(() => setCopiedSlug((was) => (was === slug ? null : was)), 1500);
+      setTimeout(() => setCopiedId((was) => (was === orgId ? null : was)), 1500);
     } catch {
       /*
        * The clipboard API needs a secure context and permission, and refuses
-       * in some browsers. Silently doing nothing is wrong, so leave the slug
-       * on screen — it is short and selectable — and do not claim it copied.
+       * in some browsers. Silently doing nothing is wrong, so the ID stays on
+       * screen and selectable, and nothing claims it was copied.
        */
-      setCopiedSlug(null);
+      setCopiedId(null);
     }
   }
 
@@ -153,7 +153,18 @@ export function OrgSwitcher({ memberships, currentOrgSlug, currentAppKey }: OrgS
 
                       <span className={styles.text}>
                         <span className={styles.name}>{membership.org_name}</span>
-                        <span className={styles.slug}>/{membership.org_slug}</span>
+                        {/*
+                          The ID, not the slug. This is the value support asks
+                          for, and it is the one thing about an organisation
+                          that never changes — a slug can be renamed, so a
+                          number quoted in an old email would stop matching.
+                          Nobody retypes a UUID, which is what earns the copy
+                          button beside it.
+                        */}
+                        <span className={styles.orgId}>
+                          <span className={styles.orgIdLabel}>ID</span>
+                          {membership.org_id}
+                        </span>
                       </span>
 
                       {isCurrent && (
@@ -170,10 +181,10 @@ export function OrgSwitcher({ memberships, currentOrgSlug, currentAppKey }: OrgS
                   <button
                     type="button"
                     className={styles.copy}
-                    onClick={() => void copySlug(membership.org_slug)}
-                    aria-label={`Copy the address of ${membership.org_name}`}
+                    onClick={() => void copyOrgId(membership.org_id)}
+                    aria-label={`Copy the organisation ID of ${membership.org_name}`}
                   >
-                    {copiedSlug === membership.org_slug ? <CheckIcon /> : <CopyIcon />}
+                    {copiedId === membership.org_id ? <CheckIcon /> : <CopyIcon />}
                   </button>
                 </li>
               );

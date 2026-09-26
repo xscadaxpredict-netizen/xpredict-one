@@ -11,6 +11,11 @@
  * The tiles come from `visibleApps`, shared with the topbar dropdown so the two
  * cannot disagree about what is shown or what is merely disabled.
  *
+ * There is no organisation switcher on this screen. One was built here and
+ * removed: the topbar already carries it, on every screen including this one,
+ * and a second copy underneath the apps is a second thing to keep in step for
+ * no gain.
+ *
  * Note there is no `useQuery` here and no loading state. `AppShell` has already
  * resolved `/me` before this renders — it cannot draw the topbar without it —
  * so by the time this screen exists the answer is in the cache.
@@ -26,7 +31,7 @@ import styles from "./LauncherScreen.module.css";
 
 export function LauncherScreen() {
   const navigate = useNavigate();
-  const { me, membership } = useShellContext();
+  const { membership } = useShellContext();
   const apps = visibleApps(membership);
 
   return (
@@ -60,29 +65,6 @@ export function LauncherScreen() {
         </div>
       )}
 
-      {/*
-        Organisation switching lives here as well as in the topbar, because this
-        is the screen someone lands on when they are in the wrong one. Only
-        rendered when there is somewhere else to go (C13).
-      */}
-      {me.memberships.length > 1 && (
-        <div className={styles.switcher}>
-          <span className={styles.switcherLabel}>Switch organisation</span>
-          <div className={styles.switcherOptions}>
-            {me.memberships.map((other) => (
-              <button
-                key={other.org_id}
-                type="button"
-                className={styles.orgPill}
-                data-current={other.org_slug === membership.org_slug || undefined}
-                onClick={() => void navigate(`/${other.org_slug}`)}
-              >
-                {other.org_name}
-              </button>
-            ))}
-          </div>
-        </div>
-      )}
     </div>
   );
 }

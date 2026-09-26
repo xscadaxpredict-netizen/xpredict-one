@@ -24,17 +24,29 @@ import styles from "./Sidebar.module.css";
 interface SidebarProps {
   app: AppDefinition;
   orgSlug: string;
+  /**
+   * Rendered inside the mobile drawer rather than as the desktop rail.
+   *
+   * Changes two things: it is never collapsed (a drawer you opened on purpose
+   * should not open at 64px wide), and it has no collapse control, because the
+   * drawer's own close button already does that job.
+   */
+  inDrawer?: boolean;
+  /** Called after following a link, so the drawer can close behind you. */
+  onNavigate?: () => void;
 }
 
-export function Sidebar({ app, orgSlug }: SidebarProps) {
+export function Sidebar({ app, orgSlug, inDrawer = false, onNavigate }: SidebarProps) {
   /*
    * Selecting one field at a time, not the whole store. `useUiStore()` with no
    * selector re-renders this component on every change to any field in the
    * store; this way it only re-renders when the collapsed flag itself changes.
    */
-  const isCollapsed = useUiStore((state) => state.isSidebarCollapsed);
+  const collapsedPreference = useUiStore((state) => state.isSidebarCollapsed);
   const toggleSidebar = useUiStore((state) => state.toggleSidebar);
   const access = useAccess();
+
+  const isCollapsed = inDrawer ? false : collapsedPreference;
 
   /*
    * Drop modules this person cannot open, then drop groups that are left
@@ -58,6 +70,7 @@ export function Sidebar({ app, orgSlug }: SidebarProps) {
     <nav
       className={styles.sidebar}
       data-collapsed={isCollapsed || undefined}
+      data-drawer={inDrawer || undefined}
       aria-label={`${app.name} navigation`}
     >
       <div className={styles.groups}>
@@ -83,6 +96,7 @@ export function Sidebar({ app, orgSlug }: SidebarProps) {
                     // The label is hidden when collapsed, so the icon-only link
                     // gets a tooltip as well as its clipped accessible name.
                     title={isCollapsed ? item.label : undefined}
+                    onClick={onNavigate}
                   >
                     <span className={styles.bullet} aria-hidden="true">
                       {item.short}
@@ -105,25 +119,27 @@ export function Sidebar({ app, orgSlug }: SidebarProps) {
         )}
       </div>
 
-      <button
-        type="button"
-        className={styles.collapse}
-        onClick={toggleSidebar}
-        aria-label={isCollapsed ? "Expand sidebar" : "Collapse sidebar"}
-        aria-expanded={!isCollapsed}
-      >
-        <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true" focusable="false">
-          <path
-            d={isCollapsed ? "M5 3.5 8.5 7 5 10.5" : "M9 3.5 5.5 7 9 10.5"}
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="1.5"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          />
-        </svg>
-        <span className={styles.collapseLabel}>Collapse</span>
-      </button>
+      {!inDrawer && (
+        <button
+          type="button"
+          className={styles.collapse}
+          onClick={toggleSidebar}
+          aria-label={isCollapsed ? "Expand sidebar" : "Collapse sidebar"}
+          aria-expanded={!isCollapsed}
+        >
+          <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true" focusable="false">
+            <path
+              d={isCollapsed ? "M5 3.5 8.5 7 5 10.5" : "M9 3.5 5.5 7 9 10.5"}
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.5"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+          </svg>
+          <span className={styles.collapseLabel}>Collapse</span>
+        </button>
+      )}
     </nav>
   );
 }
