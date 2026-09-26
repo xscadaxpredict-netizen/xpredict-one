@@ -75,7 +75,21 @@ export interface Membership {
   org_id: string;
   org_name: string;
   org_slug: string;
+  /**
+   * Standing in THIS organisation. Read it together with `unit_id` below:
+   * an admin with no unit administers the organisation, an admin with one
+   * administers that dealer and nothing else (C3).
+   */
   role: "owner" | "admin" | "member";
+
+  /**
+   * The dealer this membership is scoped to, or null for organisation-wide.
+   *
+   * The id as well as the name, because a dealer admin inviting somebody sends
+   * their own unit — and sending a display name as an identifier is how you
+   * get a record attached to the wrong dealer after a rename.
+   */
+  unit_id: string | null;
   unit_name: string | null;
   /**
    * Per organisation, not per user. Subscriptions are bought by an org, so the
@@ -183,6 +197,7 @@ const FAKE_ME: Me = {
       org_name: "Acme Motors",
       org_slug: "acme-motors",
       role: "owner",
+      unit_id: null,
       unit_name: null,
       apps: [
         {
@@ -245,6 +260,7 @@ const FAKE_ME: Me = {
       org_name: "Northway Auto Group",
       org_slug: "northway-auto",
       role: "admin",
+      unit_id: "unit-2",
       unit_name: "Bangalore — Whitefield",
       apps: [
         {
@@ -257,7 +273,20 @@ const FAKE_ME: Me = {
         },
         { key: "crm", subscribed: false, accessible: false, summary: null, modules: [], permissions: [] },
         { key: "ecommerce", subscribed: false, accessible: false, summary: null, modules: [], permissions: [] },
-        { key: "admin", subscribed: true, accessible: false, summary: null, modules: [], permissions: [] },
+        /*
+         * A DEALER ADMIN, and the reason this second organisation is worth
+         * having in the fake. Administration is open to them, but with one
+         * module: their own dealer's people (C23). Switch to Northway in the
+         * topbar to see that side of the product.
+         */
+        {
+          key: "admin",
+          subscribed: true,
+          accessible: true,
+          summary: "Your dealer’s people",
+          modules: ["users"],
+          permissions: ["unit.person.invite"],
+        },
       ],
     },
   ],

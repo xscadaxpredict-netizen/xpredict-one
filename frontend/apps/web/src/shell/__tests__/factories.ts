@@ -27,6 +27,7 @@ export function membership(overrides: Partial<Membership> = {}): Membership {
     org_name: "Acme Motors",
     org_slug: "acme-motors",
     role: "member",
+    unit_id: null,
     unit_name: null,
     apps: [],
     ...overrides,
@@ -48,6 +49,7 @@ export function me(overrides: Partial<Me> = {}): Me {
 export function salespersonMembership(): Membership {
   return membership({
     role: "member",
+    unit_id: "unit-1",
     unit_name: "Chennai — Guindy",
     apps: [
       appAccess("dms", {
@@ -73,6 +75,24 @@ export function ownerMembership(): Membership {
       appAccess("crm"),
       appAccess("ecommerce", { subscribed: false, accessible: false }),
       appAccess("admin", { modules: ["users", "dealers", "roles", "billing", "audit"] }),
+    ],
+  });
+}
+
+/**
+ * A dealer admin: Administration is open to them, but only its Users module
+ * and only for their own dealer (C23). They can grant DMS and nothing else.
+ */
+export function dealerAdminMembership(): Membership {
+  return membership({
+    role: "admin",
+    unit_id: "unit-2",
+    unit_name: "Bangalore — Whitefield",
+    apps: [
+      appAccess("dms", { modules: ["sales", "service"] }),
+      appAccess("crm", { accessible: false }),
+      appAccess("ecommerce", { subscribed: false, accessible: false }),
+      appAccess("admin", { modules: ["users"] }),
     ],
   });
 }

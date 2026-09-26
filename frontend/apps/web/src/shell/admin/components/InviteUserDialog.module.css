@@ -178,3 +178,19 @@
     width: 100%;
   }
 }
+
+/*
+ * What a dealer admin gets instead of the apps and dealer pickers: a sentence
+ * saying what is about to happen. They have no choice to make (C23), and an
+ * unexplained absence reads as a missing feature.
+ */
+.scopeNote {
+  margin: 0;
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface-alt);
+  font-size: var(--text-sm);
+  line-height: 1.5;
+  color: var(--color-text-2);
+}

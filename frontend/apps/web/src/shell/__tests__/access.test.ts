@@ -10,7 +10,13 @@
 import { describe, expect, it } from "vitest";
 
 import { accessFor } from "../access";
-import { appAccess, membership, ownerMembership, salespersonMembership } from "./factories";
+import {
+  appAccess,
+  dealerAdminMembership,
+  membership,
+  ownerMembership,
+  salespersonMembership,
+} from "./factories";
 
 describe("accessFor", () => {
   it("grants the modules and permissions the server sent", () => {
@@ -89,6 +95,40 @@ describe("accessFor", () => {
 
     expect(access.modules).toEqual([]);
     expect(access.hasModule("sales")).toBe(false);
+  });
+
+  /*
+   * A dealer admin (C23). Administration is open to them, but only its Users
+   * module — the organisation's dealers, roles and billing are not theirs.
+   * This is the case where "has the app" and "may do everything in it" come
+   * apart, which is the whole reason modules exist alongside apps.
+   */
+  describe("a dealer admin", () => {
+    it("can open Administration", () => {
+      expect(accessFor(dealerAdminMembership(), "admin").hasModule("users")).toBe(true);
+    });
+
+    it("cannot reach the organisation's own screens inside it", () => {
+      const access = accessFor(dealerAdminMembership(), "admin");
+
+      expect(access.hasModule("dealers")).toBe(false);
+      expect(access.hasModule("roles")).toBe(false);
+      expect(access.hasModule("billing")).toBe(false);
+      expect(access.hasModule("audit")).toBe(false);
+    });
+
+    it("has a dealer on their membership, which is what narrows them", () => {
+      const membershipUnderTest = dealerAdminMembership();
+
+      // The frontend reads this to decide it is showing the dealer view; the
+      // backend reads the same field to decide what the list contains.
+      expect(membershipUnderTest.unit_id).toBe("unit-2");
+      expect(membershipUnderTest.unit_name).toBe("Bangalore — Whitefield");
+    });
+
+    it("is distinguishable from an organisation admin by exactly that", () => {
+      expect(ownerMembership().unit_id).toBeNull();
+    });
   });
 
   it("gives an owner their whole app", () => {

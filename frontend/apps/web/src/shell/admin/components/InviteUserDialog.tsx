@@ -76,6 +76,15 @@ interface InviteFormProps {
 }
 
 function InviteForm({ membership, onDone }: InviteFormProps) {
+  /*
+   * A dealer admin has nothing to choose (C23). Everyone they invite joins
+   * their dealer with DMS, because that is the only access they can grant —
+   * so the apps and dealer fields are not disabled, they are absent. A form
+   * that asks a question with one possible answer is a form that wastes a
+   * decision.
+   */
+  const isDealerAdmin = membership.unit_id !== null;
+
   /* Only the apps this organisation actually has, and can actually open. */
   const apps = visibleApps(membership).filter((app) => app.enabled);
 
@@ -89,7 +98,11 @@ function InviteForm({ membership, onDone }: InviteFormProps) {
    * Only fetched once DMS is ticked: most invitations are organisation-wide,
    * and a request nobody needed is still a request.
    */
-  const { data: dealers, isPending: dealersPending } = useDealers({ enabled: dmsSelected });
+  const { data: dealers, isPending: dealersPending } = useDealers({
+    // A dealer admin never opens the picker, and asking for a list of every
+    // dealership is a request they would not be entitled to answer anyway.
+    enabled: dmsSelected && !isDealerAdmin,
+  });
 
   /*
    * Closed dealerships are not offered. Scoping a new person to one would
@@ -131,8 +144,11 @@ function InviteForm({ membership, onDone }: InviteFormProps) {
     try {
       await invite({
         ...values,
-        unit_id: unitId || null,
-        app_keys: selectedApps,
+        // A dealer admin's own dealer and DMS, decided here rather than asked.
+        // The backend applies the same rule from their membership — this is
+        // the form matching it, not the form deciding it.
+        unit_id: isDealerAdmin ? membership.unit_id : unitId || null,
+        app_keys: isDealerAdmin ? ["dms"] : selectedApps,
       });
       onDone();
     } catch (error) {
@@ -151,8 +167,8 @@ function InviteForm({ membership, onDone }: InviteFormProps) {
       <div className={styles.header}>
         <Dialog.Title className={styles.title}>Invite user</Dialog.Title>
         <Dialog.Description className={styles.description}>
-          They join {membership.org_name} and choose their own password from the emailed
-          invitation.
+          They join {isDealerAdmin ? membership.unit_name : membership.org_name} and choose
+          their own password from the emailed invitation.
         </Dialog.Description>
       </div>
 
@@ -172,6 +188,13 @@ function InviteForm({ membership, onDone }: InviteFormProps) {
           {...register("email")}
         />
 
+        {isDealerAdmin ? (
+          <p className={styles.scopeNote}>
+            They join <strong>{membership.unit_name}</strong> with access to DMS. Access to
+            anything else in {membership.org_name} is granted by an organisation admin.
+          </p>
+        ) : (
+          <>
         <fieldset className={styles.fieldset}>
           <legend className={styles.legend}>Apps</legend>
           <p className={styles.hint}>
@@ -221,6 +244,8 @@ function InviteForm({ membership, onDone }: InviteFormProps) {
             ))}
           </select>
         </fieldset>
+          </>
+        )}
 
         <div className={styles.actions}>
           <Dialog.Close asChild>

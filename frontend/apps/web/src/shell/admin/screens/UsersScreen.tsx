@@ -52,6 +52,23 @@ export function UsersScreen() {
    */
   const selected = userId ? users?.find((user) => user.id === userId) : undefined;
 
+  /*
+   * A membership with no dealer administers the organisation; one with a
+   * dealer administers that dealer and nothing else (C3, C23). The same
+   * screen, two jobs — which is the point: inviting somebody is an
+   * organisation act either way, and a second screen for the smaller version
+   * of it would be a second place for the rules to drift.
+   */
+  const isOrgAdmin = membership.unit_name === null;
+
+  /*
+   * Only warn when there is actually something to warn about: an organisation
+   * admin looking at people who belong to a dealer. In an organisation with no
+   * dealerships this banner would be noise on every visit.
+   */
+  const showsOtherDealersPeople =
+    isOrgAdmin && (users?.some((user) => user.unit_name !== null) ?? false);
+
   return (
     <div className={styles.page}>
       <header className={styles.header}>
@@ -63,13 +80,37 @@ export function UsersScreen() {
               wrong: a person belongs to the organisation, and DMS is the only
               app that narrows them to one dealer.
             */}
-            Everyone in {membership.org_name}. People belong to the organisation; only DMS
-            scopes them to a dealer.
+            {isOrgAdmin ? (
+              <>
+                Everyone in {membership.org_name}. People belong to the organisation; only
+                DMS scopes them to a dealer.
+              </>
+            ) : (
+              <>
+                People at {membership.unit_name}. You can invite someone to this dealer and
+                give them DMS; the rest of {membership.org_name} is managed by an
+                organisation admin.
+              </>
+            )}
           </p>
         </div>
 
         <InviteUserDialog membership={membership} />
       </header>
+
+      {/*
+        C3's override warning, and the thing that makes one screen serve two
+        jobs honestly: a dealer admin managing their own people is the normal
+        path and sees nothing; an organisation admin reaching into a dealer's
+        people is doing something recorded, and is told so before they do it.
+      */}
+      {showsOtherDealersPeople && (
+        <p className={styles.auditNotice} role="note">
+          <strong>You are acting as an organisation admin.</strong> Dealers normally manage
+          their own people. Anything you change on a dealer&rsquo;s user here is recorded in
+          the audit log as an override.
+        </p>
+      )}
 
       {/* Hidden until there is something to search. A filter above an empty
           table is furniture, and above a skeleton it is a control that does

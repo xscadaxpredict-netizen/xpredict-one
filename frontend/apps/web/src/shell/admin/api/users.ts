@@ -153,10 +153,48 @@ const FAKE_DEALER_NAMES: Record<string, string> = {
   "unit-1": "Chennai — Guindy",
   "unit-2": "Bangalore — Whitefield",
   "unit-3": "Coimbatore — Peelamedu",
+  "unit-4": "Madurai — Ring Road",
 };
+
+/**
+ * Northway, where the signed-in person is a DEALER ADMIN at Bangalore —
+ * Whitefield (C23). They see their own dealer's people and nobody else's.
+ *
+ * THE REAL SCOPING IS SERVER-SIDE, from the caller's membership — not from
+ * which organisation they asked about. Keyed by org here only because the
+ * fake has no token to read, and a frontend that filtered this itself would
+ * be a frontend deciding who may see whom.
+ */
+const FAKE_DEALER_USERS: OrgUser[] = [
+  {
+    id: "user-n1",
+    first_name: "Vikram",
+    last_name: "Nair",
+    email: "vikram.n@northwayauto.in",
+    unit_name: "Bangalore — Whitefield",
+    role: "admin",
+    status: "active",
+    apps: [{ app: "dms", role: "Dealer admin" }],
+  },
+  {
+    id: "user-n2",
+    first_name: "Deepa",
+    last_name: "Rao",
+    email: "deepa.r@northwayauto.in",
+    unit_name: "Bangalore — Whitefield",
+    role: "member",
+    status: "active",
+    apps: [{ app: "dms", role: "Sales executive" }],
+  },
+];
 
 /** Mutated by the fake invite so a new row appears without a page reload. */
 let fakeUsers = [...FAKE_USERS];
+let fakeDealerUsers = [...FAKE_DEALER_USERS];
+
+function isDealerOrg(orgSlug: string): boolean {
+  return orgSlug === "northway-auto";
+}
 
 function fakeNotFound(): ApiError {
   return new ApiError({
@@ -213,7 +251,7 @@ async function request<T>(url: string, init?: RequestInit): Promise<T> {
 export async function fetchUsers(orgSlug: string): Promise<OrgUser[]> {
   if (USE_FAKE_USERS) {
     await wait(600);
-    return fakeUsers;
+    return isDealerOrg(orgSlug) ? fakeDealerUsers : fakeUsers;
   }
 
   return request<OrgUser[]>(`/api/v1/orgs/${orgSlug}/admin/users`);
@@ -227,8 +265,11 @@ export async function setUserStatus(
   if (USE_FAKE_USERS) {
     await wait(500);
     fakeUsers = fakeUsers.map((user) => (user.id === userId ? { ...user, status } : user));
+    fakeDealerUsers = fakeDealerUsers.map((user) =>
+      user.id === userId ? { ...user, status } : user,
+    );
 
-    const updated = fakeUsers.find((user) => user.id === userId);
+    const updated = [...fakeUsers, ...fakeDealerUsers].find((user) => user.id === userId);
     if (!updated) throw fakeNotFound();
     return updated;
   }
@@ -261,18 +302,21 @@ export async function inviteUser(orgSlug: string, body: NewInvitation): Promise<
   if (USE_FAKE_USERS) {
     await wait(700);
 
-    if (fakeUsers.some((user) => user.email.toLowerCase() === body.email.toLowerCase())) {
+    const existing = isDealerOrg(orgSlug) ? fakeDealerUsers : fakeUsers;
+    if (existing.some((user) => user.email.toLowerCase() === body.email.toLowerCase())) {
       throw fakeConflict(body.email);
     }
 
     const invited: OrgUser = {
-      id: `user-${String(fakeUsers.length + 1)}`,
+      id: `user-${String(existing.length + 1)}-${String(Date.now())}`,
       first_name: body.first_name,
       last_name: body.last_name,
       email: body.email,
       // Ids match the dealer fake in `dealers.ts`; the real endpoint resolves
       // this server-side from the unit it was given.
       unit_name: FAKE_DEALER_NAMES[body.unit_id ?? ""] ?? null,
+      // A dealer admin can only grant DMS (C23); an org admin picks. Either
+      // way the account itself belongs to the organisation.
       role: "member",
       // Invited, not active: the person has to accept before they exist as a
       // user anywhere. Showing them as active would be a lie the first time
@@ -281,7 +325,11 @@ export async function inviteUser(orgSlug: string, body: NewInvitation): Promise<
       apps: body.app_keys.map((app) => ({ app, role: "Member" })),
     };
 
-    fakeUsers = [...fakeUsers, invited];
+    if (isDealerOrg(orgSlug)) {
+      fakeDealerUsers = [...fakeDealerUsers, invited];
+    } else {
+      fakeUsers = [...fakeUsers, invited];
+    }
     return invited;
   }
 
