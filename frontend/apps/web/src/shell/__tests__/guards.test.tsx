@@ -145,7 +145,7 @@ describe("app entitlement", () => {
   it("sends someone typing the URL of an app they cannot open back to the launcher", async () => {
     mockFetchMe.mockResolvedValue(me({ memberships: [salespersonMembership()] }));
 
-    renderRoute({ path: "/acme-motors/admin/people", children: withDms });
+    renderRoute({ path: "/acme-motors/admin/users", children: withDms });
 
     expect(await screen.findByRole("heading", { name: "Your apps" })).toBeInTheDocument();
   });

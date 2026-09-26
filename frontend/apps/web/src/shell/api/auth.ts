@@ -222,7 +222,7 @@ const FAKE_ME: Me = {
           subscribed: true,
           accessible: true,
           summary: "Organisation admins only",
-          modules: ["people", "dealers", "roles", "billing", "audit"],
+          modules: ["users", "dealers", "roles", "billing", "audit"],
           permissions: ["org.dealer.create", "org.person.invite", "org.role.assign"],
         },
       ],

@@ -164,7 +164,7 @@ export const APP_CATALOG: AppDefinition[] = [
       {
         label: "Organisation",
         items: [
-          { label: "People", path: "people", icon: "users", module: "people" },
+          { label: "Users", path: "users", icon: "users", module: "users" },
           { label: "Dealers", path: "dealers", icon: "store", module: "dealers" },
           { label: "Roles", path: "roles", icon: "key", module: "roles" },
           { label: "Apps & billing", path: "billing", icon: "card", module: "billing" },

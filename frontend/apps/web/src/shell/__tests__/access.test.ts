@@ -44,7 +44,7 @@ describe("accessFor", () => {
   it("grants nothing for an app the person cannot access", () => {
     const access = accessFor(salespersonMembership(), "admin");
 
-    expect(access.hasModule("people")).toBe(false);
+    expect(access.hasModule("users")).toBe(false);
     expect(access.can("org.person.invite")).toBe(false);
     expect(access.permissions).toEqual([]);
   });

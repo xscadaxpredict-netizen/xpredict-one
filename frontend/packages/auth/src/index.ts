@@ -40,6 +40,21 @@ export type AppCode = "dms" | "crm" | "ecom";
 /**
  * Whether the current user may perform an action in an app.
  *
+ * ⚠️ THIS IS A STUB THAT ALWAYS RETURNS TRUE. Anything gated on it is visible
+ * to everybody. Do not build a new screen against it.
+ *
+ * ⚠️ AND IT IS NOW THE SECOND PERMISSION API. `shell/access.ts` has the real
+ * one — `useAccess().can("dms.enquiry.create")` — reading the modules and
+ * permissions `/me` actually returns (C19). Two of these is one too many, and
+ * the reconciliation is deliberately not done here: permission work is paused
+ * until the roles themselves are defined (Q11, Q12).
+ *
+ * When it resumes, the likely answer is that this function goes and product
+ * code calls `useAccess` — but that means deciding whether a permission helper
+ * belongs in a package or in the shell, which is a decision, not a tidy-up.
+ * `products/dms/sales/screens/EnquiryListScreen.tsx` and CONTRIBUTING.md
+ * section on permissions both need updating with it.
+ *
  * Hiding UI is a courtesy, never a control — the backend enforces every
  * permission regardless of what renders. Never leave an action visible because
  * "the API will reject it anyway", and never treat a hidden action as secured.

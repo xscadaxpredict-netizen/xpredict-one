@@ -18,6 +18,7 @@
  */
 
 import { ModuleRoutes, type ModuleRoute } from "../routing";
+import { UsersScreen } from "./screens/UsersScreen";
 import styles from "./routes.module.css";
 
 /*
@@ -26,7 +27,7 @@ import styles from "./routes.module.css";
  * them Apps & billing.
  */
 const routes: ModuleRoute[] = [
-  { path: "people", module: "people", element: <AdminPlaceholder name="People" audited /> },
+  { path: "users", module: "users", element: <UsersScreen /> },
   { path: "dealers", module: "dealers", element: <AdminPlaceholder name="Dealers" /> },
   { path: "roles", module: "roles", element: <AdminPlaceholder name="Roles" /> },
   { path: "billing", module: "billing", element: <AdminPlaceholder name="Apps & billing" /> },

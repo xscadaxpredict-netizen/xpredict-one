@@ -72,7 +72,7 @@ export function ownerMembership(): Membership {
       }),
       appAccess("crm"),
       appAccess("ecommerce", { subscribed: false, accessible: false }),
-      appAccess("admin", { modules: ["people", "dealers", "roles", "billing", "audit"] }),
+      appAccess("admin", { modules: ["users", "dealers", "roles", "billing", "audit"] }),
     ],
   });
 }
