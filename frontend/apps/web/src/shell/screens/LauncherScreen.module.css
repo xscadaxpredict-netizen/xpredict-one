@@ -2,7 +2,7 @@
   display: flex;
   flex-direction: column;
   gap: var(--space-6);
-  max-width: 780px;
+  max-width: 1080px;
   margin: 0 auto;
   padding-top: var(--space-6);
 }
@@ -28,10 +28,15 @@
 
 .grid {
   display: grid;
-  /* Two columns where there is room, one where there is not — without a media
-     query naming a device width that will be wrong on the next device. */
-  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
-  gap: var(--space-3);
+  /*
+   * As many columns as fit at 220px, down to one — no media query naming a
+   * device width that will be wrong on the next device. Four apps land as four
+   * across on a desktop and stack on a phone.
+   */
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: var(--space-4);
+  /* Stretch, so every card is as tall as the tallest and the buttons line up. */
+  align-items: stretch;
 }
 
 .empty {

@@ -1,82 +1,130 @@
-.tile {
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr);
-  gap: 0 var(--space-3);
-  width: 100%;
-  padding: var(--space-3);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-md);
+.card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  /* Centred, so the icon, name and button sit on one axis. Only works because
+     every line here is short; it would be the wrong choice for body copy. */
+  text-align: center;
+  gap: var(--space-3);
+  height: 100%;
+  padding: var(--space-6) var(--space-5);
   background: var(--color-surface);
-  font: inherit;
-  text-align: left;
-  cursor: pointer;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
 }
 
-.tile:hover:not([data-disabled]) {
-  background: var(--color-surface-alt);
+.card:hover:not([data-disabled]) {
   border-color: var(--color-border-strong);
-}
-
-.tile[data-current] {
-  background: var(--color-primary-050);
-  border-color: var(--color-primary-100);
+  box-shadow: var(--shadow-sm);
 }
 
 /*
- * Muted, but still legible. A disabled tile that fades to near-invisible
- * defeats the reason it is on the page at all: somebody has to read it in
- * order to go and ask for the app.
+ * Muted, but still readable. A disabled card that fades almost out defeats the
+ * reason it is on the page: somebody has to be able to read it in order to go
+ * and ask for the app.
  */
-.tile[data-disabled] {
-  background: var(--color-surface-alt);
-  cursor: default;
+.card[data-disabled] {
+  background: var(--color-canvas);
 }
 
-.mark {
-  grid-row: 1 / span 3;
-  align-self: start;
+.icon {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 34px;
-  height: 34px;
-  border-radius: var(--radius-md);
-  background: var(--color-primary);
-  color: var(--color-primary-text);
-  font-size: var(--text-xs);
-  font-weight: 700;
-  letter-spacing: 0.02em;
+  width: 52px;
+  height: 52px;
+  border-radius: var(--radius-lg);
+  /* Overridden per app below; this is the fallback for an app whose colour
+     token has not been added yet, so a new app looks plain rather than broken. */
+  background: var(--color-surface-alt);
+  color: var(--color-text-2);
 }
 
-.tile[data-disabled] .mark {
-  background: var(--color-border-strong);
-  color: var(--color-surface);
+.icon[data-app="dms"] {
+  background: var(--app-dms-tint);
+  color: var(--app-dms);
+}
+
+.icon[data-app="crm"] {
+  background: var(--app-crm-tint);
+  color: var(--app-crm);
+}
+
+.icon[data-app="ecommerce"] {
+  background: var(--app-ecommerce-tint);
+  color: var(--app-ecommerce);
+}
+
+.icon[data-app="admin"] {
+  background: var(--app-admin-tint);
+  color: var(--app-admin);
+}
+
+/* An app you cannot open should not wear its colour — that is what makes the
+   row scannable: the ones in colour are yours. */
+.card[data-disabled] .icon {
+  background: var(--color-surface-alt);
+  color: var(--color-text-disabled);
 }
 
 .name {
-  font-size: var(--text-md);
+  margin: 0;
+  font-size: var(--text-lg);
   font-weight: 600;
+  letter-spacing: -0.01em;
   color: var(--color-text);
 }
 
-.tile[data-disabled] .name {
+.card[data-disabled] .name {
   color: var(--color-text-2);
 }
 
 .description {
-  font-size: var(--text-xs);
-  line-height: 1.4;
+  margin: 0;
+  /* Stops a long summary stretching to the full card width, which makes the
+     eye travel further than the three or four words on the line above. */
+  max-width: 24ch;
+  font-size: var(--text-sm);
+  line-height: 1.5;
   color: var(--color-text-3);
 }
 
-.summary {
-  margin-top: var(--space-2);
+.action {
+  /* Pushes every button to the bottom of its card, so they line up across a
+     row of cards whose descriptions are different lengths. */
+  margin-top: auto;
+  min-height: 36px;
+  padding: var(--space-2) var(--space-5);
+  border: 1px solid var(--color-primary);
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--color-primary);
+  font: inherit;
+  font-size: var(--text-sm);
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+
+.action:hover {
+  background: var(--color-primary);
+  color: var(--color-primary-text);
+}
+
+.action:disabled {
+  border-color: var(--color-border-strong);
+  background: transparent;
+  color: var(--color-text-disabled);
+  cursor: default;
+}
+
+/* Sits between the description and the button, so the button stays pinned to
+   the bottom of the card and lines up with the others in the row. */
+.hint {
+  margin: 0;
+  max-width: 24ch;
   font-size: var(--text-xs);
   line-height: 1.4;
   color: var(--color-text-3);
-}
-
-/* Keeps the tile's height stable whether or not the server sent a summary. */
-.summary:empty::before {
-  content: "\00a0";
 }

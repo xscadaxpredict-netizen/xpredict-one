@@ -1,56 +1,75 @@
 /**
- * One app, as a tile. Used by the launcher page and by the topbar dropdown.
+ * One app, as a card on the launcher.
  *
- * Shared rather than written twice because the two placements must agree about
- * what a disabled app looks like. Two copies drift, and the copy that drifts is
- * always the one that stops explaining why an app cannot be opened.
+ * THE CARD IS NOT CLICKABLE — the button inside it is.
  *
- * A disabled tile is a `button`, not a `div`: it stays in the tab order, still
- * announces itself, and says why. Removing it from the page entirely is what we
- * do for apps the person may not see at all — that decision is made in
- * `visibleApps`, not here.
+ * It used to be one large button. Putting a button inside that would nest one
+ * interactive element inside another: the browser gives you two tab stops that
+ * do the same thing, and a screen reader announces a button containing a
+ * button. So the card is plain markup and the only thing you can activate is
+ * the action at the bottom, which is also what makes the disabled state
+ * honest — you can see the whole card and still not be able to open it.
+ *
+ * The button says "Open DMS" rather than "Open". Four cards whose buttons all
+ * read "Open" give a screen-reader user a list of four identical controls with
+ * no way to tell which is which.
  */
 
 import type { LauncherApp } from "../navigation";
+import { AppIcon } from "./AppIcon";
 import styles from "./AppTile.module.css";
 
 interface AppTileProps {
   app: LauncherApp;
-  /** Marks the app currently open. Only meaningful inside the dropdown. */
-  isCurrent?: boolean;
   onOpen: () => void;
 }
 
-export function AppTile({ app, isCurrent = false, onOpen }: AppTileProps) {
+export function AppTile({ app, onOpen }: AppTileProps) {
   const { definition, access, enabled } = app;
 
   return (
-    <button
-      type="button"
-      className={styles.tile}
-      data-current={isCurrent || undefined}
-      data-disabled={!enabled || undefined}
-      disabled={!enabled}
-      onClick={onOpen}
-    >
-      <span className={styles.mark} aria-hidden="true">
-        {definition.initials}
+    <div className={styles.card} data-disabled={!enabled || undefined}>
+      {/* The app's colour comes from this attribute, so a new app needs a
+          token and a catalog entry — not a change to this component. */}
+      <span className={styles.icon} data-app={definition.key}>
+        <AppIcon app={definition.key} />
       </span>
 
-      <span className={styles.name}>{definition.name}</span>
+      {/* h2: the launcher's own h1 is "Your apps", and these sit under it. */}
+      <h2 className={styles.name}>{definition.name}</h2>
 
-      <span className={styles.description}>
-        {enabled ? definition.description : "Not subscribed"}
-      </span>
+      <p className={styles.description}>
+        {enabled ? (access.summary ?? definition.description) : definition.description}
+      </p>
 
       {/*
-        The bottom line is whichever is more useful: a fact from the server
-        ("across 12 dealers"), or the way out of a locked tile. An unsubscribed
-        app with no route to buying it is just a closed door.
+        Above the button, not below it. Below, this line pushed the button up
+        and that one card's action no longer lined up with the other three.
       */}
-      <span className={styles.summary}>
-        {enabled ? access.summary : "Ask an owner to enable this app"}
-      </span>
-    </button>
+      {!enabled && <p className={styles.hint}>Ask an owner to enable this app</p>}
+
+      {/*
+        `margin-top: auto` on the action in CSS, so the buttons line up across
+        cards whose descriptions run to different lengths. Without it each
+        button floats at the bottom of its own text and the row looks broken.
+      */}
+      {enabled ? (
+        <button type="button" className={styles.action} onClick={onOpen}>
+          Open {definition.name}
+        </button>
+      ) : (
+        <button
+          type="button"
+          className={styles.action}
+          disabled
+          // Visible text says "Not subscribed"; the name is only in the
+          // accessible name, so the button is identifiable without repeating
+          // the heading directly above it on screen.
+          aria-label={`${definition.name} is not subscribed`}
+        >
+          Not subscribed
+        </button>
+      )}
+    </div>
   );
 }

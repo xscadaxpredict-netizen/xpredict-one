@@ -1,9 +1,14 @@
 /**
  * The grid button in the topbar: which app am I in, and how do I get to another.
  *
- * Shows exactly what the launcher page shows — same `visibleApps` rule, same
- * `AppTile`. The dropdown is a shortcut to that screen, not a second opinion
- * about it.
+ * ROWS HERE, CARDS ON THE LAUNCHER PAGE — and that is deliberate.
+ *
+ * These two used to share `AppTile` so they could not drift. What must not
+ * drift is WHICH apps appear and whether they can be opened, and that still
+ * cannot: both ask `visibleApps()`, which is the only place that rule lives.
+ * How they are drawn is a different question. A launcher page has room to
+ * explain each app; a dropdown reached mid-task does not, and four big cards
+ * in a menu is a lot of screen to move past to reach "All apps".
  *
  * Built on Radix's dropdown menu rather than a hand-rolled popover. That is not
  * laziness — a menu has to close on Escape, close on outside click, trap and
@@ -16,12 +21,12 @@ import { useNavigate } from "react-router-dom";
 
 import type { Membership } from "../api/auth";
 import { visibleApps } from "../navigation";
-import { AppTile } from "./AppTile";
+import { AppIcon } from "./AppIcon";
 import styles from "./AppLauncher.module.css";
 
 interface AppLauncherProps {
   membership: Membership;
-  /** The app currently open, so its tile can be marked. */
+  /** The app currently open, so its row can be marked. */
   currentAppKey: string | undefined;
 }
 
@@ -39,30 +44,29 @@ export function AppLauncher({ membership, currentAppKey }: AppLauncherProps) {
         <DropdownMenu.Content className={styles.content} sideOffset={8} align="start">
           <DropdownMenu.Label className={styles.label}>Your apps</DropdownMenu.Label>
 
-          <div className={styles.grid}>
-            {apps.map((app) => (
-              /*
-               * `asChild` so the tile's own <button> IS the menu item, rather
-               * than a button nested inside one. Nested interactive elements
-               * are what produce the bug where the first Enter opens the app
-               * and the second does nothing.
-               */
+          {apps.map((app) => {
+            const isCurrent = app.definition.key === currentAppKey;
+
+            return (
               <DropdownMenu.Item
                 key={app.definition.key}
-                asChild
+                className={styles.item}
                 disabled={!app.enabled}
+                data-current={isCurrent || undefined}
                 onSelect={() => void navigate(`/${membership.org_slug}/${app.definition.key}`)}
               >
-                <AppTile
-                  app={app}
-                  isCurrent={app.definition.key === currentAppKey}
-                  // Radix drives selection through onSelect above; the tile's
-                  // own handler would fire a second navigation.
-                  onOpen={() => undefined}
-                />
+                <span className={styles.itemIcon} data-app={app.definition.key}>
+                  <AppIcon app={app.definition.key} size={18} />
+                </span>
+
+                <span className={styles.itemName}>{app.definition.name}</span>
+
+                {/* Says why a row cannot be chosen. A greyed row with no
+                    explanation reads as a bug rather than a subscription. */}
+                {!app.enabled && <span className={styles.itemNote}>Not subscribed</span>}
               </DropdownMenu.Item>
-            ))}
-          </div>
+            );
+          })}
 
           <DropdownMenu.Separator className={styles.separator} />
 
