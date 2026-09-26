@@ -76,7 +76,13 @@ export function LoginScreen() {
     <AuthLayout
       title="Sign in"
       subtitle="Use the email your organisation invited."
-      footer="No account? Your organisation admin invites you — there is no public sign-up."
+      footer={
+        <>
+          Registering a new organisation? <a href="/signup">Use your activation code</a>
+          <br />
+          Joining an existing one? Your administrator invites you.
+        </>
+      }
     >
       {formError && <FormBanner traceId={formError.traceId}>{formError.message}</FormBanner>}
 
