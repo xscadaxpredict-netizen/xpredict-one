@@ -68,7 +68,21 @@ export function DealerTable({ dealers, basePath, selectedId, onSelect }: DealerT
                   >
                     {dealer.name}
                   </Link>
-                  <span className={styles.since}>Opened {formatMonth(dealer.created_at)}</span>
+                  <span className={styles.since}>
+                    {/*
+                      The code when there is one: it is what people quote to
+                      each other and what ends up on paperwork, so it
+                      identifies a row faster than the month it opened.
+                    */}
+                    {dealer.code ? (
+                      <span className={styles.code}>{dealer.code}</span>
+                    ) : (
+                      `Opened ${formatMonth(dealer.created_at)}`
+                    )}
+                    {dealer.parent_name && (
+                      <span className={styles.parent}> · under {dealer.parent_name}</span>
+                    )}
+                  </span>
                 </span>
               </th>
 

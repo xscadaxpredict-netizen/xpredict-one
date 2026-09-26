@@ -180,3 +180,42 @@
   line-height: 1.4;
   color: var(--color-text-3);
 }
+
+/* ---- The expanded record ------------------------------------------------ */
+
+/* Mono, like every identifier in this product: it is quoted and typed, not read
+   as a word, and a monospaced face makes a transposed character visible. */
+.code {
+  margin-right: var(--space-2);
+  padding: 1px var(--space-2);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface-alt);
+  font-family: var(--font-mono);
+  color: var(--color-text-2);
+}
+
+.parent {
+  display: inline-block;
+  padding: 2px var(--space-3);
+  border-radius: var(--radius-pill);
+  background: var(--color-surface-alt);
+  font-size: var(--text-xs);
+  color: var(--color-text-2);
+}
+
+.contactName {
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: var(--color-text);
+}
+
+.address {
+  font-size: var(--text-sm);
+  color: var(--color-text);
+}
+
+.postal {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  color: var(--color-text-3);
+}

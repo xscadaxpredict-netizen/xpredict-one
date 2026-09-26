@@ -24,6 +24,39 @@ export interface Dealer {
   id: string;
   /** How people refer to it: "Chennai — Guindy". */
   name: string;
+
+  /**
+   * A short identifier the business chooses: "CHN-GUI".
+   *
+   * Optional, but unique within the organisation when given — it is the thing
+   * that ends up on paperwork and in conversation, and two dealerships
+   * answering to the same code is a filing problem nobody notices until an
+   * invoice goes to the wrong branch.
+   */
+  code: string | null;
+
+  /**
+   * The dealership above this one, for groups that run branches under a main
+   * showroom. Null for a top-level dealership.
+   *
+   * THIS MAKES DEALERS A TREE, which C7 already anticipated when it described
+   * a membership as covering its subtree. See Q22 — who a parent's admin can
+   * actually manage is not settled.
+   */
+  parent_id: string | null;
+  /** Resolved server-side, like `unit_name` on a user: an id is not a label. */
+  parent_name: string | null;
+
+  /** Who to call at this dealership. A person, not a department. */
+  contact_person: string;
+  /** Where official correspondence goes — not necessarily anyone's login. */
+  email: string;
+  phone: string;
+
+  city: string;
+  state: string;
+  postal_code: string;
+
   status: DealerStatus;
   /**
    * How many people are scoped to this dealer. A count rather than the list,
@@ -36,6 +69,15 @@ export interface Dealer {
 
 export interface NewDealer {
   name: string;
+  /** Empty string is sent as null: the field is optional. */
+  code: string | null;
+  parent_id: string | null;
+  contact_person: string;
+  email: string;
+  phone: string;
+  city: string;
+  state: string;
+  postal_code: string;
 }
 
 /* ------------------------------------------------------------------------ *
@@ -54,6 +96,15 @@ let fakeDealers: Dealer[] = [
   {
     id: "unit-1",
     name: "Chennai — Guindy",
+    code: "CHN-GUI",
+    parent_id: null,
+    parent_name: null,
+    contact_person: "Anita Fernandes",
+    email: "guindy@acmemotors.in",
+    phone: "+91 44 2345 6789",
+    city: "Chennai",
+    state: "Tamil Nadu",
+    postal_code: "600032",
     status: "active",
     user_count: 2,
     created_at: "2024-03-12T09:00:00Z",
@@ -61,13 +112,33 @@ let fakeDealers: Dealer[] = [
   {
     id: "unit-2",
     name: "Bangalore — Whitefield",
+    code: "BLR-WHF",
+    parent_id: null,
+    parent_name: null,
+    contact_person: "Vikram Nair",
+    email: "whitefield@acmemotors.in",
+    phone: "+91 80 4123 7788",
+    city: "Bengaluru",
+    state: "Karnataka",
+    postal_code: "560066",
     status: "active",
     user_count: 1,
     created_at: "2024-07-01T09:00:00Z",
   },
   {
+    // A branch under Chennai, so the tree is visible in the fake rather than
+    // only in the type.
     id: "unit-3",
     name: "Coimbatore — Peelamedu",
+    code: "CBE-PLM",
+    parent_id: "unit-1",
+    parent_name: "Chennai — Guindy",
+    contact_person: "Meera Krishnan",
+    email: "peelamedu@acmemotors.in",
+    phone: "+91 422 665 4321",
+    city: "Coimbatore",
+    state: "Tamil Nadu",
+    postal_code: "641004",
     status: "active",
     user_count: 1,
     created_at: "2025-01-20T09:00:00Z",
@@ -75,19 +146,31 @@ let fakeDealers: Dealer[] = [
   {
     id: "unit-4",
     name: "Madurai — Ring Road",
+    code: null,
+    parent_id: "unit-1",
+    parent_name: "Chennai — Guindy",
+    contact_person: "Sanjay Desai",
+    email: "madurai@acmemotors.in",
+    phone: "+91 452 234 9900",
+    city: "Madurai",
+    state: "Tamil Nadu",
+    postal_code: "625010",
     status: "disabled",
     user_count: 0,
     created_at: "2023-11-05T09:00:00Z",
   },
 ];
 
-function fakeConflict(name: string): ApiError {
+function fakeConflict(field: "name" | "code", value: string): ApiError {
   return new ApiError({
-    type: "https://api.xpredict.one/errors/dealer-name-taken",
-    title: "Name already in use",
+    type: `https://api.xpredict.one/errors/dealer-${field}-taken`,
+    title: field === "name" ? "Name already in use" : "Code already in use",
     status: 409,
-    detail: `${name} already exists in this organisation.`,
-    code: "dealer_name_taken",
+    detail:
+      field === "name"
+        ? `${value} already exists in this organisation.`
+        : `The code ${value} is already used by another dealership.`,
+    code: `dealer_${field}_taken`,
     trace_id: "fake-0000",
   });
 }
@@ -147,12 +230,22 @@ export async function createDealer(orgSlug: string, body: NewDealer): Promise<De
     await wait(700);
 
     if (fakeDealers.some((dealer) => dealer.name.toLowerCase() === body.name.toLowerCase())) {
-      throw fakeConflict(body.name);
+      throw fakeConflict("name", body.name);
+    }
+
+    // The code is optional, so only a given one can collide.
+    if (
+      body.code &&
+      fakeDealers.some((dealer) => dealer.code?.toLowerCase() === body.code?.toLowerCase())
+    ) {
+      throw fakeConflict("code", body.code);
     }
 
     const created: Dealer = {
-      id: `unit-${String(fakeDealers.length + 1)}`,
-      name: body.name,
+      id: `unit-${String(Date.now())}`,
+      ...body,
+      // Resolved here the way the server would: the form sends an id.
+      parent_name: fakeDealers.find((dealer) => dealer.id === body.parent_id)?.name ?? null,
       status: "active",
       user_count: 0,
       created_at: new Date().toISOString(),

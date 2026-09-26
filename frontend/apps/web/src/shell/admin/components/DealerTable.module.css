@@ -123,6 +123,15 @@
 }
 
 /*
+ * Mono on the CODE only — not on the line it sits in. Mono is this product's
+ * marker for something you quote and type rather than read as a word, and a
+ * date rendered in it claims to be an identifier.
+ */
+.code {
+  font-family: var(--font-mono);
+}
+
+/*
  * Right-aligned and tabular: a column of counts is read by comparing them, and
  * proportional digits make 11 look wider than 8.
  */

@@ -46,7 +46,10 @@ export function DealerDetailPanel({ dealer, usersPath, onClose }: DealerDetailPa
 
           <div className={styles.identity}>
             <h2 className={styles.name}>{dealer.name}</h2>
-            <p className={styles.since}>Opened {formatMonth(dealer.created_at)}</p>
+            <p className={styles.since}>
+              {dealer.code && <span className={styles.code}>{dealer.code}</span>}
+              Opened {formatMonth(dealer.created_at)}
+            </p>
           </div>
         </>
       }
@@ -92,6 +95,39 @@ export function DealerDetailPanel({ dealer, usersPath, onClose }: DealerDetailPa
       </div>
 
       <dl className={styles.facts}>
+        {dealer.parent_name && (
+          <>
+            <dt>Reports to</dt>
+            <dd>
+              <span className={styles.parent}>{dealer.parent_name}</span>
+            </dd>
+          </>
+        )}
+
+        <dt>Contact</dt>
+        <dd>
+          <span className={styles.contactName}>{dealer.contact_person}</span>
+          {/*
+            Real links, not text. Somebody reading this panel is usually about
+            to ring or email the branch, and making them copy it by hand is a
+            small tax paid every single time.
+          */}
+          <a className={styles.link} href={`mailto:${dealer.email}`}>
+            {dealer.email}
+          </a>
+          <a className={styles.link} href={`tel:${dealer.phone.replace(/\s/g, "")}`}>
+            {dealer.phone}
+          </a>
+        </dd>
+
+        <dt>Address</dt>
+        <dd>
+          <span className={styles.address}>
+            {dealer.city}, {dealer.state}
+          </span>
+          <span className={styles.postal}>{dealer.postal_code}</span>
+        </dd>
+
         <dt>People</dt>
         <dd>
           {dealer.user_count === 0 ? (

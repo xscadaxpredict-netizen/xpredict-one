@@ -28,8 +28,16 @@ interface TextFieldProps extends InputHTMLAttributes<HTMLInputElement> {
   action?: ReactNode;
 }
 
+/*
+ * `required` comes from InputHTMLAttributes and does two jobs here: it marks
+ * the field for assistive tech, which announces "required" when you reach it,
+ * and it draws the asterisk. The browser still will not block submission —
+ * every form here sets `noValidate` so the messages are ours and consistent
+ * rather than each browser's own wording.
+ */
+
 export const TextField = forwardRef<HTMLInputElement, TextFieldProps>(function TextField(
-  { label, error, action, id, ...inputProps },
+  { label, error, action, id, required, ...inputProps },
   ref,
 ) {
   // React Hook Form hands us a ref, so forwardRef is required: without it the
@@ -42,6 +50,15 @@ export const TextField = forwardRef<HTMLInputElement, TextFieldProps>(function T
       <div className={styles.labelRow}>
         <label htmlFor={inputId} className={styles.label}>
           {label}
+          {required && (
+            <>
+              {/* Hidden from screen readers: the input's own `required` already
+                  announces it, and an asterisk read aloud as "star" is noise. */}
+              <span className={styles.required} aria-hidden="true">
+                *
+              </span>
+            </>
+          )}
         </label>
         {action}
       </div>
@@ -50,6 +67,7 @@ export const TextField = forwardRef<HTMLInputElement, TextFieldProps>(function T
         {...inputProps}
         id={inputId}
         ref={ref}
+        required={required}
         className={error ? styles.input + " " + styles.inputInvalid : styles.input}
         aria-invalid={error ? true : undefined}
         aria-describedby={error ? errorId : undefined}
