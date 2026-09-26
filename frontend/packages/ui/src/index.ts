@@ -13,3 +13,4 @@
  */
 
 export { TableSkeleton, EmptyState, ErrorState } from "./states";
+export { DetailPanel } from "./DetailPanel";

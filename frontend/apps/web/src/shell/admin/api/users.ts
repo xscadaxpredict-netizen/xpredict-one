@@ -51,12 +51,6 @@ export interface OrgUser {
   apps: UserAppRole[];
 }
 
-/** A dealer, for the scope picker. Named "unit" to match the backend (C7). */
-export interface Unit {
-  id: string;
-  name: string;
-}
-
 export interface NewInvitation {
   first_name: string;
   last_name: string;
@@ -83,12 +77,6 @@ const USE_FAKE_USERS = true;
 function wait(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
-
-const FAKE_UNITS: Unit[] = [
-  { id: "unit-1", name: "Chennai — Guindy" },
-  { id: "unit-2", name: "Bangalore — Whitefield" },
-  { id: "unit-3", name: "Coimbatore — Peelamedu" },
-];
 
 const FAKE_USERS: OrgUser[] = [
   {
@@ -156,6 +144,17 @@ const FAKE_USERS: OrgUser[] = [
   },
 ];
 
+/**
+ * Just enough of the dealer list to echo a name back. The real list lives in
+ * `dealers.ts` — duplicated here only so the fake can answer without the two
+ * fakes importing each other.
+ */
+const FAKE_DEALER_NAMES: Record<string, string> = {
+  "unit-1": "Chennai — Guindy",
+  "unit-2": "Bangalore — Whitefield",
+  "unit-3": "Coimbatore — Peelamedu",
+};
+
 /** Mutated by the fake invite so a new row appears without a page reload. */
 let fakeUsers = [...FAKE_USERS];
 
@@ -220,15 +219,6 @@ export async function fetchUsers(orgSlug: string): Promise<OrgUser[]> {
   return request<OrgUser[]>(`/api/v1/orgs/${orgSlug}/admin/users`);
 }
 
-export async function fetchUnits(orgSlug: string): Promise<Unit[]> {
-  if (USE_FAKE_USERS) {
-    await wait(300);
-    return FAKE_UNITS;
-  }
-
-  return request<Unit[]>(`/api/v1/orgs/${orgSlug}/admin/units`);
-}
-
 export async function setUserStatus(
   orgSlug: string,
   userId: string,
@@ -280,7 +270,9 @@ export async function inviteUser(orgSlug: string, body: NewInvitation): Promise<
       first_name: body.first_name,
       last_name: body.last_name,
       email: body.email,
-      unit_name: FAKE_UNITS.find((unit) => unit.id === body.unit_id)?.name ?? null,
+      // Ids match the dealer fake in `dealers.ts`; the real endpoint resolves
+      // this server-side from the unit it was given.
+      unit_name: FAKE_DEALER_NAMES[body.unit_id ?? ""] ?? null,
       role: "member",
       // Invited, not active: the person has to accept before they exist as a
       // user anywhere. Showing them as active would be a lie the first time

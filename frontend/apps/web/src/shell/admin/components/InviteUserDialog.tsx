@@ -28,7 +28,8 @@ import { visibleApps } from "../../navigation";
 import { Button } from "../../components/Button";
 import { FormBanner } from "../../components/FormBanner";
 import { TextField } from "../../components/TextField";
-import { useInviteUser, useUnits } from "../hooks/useUsers";
+import { useDealers } from "../hooks/useDealers";
+import { useInviteUser } from "../hooks/useUsers";
 import styles from "./InviteUserDialog.module.css";
 
 const inviteSchema = z.object({
@@ -83,7 +84,19 @@ function InviteForm({ membership, onDone }: InviteFormProps) {
   const [formError, setFormError] = useState<{ message: string; traceId?: string } | null>(null);
 
   const dmsSelected = selectedApps.includes("dms");
-  const { data: units, isPending: unitsPending } = useUnits(dmsSelected);
+
+  /*
+   * Only fetched once DMS is ticked: most invitations are organisation-wide,
+   * and a request nobody needed is still a request.
+   */
+  const { data: dealers, isPending: dealersPending } = useDealers({ enabled: dmsSelected });
+
+  /*
+   * Closed dealerships are not offered. Scoping a new person to one would
+   * create somebody who cannot see anything on their first day — and the
+   * backend would be right to refuse it.
+   */
+  const openDealers = dealers?.filter((dealer) => dealer.status === "active");
   const { mutateAsync: invite, isPending } = useInviteUser();
 
   /*
@@ -200,10 +213,10 @@ function InviteForm({ membership, onDone }: InviteFormProps) {
             aria-label="Dealer"
           >
             <option value="">Organisation — every dealer</option>
-            {unitsPending && dmsSelected && <option disabled>Loading dealers…</option>}
-            {units?.map((unit) => (
-              <option key={unit.id} value={unit.id}>
-                {unit.name}
+            {dealersPending && dmsSelected && <option disabled>Loading dealers…</option>}
+            {openDealers?.map((dealer) => (
+              <option key={dealer.id} value={dealer.id}>
+                {dealer.name}
               </option>
             ))}
           </select>

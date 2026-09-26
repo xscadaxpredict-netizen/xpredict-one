@@ -7,20 +7,13 @@
  * here and are they switched on", and everything else belongs to the row you
  * picked.
  *
- * DRIVEN BY THE URL, not by state. `/admin/users/:userId` — so the back button
- * closes it, a link to one person can be pasted into a message, and a refresh
- * keeps the panel open. A `selectedUser` in `useState` would do none of that
- * and would disagree with the address bar the first time somebody used Back.
- *
- * NOT A DIALOG. It sits beside the list on a wide screen and covers it on a
- * narrow one, but it never makes the list inert: picking the next person
- * straight from the list is the whole point of a list-and-detail screen, and
- * a modal would make you close this one first.
+ * The chrome — beside the list or over it, Escape, focus — is `DetailPanel`
+ * in packages/ui, shared with Dealers. Only the content is here.
  */
 
-import { useEffect, useRef } from "react";
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import { asProblem } from "@xpredict/api-client";
+import { DetailPanel } from "@xpredict/ui";
 
 import type { OrgUser } from "../api/users";
 import { APP_CATALOG } from "../../navigation";
@@ -34,62 +27,74 @@ interface UserDetailPanelProps {
 }
 
 export function UserDetailPanel({ user, onClose }: UserDetailPanelProps) {
-  const panelRef = useRef<HTMLDivElement>(null);
   const { mutate: setStatus, isPending: statusPending, error: statusError } = useSetUserStatus();
   const { mutate: resend, isPending: resendPending, isSuccess: resent } = useResendInvitation();
 
-  /*
-   * Escape closes it. A dialog would give this for free, but this panel is
-   * deliberately not one — so the one behaviour worth keeping is added by hand
-   * rather than making the list inert to get it.
-   */
-  useEffect(() => {
-    function onKeyDown(event: KeyboardEvent) {
-      if (event.key === "Escape") onClose();
-    }
-
-    document.addEventListener("keydown", onKeyDown);
-    return () => {
-      document.removeEventListener("keydown", onKeyDown);
-    };
-  }, [onClose]);
-
-  /*
-   * Move focus into the panel when a different person is opened, so a keyboard
-   * user is taken to what they just asked for rather than left in the table.
-   * `user.id` in the deps, not `user`: a refetch makes a new object and would
-   * otherwise yank focus back here while someone was reading.
-   */
-  useEffect(() => {
-    panelRef.current?.focus();
-  }, [user.id]);
-
   const isDisabled = user.status === "disabled";
+  const fullName = `${user.first_name} ${user.last_name}`;
 
   return (
-    <aside
-      ref={panelRef}
-      className={styles.panel}
-      tabIndex={-1}
-      aria-label={`${user.first_name} ${user.last_name}`}
+    <DetailPanel
+      label={fullName}
+      focusKey={user.id}
+      onClose={onClose}
+      header={
+        <>
+          <span className={styles.avatar} aria-hidden="true">
+            {initials(user)}
+          </span>
+
+          <div className={styles.identity}>
+            <h2 className={styles.name}>{fullName}</h2>
+            <p className={styles.email}>{user.email}</p>
+          </div>
+        </>
+      }
+      footer={
+        <>
+          {user.status === "invited" && (
+            <button
+              type="button"
+              className={styles.secondaryAction}
+              disabled={resendPending || resent}
+              onClick={() => resend(user.id)}
+            >
+              {resent ? "Invitation sent" : resendPending ? "Sending…" : "Resend invitation"}
+            </button>
+          )}
+
+          <DropdownMenu.Root>
+            <DropdownMenu.Trigger className={styles.moreTrigger} aria-label="More actions">
+              <MoreIcon />
+            </DropdownMenu.Trigger>
+
+            <DropdownMenu.Portal>
+              <DropdownMenu.Content className={styles.menu} align="end" sideOffset={6}>
+                <DropdownMenu.Item
+                  className={styles.menuItem}
+                  disabled={statusPending || user.role === "owner"}
+                  onSelect={() =>
+                    setStatus({ userId: user.id, status: isDisabled ? "active" : "disabled" })
+                  }
+                >
+                  {isDisabled ? "Reactivate" : "Mark as inactive"}
+                </DropdownMenu.Item>
+
+                {/*
+                  The owner cannot be switched off from here. An organisation
+                  with no owner has nobody who can appoint one, and the backend
+                  refuses it anyway (C14) — so the control is disabled rather
+                  than offered and then rejected.
+                */}
+                {user.role === "owner" && (
+                  <p className={styles.menuNote}>The owner cannot be deactivated.</p>
+                )}
+              </DropdownMenu.Content>
+            </DropdownMenu.Portal>
+          </DropdownMenu.Root>
+        </>
+      }
     >
-      <header className={styles.header}>
-        <span className={styles.avatar} aria-hidden="true">
-          {initials(user)}
-        </span>
-
-        <div className={styles.identity}>
-          <h2 className={styles.name}>
-            {user.first_name} {user.last_name}
-          </h2>
-          <p className={styles.email}>{user.email}</p>
-        </div>
-
-        <button type="button" className={styles.close} onClick={onClose} aria-label="Close details">
-          <CloseIcon />
-        </button>
-      </header>
-
       <div className={styles.pills}>
         <span className={styles.status} data-status={user.status}>
           {user.status === "active"
@@ -144,76 +149,19 @@ export function UserDetailPanel({ user, onClose }: UserDetailPanelProps) {
         </p>
       )}
 
-      <div className={styles.actions}>
-        {user.status === "invited" && (
-          <button
-            type="button"
-            className={styles.secondaryAction}
-            disabled={resendPending || resent}
-            onClick={() => resend(user.id)}
-          >
-            {resent ? "Invitation sent" : resendPending ? "Sending…" : "Resend invitation"}
-          </button>
-        )}
-
-        <DropdownMenu.Root>
-          <DropdownMenu.Trigger className={styles.moreTrigger} aria-label="More actions">
-            <MoreIcon />
-          </DropdownMenu.Trigger>
-
-          <DropdownMenu.Portal>
-            <DropdownMenu.Content className={styles.menu} align="end" sideOffset={6}>
-              <DropdownMenu.Item
-                className={styles.menuItem}
-                disabled={statusPending || user.role === "owner"}
-                onSelect={() =>
-                  setStatus({ userId: user.id, status: isDisabled ? "active" : "disabled" })
-                }
-              >
-                {isDisabled ? "Reactivate" : "Mark as inactive"}
-              </DropdownMenu.Item>
-
-              {/*
-                The owner cannot be switched off from here. An organisation
-                with no owner has nobody who can appoint one, and the backend
-                refuses it anyway (C14) — so the control is disabled rather
-                than offered and then rejected.
-              */}
-              {user.role === "owner" && (
-                <p className={styles.menuNote}>The owner cannot be deactivated.</p>
-              )}
-            </DropdownMenu.Content>
-          </DropdownMenu.Portal>
-        </DropdownMenu.Root>
-      </div>
-
       {/*
         Deliberately no Edit button yet. What is editable is not settled: name
         and email are straightforward, but role and app access are exactly what
         Q11 and Q12 are about, and an Edit that changes only a name would be
         the wrong shape to grow from.
       */}
-    </aside>
+    </DetailPanel>
   );
 }
 
 /** The app's display name, falling back to whatever the server called it. */
 function appName(key: string): string {
   return APP_CATALOG.find((app) => app.key === key)?.name ?? key;
-}
-
-function CloseIcon() {
-  return (
-    <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true" focusable="false">
-      <path
-        d="m3.5 3.5 7 7m0-7-7 7"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="1.6"
-        strokeLinecap="round"
-      />
-    </svg>
-  );
 }
 
 function MoreIcon() {

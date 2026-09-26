@@ -18,6 +18,7 @@
  */
 
 import { ModuleRoutes, type ModuleRoute } from "../routing";
+import { DealersScreen } from "./screens/DealersScreen";
 import { UsersScreen } from "./screens/UsersScreen";
 import styles from "./routes.module.css";
 
@@ -34,7 +35,8 @@ const routes: ModuleRoute[] = [
    * to the first route's literal path and ":userId?" is not an address.
    */
   { path: "users/:userId", module: "users", element: <UsersScreen /> },
-  { path: "dealers", module: "dealers", element: <AdminPlaceholder name="Dealers" /> },
+  { path: "dealers", module: "dealers", element: <DealersScreen /> },
+  { path: "dealers/:dealerId", module: "dealers", element: <DealersScreen /> },
   { path: "roles", module: "roles", element: <AdminPlaceholder name="Roles" /> },
   { path: "billing", module: "billing", element: <AdminPlaceholder name="Apps & billing" /> },
   { path: "audit", module: "audit", element: <AdminPlaceholder name="Audit log" /> },

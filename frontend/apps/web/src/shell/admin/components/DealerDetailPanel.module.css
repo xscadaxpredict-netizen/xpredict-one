@@ -1,20 +1,20 @@
 /*
  * Content only. The chrome — the panel itself, its header row, the close
  * button, and the fixed-sheet behaviour below 1100px — is `DetailPanel` in
- * packages/ui, shared with Dealers.
+ * packages/ui, shared with Users.
  */
-.avatar {
+
+/* Squared, where a person's avatar is round: a dealership is a place. */
+.mark {
   flex: none;
   display: flex;
   align-items: center;
   justify-content: center;
   width: 44px;
   height: 44px;
-  border-radius: var(--radius-pill);
-  background: var(--color-primary-100);
-  color: var(--color-primary-800);
-  font-size: var(--text-sm);
-  font-weight: 700;
+  border-radius: var(--radius-md);
+  background: var(--color-surface-alt);
+  color: var(--color-text-2);
 }
 
 .identity {
@@ -31,14 +31,13 @@
   font-weight: 600;
   letter-spacing: -0.01em;
   color: var(--color-text);
+  overflow-wrap: anywhere;
 }
 
-.email {
+.since {
   margin: 0;
   font-size: var(--text-xs);
   color: var(--color-text-3);
-  /* A long address must not push the close button off the panel. */
-  overflow-wrap: anywhere;
 }
 
 .pills {
@@ -47,8 +46,7 @@
   gap: var(--space-2);
 }
 
-.status,
-.role {
+.status {
   display: inline-block;
   padding: 2px var(--space-3);
   border-radius: var(--radius-pill);
@@ -62,19 +60,11 @@
   color: var(--color-success-700);
 }
 
-.status[data-status="invited"] {
-  background: var(--color-attention-100);
-  color: var(--color-attention-700);
-}
-
+/* Closed, not disabled. A dealership that has shut is a business fact;
+   "disabled" reads like something went wrong with the record. */
 .status[data-status="disabled"] {
   background: var(--color-surface-alt);
   color: var(--color-text-2);
-}
-
-.role {
-  background: var(--color-primary-100);
-  color: var(--color-primary-800);
 }
 
 /* ---- Facts -------------------------------------------------------------- */
@@ -105,59 +95,20 @@
   margin: 0;
 }
 
-.unit,
-.orgScope {
-  display: inline-block;
-  padding: 2px var(--space-3);
-  border-radius: var(--radius-pill);
-  font-size: var(--text-xs);
+.count {
+  font-size: var(--text-md);
+  font-weight: 600;
+  color: var(--color-text);
 }
 
-/* The narrower scope, and the one worth noticing. */
-.unit {
-  background: var(--color-attention-050);
-  color: var(--color-attention-700);
-}
-
-.orgScope {
-  background: var(--color-primary-050);
-  color: var(--color-primary-800);
+.link {
+  font-size: var(--text-sm);
+  color: var(--color-primary);
 }
 
 .note {
   font-size: var(--text-xs);
   line-height: 1.45;
-  color: var(--color-text-3);
-}
-
-.appList {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-2);
-  width: 100%;
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-
-.appEntry {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: var(--space-3);
-  padding: var(--space-2) var(--space-3);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-md);
-}
-
-.appName {
-  font-size: var(--text-sm);
-  font-weight: 600;
-  color: var(--color-text);
-}
-
-.appRole {
-  font-size: var(--text-xs);
   color: var(--color-text-3);
 }
 
@@ -171,28 +122,6 @@
   background: var(--color-danger-100);
   color: var(--color-danger-700);
   font-size: var(--text-sm);
-}
-
-.secondaryAction {
-  height: 36px;
-  padding: 0 var(--space-4);
-  border: 1px solid var(--color-border-strong);
-  border-radius: var(--radius-md);
-  background: var(--color-surface);
-  color: var(--color-text);
-  font: inherit;
-  font-size: var(--text-sm);
-  font-weight: 500;
-  cursor: pointer;
-}
-
-.secondaryAction:hover:not(:disabled) {
-  background: var(--color-surface-alt);
-}
-
-.secondaryAction:disabled {
-  color: var(--color-text-disabled);
-  cursor: default;
 }
 
 .moreTrigger {
@@ -216,7 +145,7 @@
 }
 
 .menu {
-  min-width: 200px;
+  min-width: 220px;
   padding: var(--space-2);
   background: var(--color-surface);
   border: 1px solid var(--color-border);

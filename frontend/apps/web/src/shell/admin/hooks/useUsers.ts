@@ -15,7 +15,6 @@
 import { useOrgMutation, useOrgQuery } from "@xpredict/api-client";
 
 import {
-  fetchUnits,
   fetchUsers,
   inviteUser,
   resendInvitation,
@@ -31,29 +30,12 @@ import {
  */
 export const adminKeys = {
   users: () => ["admin", "users"] as const,
-  units: () => ["admin", "units"] as const,
 };
 
 export function useUsers() {
   return useOrgQuery({
     key: adminKeys.users(),
     queryFn: (orgSlug) => fetchUsers(orgSlug),
-  });
-}
-
-/**
- * The dealers a person can be scoped to.
- *
- * Only fetched when the invite dialog is open: most visits to this screen are
- * to read the list, and a request nobody needed is still a request.
- */
-export function useUnits(enabled: boolean) {
-  return useOrgQuery({
-    key: adminKeys.units(),
-    queryFn: (orgSlug) => fetchUnits(orgSlug),
-    enabled,
-    // Dealers change far less often than people do.
-    staleTime: 5 * 60 * 1000,
   });
 }
 
