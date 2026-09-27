@@ -36,7 +36,6 @@ export function UserDetailPanel({ user, onClose }: UserDetailPanelProps) {
   return (
     <DetailPanel
       label={fullName}
-      focusKey={user.id}
       onClose={onClose}
       header={
         <>

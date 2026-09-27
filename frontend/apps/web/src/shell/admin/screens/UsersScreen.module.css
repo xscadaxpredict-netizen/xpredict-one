@@ -173,3 +173,12 @@
   font-size: var(--text-sm);
   line-height: 1.5;
 }
+
+/* The list column. `min-width: 0` so a wide table scrolls inside it rather
+   than pushing the detail panel off the right-hand edge. */
+.listArea {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}

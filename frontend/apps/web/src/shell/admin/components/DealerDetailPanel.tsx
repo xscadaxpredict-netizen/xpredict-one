@@ -37,7 +37,6 @@ export function DealerDetailPanel({ dealer, usersPath, onClose }: DealerDetailPa
   return (
     <DetailPanel
       label={dealer.name}
-      focusKey={dealer.id}
       onClose={onClose}
       header={
         <>

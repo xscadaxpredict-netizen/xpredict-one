@@ -21,15 +21,6 @@ interface DetailPanelProps {
   /** Announced as the panel's name — usually the record's title. */
   label: string;
 
-  /**
-   * The id of the record on show. Focus moves into the panel when this
-   * changes, so a keyboard user is taken to what they just asked for.
-   *
-   * An id rather than the record itself: a refetch makes a new object, and
-   * that would yank focus back here while somebody was reading.
-   */
-  focusKey: string;
-
   onClose: () => void;
 
   /** Avatar, title, subtitle — whatever identifies this record. */
@@ -39,14 +30,7 @@ interface DetailPanelProps {
   footer?: ReactNode;
 }
 
-export function DetailPanel({
-  label,
-  focusKey,
-  onClose,
-  header,
-  children,
-  footer,
-}: DetailPanelProps) {
+export function DetailPanel({ label, onClose, header, children, footer }: DetailPanelProps) {
   const panelRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -60,9 +44,19 @@ export function DetailPanel({
     };
   }, [onClose]);
 
+  /*
+   * Runs once, on mount.
+   *
+   * That is enough because callers give the panel a `key` of the record's id,
+   * so opening a different record mounts a new one — which is also what keeps
+   * the previous record's in-flight state from leaking onto the next. An
+   * earlier version took a `focusKey` prop and re-ran this effect instead; it
+   * moved focus correctly and hid the fact that everything else was being
+   * reused.
+   */
   useEffect(() => {
     panelRef.current?.focus();
-  }, [focusKey]);
+  }, []);
 
   return (
     <aside

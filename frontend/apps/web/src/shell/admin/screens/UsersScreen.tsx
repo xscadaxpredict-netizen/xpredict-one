@@ -33,41 +33,26 @@ export function UsersScreen() {
   const { data: users, isPending, isError, error, refetch } = useUsers();
   const [query, setQuery] = useState("");
 
-  /*
-   * The open person lives in the URL, not in state. Back closes the panel, a
-   * link to one person can be pasted into a message, and a refresh keeps it
-   * open — none of which a `useState` would give, and it would disagree with
-   * the address bar the first time somebody pressed Back.
-   */
   const { userId } = useParams<{ userId: string }>();
+
   const navigate = useNavigate();
   const basePath = `/${membership.org_slug}/admin/users`;
 
-  const filtered = users?.filter((user) => matches(user.first_name, user.last_name, user.email, query));
-
   /*
-   * Looked up in the list that is already loaded rather than fetched again.
-   * There is no detail endpoint yet, and while the whole list is in the cache
-   * a second request would ask for something it already has.
+   * TWO INDEPENDENT THINGS, and keeping them independent is the point.
+   *
+   * `filtered` is a view of the LIST — it answers "which rows do I draw".
+   * `selected` is what the URL says is OPEN, and it is looked up in the FULL
+   * list on purpose: a search is not a reason to close the record somebody is
+   * reading. Tangling the two is how typing in the search box used to delete
+   * the panel while the address bar still named the person in it.
    */
+  const filtered = users?.filter((user) => matches(user.first_name, user.last_name, user.email, query));
   const selected = userId ? users?.find((user) => user.id === userId) : undefined;
 
-  /*
-   * A membership with no dealer administers the organisation; one with a
-   * dealer administers that dealer and nothing else (C3, C23). The same
-   * screen, two jobs — which is the point: inviting somebody is an
-   * organisation act either way, and a second screen for the smaller version
-   * of it would be a second place for the rules to drift.
-   */
   const isOrgAdmin = membership.unit_name === null;
 
-  /*
-   * Only warn when there is actually something to warn about: an organisation
-   * admin looking at people who belong to a dealer. In an organisation with no
-   * dealerships this banner would be noise on every visit.
-   */
-  const showsOtherDealersPeople =
-    isOrgAdmin && (users?.some((user) => user.unit_name !== null) ?? false);
+  const showsOtherDealersPeople = isOrgAdmin && (users?.some((user) => user.unit_name !== null) ?? false);
 
   return (
     <div className={styles.page}>
@@ -137,72 +122,94 @@ export function UsersScreen() {
         </div>
       )}
 
-      {isPending && (
-        <TableSkeleton label="users" columns={[260, 150, 180, "grow"]} rows={5} />
-      )}
+      {/*
+        The list and the open record sit side by side, and the panel is NOT
+        inside the "are there rows?" branch. It used to be, which meant the
+        search box silently governed the panel too.
+      */}
+      <div className={styles.layout} data-detail={selected ? true : undefined}>
+        <div className={styles.listArea}>
+          {isPending && <TableSkeleton label="users" columns={[260, 150, 180, "grow"]} rows={5} />}
 
-      {isError && (
-        <ErrorState
-          title="Could not load users"
-          code={asProblem(error).code}
-          traceId={asProblem(error).trace_id}
-          onRetry={() => void refetch()}
-        />
-      )}
+          {isError && (
+            <ErrorState
+              title="Could not load users"
+              code={asProblem(error).code}
+              traceId={asProblem(error).trace_id}
+              onRetry={() => void refetch()}
+            />
+          )}
 
-      {users && users.length === 0 && (
-        <EmptyState
-          title="No users yet"
-          body="Invite someone and they will appear here once the invitation is sent."
-        />
-      )}
+          {users && users.length === 0 && (
+            <EmptyState
+              title="No users yet"
+              body="Invite someone and they will appear here once the invitation is sent."
+            />
+          )}
 
-      {filtered && filtered.length === 0 && users && users.length > 0 && (
-        /*
-         * Deliberately offers no "Invite user" button. The data exists — the
-         * filter is the problem, so the exit is to widen it. Offering to
-         * create a record here is how somebody ends up inviting a colleague
-         * who was already on the list two letters away.
-         */
-        <EmptyState
-          title="No users match your search"
-          body={`There are ${String(users.length)} people in this organisation.`}
-          action={
-            <button type="button" className={styles.clear} onClick={() => setQuery("")}>
-              Clear search
-            </button>
-          }
-        />
-      )}
+          {filtered && filtered.length === 0 && users && users.length > 0 && (
+            /*
+             * Deliberately offers no "Invite user" button. The data exists —
+             * the filter is the problem, so the exit is to widen it. Offering
+             * to create a record here is how somebody ends up inviting a
+             * colleague who was already on the list two letters away.
+             */
+            <EmptyState
+              title="No users match your search"
+              body={`There are ${String(users.length)} people in this organisation.`}
+              action={
+                <button type="button" className={styles.clear} onClick={() => setQuery("")}>
+                  Clear search
+                </button>
+              }
+            />
+          )}
 
-      {filtered && filtered.length > 0 && (
-        <div className={styles.layout} data-detail={selected ? true : undefined}>
-          <UserTable
-            users={filtered}
-            basePath={basePath}
-            selectedId={selected?.id}
-            onSelect={(id) => void navigate(`${basePath}/${id}`)}
-          />
+          {filtered && filtered.length > 0 && (
+            <UserTable
+              users={filtered}
+              basePath={basePath}
+              selectedId={selected?.id}
+              onSelect={(id) => void navigate(`${basePath}/${id}`)}
+            />
+          )}
 
-          {selected && (
-            <UserDetailPanel user={selected} onClose={() => void navigate(basePath)} />
+          {/*
+            A URL naming somebody who is not in the list: a stale link, or a
+            person removed since it was sent. Said plainly rather than silently
+            dropping the panel, which would look like the link had worked.
+          */}
+          {userId && users && !selected && (
+            <p className={styles.missing} role="status">
+              That person is no longer in {membership.org_name}.{" "}
+              <button
+                type="button"
+                className={styles.linkButton}
+                onClick={() => void navigate(basePath)}
+              >
+                Back to all users
+              </button>
+            </p>
           )}
         </div>
-      )}
 
-      {/*
-        A URL naming somebody who is not in the list: a stale link, or a person
-        removed since it was sent. Said plainly rather than silently dropping
-        the panel, which would look like the link had worked.
-      */}
-      {userId && users && !selected && (
-        <p className={styles.missing} role="status">
-          That person is no longer in {membership.org_name}.{" "}
-          <button type="button" className={styles.linkButton} onClick={() => void navigate(basePath)}>
-            Back to all users
-          </button>
-        </p>
-      )}
+        {selected && (
+          /*
+           * `key` is what makes this a NEW panel per person rather than the
+           * same one handed different props. Without it React keeps the
+           * instance alive, and everything it remembers comes with it — a
+           * "resend invitation" that has already succeeded stays disabled for
+           * the next person, and one person's failed deactivation shows up on
+           * the next one's panel.
+           */
+          <UserDetailPanel
+            key={selected.id}
+            user={selected}
+            onClose={() => void navigate(basePath)}
+          />
+        )}
+      </div>
+
     </div>
   );
 }

@@ -106,7 +106,13 @@ export function DealersScreen() {
           />
 
           {selected && (
+            /*
+             * Keyed for the same reason as the user panel: without it React
+             * reuses the instance and a failed close/reopen on one dealership
+             * is still on screen when you open the next.
+             */
             <DealerDetailPanel
+              key={selected.id}
               dealer={selected}
               usersPath={usersPath}
               onClose={() => void navigate(basePath)}
