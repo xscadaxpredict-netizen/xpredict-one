@@ -67,7 +67,15 @@ export interface Dealer {
   created_at: string;
 }
 
-export interface NewDealer {
+/**
+ * The writable fields of a dealership. Create and update take the same set,
+ * so the form is written once and used twice.
+ *
+ * What is NOT here is as deliberate: `status` changes through close/reopen and
+ * `user_count` is a fact, not a setting. A payload that could carry them would
+ * make "correct a typo in the address" and "shut the branch" the same request.
+ */
+export interface DealerDetails {
   name: string;
   /** Empty string is sent as null: the field is optional. */
   code: string | null;
@@ -79,6 +87,8 @@ export interface NewDealer {
   state: string;
   postal_code: string;
 }
+
+export type NewDealer = DealerDetails;
 
 /* ------------------------------------------------------------------------ *
  * TEMPORARY FAKE — delete this whole block when the backend is running.
@@ -175,6 +185,17 @@ function fakeConflict(field: "name" | "code", value: string): ApiError {
   });
 }
 
+function fakeCycle(): ApiError {
+  return new ApiError({
+    type: "https://api.xpredict.one/errors/dealer-cycle",
+    title: "Invalid parent",
+    status: 422,
+    detail: "A dealership cannot report to itself or to one of its own branches.",
+    code: "dealer_cycle",
+    trace_id: "fake-0000",
+  });
+}
+
 function fakeNotFound(): ApiError {
   return new ApiError({
     type: "https://api.xpredict.one/errors/not-found",
@@ -257,6 +278,95 @@ export async function createDealer(orgSlug: string, body: NewDealer): Promise<De
 
   return request<Dealer>(`/api/v1/orgs/${orgSlug}/admin/dealers`, {
     method: "POST",
+    body: JSON.stringify(body),
+  });
+}
+
+/**
+ * Collect a dealership and everything beneath it.
+ *
+ * Used to keep a dealership from being re-parented under its own descendant,
+ * which would cut that whole branch off from the organisation — it would have
+ * a parent chain that never reaches the top, and every scope query walking
+ * upwards would loop.
+ *
+ * Exported because the form needs it to decide what NOT to offer, and
+ * refusing a choice is better than accepting it and then explaining.
+ */
+export function dealerAndDescendants(dealers: Dealer[], rootId: string): Set<string> {
+  const found = new Set<string>([rootId]);
+
+  /*
+   * Repeats until nothing new turns up rather than recursing, so a cycle that
+   * somehow already exists in the data cannot hang the browser.
+   */
+  let changed = true;
+  while (changed) {
+    changed = false;
+    for (const dealer of dealers) {
+      if (dealer.parent_id && found.has(dealer.parent_id) && !found.has(dealer.id)) {
+        found.add(dealer.id);
+        changed = true;
+      }
+    }
+  }
+
+  return found;
+}
+
+export async function updateDealer(
+  orgSlug: string,
+  dealerId: string,
+  body: DealerDetails,
+): Promise<Dealer> {
+  if (USE_FAKE_DEALERS) {
+    await wait(700);
+
+    const existing = fakeDealers.find((dealer) => dealer.id === dealerId);
+    if (!existing) throw fakeNotFound();
+
+    // Uniqueness excludes the record being edited, or saving a dealership
+    // without touching its name would collide with itself.
+    const others = fakeDealers.filter((dealer) => dealer.id !== dealerId);
+
+    if (others.some((dealer) => dealer.name.toLowerCase() === body.name.toLowerCase())) {
+      throw fakeConflict("name", body.name);
+    }
+
+    if (
+      body.code &&
+      others.some((dealer) => dealer.code?.toLowerCase() === body.code?.toLowerCase())
+    ) {
+      throw fakeConflict("code", body.code);
+    }
+
+    /*
+     * Checked here as well as hidden in the form. The form is a courtesy; this
+     * is the rule. The real endpoint must do the same — a request does not
+     * have to come from our form.
+     */
+    if (body.parent_id && dealerAndDescendants(fakeDealers, dealerId).has(body.parent_id)) {
+      throw fakeCycle();
+    }
+
+    const updated: Dealer = {
+      ...existing,
+      ...body,
+      parent_name: fakeDealers.find((dealer) => dealer.id === body.parent_id)?.name ?? null,
+    };
+
+    fakeDealers = fakeDealers.map((dealer) => (dealer.id === dealerId ? updated : dealer));
+
+    // A rename changes the label every child shows, so they are refreshed too.
+    fakeDealers = fakeDealers.map((dealer) =>
+      dealer.parent_id === dealerId ? { ...dealer, parent_name: updated.name } : dealer,
+    );
+
+    return updated;
+  }
+
+  return request<Dealer>(`/api/v1/orgs/${orgSlug}/admin/dealers/${dealerId}`, {
+    method: "PUT",
     body: JSON.stringify(body),
   });
 }

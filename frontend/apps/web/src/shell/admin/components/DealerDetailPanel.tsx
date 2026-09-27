@@ -18,6 +18,7 @@ import { DetailPanel } from "@xpredict/ui";
 
 import type { Dealer } from "../api/dealers";
 import { useSetDealerStatus } from "../hooks/useDealers";
+import { EditDealerDialog } from "./EditDealerDialog";
 import { formatMonth } from "./DealerTable";
 import styles from "./DealerDetailPanel.module.css";
 
@@ -54,7 +55,10 @@ export function DealerDetailPanel({ dealer, usersPath, onClose }: DealerDetailPa
         </>
       }
       footer={
-        <DropdownMenu.Root>
+        <>
+          <EditDealerDialog dealer={dealer} />
+
+          <DropdownMenu.Root>
           <DropdownMenu.Trigger className={styles.moreTrigger} aria-label="More actions">
             <MoreIcon />
           </DropdownMenu.Trigger>
@@ -85,7 +89,8 @@ export function DealerDetailPanel({ dealer, usersPath, onClose }: DealerDetailPa
               )}
             </DropdownMenu.Content>
           </DropdownMenu.Portal>
-        </DropdownMenu.Root>
+          </DropdownMenu.Root>
+        </>
       }
     >
       <div className={styles.pills}>

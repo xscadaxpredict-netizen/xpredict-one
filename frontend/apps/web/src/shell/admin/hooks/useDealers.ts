@@ -12,6 +12,8 @@ import {
   createDealer,
   fetchDealers,
   setDealerStatus,
+  updateDealer,
+  type DealerDetails,
   type DealerStatus,
   type NewDealer,
 } from "../api/dealers";
@@ -46,6 +48,20 @@ export function useSetDealerStatus() {
   return useOrgMutation({
     mutationFn: (orgSlug, variables: { dealerId: string; status: DealerStatus }) =>
       setDealerStatus(orgSlug, variables.dealerId, variables.status),
+    invalidates: [dealerKeys.all()],
+  });
+}
+
+export function useUpdateDealer() {
+  return useOrgMutation({
+    mutationFn: (orgSlug, variables: { dealerId: string; body: DealerDetails }) =>
+      updateDealer(orgSlug, variables.dealerId, variables.body),
+    /*
+     * Invalidates the whole list, not just this row: renaming a dealership
+     * changes the label every one of its branches displays, and re-parenting
+     * moves it under a different one. A single-record update would leave the
+     * rest of the table showing the old answer.
+     */
     invalidates: [dealerKeys.all()],
   });
 }
