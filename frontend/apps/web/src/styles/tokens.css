@@ -45,6 +45,9 @@
 
   --color-danger-700: #8f1d17;
   --color-danger: #b3261e;
+  /* Text on a filled danger button. Mirrors --color-primary-text: it flips in
+     dark mode, where the danger fill is bright rather than deep. */
+  --color-danger-text: #ffffff;
   --color-danger-100: #fbe4e2;
   --color-danger-border: #e9b6b2;
 
@@ -153,6 +156,7 @@
 
     --color-danger-700: #f4b5b0;
     --color-danger: #e5534b;
+    --color-danger-text: #2a0d0b;
     --color-danger-100: #3d1d1b;
     --color-danger-border: #5c2b28;
 
@@ -202,6 +206,7 @@
 
   --color-danger-700: #f4b5b0;
   --color-danger: #e5534b;
+  --color-danger-text: #2a0d0b;
   --color-danger-100: #3d1d1b;
   --color-danger-border: #5c2b28;
 

@@ -251,3 +251,15 @@
   line-height: 1.4;
   color: var(--color-text-3);
 }
+
+.menuSeparator {
+  height: 1px;
+  margin: var(--space-2) calc(-1 * var(--space-2));
+  background: var(--color-border);
+}
+
+/* Wraps the remove dialog's own trigger, so the menu item contributes no
+   padding or background of its own. */
+.menuItemPlain {
+  outline: none;
+}

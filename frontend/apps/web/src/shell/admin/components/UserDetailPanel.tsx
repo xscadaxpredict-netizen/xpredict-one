@@ -15,18 +15,23 @@ import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import { asProblem } from "@xpredict/api-client";
 import { DetailPanel } from "@xpredict/ui";
 
+import type { Membership } from "../../api/auth";
 import type { OrgUser } from "../api/users";
 import { APP_CATALOG } from "../../navigation";
 import { useResendInvitation, useSetUserStatus } from "../hooks/useUsers";
+import { EditUserDialog } from "./EditUserDialog";
+import { RemoveUserDialog } from "./RemoveUserDialog";
 import { initials } from "./UserTable";
 import styles from "./UserDetailPanel.module.css";
 
 interface UserDetailPanelProps {
   user: OrgUser;
+  /** The signed-in person's membership — what they may change depends on it. */
+  membership: Membership;
   onClose: () => void;
 }
 
-export function UserDetailPanel({ user, onClose }: UserDetailPanelProps) {
+export function UserDetailPanel({ user, membership, onClose }: UserDetailPanelProps) {
   const { mutate: setStatus, isPending: statusPending, error: statusError } = useSetUserStatus();
   const { mutate: resend, isPending: resendPending, isSuccess: resent } = useResendInvitation();
 
@@ -51,6 +56,8 @@ export function UserDetailPanel({ user, onClose }: UserDetailPanelProps) {
       }
       footer={
         <>
+          <EditUserDialog user={user} membership={membership} />
+
           {user.status === "invited" && (
             <button
               type="button"
@@ -85,8 +92,41 @@ export function UserDetailPanel({ user, onClose }: UserDetailPanelProps) {
                   refuses it anyway (C14) — so the control is disabled rather
                   than offered and then rejected.
                 */}
-                {user.role === "owner" && (
-                  <p className={styles.menuNote}>The owner cannot be deactivated.</p>
+                {user.role === "owner" ? (
+                  /*
+                   * An organisation with no owner has nobody who can appoint
+                   * one (C14), so neither switching them off nor removing them
+                   * is offered — and the reason is given rather than leaving
+                   * an inert menu.
+                   */
+                  <p className={styles.menuNote}>
+                    The owner cannot be deactivated or removed. Transfer ownership first.
+                  </p>
+                ) : (
+                  <>
+                    <DropdownMenu.Separator className={styles.menuSeparator} />
+
+                    {/*
+                      `onSelect` prevented: the menu must stay long enough to
+                      open the confirmation, and Radix closes it on select by
+                      default — taking the dialog's trigger with it.
+                    */}
+                    <DropdownMenu.Item
+                      className={styles.menuItemPlain}
+                      onSelect={(event) => {
+                        event.preventDefault();
+                      }}
+                      asChild
+                    >
+                      <div>
+                        <RemoveUserDialog
+                          user={user}
+                          orgName={membership.org_name}
+                          onRemoved={onClose}
+                        />
+                      </div>
+                    </DropdownMenu.Item>
+                  </>
                 )}
               </DropdownMenu.Content>
             </DropdownMenu.Portal>

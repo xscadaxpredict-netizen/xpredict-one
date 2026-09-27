@@ -17,9 +17,12 @@ import { useOrgMutation, useOrgQuery } from "@xpredict/api-client";
 import {
   fetchUsers,
   inviteUser,
+  removeUser,
   resendInvitation,
   setUserStatus,
+  updateUser,
   type NewInvitation,
+  type UserDetails,
   type UserStatus,
 } from "../api/users";
 
@@ -42,8 +45,6 @@ export function useUsers() {
 export function useInviteUser() {
   return useOrgMutation({
     mutationFn: (orgSlug, body: NewInvitation) => inviteUser(orgSlug, body),
-    // Org-prefixed by the hook, so this refetches THIS organisation's users —
-    // not every org cached in the browser session.
     invalidates: [adminKeys.users()],
   });
 }
@@ -72,7 +73,23 @@ export function useSetUserStatus() {
  * refetch that cannot change anything is a request nobody needed.
  */
 export function useResendInvitation() {
+  console.log("resend");
   return useOrgMutation({
     mutationFn: (orgSlug, userId: string) => resendInvitation(orgSlug, userId),
+  });
+}
+
+export function useUpdateUser() {
+  return useOrgMutation({
+    mutationFn: (orgSlug, variables: { userId: string; body: UserDetails }) =>
+      updateUser(orgSlug, variables.userId, variables.body),
+    invalidates: [adminKeys.users()],
+  });
+}
+
+export function useRemoveUser() {
+  return useOrgMutation({
+    mutationFn: (orgSlug, userId: string) => removeUser(orgSlug, userId),
+    invalidates: [adminKeys.users()],
   });
 }

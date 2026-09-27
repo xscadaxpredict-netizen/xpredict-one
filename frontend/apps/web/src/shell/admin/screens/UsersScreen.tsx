@@ -213,6 +213,7 @@ export function UsersScreen() {
           <UserDetailPanel
             key={selected.id}
             user={selected}
+            membership={membership}
             onClose={() => void navigate(basePath)}
           />
         )}

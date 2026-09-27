@@ -38,6 +38,7 @@ function user(overrides: Partial<usersApi.OrgUser> & { id: string }): usersApi.O
     last_name: "Last",
     email: `${overrides.id}@acmemotors.in`,
     unit_name: null,
+    unit_id: null,
     role: "member",
     status: "active",
     apps: [],

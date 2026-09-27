@@ -43,12 +43,41 @@ export interface OrgUser {
    * unit-aware, so a unit here would be meaningless rather than restrictive.
    */
   unit_name: string | null;
+  /** The id as well as the label — a name is not an identifier. */
+  unit_id: string | null;
 
   /** Organisation-level standing, distinct from any per-app role below. */
   role: "owner" | "admin" | "member";
 
   status: UserStatus;
   apps: UserAppRole[];
+}
+
+/**
+ * The writable fields of a person's membership.
+ *
+ * NOT THEIR ACCOUNT. `first_name` and `last_name` belong to the person and
+ * change everywhere; the scope, the apps and the organisation role belong to
+ * this organisation's relationship with them (C1 — identity lives in the
+ * control database, the Membership is what ties it to one organisation).
+ *
+ * `email` is here but only accepted while an invitation is outstanding. Once
+ * somebody has accepted, their address is how they sign in, and changing it
+ * silently is an account takeover with extra steps — that needs its own flow
+ * with confirmation sent to the new address.
+ *
+ * `role` deliberately excludes "owner". There is exactly one owner per
+ * organisation (C14, a conditional unique constraint), so appointing a new
+ * one is a transfer rather than an edit, and doing it through this form would
+ * quietly leave the organisation with two or none.
+ */
+export interface UserDetails {
+  first_name: string;
+  last_name: string;
+  email: string;
+  unit_id: string | null;
+  app_keys: string[];
+  role: "admin" | "member";
 }
 
 export interface NewInvitation {
@@ -85,6 +114,7 @@ const FAKE_USERS: OrgUser[] = [
     last_name: "Kandaswamy",
     email: "rahul@acmemotors.in",
     unit_name: null,
+    unit_id: null,
     role: "owner",
     status: "active",
     apps: [
@@ -98,6 +128,7 @@ const FAKE_USERS: OrgUser[] = [
     last_name: "Fernandes",
     email: "anita.f@acmemotors.in",
     unit_name: "Chennai — Guindy",
+    unit_id: "unit-1",
     role: "member",
     status: "active",
     apps: [{ app: "dms", role: "Sales executive" }],
@@ -108,6 +139,7 @@ const FAKE_USERS: OrgUser[] = [
     last_name: "Nair",
     email: "vikram.n@acmemotors.in",
     unit_name: "Bangalore — Whitefield",
+    unit_id: "unit-2",
     role: "admin",
     status: "active",
     apps: [{ app: "dms", role: "Dealer admin" }],
@@ -118,6 +150,7 @@ const FAKE_USERS: OrgUser[] = [
     last_name: "Raghunathan",
     email: "priya.r@acmemotors.in",
     unit_name: null,
+    unit_id: null,
     role: "member",
     status: "active",
     apps: [{ app: "crm", role: "Marketing" }],
@@ -128,6 +161,7 @@ const FAKE_USERS: OrgUser[] = [
     last_name: "Desai",
     email: "sanjay.d@acmemotors.in",
     unit_name: "Chennai — Guindy",
+    unit_id: "unit-1",
     role: "member",
     status: "invited",
     apps: [{ app: "dms", role: "Sales executive" }],
@@ -138,6 +172,7 @@ const FAKE_USERS: OrgUser[] = [
     last_name: "Krishnan",
     email: "meera.k@acmemotors.in",
     unit_name: "Coimbatore — Peelamedu",
+    unit_id: "unit-3",
     role: "member",
     status: "disabled",
     apps: [{ app: "dms", role: "Service advisor" }],
@@ -172,6 +207,7 @@ const FAKE_DEALER_USERS: OrgUser[] = [
     last_name: "Nair",
     email: "vikram.n@northwayauto.in",
     unit_name: "Bangalore — Whitefield",
+    unit_id: "unit-2",
     role: "admin",
     status: "active",
     apps: [{ app: "dms", role: "Dealer admin" }],
@@ -182,6 +218,7 @@ const FAKE_DEALER_USERS: OrgUser[] = [
     last_name: "Rao",
     email: "deepa.r@northwayauto.in",
     unit_name: "Bangalore — Whitefield",
+    unit_id: "unit-2",
     role: "member",
     status: "active",
     apps: [{ app: "dms", role: "Sales executive" }],
@@ -194,6 +231,18 @@ let fakeDealerUsers = [...FAKE_DEALER_USERS];
 
 function isDealerOrg(orgSlug: string): boolean {
   return orgSlug === "northway-auto";
+}
+
+function fakeOwnerProtected(): ApiError {
+  return new ApiError({
+    type: "https://api.xpredict.one/errors/owner-protected",
+    title: "Cannot remove the owner",
+    status: 422,
+    detail:
+      "The owner cannot be removed. Transfer ownership to somebody else first.",
+    code: "owner_protected",
+    trace_id: "fake-0000",
+  });
 }
 
 function fakeNotFound(): ApiError {
@@ -225,8 +274,6 @@ function fakeConflict(email: string): ApiError {
 async function request<T>(url: string, init?: RequestInit): Promise<T> {
   const response = await fetch(url, {
     ...init,
-    // Required for httpOnly cookie auth (C12). Omit it and the cookie is not
-    // sent, and every call comes back 401.
     credentials: "include",
     headers: { "Content-Type": "application/json", ...init?.headers },
   });
@@ -257,11 +304,105 @@ export async function fetchUsers(orgSlug: string): Promise<OrgUser[]> {
   return request<OrgUser[]>(`/api/v1/orgs/${orgSlug}/admin/users`);
 }
 
-export async function setUserStatus(
+export async function updateUser(
   orgSlug: string,
   userId: string,
-  status: Extract<UserStatus, "active" | "disabled">,
+  body: UserDetails,
 ): Promise<OrgUser> {
+  if (USE_FAKE_USERS) {
+    await wait(700);
+
+    const lists = isDealerOrg(orgSlug) ? fakeDealerUsers : fakeUsers;
+    const existing = lists.find((user) => user.id === userId);
+    if (!existing) throw fakeNotFound();
+
+    // Uniqueness excludes the record being edited, or saving somebody without
+    // touching their address collides with themselves.
+    const others = lists.filter((user) => user.id !== userId);
+    if (others.some((user) => user.email.toLowerCase() === body.email.toLowerCase())) {
+      throw fakeConflict(body.email);
+    }
+
+    const updated: OrgUser = {
+      ...existing,
+      first_name: body.first_name,
+      last_name: body.last_name,
+      // Only an outstanding invitation may change address — see UserDetails.
+      email: existing.status === "invited" ? body.email : existing.email,
+      unit_id: body.unit_id,
+      unit_name: FAKE_DEALER_NAMES[body.unit_id ?? ""] ?? null,
+      role: existing.role === "owner" ? "owner" : body.role,
+      /*
+       * Per-app ROLES are preserved, not reassigned. The form grants and
+       * revokes app ACCESS; which role somebody holds inside an app is Q12
+       * and not something this screen may decide.
+       */
+      apps: body.app_keys.map(
+        (key) => existing.apps.find((app) => app.app === key) ?? { app: key, role: "Member" },
+      ),
+    };
+
+    if (isDealerOrg(orgSlug)) {
+      fakeDealerUsers = fakeDealerUsers.map((user) => (user.id === userId ? updated : user));
+    } else {
+      fakeUsers = fakeUsers.map((user) => (user.id === userId ? updated : user));
+    }
+
+    return updated;
+  }
+
+  return request<OrgUser>(`/api/v1/orgs/${orgSlug}/admin/users/${userId}`, {
+    method: "PUT",
+    body: JSON.stringify(body),
+  });
+}
+
+/**
+ * Take somebody out of this organisation.
+ *
+ * NOT "delete the user". A person's account lives in the control database and
+ * may belong to other organisations (C1); what this removes is the
+ * MEMBERSHIP — their relationship with this one. They lose access here and
+ * keep their account, which is the only coherent meaning of "remove" in a
+ * system where one login spans several organisations.
+ *
+ * It also means their name stays on what they did. An enquiry raised by
+ * A. Fernandes still says so after she leaves, because the record references
+ * a person who still exists. Hard-deleting the account would either orphan
+ * that history or take it with them, and neither is something an organisation
+ * admin should be able to do by pressing a button in a list.
+ *
+ * For somebody who never accepted, this is simply cancelling the invitation:
+ * there is no account yet and nothing references them.
+ */
+export async function removeUser(orgSlug: string, userId: string): Promise<void> {
+  if (USE_FAKE_USERS) {
+    await wait(600);
+
+    const lists = isDealerOrg(orgSlug) ? fakeDealerUsers : fakeUsers;
+    const existing = lists.find((user) => user.id === userId);
+    if (!existing) throw fakeNotFound();
+
+    /*
+     * Checked here as well as hidden in the UI. An organisation with no owner
+     * has nobody who can appoint one (C14), and a request does not have to
+     * come from our menu.
+     */
+    if (existing.role === "owner") throw fakeOwnerProtected();
+
+    if (isDealerOrg(orgSlug)) {
+      fakeDealerUsers = fakeDealerUsers.filter((user) => user.id !== userId);
+    } else {
+      fakeUsers = fakeUsers.filter((user) => user.id !== userId);
+    }
+
+    return;
+  }
+
+  await request<void>(`/api/v1/orgs/${orgSlug}/admin/users/${userId}`, { method: "DELETE" });
+}
+
+export async function setUserStatus( orgSlug: string, userId: string, status: Extract<UserStatus, "active" | "disabled">, ): Promise<OrgUser> {
   if (USE_FAKE_USERS) {
     await wait(500);
     fakeUsers = fakeUsers.map((user) => (user.id === userId ? { ...user, status } : user));
@@ -273,14 +414,6 @@ export async function setUserStatus(
     if (!updated) throw fakeNotFound();
     return updated;
   }
-
-  /*
-   * Two endpoints rather than one PATCH with a status field. The backend has a
-   * rule per transition — you cannot disable the last owner — and one endpoint
-   * per user action is what lets it enforce that rule by name (C9 and the
-   * services convention). A generic patch turns "deactivate a person" into
-   * "write any value into a column".
-   */
   return request<OrgUser>(
     `/api/v1/orgs/${orgSlug}/admin/users/${userId}/${status === "active" ? "activate" : "deactivate"}`,
     { method: "POST" },
@@ -289,6 +422,7 @@ export async function setUserStatus(
 
 export async function resendInvitation(orgSlug: string, userId: string): Promise<void> {
   if (USE_FAKE_USERS) {
+    console.log("resend fake");
     await wait(500);
     return;
   }
@@ -312,15 +446,9 @@ export async function inviteUser(orgSlug: string, body: NewInvitation): Promise<
       first_name: body.first_name,
       last_name: body.last_name,
       email: body.email,
-      // Ids match the dealer fake in `dealers.ts`; the real endpoint resolves
-      // this server-side from the unit it was given.
       unit_name: FAKE_DEALER_NAMES[body.unit_id ?? ""] ?? null,
-      // A dealer admin can only grant DMS (C23); an org admin picks. Either
-      // way the account itself belongs to the organisation.
+      unit_id: body.unit_id,
       role: "member",
-      // Invited, not active: the person has to accept before they exist as a
-      // user anywhere. Showing them as active would be a lie the first time
-      // somebody wondered why a new starter could not sign in.
       status: "invited",
       apps: body.app_keys.map((app) => ({ app, role: "Member" })),
     };
