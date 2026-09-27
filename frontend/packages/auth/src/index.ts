@@ -35,7 +35,18 @@ export function useOrgSlug(): string {
   return orgSlug;
 }
 
-export type AppCode = "dms" | "crm" | "ecom";
+/**
+ * The apps in the suite.
+ *
+ * "ecommerce", not "ecom": the URL segment, the catalog key, the `/me`
+ * response and the tokens all say "ecommerce", and this was the only place
+ * that disagreed. A value nothing else produces cannot match anything.
+ *
+ * "admin" is here too. Administration is an app (C17) — it appears in the
+ * launcher and is entitled through the same `apps[]` as the rest — and leaving
+ * it out made this type unusable for the one screen that gates on it.
+ */
+export type AppCode = "dms" | "crm" | "ecommerce" | "admin";
 
 /**
  * Whether the current user may perform an action in an app.

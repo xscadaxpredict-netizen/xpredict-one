@@ -50,7 +50,15 @@ export function UsersScreen() {
   const filtered = users?.filter((user) => matches(user.first_name, user.last_name, user.email, query));
   const selected = userId ? users?.find((user) => user.id === userId) : undefined;
 
-  const isOrgAdmin = membership.unit_name === null;
+  /*
+   * `unit_id`, not `unit_name` — the same field the invite dialog asks.
+   *
+   * These were two different fields answering one question, and they agreed
+   * only by luck: a membership with a name but no id, or an id but no name,
+   * would have made this screen and that dialog disagree about who the person
+   * is. The id is the one that identifies; the name is a label.
+   */
+  const isOrgAdmin = membership.unit_id === null;
 
   const showsOtherDealersPeople = isOrgAdmin && (users?.some((user) => user.unit_name !== null) ?? false);
 

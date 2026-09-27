@@ -82,3 +82,56 @@
   color: var(--color-text-disabled);
   cursor: default;
 }
+
+/* Sign-out can fail, and when it does the session is still live. Said in the
+   menu itself, next to the button that did not work. */
+.signOutError {
+  margin: 0 0 var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-md);
+  background: var(--color-danger-100);
+  color: var(--color-danger-700);
+  font-size: var(--text-xs);
+  line-height: 1.45;
+}
+
+.sectionLabel {
+  padding: var(--space-2) var(--space-3) var(--space-1);
+  font-size: var(--text-xs);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--color-text-3);
+}
+
+/*
+ * The tick's space is reserved by padding, not by a grid column.
+ *
+ * Radix renders ItemIndicator ONLY on the checked item — there is no element
+ * at all on the other two — so a column would collapse for them and the three
+ * labels would not line up.
+ */
+.radioItem {
+  position: relative;
+  display: flex;
+  align-items: center;
+  padding: var(--space-2) var(--space-3) var(--space-2) calc(var(--space-3) + 20px);
+  border-radius: var(--radius-md);
+  font-size: var(--text-md);
+  color: var(--color-text);
+  cursor: pointer;
+  outline: none;
+  user-select: none;
+}
+
+.radioItem[data-highlighted] {
+  background: var(--color-surface-alt);
+}
+
+.indicator {
+  position: absolute;
+  left: var(--space-3);
+  display: flex;
+  align-items: center;
+  color: var(--color-primary);
+}

@@ -204,13 +204,33 @@ function DetailsStep({ code, onCreated, onBack, }: {
         return;
       }
 
-      // Field errors the server found that the browser could not.
+      /*
+       * Field errors the server found that the browser could not.
+       *
+       * CHECKED, NOT CAST. `field as keyof DetailsValues` was a lie told to the
+       * compiler: the server names its own fields, and one this form does not
+       * have — `activation_code` is the obvious candidate on this step —
+       * attached the message to a field that does not exist. Nothing rendered.
+       * The button stopped spinning and the screen did nothing at all, which
+       * is the worst way for a form to fail.
+       *
+       * Anything unrecognised now falls through to the banner, so a message
+       * the server bothered to send always reaches somebody.
+       */
       if (problem.errors?.length) {
+        const unplaceable: string[] = [];
+
         for (const fieldError of problem.errors) {
-          setFieldError(fieldError.field as keyof DetailsValues, {
-            message: fieldError.detail,
-          });
+          if (isDetailsField(fieldError.field)) {
+            setFieldError(fieldError.field, { message: fieldError.detail });
+          } else {
+            unplaceable.push(fieldError.detail);
+          }
         }
+
+        if (unplaceable.length === 0) return;
+
+        setError(unplaceable.join(" "));
         return;
       }
 
@@ -288,19 +308,121 @@ function DetailsStep({ code, onCreated, onBack, }: {
   );
 }
 
+/**
+ * The fields this form actually has.
+ *
+ * Derived from the schema rather than written out again, so adding a field to
+ * the form cannot leave this list behind — which would silently send its
+ * server-side errors to the banner instead of the input.
+ */
+const DETAILS_FIELDS = new Set(Object.keys(detailsSchema.shape));
+
+/**
+ * How long to wait before admitting something is wrong.
+ *
+ * Generous on purpose — creating a database legitimately takes a few seconds
+ * and a customer who is told it failed when it merely took eight seconds will
+ * sign up twice.
+ */
+const PROVISIONING_TIMEOUT_MS = 30_000;
+
+function isDetailsField(field: string): field is keyof DetailsValues {
+  return DETAILS_FIELDS.has(field);
+}
+
 /* -------------------------------------------------------------------------- */
 /* Step 3 — waiting for the tenant database                                   */
 /* -------------------------------------------------------------------------- */
 
 function ProvisioningStep({ orgSlug }: { orgSlug: string }) {
   const navigate = useNavigate();
-  const { data: isReady } = useProvisioningStatus(orgSlug, Boolean(orgSlug));
+  const {
+    data: isReady,
+    isError,
+    refetch,
+    failureCount,
+  } = useProvisioningStatus(orgSlug, Boolean(orgSlug));
+
+  /*
+   * Provisioning is asynchronous and usually quick, but "usually" is not a
+   * plan. Without a ceiling a new customer sits here indefinitely, on the
+   * first screen they ever see, with no retry and no way out — which is the
+   * worst place in the product to dead-end.
+   */
+  const [timedOut, setTimedOut] = useState(false);
+
+  useEffect(() => {
+    if (isReady) return;
+
+    const timer = setTimeout(() => {
+      setTimedOut(true);
+    }, PROVISIONING_TIMEOUT_MS);
+
+    return () => {
+      clearTimeout(timer);
+    };
+  }, [isReady]);
 
   useEffect(() => {
     if (isReady) {
-      void navigate(`/${orgSlug}/dms`, { replace: true });
+      /*
+       * The launcher, not DMS (C15). Which apps a new organisation has is the
+       * server's answer, and landing the owner in one they may not have bought
+       * meant the app-entitlement guard bounced them on their first screen.
+       */
+      void navigate(`/${orgSlug}`, { replace: true });
     }
   }, [isReady, orgSlug, navigate]);
+
+  const stuck = isError || timedOut;
+
+  if (stuck) {
+    return (
+      <AuthLayout
+        title="This is taking longer than expected"
+        subtitle="Your account exists. Its workspace is still being prepared."
+      >
+        <div className={styles.provisioning}>
+          <p className={styles.provisioningNote}>
+            {isError
+              ? "We lost contact while setting up your workspace."
+              : "Setting up a workspace normally takes a few seconds."}{" "}
+            Your organisation has been created and nothing is lost — you can try again, or
+            sign in shortly and it will be ready.
+          </p>
+
+          <Button
+            onClick={() => {
+              setTimedOut(false);
+              void refetch();
+            }}
+          >
+            Try again
+          </Button>
+
+          {/*
+            A way off this screen that is not the browser's back button. Their
+            account exists, so signing in is a genuine exit rather than a
+            restart.
+          */}
+          <button
+            type="button"
+            className={styles.provisioningExit}
+            onClick={() => void navigate("/login", { replace: true })}
+          >
+            Go to sign in
+          </button>
+
+          {failureCount > 0 && (
+            <p className={styles.provisioningNote}>
+              Attempts: {String(failureCount)}. If this keeps happening, contact support and
+              mention <strong>{orgSlug}</strong>.
+            </p>
+          )}
+        </div>
+      </AuthLayout>
+    );
+  }
 
   return (
     <AuthLayout

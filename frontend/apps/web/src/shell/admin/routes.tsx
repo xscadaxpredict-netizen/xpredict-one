@@ -20,7 +20,6 @@
 import { ModuleRoutes, type ModuleRoute } from "../routing";
 import { DealersScreen } from "./screens/DealersScreen";
 import { UsersScreen } from "./screens/UsersScreen";
-import styles from "./routes.module.css";
 
 /*
  * Each screen is its own module, so the whole console is not all-or-nothing.
@@ -29,11 +28,6 @@ import styles from "./routes.module.css";
  */
 const routes: ModuleRoute[] = [
   { path: "users", module: "users", element: <UsersScreen /> },
-  /*
-   * The same screen with a person open beside the list. Two entries rather
-   * than one optional segment, because `ModuleRoutes` redirects the app root
-   * to the first route's literal path and ":userId?" is not an address.
-   */
   { path: "users/:userId", module: "users", element: <UsersScreen /> },
   { path: "dealers", module: "dealers", element: <DealersScreen /> },
   { path: "dealers/:dealerId", module: "dealers", element: <DealersScreen /> },
@@ -48,22 +42,12 @@ export default function AdminRoutes() {
 
 interface AdminPlaceholderProps {
   name: string;
-  /** Whether acting on this screen is recorded as an override. */
-  audited?: boolean;
 }
 
-function AdminPlaceholder({ name, audited = false }: AdminPlaceholderProps) {
+function AdminPlaceholder({ name }: AdminPlaceholderProps) {
   return (
     <>
       <h1>{name}</h1>
-
-      {audited && (
-        <p className={styles.auditNotice} role="note">
-          <strong>You are acting as an organisation admin.</strong> Dealers normally manage
-          their own people. Anything you change on a dealer&rsquo;s user here is recorded in
-          the audit log as an override.
-        </p>
-      )}
 
       <p>Not built yet.</p>
     </>

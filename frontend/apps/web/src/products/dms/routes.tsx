@@ -15,11 +15,11 @@
  * only thing that turns this list into routes, and it drops the ones this
  * person may not open.
  *
- * Still unwired, on purpose: `sales/screens/EnquiryListScreen` is fully built
- * and reachable from nothing. Per C18 its home is `sales/enquiries` — a screen
- * inside Sales, not a module of its own. Pointing at it would start calling an
- * API that does not exist, so it waits for a decision rather than being
- * quietly switched on here.
+ * The enquiry list that used to sit unwired in `sales/` has been deleted. It
+ * was unreachable for five sessions and carried its own copies of the loading,
+ * empty and error states — a second set with different props from the ones in
+ * packages/ui, which is a trap rather than a head start. Rebuild it from the
+ * UI mock when Sales is actually picked up.
  */
 
 import { ModuleRoutes, type ModuleRoute } from "../../shell/routing";

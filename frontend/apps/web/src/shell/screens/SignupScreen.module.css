@@ -76,3 +76,19 @@
   line-height: 1.5;
   color: var(--color-text-3);
 }
+
+/* A way off the provisioning screen that is not the browser's back button. */
+.provisioningExit {
+  padding: var(--space-2);
+  border: none;
+  background: none;
+  color: var(--color-text-3);
+  font: inherit;
+  font-size: var(--text-sm);
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.provisioningExit:hover {
+  color: var(--color-text);
+}

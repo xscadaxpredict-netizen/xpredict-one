@@ -16,11 +16,9 @@
 import { useState } from "react";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm } from "react-hook-form";
-import { useLocation, useNavigate } from "react-router-dom";
 import { z } from "zod";
 import { asProblem } from "@xpredict/api-client";
 
-import { fetchMe } from "../api/auth";
 import { useLogin } from "../hooks/useAuth";
 import { AuthLayout } from "../components/AuthLayout";
 import { Button } from "../components/Button";
@@ -36,8 +34,6 @@ const loginFormSchema = z.object({
 type LoginFormFields = z.infer<typeof loginFormSchema>;
 
 export function LoginScreen() {
-  const navigate = useNavigate();
-  const location = useLocation();
   const { mutateAsync: signIn, isPending, } = useLogin();
   const [formError, setFormError] = useState<{ message: string; traceId?: string } | null>(null);
   const {register, handleSubmit, formState: { errors }, } = useForm<LoginFormFields>({
@@ -50,30 +46,26 @@ export function LoginScreen() {
     setFormError(null);
 
     try {
-      await signIn(values);
-      const me = await fetchMe();
-      const first = me.memberships[0];
+      /*
+       * `signIn` returns the fresh `/me` and puts it in the cache, so there is
+       * one request and one copy of the answer.
+       *
+       * NO NAVIGATION HERE. `RedirectIfSignedIn` wraps this screen and sends
+       * people on the moment `/me` resolves — including to the page they were
+       * blocked from. This used to navigate as well and the two raced, with
+       * the deep link surviving only when it happened to win.
+       *
+       * The one case the guard cannot handle is below: somebody with no
+       * organisation has nowhere to be sent, so the guard leaves them here and
+       * this screen explains why.
+       */
+      const me = await signIn(values);
 
-      if (!first) {
+      if (me.memberships.length === 0) {
         setFormError({
           message: "Your access has been removed. Contact your administrator.",
         });
-        return;
       }
-
-      /*
-       * No organisation picker (C13): straight to the first one. The topbar
-       * switcher is how someone with several reaches the others.
-       *
-       * But NOT straight into an app. `/${slug}` is the launcher, because
-       * which apps exist depends on the organisation's subscriptions and this
-       * person's role — landing in DMS is only right for people who have DMS.
-       *
-       * Unless they were going somewhere specific: the shell puts the page
-       * they were blocked from into `state.from`, so a deep link survives the
-       * sign-in rather than dumping them on the launcher to find it again.
-       */
-      void navigate(returnTo(location.state, `/${first.org_slug}`), { replace: true });
     } catch (error) {
       const problem = asProblem(error);
       setFormError({
@@ -127,26 +119,4 @@ export function LoginScreen() {
       </form>
     </AuthLayout>
   );
-}
-
-/**
- * Where to go after signing in.
- *
- * Only ever an in-app path. `state` is reachable from the address bar — anyone
- * can push history state — so a value from it is untrusted input. Accepting an
- * absolute URL here would turn the login screen into an open redirect: a link
- * that signs someone in and lands them on a copy of this app that keeps what
- * they type next.
- *
- * "//evil.example" is the case that catches people out: it has no scheme, so a
- * naive "must start with /" check passes it, and the browser reads it as a
- * protocol-relative URL to another host.
- */
-function returnTo(state: unknown, fallback: string): string {
-  const from = (state as { from?: unknown } | null)?.from;
-
-  if (typeof from !== "string") return fallback;
-  if (!from.startsWith("/") || from.startsWith("//")) return fallback;
-
-  return from;
 }

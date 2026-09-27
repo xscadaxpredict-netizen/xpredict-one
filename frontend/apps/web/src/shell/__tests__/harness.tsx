@@ -13,8 +13,10 @@ import { render, type RenderResult } from "@testing-library/react";
 import { createMemoryRouter, Navigate, RouterProvider } from "react-router-dom";
 
 import { AppShell } from "../AppShell";
+import { UsersScreen } from "../admin/screens/UsersScreen";
 import { RedirectIfSignedIn } from "../components/RedirectIfSignedIn";
 import { LauncherScreen } from "../screens/LauncherScreen";
+import { LoginScreen } from "../screens/LoginScreen";
 import { NotFoundScreen } from "../screens/NotFoundScreen";
 
 /**
@@ -46,10 +48,15 @@ export function renderRoute({ path, children = [] }: RenderRouteOptions): Render
     [
       { path: "/", element: <Navigate to="/login" replace /> },
       {
+        /*
+         * The real screen, not a stand-in. These tests are about what happens
+         * between the form, the login hook and the guard — a placeholder
+         * heading would prove none of it.
+         */
         path: "/login",
         element: (
           <RedirectIfSignedIn>
-            <h1>Sign in</h1>
+            <LoginScreen />
           </RedirectIfSignedIn>
         ),
       },
@@ -58,6 +65,7 @@ export function renderRoute({ path, children = [] }: RenderRouteOptions): Render
         element: <AppShell />,
         children: [
           { index: true, element: <LauncherScreen /> },
+          { path: "admin/users", element: <UsersScreen /> },
           ...children,
           { path: "*", element: <NotFoundScreen /> },
         ],

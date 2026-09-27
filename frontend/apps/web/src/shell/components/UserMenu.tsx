@@ -10,11 +10,13 @@
  * previous person's cached screens for a few seconds.
  */
 
+import { useState } from "react";
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import { useNavigate } from "react-router-dom";
 
 import type { Me } from "../api/auth";
 import { useLogout } from "../hooks/useAuth";
+import { useUiStore, type Theme } from "../../stores/uiStore";
 import styles from "./UserMenu.module.css";
 
 interface UserMenuProps {
@@ -24,14 +26,32 @@ interface UserMenuProps {
 export function UserMenu({ me }: UserMenuProps) {
   const navigate = useNavigate();
   const { mutate: signOut, isPending } = useLogout();
+  const [failed, setFailed] = useState(false);
+  const theme = useUiStore((state) => state.theme);
+  const setTheme = useUiStore((state) => state.setTheme);
 
   const fullName = [me.first_name, me.last_name].filter(Boolean).join(" ") || me.email;
 
   function onSignOut() {
+    setFailed(false);
+
     signOut(undefined, {
-      // Only leave once the server has actually cleared the cookie. Navigating
-      // first would show the login screen while the session is still live.
-      onSettled: () => void navigate("/login", { replace: true }),
+      /*
+       * ON SUCCESS ONLY. This used to be `onSettled`, which runs on failure
+       * too — so a logout the server refused still sent you to /login with the
+       * cookie intact and the cache unemptied. The route guard then read a
+       * perfectly valid `/me` and put you straight back in, with nothing
+       * saying why. On a shared machine that is somebody believing they have
+       * signed out when they have not.
+       *
+       * The frontend cannot clear an httpOnly cookie (C12). Only the server
+       * that set it can, so if the request failed, the session is still live
+       * and the honest thing is to say so.
+       */
+      onSuccess: () => void navigate("/login", { replace: true }),
+      onError: () => {
+        setFailed(true);
+      },
     });
   }
 
@@ -54,6 +74,45 @@ export function UserMenu({ me }: UserMenuProps) {
 
           <DropdownMenu.Separator className={styles.separator} />
 
+          {/*
+            The theme lived in the store from the scaffold onwards with nothing
+            reading it and nothing setting it. "System" is the default and
+            follows the operating system; the other two override it, which is
+            what somebody on a dark laptop in a bright room actually wants.
+          */}
+          <DropdownMenu.Label className={styles.sectionLabel}>Appearance</DropdownMenu.Label>
+
+          <DropdownMenu.RadioGroup
+            value={theme}
+            onValueChange={(value) => {
+              setTheme(value as Theme);
+            }}
+          >
+            {THEMES.map((option) => (
+              <DropdownMenu.RadioItem
+                key={option.value}
+                className={styles.radioItem}
+                value={option.value}
+              >
+                <DropdownMenu.ItemIndicator className={styles.indicator}>
+                  <TickIcon />
+                </DropdownMenu.ItemIndicator>
+                {option.label}
+              </DropdownMenu.RadioItem>
+            ))}
+          </DropdownMenu.RadioGroup>
+
+          <DropdownMenu.Separator className={styles.separator} />
+
+          {failed && (
+            <p className={styles.signOutError} role="alert">
+              Could not sign out. You are still signed in — check your connection and try
+              again.
+            </p>
+          )}
+
+          <DropdownMenu.Separator className={styles.separator} />
+
           <DropdownMenu.Item
             className={styles.item}
             disabled={isPending}
@@ -69,6 +128,27 @@ export function UserMenu({ me }: UserMenuProps) {
         </DropdownMenu.Content>
       </DropdownMenu.Portal>
     </DropdownMenu.Root>
+  );
+}
+
+const THEMES: { value: Theme; label: string }[] = [
+  { value: "system", label: "Match system" },
+  { value: "light", label: "Light" },
+  { value: "dark", label: "Dark" },
+];
+
+function TickIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true" focusable="false">
+      <path
+        d="m3.5 8.5 3 3 6-7"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
   );
 }
 
