@@ -109,8 +109,18 @@ function InviteForm({ membership, initialUnitId, onDone }: InviteFormProps) {
    */
   const isDealerAdmin = membership.unit_id !== null;
 
-  /* Only the apps this organisation actually has, and can actually open. */
-  const apps = visibleApps(membership).filter((app) => app.enabled);
+  /*
+   * Only the PRODUCTS this organisation has and can open.
+   *
+   * Administration is excluded deliberately: it is not something a customer
+   * subscribes to, it comes with the platform and is gated by role alone
+   * (C17). It used to be a checkbox here, which meant two controls governed
+   * one thing and could disagree — tick the box, leave the role at member, and
+   * you got a record with admin access and no admin standing.
+   */
+  const apps = visibleApps(membership).filter(
+    (app) => app.enabled && app.definition.key !== "admin",
+  );
 
   /**
    * WHERE THEY WORK, asked before what they can open.
@@ -124,8 +134,16 @@ function InviteForm({ membership, initialUnitId, onDone }: InviteFormProps) {
   const [scope, setScope] = useState<"org" | "dealer">(initialUnitId ? "dealer" : "org");
   const [selectedApps, setSelectedApps] = useState<string[]>([]);
   const [unitId, setUnitId] = useState<string>(initialUnitId ?? "");
-  /** Grants Administration, narrowed to Users at their own dealer (C23). */
+  /**
+   * Makes them a dealer admin: `role: "admin"` WITH a dealership attached (C31).
+   *
+   * Not an app grant. Administration comes with the platform and is gated by
+   * role alone (C17), so the server derives access from this rather than the
+   * form handing out the app.
+   */
   const [managesPeople, setManagesPeople] = useState(false);
+  /** Standing in the organisation, for somebody not scoped to a dealership. */
+  const [orgRole, setOrgRole] = useState<"admin" | "member">("member");
   const [scopeError, setScopeError] = useState<string | null>(null);
   const [formError, setFormError] = useState<{ message: string; traceId?: string } | null>(null);
 
@@ -181,17 +199,20 @@ function InviteForm({ membership, initialUnitId, onDone }: InviteFormProps) {
       // Their own dealer and DMS, decided here rather than asked (C23). The
       // backend applies the same rule from their membership — this is the form
       // matching it, not the form deciding it.
-      return { unit_id: membership.unit_id, app_keys: ["dms"] };
+      return { unit_id: membership.unit_id, app_keys: ["dms"], role: "member" as const };
     }
 
     if (scopedToDealer) {
+      // `admin` + a dealership IS a dealer admin (C31). Administration is not
+      // sent as an app; the server derives it from the role.
       return {
         unit_id: unitId,
-        app_keys: managesPeople ? ["dms", "admin"] : ["dms"],
+        app_keys: ["dms"],
+        role: managesPeople ? ("admin" as const) : ("member" as const),
       };
     }
 
-    return { unit_id: null, app_keys: selectedApps };
+    return { unit_id: null, app_keys: selectedApps, role: orgRole };
   }
 
   async function onSubmit(values: InviteFields) {
@@ -366,6 +387,37 @@ function InviteForm({ membership, initialUnitId, onDone }: InviteFormProps) {
                       </label>
                     ))}
                   </div>
+
+                  {/*
+                    ADMINISTRATION IS NOT IN THE LIST ABOVE. It is granted by
+                    this, because it comes with the platform and is gated by
+                    role alone (C17) — and because an invitation that could set
+                    the access and the standing separately would let somebody
+                    hold the admin console while the Users list called them a
+                    member.
+
+                    Owner is never offered: exactly one per organisation (C14),
+                    so appointing one is a transfer, not an invitation.
+                  */}
+                  <label className={styles.label} htmlFor="invite-role">
+                    Organisation role
+                  </label>
+                  <select
+                    id="invite-role"
+                    className={styles.select}
+                    value={orgRole}
+                    onChange={(event) => {
+                      setOrgRole(event.target.value as "admin" | "member");
+                    }}
+                  >
+                    <option value="member">Member</option>
+                    <option value="admin">Admin — can manage the organisation</option>
+                  </select>
+
+                  <p className={styles.hint}>
+                    Admins manage dealerships, people and billing for{" "}
+                    {membership.org_name}. Members only use the apps above.
+                  </p>
                 </>
               )}
             </fieldset>

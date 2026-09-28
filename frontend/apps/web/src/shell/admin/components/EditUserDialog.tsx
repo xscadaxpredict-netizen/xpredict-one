@@ -112,7 +112,15 @@ function EditUserForm({ user, membership, onDone }: EditUserFormProps) {
   const [role, setRole] = useState<"admin" | "member">(editableRole);
   const [formError, setFormError] = useState<{ message: string; traceId?: string } | null>(null);
 
-  const apps = visibleApps(membership).filter((app) => app.enabled);
+  /*
+   * PRODUCTS only. Administration is excluded because it is granted by the
+   * Organisation role below, not by a tick — it comes with the platform and is
+   * gated by role alone (C17, C31). Two controls for one thing could disagree,
+   * and the way it disagreed was silent: admin access with member standing.
+   */
+  const apps = visibleApps(membership).filter(
+    (app) => app.enabled && app.definition.key !== "admin",
+  );
   const scope = dealerScopeRules(selectedApps, unitId);
   const { data: dealers } = useDealers({ enabled: !isDealerAdmin });
   const { mutateAsync: update, isPending } = useUpdateUser();
@@ -292,7 +300,9 @@ function EditUserForm({ user, membership, onDone }: EditUserFormProps) {
                 <p className={styles.hint}>
                   {isOwner
                     ? "The owner's role cannot be changed here. Transfer ownership to somebody else first."
-                    : "Admins manage the organisation. A dealer admin is an admin with a dealer set above."}
+                    : unitId
+                      ? "An admin with a dealership set above is a dealer admin: they manage that dealership's people and nothing else."
+                      : "Admins manage dealerships, people and billing. This is also what grants Administration — there is no separate tick for it."}
                 </p>
               </fieldset>
             </>

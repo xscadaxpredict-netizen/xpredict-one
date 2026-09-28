@@ -240,6 +240,99 @@ describe("inviting somebody into one dealership", () => {
   });
 });
 
+describe("what standing an invited person gets", () => {
+  /** The invitation body, once the call has been asserted to have happened. */
+  function inviteBody() {
+    const call = mockInviteUser.mock.calls[0];
+    if (!call) throw new Error("inviteUser was never called");
+    return call[1];
+  }
+
+  function fillNames(dialog: HTMLElement) {
+    fireEvent.change(within(dialog).getByLabelText(/First name/), { target: { value: "Asha" } });
+    fireEvent.change(within(dialog).getByLabelText(/Last name/), { target: { value: "Pillai" } });
+    fireEvent.change(within(dialog).getByLabelText(/Email/), {
+      target: { value: "asha.p@acmemotors.in" },
+    });
+  }
+
+  /*
+   * A DEALER USER IS NOT AUTOMATICALLY THE ADMIN. The toggle is the whole
+   * difference, and it is `role`, not an app grant: `admin` with a dealership
+   * attached IS a dealer admin (C31).
+   */
+  it("makes a dealer user a member unless the toggle is set", async () => {
+    const dialog = await openInviteForm();
+
+    chooseScope(dialog, "One dealership");
+    await chooseDealer(dialog, "Chennai — Guindy", "unit-1");
+    fillNames(dialog);
+    fireEvent.click(within(dialog).getByRole("button", { name: /Send invitation/ }));
+
+    await waitFor(() => {
+      expect(mockInviteUser).toHaveBeenCalled();
+    });
+    expect(inviteBody()).toMatchObject({
+      unit_id: "unit-1",
+      app_keys: ["dms"],
+      role: "member",
+    });
+  });
+
+  it("makes them a dealer admin when it is", async () => {
+    const dialog = await openInviteForm();
+
+    chooseScope(dialog, "One dealership");
+    await chooseDealer(dialog, "Chennai — Guindy", "unit-1");
+    fireEvent.click(within(dialog).getByRole("checkbox", { name: /Manage this dealership/i }));
+    fillNames(dialog);
+    fireEvent.click(within(dialog).getByRole("button", { name: /Send invitation/ }));
+
+    await waitFor(() => {
+      expect(mockInviteUser).toHaveBeenCalled();
+    });
+
+    const body = inviteBody();
+
+    expect(body).toMatchObject({ unit_id: "unit-1", role: "admin" });
+    /*
+     * ADMINISTRATION IS NOT SENT AS AN APP. It comes with the platform and is
+     * gated by role alone (C17), so the server derives it. Sending both would
+     * mean two sources for one thing, and they would eventually disagree —
+     * which is exactly the record this form used to produce: admin access with
+     * member standing.
+     */
+    expect(body.app_keys).not.toContain("admin");
+  });
+
+  /*
+   * Before this, everybody arrived as a member and had to be promoted in a
+   * second pass through Edit — and the dealer-admin toggle had no way to say
+   * what it meant.
+   */
+  it("can invite an organisation admin in one step", async () => {
+    const dialog = await openInviteForm();
+
+    expect(within(dialog).queryByRole("checkbox", { name: "Administration" })).not.toBeInTheDocument();
+
+    fireEvent.change(within(dialog).getByLabelText("Organisation role"), {
+      target: { value: "admin" },
+    });
+    fireEvent.click(within(dialog).getByRole("checkbox", { name: "DMS" }));
+    fillNames(dialog);
+    fireEvent.click(within(dialog).getByRole("button", { name: /Send invitation/ }));
+
+    await waitFor(() => {
+      expect(mockInviteUser).toHaveBeenCalled();
+    });
+    expect(inviteBody()).toMatchObject({
+      unit_id: null,
+      app_keys: ["dms"],
+      role: "admin",
+    });
+  });
+});
+
 describe("staffing a dealership that has nobody in it", () => {
   /*
    * Creating a dealership used to end in a dead end: the Dealers screen knew

@@ -88,8 +88,23 @@ export interface NewInvitation {
   email: string;
   /** Dealer id, or null for organisation-wide. */
   unit_id: string | null;
-  /** App keys this person may open. Roles are assigned separately — see Q12. */
+  /**
+   * PRODUCT keys this person may open — dms, crm, ecommerce. Never "admin":
+   * Administration is not a product and is not granted here, it follows from
+   * `role` below (C17, C31).
+   *
+   * Which role they hold INSIDE each product is assigned separately — see Q12.
+   */
   app_keys: string[];
+  /**
+   * Standing in the organisation. Never "owner": there is exactly one per
+   * organisation (C14), so appointing one is a transfer, not an invitation.
+   *
+   * WITH `unit_id` THIS IS WHAT MAKES A DEALER ADMIN (C31). `admin` with no
+   * unit administers the organisation; `admin` with a unit administers that
+   * dealership; `member` administers nothing.
+   */
+  role: "admin" | "member";
 }
 
 /* ------------------------------------------------------------------------ *
@@ -344,12 +359,15 @@ export async function updateUser(
       unit_name: fakeDealerName(body.unit_id),
       role: existing.role === "owner" ? "owner" : body.role,
       /*
-       * Per-app ROLES are preserved, not reassigned. The form grants and
-       * revokes app ACCESS; which role somebody holds inside an app is Q12
-       * and not something this screen may decide.
+       * Per-app ROLES are preserved, not reassigned (C25). The form grants and
+       * revokes app ACCESS; which role somebody holds inside an app is Q12 and
+       * not something this screen may decide.
+       *
+       * Administration is derived from `role`, exactly as on invite, so the two
+       * forms cannot disagree about what an admin holds.
        */
-      apps: body.app_keys.map(
-        (key) => existing.apps.find((app) => app.app === key) ?? { app: key, role: "Member" },
+      apps: appsFor(body.app_keys, body.role, body.unit_id).map(
+        (app) => existing.apps.find((held) => held.app === app.app) ?? app,
       ),
     };
 
@@ -443,6 +461,32 @@ export async function resendInvitation(orgSlug: string, userId: string): Promise
   });
 }
 
+/**
+ * FAKE BACKEND ONLY: the apps a person ends up holding.
+ *
+ * Administration is NOT in `app_keys` and never was granted by the form — it
+ * comes with the platform and is gated by role alone (C17), so the server
+ * derives it. `unit_id` decides which kind: an admin with no dealership
+ * administers the organisation, one with a dealership administers that
+ * dealership and nothing else (C23, C31).
+ *
+ * The per-app role strings here are placeholders. Which role somebody holds
+ * inside a product is Q12 and nothing can set it yet.
+ */
+function appsFor(
+  appKeys: string[],
+  role: "admin" | "member",
+  unitId: string | null,
+): UserAppRole[] {
+  const products = appKeys
+    .filter((app) => app !== "admin")
+    .map((app) => ({ app, role: "Member" }));
+
+  if (role !== "admin") return products;
+
+  return [...products, { app: "admin", role: unitId ? "Dealer admin" : "Organisation admin" }];
+}
+
 export async function inviteUser(orgSlug: string, body: NewInvitation): Promise<OrgUser> {
   if (USE_FAKE_USERS) {
     await wait(700);
@@ -459,9 +503,9 @@ export async function inviteUser(orgSlug: string, body: NewInvitation): Promise<
       email: body.email,
       unit_name: fakeDealerName(body.unit_id),
       unit_id: body.unit_id,
-      role: "member",
+      role: body.role,
       status: "invited",
-      apps: body.app_keys.map((app) => ({ app, role: "Member" })),
+      apps: appsFor(body.app_keys, body.role, body.unit_id),
     };
 
     if (isDealerOrg(orgSlug)) {

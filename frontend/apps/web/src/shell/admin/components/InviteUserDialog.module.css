@@ -159,6 +159,15 @@
   color: var(--color-text-disabled);
 }
 
+/* Matches TextField's label, so a select labelled by hand reads the same as a
+   text field labelled by the component. */
+.label {
+  margin-top: var(--space-2);
+  font-size: var(--text-sm);
+  font-weight: 500;
+  color: var(--color-text-2);
+}
+
 /* Matches TextField's error line, so a field-level problem reads the same
    wherever it appears in a form. */
 .error {
