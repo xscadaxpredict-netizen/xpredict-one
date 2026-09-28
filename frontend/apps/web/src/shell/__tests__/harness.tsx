@@ -43,7 +43,18 @@ interface RenderRouteOptions {
   children?: Parameters<typeof createMemoryRouter>[0];
 }
 
-export function renderRoute({ path, children = [] }: RenderRouteOptions): RenderResult {
+/**
+ * Returns the router alongside the render result, so a test can read the
+ * location the app actually navigated to.
+ *
+ * `window.location` is NOT touched by `createMemoryRouter`, so a test asserting
+ * against it is asserting against an empty string and passes whatever the code
+ * does — which is worth being able to avoid.
+ */
+export function renderRoute({
+  path,
+  children = [],
+}: RenderRouteOptions): RenderResult & { router: ReturnType<typeof createMemoryRouter> } {
   const router = createMemoryRouter(
     [
       { path: "/", element: <Navigate to="/login" replace /> },
@@ -75,9 +86,11 @@ export function renderRoute({ path, children = [] }: RenderRouteOptions): Render
     { initialEntries: [path] },
   );
 
-  return render(
+  const result = render(
     <QueryClientProvider client={testQueryClient()}>
       <RouterProvider router={router} />
     </QueryClientProvider>,
   );
+
+  return { ...result, router };
 }

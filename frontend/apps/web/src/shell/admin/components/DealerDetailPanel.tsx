@@ -126,9 +126,35 @@ export function DealerDetailPanel({ dealer, usersPath, onClose }: DealerDetailPa
         <dt>People</dt>
         <dd>
           {dealer.user_count === 0 ? (
-            <span className={styles.note}>
-              Nobody is scoped to this dealer yet. Invite someone and pick it as their dealer.
-            </span>
+            /*
+              A dealership with nobody in it is the one state that needs an
+              action, not a description. It used to say "invite someone and pick
+              it as their dealer" and leave you to find the way — so creating a
+              dealership ended in a dead end, on the screen that knew exactly
+              what was missing.
+
+              It links into the SAME invite dialog, prefilled, rather than
+              growing a second form here (C23).
+            */
+            <>
+              <span className={styles.note}>
+                {isClosed
+                  ? "Nobody works here. Reopen the dealership before staffing it."
+                  : "Nobody works here yet. A dealership needs an admin before it can run itself."}
+              </span>
+
+              {/*
+                NOT OFFERED WHILE IT IS CLOSED, which running this caught: a
+                closed dealership is not in the invite form's picker, so the
+                link led to a form that could not be submitted and an error
+                asking for an answer the form refused to offer.
+              */}
+              {!isClosed && (
+                <Link className={styles.link} to={`${usersPath}?invite=${dealer.id}`}>
+                  Invite this dealership&rsquo;s admin
+                </Link>
+              )}
+            </>
           ) : (
             <>
               <span className={styles.count}>

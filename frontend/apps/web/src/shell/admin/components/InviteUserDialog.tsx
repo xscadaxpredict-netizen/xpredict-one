@@ -21,7 +21,7 @@
  * granted per app now; roles land when those questions are answered.
  */
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import * as Dialog from "@radix-ui/react-dialog";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm } from "react-hook-form";
@@ -33,7 +33,6 @@ import { visibleApps } from "../../navigation";
 import { Button } from "../../components/Button";
 import { FormBanner } from "../../components/FormBanner";
 import { TextField } from "../../components/TextField";
-import { dealerScopeRules } from "../dealerScope";
 import { useDealers } from "../hooks/useDealers";
 import { useInviteUser } from "../hooks/useUsers";
 import styles from "./InviteUserDialog.module.css";
@@ -48,10 +47,22 @@ type InviteFields = z.infer<typeof inviteSchema>;
 
 interface InviteUserDialogProps {
   membership: Membership;
+  /**
+   * Open straight away, scoped to this dealership.
+   *
+   * Arrives from `?invite=<id>`, which a dealership with nobody in it links to.
+   * Creating a dealership and then hunting for the way to staff it was a dead
+   * end — the Dealers screen knew what was missing and could not say so.
+   *
+   * It opens the SAME dialog rather than a second invite form. C23's warning
+   * was about two screens creating the same kind of record and then disagreeing
+   * about the rules; a prefilled shortcut into this one is not that.
+   */
+  openForUnitId?: string | null;
 }
 
-export function InviteUserDialog({ membership }: InviteUserDialogProps) {
-  const [open, setOpen] = useState(false);
+export function InviteUserDialog({ membership, openForUnitId }: InviteUserDialogProps) {
+  const [open, setOpen] = useState(openForUnitId != null);
 
   return (
     <Dialog.Root open={open} onOpenChange={setOpen}>
@@ -69,7 +80,12 @@ export function InviteUserDialog({ membership }: InviteUserDialogProps) {
             it was closed, and reopening looks like a half-finished action you
             do not remember starting.
           */}
-          <InviteForm key={String(open)} membership={membership} onDone={() => setOpen(false)} />
+          <InviteForm
+            key={String(open)}
+            membership={membership}
+            initialUnitId={openForUnitId}
+            onDone={() => setOpen(false)}
+          />
         </Dialog.Content>
       </Dialog.Portal>
     </Dialog.Root>
@@ -78,10 +94,12 @@ export function InviteUserDialog({ membership }: InviteUserDialogProps) {
 
 interface InviteFormProps {
   membership: Membership;
+  /** Seeds the scope when the form was opened from a specific dealership. */
+  initialUnitId?: string | null;
   onDone: () => void;
 }
 
-function InviteForm({ membership, onDone }: InviteFormProps) {
+function InviteForm({ membership, initialUnitId, onDone }: InviteFormProps) {
   /*
    * A dealer admin has nothing to choose (C23). Everyone they invite joins
    * their dealer with DMS, because that is the only access they can grant —
@@ -94,21 +112,33 @@ function InviteForm({ membership, onDone }: InviteFormProps) {
   /* Only the apps this organisation actually has, and can actually open. */
   const apps = visibleApps(membership).filter((app) => app.enabled);
 
+  /**
+   * WHERE THEY WORK, asked before what they can open.
+   *
+   * This is the first question because it is the one that decides the others:
+   * the unit is an organisational fact about a person (C7) and their apps
+   * follow from it (C27), not the other way round. Asking apps first meant
+   * ticking DMS purely to unlock a dealer picker — a hoop, and it made
+   * "belongs to a dealership" look like a property of DMS rather than of them.
+   */
+  const [scope, setScope] = useState<"org" | "dealer">(initialUnitId ? "dealer" : "org");
   const [selectedApps, setSelectedApps] = useState<string[]>([]);
-  const [unitId, setUnitId] = useState<string>("");
+  const [unitId, setUnitId] = useState<string>(initialUnitId ?? "");
+  /** Grants Administration, narrowed to Users at their own dealer (C23). */
+  const [managesPeople, setManagesPeople] = useState(false);
+  const [scopeError, setScopeError] = useState<string | null>(null);
   const [formError, setFormError] = useState<{ message: string; traceId?: string } | null>(null);
 
-  const dmsSelected = selectedApps.includes("dms");
-  const scope = dealerScopeRules(selectedApps, unitId);
+  const scopedToDealer = scope === "dealer";
 
   /*
-   * Only fetched once DMS is ticked: most invitations are organisation-wide,
-   * and a request nobody needed is still a request.
+   * Only fetched once a dealership is actually being chosen: most invitations
+   * are organisation-wide, and a request nobody needed is still a request.
    */
   const { data: dealers, isPending: dealersPending } = useDealers({
     // A dealer admin never opens the picker, and asking for a list of every
     // dealership is a request they would not be entitled to answer anyway.
-    enabled: dmsSelected && !isDealerAdmin,
+    enabled: scopedToDealer && !isDealerAdmin,
   });
 
   /*
@@ -118,16 +148,6 @@ function InviteForm({ membership, onDone }: InviteFormProps) {
    */
   const openDealers = dealers?.filter((dealer) => dealer.status === "active");
   const { mutateAsync: invite, isPending } = useInviteUser();
-
-  /*
-   * Clearing DMS clears the dealer with it. Leaving a stale unit_id on the
-   * form would send a dealer scope for somebody who is not in the only app
-   * that has dealers — accepted by a lenient backend, invisible here, and
-   * baffling the day it starts mattering.
-   */
-  useEffect(() => {
-    if (!dmsSelected) setUnitId("");
-  }, [dmsSelected]);
 
   const {
     register,
@@ -145,17 +165,53 @@ function InviteForm({ membership, onDone }: InviteFormProps) {
     );
   }
 
+  /**
+   * The payload is derived from `scope`, never assembled from whatever the
+   * fields happen to hold.
+   *
+   * That is what makes C27 structural here rather than policed: a
+   * dealer-scoped invitation cannot carry CRM because nothing reads
+   * `selectedApps` on that branch, and an organisation-wide one cannot carry a
+   * dealership because nothing reads `unitId`. Switching back and forth leaves
+   * the other branch's answers intact for the person's convenience, and they
+   * are simply never sent.
+   */
+  function accessForScope() {
+    if (isDealerAdmin) {
+      // Their own dealer and DMS, decided here rather than asked (C23). The
+      // backend applies the same rule from their membership — this is the form
+      // matching it, not the form deciding it.
+      return { unit_id: membership.unit_id, app_keys: ["dms"] };
+    }
+
+    if (scopedToDealer) {
+      return {
+        unit_id: unitId,
+        app_keys: managesPeople ? ["dms", "admin"] : ["dms"],
+      };
+    }
+
+    return { unit_id: null, app_keys: selectedApps };
+  }
+
   async function onSubmit(values: InviteFields) {
     setFormError(null);
+    setScopeError(null);
+
+    /*
+     * There is no "no dealership" option in the picker any more — choosing the
+     * organisation is a different radio — so an empty one means they picked
+     * the branch and then did not answer it.
+     */
+    if (!isDealerAdmin && scopedToDealer && !unitId) {
+      setScopeError("Choose which dealership they work for.");
+      return;
+    }
 
     try {
       await invite({
         ...values,
-        // A dealer admin's own dealer and DMS, decided here rather than asked.
-        // The backend applies the same rule from their membership — this is
-        // the form matching it, not the form deciding it.
-        unit_id: isDealerAdmin ? membership.unit_id : unitId || null,
-        app_keys: isDealerAdmin ? ["dms"] : selectedApps,
+        ...accessForScope(),
       });
       onDone();
     } catch (error) {
@@ -202,57 +258,117 @@ function InviteForm({ membership, onDone }: InviteFormProps) {
           </p>
         ) : (
           <>
-        <fieldset className={styles.fieldset}>
-          <legend className={styles.legend}>Apps</legend>
-          <p className={styles.hint}>
-            Which apps this person can open. Only apps {membership.org_name} subscribes to
-            are listed.
-          </p>
+            <fieldset className={styles.fieldset}>
+              <legend className={styles.legend}>Where they work</legend>
 
-          <div className={styles.appChoices}>
-            {apps.map((app) => (
-              <label key={app.definition.key} className={styles.checkbox}>
+              <label className={styles.checkbox}>
                 <input
-                  type="checkbox"
-                  checked={selectedApps.includes(app.definition.key)}
-                  // A dealer is chosen and this app is organisation-wide (C27).
-                  // Locked rather than hidden: hiding it would make the list
-                  // jump as the dealer changes, and a reason is given below.
-                  disabled={scope.isAppLocked(app.definition.key)}
-                  onChange={() => toggleApp(app.definition.key)}
+                  type="radio"
+                  name="scope"
+                  checked={!scopedToDealer}
+                  onChange={() => setScope("org")}
                 />
-                <span>{app.definition.name}</span>
+                <span>The whole organisation</span>
               </label>
-            ))}
-          </div>
 
-          {scope.appsNote && <p className={styles.hint}>{scope.appsNote}</p>}
-        </fieldset>
+              <label className={styles.checkbox}>
+                <input
+                  type="radio"
+                  name="scope"
+                  checked={scopedToDealer}
+                  onChange={() => setScope("dealer")}
+                />
+                <span>One dealership</span>
+              </label>
 
-        <fieldset className={styles.fieldset} disabled={!scope.canPickDealer}>
-          <legend className={styles.legend}>Dealer</legend>
-          {/*
-            Always says why it is off. A greyed control with no explanation is
-            read as broken, and the reason here is the actual model rather than
-            an arbitrary rule.
-          */}
-          <p className={styles.hint}>{scope.dealerNote}</p>
+              {scopedToDealer && (
+                <>
+                  <select
+                    className={styles.select}
+                    value={unitId}
+                    onChange={(event) => setUnitId(event.target.value)}
+                    aria-label="Dealership"
+                  >
+                    <option value="">Select a dealership…</option>
+                    {dealersPending && <option disabled>Loading dealerships…</option>}
+                    {openDealers?.map((dealer) => (
+                      <option key={dealer.id} value={dealer.id}>
+                        {dealer.name}
+                      </option>
+                    ))}
+                  </select>
 
-          <select
-            className={styles.select}
-            value={unitId}
-            onChange={(event) => setUnitId(event.target.value)}
-            aria-label="Dealer"
-          >
-            <option value="">Organisation — every dealer</option>
-            {dealersPending && dmsSelected && <option disabled>Loading dealers…</option>}
-            {openDealers?.map((dealer) => (
-              <option key={dealer.id} value={dealer.id}>
-                {dealer.name}
-              </option>
-            ))}
-          </select>
-        </fieldset>
+                  {scopeError && <p className={styles.error}>{scopeError}</p>}
+                </>
+              )}
+            </fieldset>
+
+            {/*
+              WHAT THEY CAN OPEN, and the two branches are deliberately
+              different shapes rather than one list with things greyed out.
+
+              Somebody who belongs to a dealership can hold DMS and
+              Administration and nothing else (C27), so there is no choice of
+              app left to offer — only whether they administer the place. A
+              checkbox list where two of three are permanently disabled would
+              be asking a question that has one answer.
+            */}
+            <fieldset className={styles.fieldset}>
+              <legend className={styles.legend}>What they can open</legend>
+
+              {scopedToDealer ? (
+                <>
+                  <p className={styles.hint}>
+                    <strong>DMS</strong>, at this dealership only. CRM and E-commerce are
+                    organisation-wide and cannot be given to somebody scoped to a
+                    dealership.
+                  </p>
+
+                  <label className={styles.checkbox}>
+                    <input
+                      type="checkbox"
+                      checked={managesPeople}
+                      onChange={(event) => setManagesPeople(event.target.checked)}
+                    />
+                    <span>Manage this dealership&rsquo;s people</span>
+                  </label>
+
+                  {/*
+                    THIS IS WHAT A "DEALER ADMIN" IS (C23), said in words rather
+                    than left to be deduced from ticking "Administration" and a
+                    dealership together. The grant is the same Administration
+                    app an organisation admin holds, narrowed to one module at
+                    one dealership — which is a different power under the same
+                    name, and the old label said none of it.
+                  */}
+                  <p className={styles.hint}>
+                    They can invite and remove people at this dealership, and nothing
+                    else in {membership.org_name}. This is what makes somebody a dealer
+                    admin.
+                  </p>
+                </>
+              ) : (
+                <>
+                  <p className={styles.hint}>
+                    Which apps this person can open. Only apps {membership.org_name}{" "}
+                    subscribes to are listed.
+                  </p>
+
+                  <div className={styles.appChoices}>
+                    {apps.map((app) => (
+                      <label key={app.definition.key} className={styles.checkbox}>
+                        <input
+                          type="checkbox"
+                          checked={selectedApps.includes(app.definition.key)}
+                          onChange={() => toggleApp(app.definition.key)}
+                        />
+                        <span>{app.definition.name}</span>
+                      </label>
+                    ))}
+                  </div>
+                </>
+              )}
+            </fieldset>
           </>
         )}
 

@@ -16,8 +16,8 @@
  * are the ones that ship as a blank white page.
  */
 
-import { useState } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { useEffect, useState } from "react";
+import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { asProblem } from "@xpredict/api-client";
 import { EmptyState, ErrorState, TableSkeleton } from "@xpredict/ui";
 
@@ -34,6 +34,26 @@ export function UsersScreen() {
   const [query, setQuery] = useState("");
 
   const { userId } = useParams<{ userId: string }>();
+
+  /*
+   * `?invite=<dealerId>` arrives from a dealership that has nobody in it, and
+   * opens the invite dialog already scoped to it.
+   *
+   * CAPTURED ONCE, THEN SCRUBBED — the same handling as `?code=` on signup, for
+   * a different reason: not secrecy, but that a parameter left in the address
+   * bar reopens the dialog on every refresh and every Back, long after the
+   * person dealt with it.
+   */
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [inviteForUnitId] = useState(() => searchParams.get("invite"));
+
+  useEffect(() => {
+    if (!searchParams.has("invite")) return;
+
+    const next = new URLSearchParams(searchParams);
+    next.delete("invite");
+    setSearchParams(next, { replace: true });
+  }, [searchParams, setSearchParams]);
 
   const navigate = useNavigate();
   const basePath = `/${membership.org_slug}/admin/users`;
@@ -88,7 +108,7 @@ export function UsersScreen() {
           </p>
         </div>
 
-        <InviteUserDialog membership={membership} />
+        <InviteUserDialog membership={membership} openForUnitId={inviteForUnitId} />
       </header>
 
       {/*

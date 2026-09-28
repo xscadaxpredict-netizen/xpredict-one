@@ -20,12 +20,13 @@
  */
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { fireEvent, screen, within } from "@testing-library/react";
+import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 
 import type * as dealersApi from "../admin/api/dealers";
 import { fetchDealers } from "../admin/api/dealers";
 import type * as usersApi from "../admin/api/users";
-import { fetchUsers } from "../admin/api/users";
+import { fetchUsers, inviteUser } from "../admin/api/users";
+import { DealersScreen } from "../admin/screens/DealersScreen";
 import { UsersScreen } from "../admin/screens/UsersScreen";
 import { fetchMe } from "../api/auth";
 import type * as authApi from "../api/auth";
@@ -53,6 +54,7 @@ vi.mock("../admin/api/dealers", async (importOriginal) => ({
 const mockFetchMe = vi.mocked(fetchMe);
 const mockFetchUsers = vi.mocked(fetchUsers);
 const mockFetchDealers = vi.mocked(fetchDealers);
+const mockInviteUser = vi.mocked(inviteUser);
 
 function user(overrides: Partial<usersApi.OrgUser> & { id: string }): usersApi.OrgUser {
   return {
@@ -114,6 +116,11 @@ const routes = [
   { path: "admin/users/:userId", element: <UsersScreen /> },
 ];
 
+const dealerRoutes = [
+  { path: "admin/dealers", element: <DealersScreen /> },
+  { path: "admin/dealers/:dealerId", element: <DealersScreen /> },
+];
+
 beforeEach(() => {
   vi.clearAllMocks();
   mockFetchMe.mockResolvedValue(me({ memberships: [ownerMembership()] }));
@@ -143,52 +150,167 @@ async function openEditForm(userId: string, name: string) {
  */
 async function chooseDealer(dialog: HTMLElement, name: string, id: string) {
   await within(dialog).findByRole("option", { name });
-  fireEvent.change(within(dialog).getByLabelText("Dealer"), { target: { value: id } });
+  // "Dealership" on the invite form, "Dealer" on the edit form, which still
+  // uses the older layout. Whichever this dialog has.
+  const picker =
+    within(dialog).queryByLabelText("Dealership") ?? within(dialog).getByLabelText("Dealer");
+  fireEvent.change(picker, { target: { value: id } });
 }
 
-describe("inviting somebody into one dealer", () => {
-  it("locks the organisation-wide apps once a dealer is chosen", async () => {
+/** The scope radio. Choosing a dealership is what narrows everything else. */
+function chooseScope(dialog: HTMLElement, label: string) {
+  fireEvent.click(within(dialog).getByRole("radio", { name: label }));
+}
+
+describe("inviting somebody into one dealership", () => {
+  /*
+   * The strongest form of C27 on this screen: for a dealer-scoped person the
+   * organisation-wide apps are NOT OFFERED, rather than offered and disabled.
+   * A checkbox list where two of three are permanently greyed is asking a
+   * question with one answer.
+   *
+   * Asserts what IS there as well as what is not — "CRM is absent" alone would
+   * pass if the fieldset failed to render at all.
+   */
+  it("offers no organisation-wide app once the person belongs to a dealership", async () => {
     const dialog = await openInviteForm();
 
-    fireEvent.click(within(dialog).getByRole("checkbox", { name: "DMS" }));
+    chooseScope(dialog, "One dealership");
     await chooseDealer(dialog, "Chennai — Guindy", "unit-1");
 
-    // CRM does no dealer filtering, so this person would see every dealer's
-    // customers. That is the leak C27 closes.
-    expect(within(dialog).getByRole("checkbox", { name: "CRM" })).toBeDisabled();
-
-    // AND THE ONE THAT MUST STAY OPEN. A dealer admin is a dealer-scoped
-    // membership holding Administration (C23) — locking this would make them
-    // impossible to create, and no other assertion here would notice.
-    expect(within(dialog).getByRole("checkbox", { name: "Administration" })).not.toBeDisabled();
-  });
-
-  it("refuses a dealer while an organisation-wide app is selected, and says why", async () => {
-    const dialog = await openInviteForm();
-
-    fireEvent.click(within(dialog).getByRole("checkbox", { name: "DMS" }));
-    fireEvent.click(within(dialog).getByRole("checkbox", { name: "CRM" }));
-
-    expect(within(dialog).getByLabelText("Dealer")).toBeDisabled();
-    // A greyed control with no reason reads as broken.
-    expect(dialog).toHaveTextContent(/Clear the other apps to scope this person to a dealer/i);
+    expect(within(dialog).queryByRole("checkbox", { name: "CRM" })).not.toBeInTheDocument();
+    expect(dialog).toHaveTextContent(/CRM and E-commerce are\s+organisation-wide/i);
+    expect(within(dialog).getByRole("checkbox", { name: /Manage this dealership/i })).toBeInTheDocument();
   });
 
   /*
-   * Asserts the closing as well as the reopening, deliberately. Checking only
-   * that the picker ends up enabled would pass with the whole rule reverted —
-   * it was enabled the entire time — and prove nothing. A rule that locks and
-   * never unlocks is its own bug, so the transition is the thing worth pinning.
+   * THE POINT OF THE WHOLE RESTRUCTURE. Before this, a dealer admin was made by
+   * ticking a checkbox called "Administration" — the same label an organisation
+   * admin gets — and separately picking a dealership. The form never said that
+   * combination meant anything, so the power was granted by deduction.
    */
-  it("reopens the dealer picker when the organisation-wide app is cleared", async () => {
+  it("names the dealer-admin grant instead of leaving it to be deduced", async () => {
     const dialog = await openInviteForm();
 
-    fireEvent.click(within(dialog).getByRole("checkbox", { name: "DMS" }));
-    fireEvent.click(within(dialog).getByRole("checkbox", { name: "CRM" }));
-    expect(within(dialog).getByLabelText("Dealer")).toBeDisabled();
+    chooseScope(dialog, "One dealership");
+    await chooseDealer(dialog, "Chennai — Guindy", "unit-1");
 
-    fireEvent.click(within(dialog).getByRole("checkbox", { name: "CRM" }));
-    expect(await within(dialog).findByLabelText("Dealer")).not.toBeDisabled();
+    expect(within(dialog).getByRole("checkbox", { name: /Manage this dealership/i })).toBeInTheDocument();
+    expect(dialog).toHaveTextContent(/This is what makes somebody a dealer\s+admin/i);
+    // The old, ambiguous control is gone from this branch entirely.
+    expect(within(dialog).queryByRole("checkbox", { name: "Administration" })).not.toBeInTheDocument();
+  });
+
+  /*
+   * Asserts both directions deliberately. Checking only that the apps come back
+   * would pass against a form that never hid them, and prove nothing.
+   */
+  it("restores the full app list when they work across the organisation", async () => {
+    const dialog = await openInviteForm();
+
+    chooseScope(dialog, "One dealership");
+    expect(within(dialog).queryByRole("checkbox", { name: "CRM" })).not.toBeInTheDocument();
+
+    chooseScope(dialog, "The whole organisation");
+
+    expect(within(dialog).getByRole("checkbox", { name: "CRM" })).toBeInTheDocument();
+    expect(within(dialog).getByRole("checkbox", { name: "DMS" })).toBeInTheDocument();
+    // No dealership to pick when they are not scoped to one.
+    expect(within(dialog).queryByLabelText("Dealership")).not.toBeInTheDocument();
+  });
+
+  /*
+   * There is no "no dealership" option in the picker any more — that is the
+   * other radio — so an empty one means the question was skipped. Submitting it
+   * would send `unit_id: ""` and the backend would be right to refuse.
+   */
+  it("will not send an invitation with the dealership unanswered", async () => {
+    const dialog = await openInviteForm();
+
+    chooseScope(dialog, "One dealership");
+    fireEvent.change(within(dialog).getByLabelText(/First name/), { target: { value: "Asha" } });
+    fireEvent.change(within(dialog).getByLabelText(/Last name/), { target: { value: "Pillai" } });
+    fireEvent.change(within(dialog).getByLabelText(/Email/), {
+      target: { value: "asha.p@acmemotors.in" },
+    });
+    fireEvent.click(within(dialog).getByRole("button", { name: /Send invitation/ }));
+
+    expect(await within(dialog).findByText(/Choose which dealership they work for/i)).toBeInTheDocument();
+    expect(mockInviteUser).not.toHaveBeenCalled();
+  });
+});
+
+describe("staffing a dealership that has nobody in it", () => {
+  /*
+   * Creating a dealership used to end in a dead end: the Dealers screen knew
+   * nobody worked there and could only describe the problem. The link carries
+   * `?invite=<id>` into Users, which opens this dialog already scoped — so
+   * "create a dealership, give it an admin" is two clicks rather than a hunt.
+   */
+  it("opens the invite dialog already scoped to that dealership", async () => {
+    renderRoute({ path: "/acme-motors/admin/users?invite=unit-1", children: routes });
+
+    const dialog = await screen.findByRole("dialog");
+
+    expect(within(dialog).getByRole("radio", { name: "One dealership" })).toBeChecked();
+    await within(dialog).findByRole("option", { name: "Chennai — Guindy" });
+    expect(within(dialog).getByLabelText("Dealership")).toHaveValue("unit-1");
+
+    // Scoped, so the organisation-wide apps are not on offer (C27).
+    expect(within(dialog).queryByRole("checkbox", { name: "CRM" })).not.toBeInTheDocument();
+  });
+
+  /*
+   * The parameter is consumed once and scrubbed. Left in the address bar it
+   * would reopen the dialog on every refresh and every Back, long after the
+   * person dealt with it — the same reason signup scrubs `?code=`.
+   */
+  /*
+   * Found by running it: Madurai is closed, and the panel was offering to staff
+   * it. A closed dealership is not in the invite picker, so the link led to a
+   * form that could not be submitted and an error demanding an answer the form
+   * refused to offer.
+   */
+  it("does not offer to staff a closed dealership", async () => {
+    mockFetchDealers.mockResolvedValue([
+      GUINDY,
+      dealer({ id: "unit-4", name: "Madurai — Ring Road", status: "disabled", user_count: 0 }),
+    ]);
+
+    renderRoute({ path: "/acme-motors/admin/dealers/unit-4", children: dealerRoutes });
+
+    const panel = await screen.findByRole("complementary", { name: /Madurai/ });
+
+    expect(within(panel).queryByRole("link", { name: /Invite this dealership/i })).not.toBeInTheDocument();
+    expect(panel).toHaveTextContent(/Reopen the dealership before staffing it/i);
+  });
+
+  it("offers to staff an open one", async () => {
+    mockFetchDealers.mockResolvedValue([dealer({ id: "unit-1", user_count: 0 })]);
+
+    renderRoute({ path: "/acme-motors/admin/dealers/unit-1", children: dealerRoutes });
+
+    const panel = await screen.findByRole("complementary", { name: /Guindy/ });
+
+    expect(within(panel).getByRole("link", { name: /Invite this dealership/i })).toHaveAttribute(
+      "href",
+      "/acme-motors/admin/users?invite=unit-1",
+    );
+  });
+
+  it("does not leave the parameter in the URL", async () => {
+    // The ROUTER's location, not window.location — createMemoryRouter never
+    // touches the latter, so asserting against it passes whatever the code does.
+    const { router } = renderRoute({
+      path: "/acme-motors/admin/users?invite=unit-1",
+      children: routes,
+    });
+
+    await screen.findByRole("dialog");
+
+    await waitFor(() => {
+      expect(router.state.location.search).toBe("");
+    });
   });
 });
 

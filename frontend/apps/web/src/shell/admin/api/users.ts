@@ -21,6 +21,8 @@
 
 import { ApiError, type Problem } from "@xpredict/api-client";
 
+import { fakeDealerName } from "./dealers";
+
 /** Active, invited but not yet accepted, or switched off. */
 export type UserStatus = "active" | "invited" | "disabled";
 
@@ -142,7 +144,15 @@ const FAKE_USERS: OrgUser[] = [
     unit_id: "unit-2",
     role: "admin",
     status: "active",
-    apps: [{ app: "dms", role: "Dealer admin" }],
+    apps: [
+      { app: "dms", role: "Dealer manager" },
+      // WHAT ACTUALLY MAKES THEM A DEALER ADMIN (C23): Administration, narrowed
+      // to Users at their own dealer. It used to say `{ app: "dms", role: "Dealer
+      // admin" }` and nothing else, which modelled the power as a role INSIDE DMS
+      // and contradicted `/me` in `shell/api/auth.ts`. Two fakes answering the same
+      // question differently is how the wrong one gets built.
+      { app: "admin", role: "Dealer admin" },
+    ],
   },
   {
     id: "user-4",
@@ -184,13 +194,6 @@ const FAKE_USERS: OrgUser[] = [
  * `dealers.ts` — duplicated here only so the fake can answer without the two
  * fakes importing each other.
  */
-const FAKE_DEALER_NAMES: Record<string, string> = {
-  "unit-1": "Chennai — Guindy",
-  "unit-2": "Bangalore — Whitefield",
-  "unit-3": "Coimbatore — Peelamedu",
-  "unit-4": "Madurai — Ring Road",
-};
-
 /**
  * Northway, where the signed-in person is a DEALER ADMIN at Bangalore —
  * Whitefield (C23). They see their own dealer's people and nobody else's.
@@ -210,7 +213,15 @@ const FAKE_DEALER_USERS: OrgUser[] = [
     unit_id: "unit-2",
     role: "admin",
     status: "active",
-    apps: [{ app: "dms", role: "Dealer admin" }],
+    apps: [
+      { app: "dms", role: "Dealer manager" },
+      // WHAT ACTUALLY MAKES THEM A DEALER ADMIN (C23): Administration, narrowed
+      // to Users at their own dealer. It used to say `{ app: "dms", role: "Dealer
+      // admin" }` and nothing else, which modelled the power as a role INSIDE DMS
+      // and contradicted `/me` in `shell/api/auth.ts`. Two fakes answering the same
+      // question differently is how the wrong one gets built.
+      { app: "admin", role: "Dealer admin" },
+    ],
   },
   {
     id: "user-n2",
@@ -330,7 +341,7 @@ export async function updateUser(
       // Only an outstanding invitation may change address — see UserDetails.
       email: existing.status === "invited" ? body.email : existing.email,
       unit_id: body.unit_id,
-      unit_name: FAKE_DEALER_NAMES[body.unit_id ?? ""] ?? null,
+      unit_name: fakeDealerName(body.unit_id),
       role: existing.role === "owner" ? "owner" : body.role,
       /*
        * Per-app ROLES are preserved, not reassigned. The form grants and
@@ -446,7 +457,7 @@ export async function inviteUser(orgSlug: string, body: NewInvitation): Promise<
       first_name: body.first_name,
       last_name: body.last_name,
       email: body.email,
-      unit_name: FAKE_DEALER_NAMES[body.unit_id ?? ""] ?? null,
+      unit_name: fakeDealerName(body.unit_id),
       unit_id: body.unit_id,
       role: "member",
       status: "invited",

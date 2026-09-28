@@ -159,6 +159,22 @@
   color: var(--color-text-disabled);
 }
 
+/* Matches TextField's error line, so a field-level problem reads the same
+   wherever it appears in a form. */
+.error {
+  margin: 0;
+  font-size: var(--text-xs);
+  line-height: 1.4;
+  color: var(--color-danger);
+}
+
+/* The radio group stacks; the app checkboxes still flow in a row via
+   .appChoices. Without this the two radios sit side by side and read as a
+   pair of unrelated buttons rather than one either/or question. */
+.fieldset > .checkbox {
+  align-self: flex-start;
+}
+
 .actions {
   display: flex;
   justify-content: flex-end;

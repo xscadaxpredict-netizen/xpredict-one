@@ -261,6 +261,24 @@ export async function createDealer(orgSlug: string, body: NewDealer): Promise<De
   });
 }
 
+/**
+ * FAKE BACKEND ONLY: resolve a dealership's display name from its id.
+ *
+ * The real server does this with a join, which is why `unit_name` arrives on a
+ * user at all — an id is not a label. The users fake used to carry its own
+ * hardcoded map of the four seeded dealerships, so anybody scoped to a
+ * dealership CREATED IN THIS SESSION came back with `unit_name: null` and the
+ * detail panel said "Organisation — not limited to any one dealer". The id was
+ * stored correctly the whole time; only the label was missing, which makes it
+ * look exactly like a scoping bug and is a genuinely expensive afternoon.
+ *
+ * Goes when the backend lands, with the rest of the fakes.
+ */
+export function fakeDealerName(unitId: string | null | undefined): string | null {
+  if (!unitId) return null;
+  return fakeDealers.find((dealer) => dealer.id === unitId)?.name ?? null;
+}
+
 export async function updateDealer(
   orgSlug: string,
   dealerId: string,
