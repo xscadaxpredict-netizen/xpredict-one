@@ -6,10 +6,15 @@
  * credentials. That is why the new row appears as "Invitation sent" rather
  * than active, and why there is no password field on this form.
  *
- * SCOPE IS THE INTERESTING FIELD. A person belongs to the organisation; the
- * only app that can narrow that is DMS, because it is the only unit-aware one
- * (C5). So the picker is disabled unless DMS is selected, and says why —
- * rather than silently accepting a dealer that would mean nothing in CRM.
+ * SCOPE IS THE INTERESTING FIELD, and it constrains the apps as much as they
+ * constrain it. A person belongs to the organisation; the only product that can
+ * narrow that is DMS, because it is the only unit-aware one (C5). So the picker
+ * is off unless DMS is selected, and says why — rather than silently accepting a
+ * dealer that would mean nothing in CRM.
+ *
+ * And the other direction, which is C27: a dealer-scoped person cannot hold an
+ * organisation-wide product at all, so choosing a dealer locks those apps. Both
+ * halves of that rule live in `../dealerScope.ts`, shared with the edit form.
  *
  * ROLES ARE NOT SET HERE. Q11 and Q12 are open, so a role dropdown would be
  * the frontend inventing a vocabulary the backend has not agreed. Access is
@@ -28,6 +33,7 @@ import { visibleApps } from "../../navigation";
 import { Button } from "../../components/Button";
 import { FormBanner } from "../../components/FormBanner";
 import { TextField } from "../../components/TextField";
+import { dealerScopeRules } from "../dealerScope";
 import { useDealers } from "../hooks/useDealers";
 import { useInviteUser } from "../hooks/useUsers";
 import styles from "./InviteUserDialog.module.css";
@@ -93,6 +99,7 @@ function InviteForm({ membership, onDone }: InviteFormProps) {
   const [formError, setFormError] = useState<{ message: string; traceId?: string } | null>(null);
 
   const dmsSelected = selectedApps.includes("dms");
+  const scope = dealerScopeRules(selectedApps, unitId);
 
   /*
    * Only fetched once DMS is ticked: most invitations are organisation-wide,
@@ -208,26 +215,28 @@ function InviteForm({ membership, onDone }: InviteFormProps) {
                 <input
                   type="checkbox"
                   checked={selectedApps.includes(app.definition.key)}
+                  // A dealer is chosen and this app is organisation-wide (C27).
+                  // Locked rather than hidden: hiding it would make the list
+                  // jump as the dealer changes, and a reason is given below.
+                  disabled={scope.isAppLocked(app.definition.key)}
                   onChange={() => toggleApp(app.definition.key)}
                 />
                 <span>{app.definition.name}</span>
               </label>
             ))}
           </div>
+
+          {scope.appsNote && <p className={styles.hint}>{scope.appsNote}</p>}
         </fieldset>
 
-        <fieldset className={styles.fieldset} disabled={!dmsSelected}>
+        <fieldset className={styles.fieldset} disabled={!scope.canPickDealer}>
           <legend className={styles.legend}>Dealer</legend>
-          <p className={styles.hint}>
-            {dmsSelected
-              ? "Leave as Organisation for someone who works across every dealer."
-              : /*
-                 * Says why it is off. A greyed control with no explanation is
-                 * read as broken, and the reason here is the actual model
-                 * rather than an arbitrary rule.
-                 */
-                "Only DMS is split by dealer. Select DMS above to scope this person to one."}
-          </p>
+          {/*
+            Always says why it is off. A greyed control with no explanation is
+            read as broken, and the reason here is the actual model rather than
+            an arbitrary rule.
+          */}
+          <p className={styles.hint}>{scope.dealerNote}</p>
 
           <select
             className={styles.select}

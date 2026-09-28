@@ -13,7 +13,10 @@
  *                   worth fixing here.
  *   dealer, apps  — organisation admins only (C23). A dealer admin grants DMS
  *                   at their own dealer and nothing else, so for them these
- *                   are absent rather than disabled.
+ *                   are absent rather than disabled. For an organisation admin
+ *                   the two constrain each other: somebody who belongs to one
+ *                   dealer cannot hold an organisation-wide product (C27). The
+ *                   rule is in `../dealerScope.ts`, shared with the invite form.
  *   role          — member or admin. NOT owner: there is exactly one per
  *                   organisation (C14), so appointing a new one is a transfer,
  *                   and doing it through this form would leave the
@@ -36,6 +39,7 @@ import { visibleApps } from "../../navigation";
 import { Button } from "../../components/Button";
 import { FormBanner } from "../../components/FormBanner";
 import { TextField } from "../../components/TextField";
+import { dealerScopeRules } from "../dealerScope";
 import { useDealers } from "../hooks/useDealers";
 import { useUpdateUser } from "../hooks/useUsers";
 import styles from "./EditUserDialog.module.css";
@@ -109,6 +113,7 @@ function EditUserForm({ user, membership, onDone }: EditUserFormProps) {
   const [formError, setFormError] = useState<{ message: string; traceId?: string } | null>(null);
 
   const apps = visibleApps(membership).filter((app) => app.enabled);
+  const scope = dealerScopeRules(selectedApps, unitId);
   const { data: dealers } = useDealers({ enabled: !isDealerAdmin });
   const { mutateAsync: update, isPending } = useUpdateUser();
 
@@ -229,6 +234,12 @@ function EditUserForm({ user, membership, onDone }: EditUserFormProps) {
                       <input
                         type="checkbox"
                         checked={selectedApps.includes(app.definition.key)}
+                        // They belong to a dealer and this app is
+                        // organisation-wide (C27). Never locks an app they
+                        // ALREADY hold — see `dealerScopeRules`: a record that
+                        // predates this rule has to be fixable, and the only
+                        // edit that fixes it is removing the app.
+                        disabled={scope.isAppLocked(app.definition.key)}
                         onChange={() => toggleApp(app.definition.key)}
                       />
                       <span>{app.definition.name}</span>
@@ -236,8 +247,8 @@ function EditUserForm({ user, membership, onDone }: EditUserFormProps) {
                   ))}
                 </div>
                 <p className={styles.hint}>
-                  Removing an app takes their access away immediately. Their role inside each
-                  app is set separately.
+                  {scope.appsNote ??
+                    "Removing an app takes their access away immediately. Their role inside each app is set separately."}
                 </p>
               </fieldset>
 
@@ -248,7 +259,7 @@ function EditUserForm({ user, membership, onDone }: EditUserFormProps) {
                   value={unitId}
                   onChange={(event) => setUnitId(event.target.value)}
                   aria-label="Dealer"
-                  disabled={!selectedApps.includes("dms")}
+                  disabled={!scope.canPickDealer}
                 >
                   <option value="">Organisation — every dealer</option>
                   {dealerOptions.map((dealer) => (
@@ -257,11 +268,7 @@ function EditUserForm({ user, membership, onDone }: EditUserFormProps) {
                     </option>
                   ))}
                 </select>
-                <p className={styles.hint}>
-                  {selectedApps.includes("dms")
-                    ? "Only DMS is split by dealer."
-                    : "Only DMS is split by dealer. Give them DMS above to scope them to one."}
-                </p>
+                <p className={styles.hint}>{scope.dealerNote}</p>
               </fieldset>
 
               <fieldset className={styles.section} disabled={isOwner}>
