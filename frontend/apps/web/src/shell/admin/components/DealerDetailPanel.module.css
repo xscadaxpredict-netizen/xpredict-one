@@ -194,15 +194,6 @@
   color: var(--color-text-2);
 }
 
-.parent {
-  display: inline-block;
-  padding: 2px var(--space-3);
-  border-radius: var(--radius-pill);
-  background: var(--color-surface-alt);
-  font-size: var(--text-xs);
-  color: var(--color-text-2);
-}
-
 .contactName {
   font-size: var(--text-sm);
   font-weight: 600;

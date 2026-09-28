@@ -35,17 +35,18 @@ export interface Dealer {
    */
   code: string | null;
 
-  /**
-   * The dealership above this one, for groups that run branches under a main
-   * showroom. Null for a top-level dealership.
+  /*
+   * NO PARENT DEALERSHIP. Dealers are a FLAT LIST, not a tree (C29).
    *
-   * THIS MAKES DEALERS A TREE, which C7 already anticipated when it described
-   * a membership as covering its subtree. See Q22 — who a parent's admin can
-   * actually manage is not settled.
+   * There was a `parent_id` here and the form offered it, but what a parent
+   * actually means was never settled (Q22) — whether a parent's admin manages
+   * its branches' people, whether records roll up, how deep it may go. A field
+   * that is stored and displayed and confers nothing is decoration, and the
+   * conservative direction was to remove it until the question has an answer.
+   *
+   * Recoverable: it is in the history of `feat/app-shell`, with the cycle rule
+   * and its tests. Do not re-add it without answering Q22 first.
    */
-  parent_id: string | null;
-  /** Resolved server-side, like `unit_name` on a user: an id is not a label. */
-  parent_name: string | null;
 
   /** Who to call at this dealership. A person, not a department. */
   contact_person: string;
@@ -79,7 +80,6 @@ export interface DealerDetails {
   name: string;
   /** Empty string is sent as null: the field is optional. */
   code: string | null;
-  parent_id: string | null;
   contact_person: string;
   email: string;
   phone: string;
@@ -107,8 +107,6 @@ let fakeDealers: Dealer[] = [
     id: "unit-1",
     name: "Chennai — Guindy",
     code: "CHN-GUI",
-    parent_id: null,
-    parent_name: null,
     contact_person: "Anita Fernandes",
     email: "guindy@acmemotors.in",
     phone: "+91 44 2345 6789",
@@ -123,8 +121,6 @@ let fakeDealers: Dealer[] = [
     id: "unit-2",
     name: "Bangalore — Whitefield",
     code: "BLR-WHF",
-    parent_id: null,
-    parent_name: null,
     contact_person: "Vikram Nair",
     email: "whitefield@acmemotors.in",
     phone: "+91 80 4123 7788",
@@ -141,8 +137,6 @@ let fakeDealers: Dealer[] = [
     id: "unit-3",
     name: "Coimbatore — Peelamedu",
     code: "CBE-PLM",
-    parent_id: "unit-1",
-    parent_name: "Chennai — Guindy",
     contact_person: "Meera Krishnan",
     email: "peelamedu@acmemotors.in",
     phone: "+91 422 665 4321",
@@ -157,8 +151,6 @@ let fakeDealers: Dealer[] = [
     id: "unit-4",
     name: "Madurai — Ring Road",
     code: null,
-    parent_id: "unit-1",
-    parent_name: "Chennai — Guindy",
     contact_person: "Sanjay Desai",
     email: "madurai@acmemotors.in",
     phone: "+91 452 234 9900",
@@ -181,17 +173,6 @@ function fakeConflict(field: "name" | "code", value: string): ApiError {
         ? `${value} already exists in this organisation.`
         : `The code ${value} is already used by another dealership.`,
     code: `dealer_${field}_taken`,
-    trace_id: "fake-0000",
-  });
-}
-
-function fakeCycle(): ApiError {
-  return new ApiError({
-    type: "https://api.xpredict.one/errors/dealer-cycle",
-    title: "Invalid parent",
-    status: 422,
-    detail: "A dealership cannot report to itself or to one of its own branches.",
-    code: "dealer_cycle",
     trace_id: "fake-0000",
   });
 }
@@ -265,8 +246,6 @@ export async function createDealer(orgSlug: string, body: NewDealer): Promise<De
     const created: Dealer = {
       id: `unit-${String(Date.now())}`,
       ...body,
-      // Resolved here the way the server would: the form sends an id.
-      parent_name: fakeDealers.find((dealer) => dealer.id === body.parent_id)?.name ?? null,
       status: "active",
       user_count: 0,
       created_at: new Date().toISOString(),
@@ -280,38 +259,6 @@ export async function createDealer(orgSlug: string, body: NewDealer): Promise<De
     method: "POST",
     body: JSON.stringify(body),
   });
-}
-
-/**
- * Collect a dealership and everything beneath it.
- *
- * Used to keep a dealership from being re-parented under its own descendant,
- * which would cut that whole branch off from the organisation — it would have
- * a parent chain that never reaches the top, and every scope query walking
- * upwards would loop.
- *
- * Exported because the form needs it to decide what NOT to offer, and
- * refusing a choice is better than accepting it and then explaining.
- */
-export function dealerAndDescendants(dealers: Dealer[], rootId: string): Set<string> {
-  const found = new Set<string>([rootId]);
-
-  /*
-   * Repeats until nothing new turns up rather than recursing, so a cycle that
-   * somehow already exists in the data cannot hang the browser.
-   */
-  let changed = true;
-  while (changed) {
-    changed = false;
-    for (const dealer of dealers) {
-      if (dealer.parent_id && found.has(dealer.parent_id) && !found.has(dealer.id)) {
-        found.add(dealer.id);
-        changed = true;
-      }
-    }
-  }
-
-  return found;
 }
 
 export async function updateDealer(
@@ -340,27 +287,9 @@ export async function updateDealer(
       throw fakeConflict("code", body.code);
     }
 
-    /*
-     * Checked here as well as hidden in the form. The form is a courtesy; this
-     * is the rule. The real endpoint must do the same — a request does not
-     * have to come from our form.
-     */
-    if (body.parent_id && dealerAndDescendants(fakeDealers, dealerId).has(body.parent_id)) {
-      throw fakeCycle();
-    }
-
-    const updated: Dealer = {
-      ...existing,
-      ...body,
-      parent_name: fakeDealers.find((dealer) => dealer.id === body.parent_id)?.name ?? null,
-    };
+    const updated: Dealer = { ...existing, ...body };
 
     fakeDealers = fakeDealers.map((dealer) => (dealer.id === dealerId ? updated : dealer));
-
-    // A rename changes the label every child shows, so they are refreshed too.
-    fakeDealers = fakeDealers.map((dealer) =>
-      dealer.parent_id === dealerId ? { ...dealer, parent_name: updated.name } : dealer,
-    );
 
     return updated;
   }

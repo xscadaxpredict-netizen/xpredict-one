@@ -79,9 +79,6 @@ export function DealerTable({ dealers, basePath, selectedId, onSelect }: DealerT
                     ) : (
                       `Opened ${formatMonth(dealer.created_at)}`
                     )}
-                    {dealer.parent_name && (
-                      <span className={styles.parent}> · under {dealer.parent_name}</span>
-                    )}
                   </span>
                 </span>
               </th>

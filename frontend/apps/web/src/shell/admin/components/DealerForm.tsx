@@ -53,8 +53,6 @@ const dealerSchema = z.object({
     .max(16, "Keep the code under 16 characters.")
     .regex(/^[A-Za-z0-9-]*$/, "Use letters, numbers and hyphens only."),
 
-  parent_id: z.string(),
-
   contact_person: z
     .string()
     .trim()
@@ -94,7 +92,6 @@ export function dealerToFields(dealer: Dealer): DealerFields {
   return {
     name: dealer.name,
     code: dealer.code ?? "",
-    parent_id: dealer.parent_id ?? "",
     contact_person: dealer.contact_person,
     email: dealer.email,
     phone: dealer.phone,
@@ -107,7 +104,6 @@ export function dealerToFields(dealer: Dealer): DealerFields {
 export const EMPTY_DEALER_FIELDS: DealerFields = {
   name: "",
   code: "",
-  parent_id: "",
   contact_person: "",
   email: "",
   phone: "",
@@ -118,8 +114,6 @@ export const EMPTY_DEALER_FIELDS: DealerFields = {
 
 interface DealerFormProps {
   defaultValues: DealerFields;
-  /** Dealerships this one may report to. The caller decides what is legal. */
-  parentOptions: Dealer[];
   submitLabel: string;
   pendingLabel: string;
   isPending: boolean;
@@ -129,7 +123,6 @@ interface DealerFormProps {
 
 export function DealerForm({
   defaultValues,
-  parentOptions,
   submitLabel,
   pendingLabel,
   isPending,
@@ -157,7 +150,6 @@ export function DealerForm({
         // Empty means "not given". Sending "" would store a blank code that
         // then collides with the next blank one on a uniqueness check.
         code: values.code || null,
-        parent_id: values.parent_id || null,
       });
     } catch (error) {
       const problem = asProblem(error);
@@ -196,26 +188,9 @@ export function DealerForm({
               error={errors.code?.message}
               {...register("code")}
             />
-
-            <div className={styles.field}>
-              <label className={styles.label} htmlFor="dealer-parent">
-                Parent dealership
-              </label>
-              <select id="dealer-parent" className={styles.select} {...register("parent_id")}>
-                <option value="">None — top level</option>
-                {parentOptions.map((dealer) => (
-                  <option key={dealer.id} value={dealer.id}>
-                    {dealer.name}
-                  </option>
-                ))}
-              </select>
-            </div>
           </div>
 
-          <p className={styles.hint}>
-            The code is optional but must be unique. Leave the parent empty unless this
-            branch reports to another dealership.
-          </p>
+          <p className={styles.hint}>The code is optional but must be unique.</p>
         </fieldset>
 
         <fieldset className={styles.section}>

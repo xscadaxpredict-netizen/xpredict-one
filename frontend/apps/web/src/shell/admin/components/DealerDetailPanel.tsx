@@ -99,15 +99,6 @@ export function DealerDetailPanel({ dealer, usersPath, onClose }: DealerDetailPa
       </div>
 
       <dl className={styles.facts}>
-        {dealer.parent_name && (
-          <>
-            <dt>Reports to</dt>
-            <dd>
-              <span className={styles.parent}>{dealer.parent_name}</span>
-            </dd>
-          </>
-        )}
-
         <dt>Contact</dt>
         <dd>
           <span className={styles.contactName}>{dealer.contact_person}</span>
@@ -153,13 +144,20 @@ export function DealerDetailPanel({ dealer, usersPath, onClose }: DealerDetailPa
         <dt>Scope</dt>
         <dd>
           {/*
-            Worth stating on every dealership. A reader who has not met C5 will
-            assume a dealer partitions everything, and then wonder why the CRM
-            list is not filtered.
+            Worth stating on every dealership, because "which dealer?" and
+            "which app?" are the two halves of the same question and a reader
+            who has met neither C5 nor C27 will guess wrongly at both.
+
+            REWRITTEN FOR C27. This used to read "...so somebody scoped here
+            still sees all of those", which described the old C7 rule — a
+            dealer-scoped person could be granted CRM and would then see every
+            dealer's customers. That grant is now refused outright, so the
+            sentence was not merely stale, it advertised the leak C27 closed.
           */}
           <span className={styles.note}>
-            Dealers divide DMS only. CRM and the rest are organisation-wide, so somebody
-            scoped here still sees all of those.
+            Dealers divide DMS only, because it is the only app split by dealer. So
+            somebody scoped here can be given DMS and Administration — never CRM or
+            E-commerce, which are organisation-wide.
           </span>
         </dd>
       </dl>

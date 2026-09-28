@@ -72,8 +72,6 @@ function dealer(overrides: Partial<dealersApi.Dealer> & { id: string }): dealers
   return {
     name: "Chennai — Guindy",
     code: null,
-    parent_id: null,
-    parent_name: null,
     contact_person: "R. Menon",
     email: "guindy@acmemotors.in",
     phone: "+91 44 4000 0000",

@@ -54,9 +54,14 @@ export function DealersScreen() {
               The model, said once on the screen where it matters most. Anyone
               who has not met C5 will assume a dealership partitions the whole
               product, and then wonder why CRM is not filtered.
+
+              It no longer adds "CRM and the rest are organisation-wide" — true,
+              but it invited the reader to picture a dealer-scoped person over in
+              CRM seeing everything, which C27 now refuses outright. The full
+              rule is stated on the detail panel, where there is room for it.
             */}
-            Dealerships in {membership.org_name}. They divide DMS only — CRM and the rest
-            are organisation-wide. Each dealership manages its own people.
+            Dealerships in {membership.org_name}. They divide DMS, the only app split by
+            dealer. Each dealership manages its own people.
           </p>
         </div>
 

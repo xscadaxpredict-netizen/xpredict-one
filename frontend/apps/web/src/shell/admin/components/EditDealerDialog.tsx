@@ -9,19 +9,18 @@
  * action with its own rule, and a payload that could carry `status` would make
  * "fix a typo in the address" and "shut the branch" the same request.
  *
- * THE PARENT LIST IS WHERE THE REAL WORK IS. A dealership may not report to
- * itself or to any of its own branches: that would cut the whole subtree off
- * from the organisation, leaving a parent chain that never reaches the top and
- * every upward scope query walking in circles. Those options are removed
- * rather than offered and then rejected — but the backend refuses them too,
- * because a request does not have to come from this form.
+ * NO PARENT DEALERSHIP. Dealers are a flat list (C29). This dialog used to
+ * carry the fiddliest rule in the admin console — a dealership may not report
+ * to itself or to one of its own branches — and all of it went with the field
+ * when Q22 turned out to have no answer yet. It is in the history of
+ * `feat/app-shell` if the tree comes back.
  */
 
 import { useState } from "react";
 import * as Dialog from "@radix-ui/react-dialog";
 
-import { dealerAndDescendants, type Dealer } from "../api/dealers";
-import { useDealers, useUpdateDealer } from "../hooks/useDealers";
+import type { Dealer } from "../api/dealers";
+import { useUpdateDealer } from "../hooks/useDealers";
 import { DealerForm, dealerToFields } from "./DealerForm";
 import styles from "./DealerDialog.module.css";
 
@@ -32,23 +31,6 @@ interface EditDealerDialogProps {
 export function EditDealerDialog({ dealer }: EditDealerDialogProps) {
   const [open, setOpen] = useState(false);
   const { mutateAsync: update, isPending } = useUpdateDealer();
-  const { data: dealers } = useDealers();
-
-  const all = dealers ?? [];
-  const excluded = dealerAndDescendants(all, dealer.id);
-
-  const parentOptions = all.filter(
-    (candidate) =>
-      // Itself and its own branches would make a loop.
-      !excluded.has(candidate.id) &&
-      /*
-       * A closed dealership is not offered as a new parent — but if this one
-       * already reports to a closed dealership, that is kept in the list.
-       * Otherwise opening this dialog to change a phone number would silently
-       * reset the parent to "None" on save.
-       */
-      (candidate.status === "active" || candidate.id === dealer.parent_id),
-  );
 
   return (
     <Dialog.Root open={open} onOpenChange={setOpen}>
@@ -76,7 +58,6 @@ export function EditDealerDialog({ dealer }: EditDealerDialogProps) {
           <DealerForm
             key={`${dealer.id}-${String(open)}`}
             defaultValues={dealerToFields(dealer)}
-            parentOptions={parentOptions}
             submitLabel="Save changes"
             pendingLabel="Saving…"
             isPending={isPending}
