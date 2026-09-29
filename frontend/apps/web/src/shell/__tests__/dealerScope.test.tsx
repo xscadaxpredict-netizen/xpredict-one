@@ -67,7 +67,7 @@ function user(overrides: Partial<usersApi.OrgUser> & { id: string }): usersApi.O
     unit_id: null,
     role: "member",
     status: "active",
-    apps: [{ app: "dms", role: "Sales executive" }],
+    apps: [{ app: "dms", role: "Sales representative" }],
     ...overrides,
   };
 }
@@ -108,7 +108,7 @@ const LEGACY = user({
   unit_id: "unit-1",
   unit_name: "Chennai — Guindy",
   apps: [
-    { app: "dms", role: "Sales executive" },
+    { app: "dms", role: "Sales representative" },
     { app: "crm", role: "Marketing" },
   ],
 });
@@ -213,7 +213,7 @@ describe("inviting somebody into one dealership", () => {
 
     const picker = await within(dialog).findByLabelText("Role in DMS");
 
-    expect(within(picker).getByRole("option", { name: "Dealer admin" })).toBeInTheDocument();
+    expect(within(picker).getByRole("option", { name: "Manager" })).toBeInTheDocument();
 
     /*
      * NO TICK BESIDE IT, in any form. Two controls writing one value look
@@ -280,35 +280,41 @@ describe("what standing an invited person gets", () => {
   }
 
   /*
-   * A DEALER USER IS NOT AUTOMATICALLY THE ADMIN. The toggle is the whole
-   * difference, and it is `role`, not an app grant: `admin` with a dealership
-   * attached IS a dealer admin (C31).
+   * A DEALER USER IS NOT AUTOMATICALLY THE ADMIN. Which DMS role was chosen is
+   * the whole difference, and what it sets is `Membership.role` — `admin` with
+   * a dealership attached IS a dealer admin (C31). Only Manager carries
+   * `administers` (C35); every other role leaves them a member.
    */
-  it("makes a dealer user a member unless the toggle is set", async () => {
+  it("leaves a dealer user a member when their role does not administer", async () => {
     const dialog = await openInviteForm();
 
     chooseScope(dialog, "Dealership");
     await chooseDealer(dialog, "Chennai — Guindy", "unit-1");
-    await chooseRole(dialog, "DMS", "dms.dealer_manager");
+    await chooseRole(dialog, "DMS", "dms.manager");
     fillNames(dialog);
     fireEvent.click(within(dialog).getByRole("button", { name: /Send invitation/ }));
 
     await waitFor(() => {
       expect(mockInviteUser).toHaveBeenCalled();
     });
+    /*
+     * MANAGER, deliberately. It is the role most likely to be assumed to
+     * administer — it carried `administers` for an hour — so it is the one
+     * worth pinning as not doing so (C36).
+     */
     expect(inviteBody()).toMatchObject({
       unit_id: "unit-1",
-      apps: [{ app: "dms", role: "dms.dealer_manager" }],
+      apps: [{ app: "dms", role: "dms.manager" }],
       role: "member",
     });
   });
 
-  it("makes them a dealer admin when it is", async () => {
+  it("makes them a dealer admin when it does", async () => {
     const dialog = await openInviteForm();
 
     chooseScope(dialog, "Dealership");
     await chooseDealer(dialog, "Chennai — Guindy", "unit-1");
-    await chooseRole(dialog, "DMS", "dms.dealer_admin");
+    await chooseRole(dialog, "DMS", "dms.system_admin");
     fillNames(dialog);
     fireEvent.click(within(dialog).getByRole("button", { name: /Send invitation/ }));
 
@@ -322,7 +328,7 @@ describe("what standing an invited person gets", () => {
     // privileged codes copied into the form.
     expect(body).toMatchObject({
       unit_id: "unit-1",
-      apps: [{ app: "dms", role: "dms.dealer_admin" }],
+      apps: [{ app: "dms", role: "dms.system_admin" }],
       role: "admin",
     });
     /*
@@ -373,7 +379,7 @@ describe("the role somebody holds inside an app", () => {
    * `unit` roles and somebody organisation-wide only `org` ones (C32) — offering
    * the wrong ones would produce records the backend is right to refuse.
    */
-  it("offers the four dealership roles to somebody at a dealership", async () => {
+  it("offers the six dealership roles to somebody at a dealership", async () => {
     const dialog = await openInviteForm();
 
     chooseScope(dialog, "Dealership");
@@ -388,12 +394,13 @@ describe("the role somebody holds inside an app", () => {
       // Nothing is preselected where there is a real choice, so the form opens
       // on a prompt rather than on the most capable role.
       "Select a role…",
-      // The top role, and the only one that administers the dealership (C34).
-      "Dealer admin",
-      "Dealer manager",
-      "Sales executive",
+      // Only System administrator administers the dealership (C36).
+      "Manager",
+      "System administrator",
+      "Sales representative",
       "Service advisor",
-      "Tech support agent",
+      "Technician",
+      "Tech support",
     ]);
     // Roles that span every dealership are not things you can be AT one.
     expect(names).not.toContain("Fleet viewer");
@@ -418,7 +425,7 @@ describe("the role somebody holds inside an app", () => {
 
     expect(names).toEqual(["Select a role…", "Fleet viewer", "Group operations"]);
     // Dealership roles are not things you can be across ALL of them.
-    expect(names).not.toContain("Sales executive");
+    expect(names).not.toContain("Sales representative");
     expect(picker).toHaveValue("");
   });
 
@@ -514,14 +521,14 @@ describe("what a stored user shows", () => {
    * The fake used to keep a second hardcoded map for this, so adding a role
    * meant remembering to add it in two places. It was forgotten the first time
    * — a brand new Dealer admin appeared in the panel as the literal string
-   * "dms.dealer_admin". It now reads the role list itself.
+   * "dms.manager". It now reads the role list itself.
    */
   it("resolves a role code to its name", async () => {
     const dialog = await openInviteForm();
 
     chooseScope(dialog, "Dealership");
     await chooseDealer(dialog, "Chennai — Guindy", "unit-1");
-    await chooseRole(dialog, "DMS", "dms.dealer_admin");
+    await chooseRole(dialog, "DMS", "dms.system_admin");
 
     fireEvent.change(within(dialog).getByLabelText(/First name/), { target: { value: "Kiran" } });
     fireEvent.change(within(dialog).getByLabelText(/Last name/), { target: { value: "Bose" } });
@@ -538,10 +545,10 @@ describe("what a stored user shows", () => {
     if (!call) throw new Error("inviteUser was never called");
 
     // The code goes out...
-    expect(call[1].apps).toEqual([{ app: "dms", role: "dms.dealer_admin" }]);
+    expect(call[1].apps).toEqual([{ app: "dms", role: "dms.system_admin" }]);
     // ...and resolves to a name nobody has to read as an identifier.
-    expect(fakeRoleName("dms.dealer_admin")).toBe("Dealer admin");
-    expect(fakeRoleName("dms.sales_executive")).toBe("Sales executive");
+    expect(fakeRoleName("dms.system_admin")).toBe("System administrator");
+    expect(fakeRoleName("dms.technician")).toBe("Technician");
   });
 });
 
@@ -602,7 +609,7 @@ describe("editing somebody's role", () => {
     const dialog = await openEditForm("ravi", "Ravi Shankar");
 
     fireEvent.change(await within(dialog).findByLabelText("Role in DMS"), {
-      target: { value: "dms.dealer_manager" },
+      target: { value: "dms.manager" },
     });
     fireEvent.click(within(dialog).getByRole("button", { name: /Save changes/ }));
 
@@ -613,7 +620,7 @@ describe("editing somebody's role", () => {
     const call = mockUpdateUser.mock.calls[0];
     if (!call) throw new Error("updateUser was never called");
 
-    expect(call[2].apps).toEqual([{ app: "dms", role: "dms.dealer_manager" }]);
+    expect(call[2].apps).toEqual([{ app: "dms", role: "dms.manager" }]);
   });
 });
 

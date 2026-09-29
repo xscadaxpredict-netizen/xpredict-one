@@ -73,7 +73,7 @@ function wait(ms: number) {
 }
 
 /**
- * The five DMS roles of C32, plus CRM's single default.
+ * The DMS roles (C32, revised by C35), plus CRM's single default.
  *
  * THE DEALERSHIP IS THE RECORD BOUNDARY (C32). A Sales executive sees all of
  * their dealership's enquiries, not only the ones assigned to them —
@@ -91,51 +91,83 @@ function wait(ms: number) {
 const FAKE_ROLES: Role[] = [
   {
     /*
-     * THE TOP ROLE AT A DEALERSHIP, and the only one that administers.
+     * RUNS THE BUSINESS, NOT THE SOFTWARE. Every module at this dealership,
+     * but not its user accounts — those belong to System administrator below.
      *
-     * It replaces a separate "also let them manage users" tick that sat under
-     * the role picker. That tick read as redundant next to "Dealer manager" —
-     * which plainly implies managing people — and as contradictory when the
-     * two disagreed.
-     *
-     * WHAT IS GIVEN UP, knowingly: a Sales executive who also hires can no
-     * longer be expressed, because administering now travels with the top role
-     * rather than being granted alongside any of them.
+     * It briefly carried `administers` and no longer does (C36). Splitting the
+     * two is the separation a dealership actually has: the person hitting the
+     * sales targets is rarely the person adding accounts.
      */
-    code: "dms.dealer_admin",
-    name: "Dealer admin",
+    code: "dms.manager",
+    name: "Manager",
     app: "dms",
     level: "unit",
-    summary: "Everything at this dealer, including adding and removing its users.",
-    administers: true,
-  },
-  {
-    code: "dms.dealer_manager",
-    name: "Dealer manager",
-    app: "dms",
-    level: "unit",
-    summary: "Everything at this dealer except its users.",
+    summary: "Everything at this dealer except its user accounts.",
     administers: false,
   },
   {
-    code: "dms.sales_executive",
-    name: "Sales executive",
+    /*
+     * THE ONE ROLE THAT ADMINISTERS THE DEALERSHIP.
+     *
+     * `administers` is what makes this more than a job title: holding it sets
+     * `Membership.role: "admin"` with the dealership attached, which IS a
+     * dealer admin (C31). There is no separate "also let them manage users"
+     * tick — that read as redundant beside a role that implies it, and as
+     * contradictory when the two disagreed (C34).
+     *
+     * WHAT IS GIVEN UP, knowingly: a Sales representative who also hires
+     * cannot be expressed. Administering travels with this role rather than
+     * being grantable alongside any of them.
+     *
+     * IT DOES NOT SET PASSWORDS, and nothing here should say it does. Nobody
+     * sets another person's credentials — an invitation goes out and they
+     * choose their own (C14) — and a sign-in address is locked once accepted
+     * (C25). Creating the account and assigning the role is the whole job.
+     */
+    code: "dms.system_admin",
+    name: "System administrator",
+    app: "dms",
+    level: "unit",
+    summary: "Creates user profiles and assigns roles at this dealer.",
+    administers: true,
+  },
+  {
+    code: "dms.sales_representative",
+    name: "Sales representative",
     app: "dms",
     level: "unit",
     summary: "Enquiries, quotations, orders and follow-ups.",
     administers: false,
   },
   {
+    /*
+     * The advisor books the work and raises the job card; the technician below
+     * carries it out. Different people at a real dealership, and different
+     * screens, so they are different roles rather than one "service" role.
+     */
     code: "dms.service_advisor",
     name: "Service advisor",
     app: "dms",
     level: "unit",
-    summary: "Appointments and job cards.",
+    summary: "Books appointments and raises job cards.",
     administers: false,
   },
   {
-    code: "dms.tech_support_agent",
-    name: "Tech support agent",
+    code: "dms.technician",
+    name: "Technician",
+    app: "dms",
+    level: "unit",
+    summary: "Carries out the work recorded on job cards.",
+    administers: false,
+  },
+  {
+    /*
+     * Tech support is its own MODULE (C18), not a corner of service, so it
+     * keeps its own role. A technician works on vehicles; this answers
+     * support tickets.
+     */
+    code: "dms.tech_support",
+    name: "Tech support",
     app: "dms",
     level: "unit",
     summary: "Support tickets.",
