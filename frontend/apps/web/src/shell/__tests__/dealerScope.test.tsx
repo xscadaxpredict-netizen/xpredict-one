@@ -290,16 +290,21 @@ describe("what standing an invited person gets", () => {
 
     chooseScope(dialog, "Dealership");
     await chooseDealer(dialog, "Chennai — Guindy", "unit-1");
-    await chooseRole(dialog, "DMS", "dms.technician");
+    await chooseRole(dialog, "DMS", "dms.manager");
     fillNames(dialog);
     fireEvent.click(within(dialog).getByRole("button", { name: /Send invitation/ }));
 
     await waitFor(() => {
       expect(mockInviteUser).toHaveBeenCalled();
     });
+    /*
+     * MANAGER, deliberately. It is the role most likely to be assumed to
+     * administer — it carried `administers` for an hour — so it is the one
+     * worth pinning as not doing so (C36).
+     */
     expect(inviteBody()).toMatchObject({
       unit_id: "unit-1",
-      apps: [{ app: "dms", role: "dms.technician" }],
+      apps: [{ app: "dms", role: "dms.manager" }],
       role: "member",
     });
   });
@@ -309,7 +314,7 @@ describe("what standing an invited person gets", () => {
 
     chooseScope(dialog, "Dealership");
     await chooseDealer(dialog, "Chennai — Guindy", "unit-1");
-    await chooseRole(dialog, "DMS", "dms.manager");
+    await chooseRole(dialog, "DMS", "dms.system_admin");
     fillNames(dialog);
     fireEvent.click(within(dialog).getByRole("button", { name: /Send invitation/ }));
 
@@ -323,7 +328,7 @@ describe("what standing an invited person gets", () => {
     // privileged codes copied into the form.
     expect(body).toMatchObject({
       unit_id: "unit-1",
-      apps: [{ app: "dms", role: "dms.manager" }],
+      apps: [{ app: "dms", role: "dms.system_admin" }],
       role: "admin",
     });
     /*
@@ -374,7 +379,7 @@ describe("the role somebody holds inside an app", () => {
    * `unit` roles and somebody organisation-wide only `org` ones (C32) — offering
    * the wrong ones would produce records the backend is right to refuse.
    */
-  it("offers the five dealership roles to somebody at a dealership", async () => {
+  it("offers the six dealership roles to somebody at a dealership", async () => {
     const dialog = await openInviteForm();
 
     chooseScope(dialog, "Dealership");
@@ -389,8 +394,9 @@ describe("the role somebody holds inside an app", () => {
       // Nothing is preselected where there is a real choice, so the form opens
       // on a prompt rather than on the most capable role.
       "Select a role…",
-      // The top role, and the only one that administers the dealership (C35).
+      // Only System administrator administers the dealership (C36).
       "Manager",
+      "System administrator",
       "Sales representative",
       "Service advisor",
       "Technician",
@@ -522,7 +528,7 @@ describe("what a stored user shows", () => {
 
     chooseScope(dialog, "Dealership");
     await chooseDealer(dialog, "Chennai — Guindy", "unit-1");
-    await chooseRole(dialog, "DMS", "dms.manager");
+    await chooseRole(dialog, "DMS", "dms.system_admin");
 
     fireEvent.change(within(dialog).getByLabelText(/First name/), { target: { value: "Kiran" } });
     fireEvent.change(within(dialog).getByLabelText(/Last name/), { target: { value: "Bose" } });
@@ -539,9 +545,9 @@ describe("what a stored user shows", () => {
     if (!call) throw new Error("inviteUser was never called");
 
     // The code goes out...
-    expect(call[1].apps).toEqual([{ app: "dms", role: "dms.manager" }]);
+    expect(call[1].apps).toEqual([{ app: "dms", role: "dms.system_admin" }]);
     // ...and resolves to a name nobody has to read as an identifier.
-    expect(fakeRoleName("dms.manager")).toBe("Manager");
+    expect(fakeRoleName("dms.system_admin")).toBe("System administrator");
     expect(fakeRoleName("dms.technician")).toBe("Technician");
   });
 });

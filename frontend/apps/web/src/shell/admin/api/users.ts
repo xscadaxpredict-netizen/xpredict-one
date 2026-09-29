@@ -177,7 +177,7 @@ const FAKE_USERS: OrgUser[] = [
     role: "admin",
     status: "active",
     apps: [
-      { app: "dms", role: "Manager" },
+      { app: "dms", role: "System administrator" },
       // WHAT ACTUALLY MAKES THEM A DEALER ADMIN (C23): Administration, narrowed
       // to Users at their own dealer. It used to say `{ app: "dms", role: "Dealer
       // admin" }` and nothing else, which modelled the power as a role INSIDE DMS
@@ -246,7 +246,7 @@ const FAKE_DEALER_USERS: OrgUser[] = [
     role: "admin",
     status: "active",
     apps: [
-      { app: "dms", role: "Manager" },
+      { app: "dms", role: "System administrator" },
       // WHAT ACTUALLY MAKES THEM A DEALER ADMIN (C23): Administration, narrowed
       // to Users at their own dealer. It used to say `{ app: "dms", role: "Dealer
       // admin" }` and nothing else, which modelled the power as a role INSIDE DMS
