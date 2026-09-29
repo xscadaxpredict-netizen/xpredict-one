@@ -33,6 +33,23 @@ export interface UserAppRole {
   role: string;
 }
 
+/**
+ * One app granted, and the role held in it.
+ *
+ * REPLACED `app_keys: string[]`, which could only say *that* somebody had DMS
+ * and never *as what* — so every grant landed with a placeholder role and the
+ * only way to change it was not to. Access and role are one decision and
+ * travel together; two parallel fields would eventually disagree about which
+ * apps a person has.
+ *
+ * `role` is a role CODE from `admin/api/roles.ts`, not a display name. The
+ * backend owns the vocabulary (C19, C32).
+ */
+export interface AppGrant {
+  app: string;
+  role: string;
+}
+
 export interface OrgUser {
   id: string;
   first_name: string;
@@ -78,7 +95,8 @@ export interface UserDetails {
   last_name: string;
   email: string;
   unit_id: string | null;
-  app_keys: string[];
+  /** Products and the role in each. Never "admin" — that follows from `role`. */
+  apps: AppGrant[];
   role: "admin" | "member";
 }
 
@@ -89,13 +107,11 @@ export interface NewInvitation {
   /** Dealer id, or null for organisation-wide. */
   unit_id: string | null;
   /**
-   * PRODUCT keys this person may open — dms, crm, ecommerce. Never "admin":
-   * Administration is not a product and is not granted here, it follows from
-   * `role` below (C17, C31).
-   *
-   * Which role they hold INSIDE each product is assigned separately — see Q12.
+   * The PRODUCTS this person may open and the role in each — dms, crm,
+   * ecommerce. Never "admin": Administration is not a product and is not
+   * granted here, it follows from `role` below (C17, C31).
    */
-  app_keys: string[];
+  apps: AppGrant[];
   /**
    * Standing in the organisation. Never "owner": there is exactly one per
    * organisation (C14), so appointing one is a transfer, not an invitation.
@@ -359,16 +375,18 @@ export async function updateUser(
       unit_name: fakeDealerName(body.unit_id),
       role: existing.role === "owner" ? "owner" : body.role,
       /*
-       * Per-app ROLES are preserved, not reassigned (C25). The form grants and
-       * revokes app ACCESS; which role somebody holds inside an app is Q12 and
-       * not something this screen may decide.
+       * ROLES ARE NOW ASSIGNED, NOT PRESERVED — which amends C25.
        *
-       * Administration is derived from `role`, exactly as on invite, so the two
-       * forms cannot disagree about what an admin holds.
+       * C25 said a per-app role could not be set "at all yet", because Q12 was
+       * open and a picker would have meant the frontend inventing a vocabulary.
+       * C32 settled the roles, so the form asks and this takes what it is
+       * given. Promoting a salesperson to Dealer manager is an ordinary admin
+       * act and there was nowhere to do it.
+       *
+       * Administration is still derived from `role`, exactly as on invite, so
+       * the two forms cannot disagree about what an admin holds.
        */
-      apps: appsFor(body.app_keys, body.role, body.unit_id).map(
-        (app) => existing.apps.find((held) => held.app === app.app) ?? app,
-      ),
+      apps: appsFor(body.apps, body.role, body.unit_id),
     };
 
     if (isDealerOrg(orgSlug)) {
@@ -474,18 +492,38 @@ export async function resendInvitation(orgSlug: string, userId: string): Promise
  * inside a product is Q12 and nothing can set it yet.
  */
 function appsFor(
-  appKeys: string[],
+  grants: AppGrant[],
   role: "admin" | "member",
   unitId: string | null,
 ): UserAppRole[] {
-  const products = appKeys
-    .filter((app) => app !== "admin")
-    .map((app) => ({ app, role: "Member" }));
+  const products = grants
+    .filter((grant) => grant.app !== "admin")
+    .map((grant) => ({ app: grant.app, role: fakeRoleName(grant.role) }));
 
   if (role !== "admin") return products;
 
   return [...products, { app: "admin", role: unitId ? "Dealer admin" : "Organisation admin" }];
 }
+
+/**
+ * FAKE BACKEND ONLY: a role code as the server would return its display name.
+ *
+ * The forms send codes (`dms.sales_executive`); a stored user carries the name
+ * the list shows. The real endpoint resolves this from the Role table, the way
+ * it resolves `unit_name` from a dealership.
+ */
+function fakeRoleName(code: string): string {
+  return FAKE_ROLE_NAMES[code] ?? code;
+}
+
+const FAKE_ROLE_NAMES: Record<string, string> = {
+  "dms.dealer_manager": "Dealer manager",
+  "dms.sales_executive": "Sales executive",
+  "dms.service_advisor": "Service advisor",
+  "dms.tech_support_agent": "Tech support agent",
+  "dms.fleet_viewer": "Fleet viewer",
+  "crm.member": "CRM user",
+};
 
 export async function inviteUser(orgSlug: string, body: NewInvitation): Promise<OrgUser> {
   if (USE_FAKE_USERS) {
@@ -505,7 +543,7 @@ export async function inviteUser(orgSlug: string, body: NewInvitation): Promise<
       unit_id: body.unit_id,
       role: body.role,
       status: "invited",
-      apps: appsFor(body.app_keys, body.role, body.unit_id),
+      apps: appsFor(body.apps, body.role, body.unit_id),
     };
 
     if (isDealerOrg(orgSlug)) {

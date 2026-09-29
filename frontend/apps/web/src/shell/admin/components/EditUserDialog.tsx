@@ -39,8 +39,11 @@ import { visibleApps } from "../../navigation";
 import { Button } from "../../components/Button";
 import { FormBanner } from "../../components/FormBanner";
 import { TextField } from "../../components/TextField";
+import { RolePicker } from "./RolePicker";
 import { dealerScopeRules } from "../dealerScope";
+import { rolesFor } from "../api/roles";
 import { useDealers } from "../hooks/useDealers";
+import { useRoles } from "../hooks/useRoles";
 import { useUpdateUser } from "../hooks/useUsers";
 import styles from "./EditUserDialog.module.css";
 
@@ -109,6 +112,15 @@ function EditUserForm({ user, membership, onDone }: EditUserFormProps) {
 
   const [selectedApps, setSelectedApps] = useState<string[]>(user.apps.map((app) => app.app));
   const [unitId, setUnitId] = useState(user.unit_id ?? "");
+  /**
+   * Seeded from what they hold NOW, so opening this to fix a spelling and
+   * saving leaves their roles exactly as they were.
+   *
+   * Keyed by role CODE, but `user.apps` carries display NAMES — the server
+   * resolves one from the other, the way it resolves `unit_name`. Matching by
+   * name is why this is seeded here rather than read from `user` at submit.
+   */
+  const [appRoles, setAppRoles] = useState<Record<string, string>>({});
   const [role, setRole] = useState<"admin" | "member">(editableRole);
   const [formError, setFormError] = useState<{ message: string; traceId?: string } | null>(null);
 
@@ -122,7 +134,33 @@ function EditUserForm({ user, membership, onDone }: EditUserFormProps) {
     (app) => app.enabled && app.definition.key !== "admin",
   );
   const scope = dealerScopeRules(selectedApps, unitId);
+  const { data: roles } = useRoles();
   const { data: dealers } = useDealers({ enabled: !isDealerAdmin });
+
+  const scopedToDealer = unitId !== "";
+
+  function optionsFor(appKey: string) {
+    return rolesFor(roles ?? [], appKey, scopedToDealer);
+  }
+
+  /**
+   * What they hold in this app: an explicit choice, else the role they already
+   * have, else the default for the scope.
+   *
+   * THE MIDDLE CASE IS THE IMPORTANT ONE. Moving somebody between dealerships,
+   * or granting them CRM, must not quietly reassign their DMS role — C25's
+   * rule, which survives roles becoming assignable. The match is by display
+   * name because that is what a stored user carries.
+   */
+  function roleFor(appKey: string) {
+    const chosen = appRoles[appKey];
+    if (chosen) return chosen;
+
+    const held = user.apps.find((app) => app.app === appKey);
+    const matching = optionsFor(appKey).find((role) => role.name === held?.role);
+
+    return matching?.code ?? optionsFor(appKey)[0]?.code ?? "";
+  }
   const { mutateAsync: update, isPending } = useUpdateUser();
 
   /*
@@ -170,7 +208,9 @@ function EditUserForm({ user, membership, onDone }: EditUserFormProps) {
            * not the form deciding it.
            */
           unit_id: isDealerAdmin ? user.unit_id : unitId || null,
-          app_keys: isDealerAdmin ? user.apps.map((app) => app.app) : selectedApps,
+          apps: (isDealerAdmin ? user.apps.map((app) => app.app) : selectedApps)
+            .filter((app) => app !== "admin")
+            .map((app) => ({ app, role: roleFor(app) })),
           role: isDealerAdmin || isOwner ? editableRole : role,
         },
       });
@@ -255,9 +295,24 @@ function EditUserForm({ user, membership, onDone }: EditUserFormProps) {
                   ))}
                 </div>
                 <p className={styles.hint}>
-                  {scope.appsNote ??
-                    "Removing an app takes their access away immediately. Their role inside each app is set separately."}
+                  {scope.appsNote ?? "Removing an app takes their access away immediately."}
                 </p>
+
+                {/* One per app they hold, so a role can be changed here too. */}
+                {apps
+                  .filter((app) => selectedApps.includes(app.definition.key))
+                  .map((app) => (
+                    <RolePicker
+                      key={app.definition.key}
+                      appName={app.definition.name}
+                      appKey={app.definition.key}
+                      options={optionsFor(app.definition.key)}
+                      value={roleFor(app.definition.key)}
+                      onChange={(code) => {
+                        setAppRoles((current) => ({ ...current, [app.definition.key]: code }));
+                      }}
+                    />
+                  ))}
               </fieldset>
 
               <fieldset className={styles.section}>

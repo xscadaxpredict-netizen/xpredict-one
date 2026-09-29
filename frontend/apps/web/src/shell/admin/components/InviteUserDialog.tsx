@@ -33,7 +33,10 @@ import { visibleApps } from "../../navigation";
 import { Button } from "../../components/Button";
 import { FormBanner } from "../../components/FormBanner";
 import { TextField } from "../../components/TextField";
+import { RolePicker } from "./RolePicker";
+import { rolesFor } from "../api/roles";
 import { useDealers } from "../hooks/useDealers";
+import { useRoles } from "../hooks/useRoles";
 import { useInviteUser } from "../hooks/useUsers";
 import styles from "./InviteUserDialog.module.css";
 
@@ -133,6 +136,15 @@ function InviteForm({ membership, initialUnitId, onDone }: InviteFormProps) {
    */
   const [scope, setScope] = useState<"org" | "dealer">(initialUnitId ? "dealer" : "org");
   const [selectedApps, setSelectedApps] = useState<string[]>([]);
+  /**
+   * The role chosen in each app, keyed by app.
+   *
+   * Kept per app rather than as one value because a person can hold several,
+   * and DMS being Sales executive says nothing about what they are in CRM.
+   * Untouched entries for apps they do not have are simply never read — the
+   * payload is built from `selectedApps`.
+   */
+  const [appRoles, setAppRoles] = useState<Record<string, string>>({});
   const [unitId, setUnitId] = useState<string>(initialUnitId ?? "");
   /**
    * Makes them a dealer admin: `role: "admin"` WITH a dealership attached (C31).
@@ -148,6 +160,40 @@ function InviteForm({ membership, initialUnitId, onDone }: InviteFormProps) {
   const [formError, setFormError] = useState<{ message: string; traceId?: string } | null>(null);
 
   const scopedToDealer = scope === "dealer";
+
+  /**
+   * Whether the person BEING INVITED belongs to a dealership — which is not
+   * the same question as which radio is selected.
+   *
+   * A dealer admin never sees the radio: everybody they invite joins their own
+   * dealership (C23). Reading `scopedToDealer` for them offered the ORG-level
+   * roles — so the one question they get, what this person actually does, came
+   * back "Fleet viewer", a read-only role across every dealership, for somebody
+   * who can only ever see one.
+   */
+  const inviteeIsUnitScoped = isDealerAdmin || scopedToDealer;
+
+  /* Reference data (C28), so it is asked for once the dialog is open. */
+  const { data: roles } = useRoles();
+
+  /**
+   * The roles that can be given for one app at the scope now chosen, and the
+   * one that applies if nothing is picked.
+   *
+   * THE FIRST IS THE DEFAULT, and the server decides the order. A grant with
+   * no role would be access to an app with no permissions inside it — a person
+   * who can open DMS and do nothing, which reads as a bug rather than a
+   * decision. The list is ordered most-capable first, so the default is also
+   * the one a dealership is most likely to want; anything narrower is a
+   * deliberate choice.
+   */
+  function optionsFor(appKey: string) {
+    return rolesFor(roles ?? [], appKey, inviteeIsUnitScoped);
+  }
+
+  function roleFor(appKey: string) {
+    return appRoles[appKey] ?? optionsFor(appKey)[0]?.code ?? "";
+  }
 
   /*
    * Only fetched once a dealership is actually being chosen: most invitations
@@ -199,7 +245,11 @@ function InviteForm({ membership, initialUnitId, onDone }: InviteFormProps) {
       // Their own dealer and DMS, decided here rather than asked (C23). The
       // backend applies the same rule from their membership — this is the form
       // matching it, not the form deciding it.
-      return { unit_id: membership.unit_id, app_keys: ["dms"], role: "member" as const };
+      return {
+        unit_id: membership.unit_id,
+        apps: [{ app: "dms", role: roleFor("dms") }],
+        role: "member" as const,
+      };
     }
 
     if (scopedToDealer) {
@@ -207,12 +257,16 @@ function InviteForm({ membership, initialUnitId, onDone }: InviteFormProps) {
       // sent as an app; the server derives it from the role.
       return {
         unit_id: unitId,
-        app_keys: ["dms"],
+        apps: [{ app: "dms", role: roleFor("dms") }],
         role: managesPeople ? ("admin" as const) : ("member" as const),
       };
     }
 
-    return { unit_id: null, app_keys: selectedApps, role: orgRole };
+    return {
+      unit_id: null,
+      apps: selectedApps.map((app) => ({ app, role: roleFor(app) })),
+      role: orgRole,
+    };
   }
 
   async function onSubmit(values: InviteFields) {
@@ -226,6 +280,16 @@ function InviteForm({ membership, initialUnitId, onDone }: InviteFormProps) {
      */
     if (!isDealerAdmin && scopedToDealer && !unitId) {
       setScopeError("Choose which dealership they work for.");
+      return;
+    }
+
+    /*
+     * A grant with no role is access to an app with no permissions inside it.
+     * The only way to reach it is submitting before the role list arrives, so
+     * the message says that rather than blaming the person.
+     */
+    if (accessForScope().apps.some((grant) => !grant.role)) {
+      setFormError({ message: "Roles are still loading. Try again in a moment." });
       return;
     }
 
@@ -273,10 +337,29 @@ function InviteForm({ membership, initialUnitId, onDone }: InviteFormProps) {
         />
 
         {isDealerAdmin ? (
-          <p className={styles.scopeNote}>
-            They join <strong>{membership.unit_name}</strong> with access to DMS. Access to
-            anything else in {membership.org_name} is granted by an organisation admin.
-          </p>
+          <>
+            <p className={styles.scopeNote}>
+              They join <strong>{membership.unit_name}</strong> with access to DMS. Access
+              to anything else in {membership.org_name} is granted by an organisation
+              admin.
+            </p>
+
+            {/*
+              The one question a dealer admin still gets. Which dealership and
+              which app are both decided for them (C23), but a salesperson and
+              a service advisor are not the same job, and only the person doing
+              the hiring knows which this is.
+            */}
+            <RolePicker
+              appName="DMS"
+              appKey="dms"
+              options={optionsFor("dms")}
+              value={roleFor("dms")}
+              onChange={(code) => {
+                setAppRoles((current) => ({ ...current, dms: code }));
+              }}
+            />
+          </>
         ) : (
           <>
             <fieldset className={styles.fieldset}>
@@ -345,6 +428,23 @@ function InviteForm({ membership, initialUnitId, onDone }: InviteFormProps) {
                     dealership.
                   </p>
 
+                  <RolePicker
+                    appName="DMS"
+                    appKey="dms"
+                    options={optionsFor("dms")}
+                    value={roleFor("dms")}
+                    onChange={(code) => {
+                      setAppRoles((current) => ({ ...current, dms: code }));
+                    }}
+                  />
+
+                  {/*
+                    SEPARATE FROM THE ROLE ABOVE, and deliberately. The role is
+                    what they do in DMS; this is whether they administer the
+                    dealership (C31, C32). A Dealer manager who does not hire
+                    is ordinary, and so is an office administrator who never
+                    opens a job card.
+                  */}
                   <label className={styles.checkbox}>
                     <input
                       type="checkbox"
@@ -387,6 +487,29 @@ function InviteForm({ membership, initialUnitId, onDone }: InviteFormProps) {
                       </label>
                     ))}
                   </div>
+
+                  {/*
+                    One per app they were actually given. Ordered as the app
+                    list is, so ticking DMS makes its role appear directly
+                    under the tick rather than somewhere further down.
+                  */}
+                  {apps
+                    .filter((app) => selectedApps.includes(app.definition.key))
+                    .map((app) => (
+                      <RolePicker
+                        key={app.definition.key}
+                        appName={app.definition.name}
+                        appKey={app.definition.key}
+                        options={optionsFor(app.definition.key)}
+                        value={roleFor(app.definition.key)}
+                        onChange={(code) => {
+                          setAppRoles((current) => ({
+                            ...current,
+                            [app.definition.key]: code,
+                          }));
+                        }}
+                      />
+                    ))}
 
                   {/*
                     ADMINISTRATION IS NOT IN THE LIST ABOVE. It is granted by

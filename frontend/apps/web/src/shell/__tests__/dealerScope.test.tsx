@@ -25,13 +25,13 @@ import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import type * as dealersApi from "../admin/api/dealers";
 import { fetchDealers } from "../admin/api/dealers";
 import type * as usersApi from "../admin/api/users";
-import { fetchUsers, inviteUser } from "../admin/api/users";
+import { fetchUsers, inviteUser, updateUser } from "../admin/api/users";
 import { DealersScreen } from "../admin/screens/DealersScreen";
 import { UsersScreen } from "../admin/screens/UsersScreen";
 import { fetchMe } from "../api/auth";
 import type * as authApi from "../api/auth";
 import { renderRoute } from "./harness";
-import { me, ownerMembership } from "./factories";
+import { dealerAdminMembership, me, ownerMembership } from "./factories";
 
 vi.mock("../api/auth", async (importOriginal) => ({
   ...(await importOriginal<typeof authApi>()),
@@ -55,6 +55,7 @@ const mockFetchMe = vi.mocked(fetchMe);
 const mockFetchUsers = vi.mocked(fetchUsers);
 const mockFetchDealers = vi.mocked(fetchDealers);
 const mockInviteUser = vi.mocked(inviteUser);
+const mockUpdateUser = vi.mocked(updateUser);
 
 function user(overrides: Partial<usersApi.OrgUser> & { id: string }): usersApi.OrgUser {
   return {
@@ -266,6 +267,7 @@ describe("what standing an invited person gets", () => {
 
     chooseScope(dialog, "One dealership");
     await chooseDealer(dialog, "Chennai — Guindy", "unit-1");
+    await within(dialog).findByLabelText("Role in DMS");
     fillNames(dialog);
     fireEvent.click(within(dialog).getByRole("button", { name: /Send invitation/ }));
 
@@ -274,7 +276,7 @@ describe("what standing an invited person gets", () => {
     });
     expect(inviteBody()).toMatchObject({
       unit_id: "unit-1",
-      app_keys: ["dms"],
+      apps: [{ app: "dms", role: "dms.dealer_manager" }],
       role: "member",
     });
   });
@@ -285,6 +287,7 @@ describe("what standing an invited person gets", () => {
     chooseScope(dialog, "One dealership");
     await chooseDealer(dialog, "Chennai — Guindy", "unit-1");
     fireEvent.click(within(dialog).getByRole("checkbox", { name: /Manage this dealership/i }));
+    await within(dialog).findByLabelText("Role in DMS");
     fillNames(dialog);
     fireEvent.click(within(dialog).getByRole("button", { name: /Send invitation/ }));
 
@@ -302,7 +305,7 @@ describe("what standing an invited person gets", () => {
      * which is exactly the record this form used to produce: admin access with
      * member standing.
      */
-    expect(body.app_keys).not.toContain("admin");
+    expect(body.apps.map((grant) => grant.app)).not.toContain("admin");
   });
 
   /*
@@ -319,6 +322,7 @@ describe("what standing an invited person gets", () => {
       target: { value: "admin" },
     });
     fireEvent.click(within(dialog).getByRole("checkbox", { name: "DMS" }));
+    await within(dialog).findByText(/Fleet viewer/);
     fillNames(dialog);
     fireEvent.click(within(dialog).getByRole("button", { name: /Send invitation/ }));
 
@@ -327,9 +331,172 @@ describe("what standing an invited person gets", () => {
     });
     expect(inviteBody()).toMatchObject({
       unit_id: null,
-      app_keys: ["dms"],
+      // Organisation-wide in DMS means Fleet viewer — the only org-level DMS
+      // role, and read-only, because such a person is unrestricted across every
+      // dealership (C32).
+      apps: [{ app: "dms", role: "dms.fleet_viewer" }],
       role: "admin",
     });
+  });
+});
+
+describe("the role somebody holds inside an app", () => {
+  /*
+   * THE SCOPE DECIDES WHICH ROLES EXIST. A dealer-scoped person can hold only
+   * `unit` roles and somebody organisation-wide only `org` ones (C32) — offering
+   * the wrong ones would produce records the backend is right to refuse.
+   */
+  it("offers the four dealership roles to somebody at a dealership", async () => {
+    const dialog = await openInviteForm();
+
+    chooseScope(dialog, "One dealership");
+    await chooseDealer(dialog, "Chennai — Guindy", "unit-1");
+
+    const picker = await within(dialog).findByLabelText("Role in DMS");
+    const names = within(picker)
+      .getAllByRole("option")
+      .map((option) => option.textContent);
+
+    expect(names).toEqual([
+      "Dealer manager",
+      "Sales executive",
+      "Service advisor",
+      "Tech support agent",
+    ]);
+    // Read-only across every dealership is not a thing you can be AT one.
+    expect(names).not.toContain("Fleet viewer");
+  });
+
+  /*
+   * Somebody organisation-wide in DMS has no dealership to be scoped to, so
+   * `resolve_allowed_units()` returns unrestricted and they see every
+   * dealership's records (C7). Fleet viewer — read-only — is the only safe
+   * shape, and being the only one it is STATED rather than asked (C23's rule
+   * about questions with one answer).
+   */
+  it("states the single organisation-wide role instead of asking", async () => {
+    const dialog = await openInviteForm();
+
+    fireEvent.click(within(dialog).getByRole("checkbox", { name: "DMS" }));
+
+    expect(await within(dialog).findByText(/Fleet viewer/)).toBeInTheDocument();
+    expect(within(dialog).queryByLabelText("Role in DMS")).not.toBeInTheDocument();
+  });
+
+  it("sends the role that was chosen", async () => {
+    const dialog = await openInviteForm();
+
+    chooseScope(dialog, "One dealership");
+    await chooseDealer(dialog, "Chennai — Guindy", "unit-1");
+
+    fireEvent.change(await within(dialog).findByLabelText("Role in DMS"), {
+      target: { value: "dms.service_advisor" },
+    });
+
+    fireEvent.change(within(dialog).getByLabelText(/First name/), { target: { value: "Asha" } });
+    fireEvent.change(within(dialog).getByLabelText(/Last name/), { target: { value: "Pillai" } });
+    fireEvent.change(within(dialog).getByLabelText(/Email/), {
+      target: { value: "asha.p@acmemotors.in" },
+    });
+    fireEvent.click(within(dialog).getByRole("button", { name: /Send invitation/ }));
+
+    await waitFor(() => {
+      expect(mockInviteUser).toHaveBeenCalled();
+    });
+
+    const call = mockInviteUser.mock.calls[0];
+    if (!call) throw new Error("inviteUser was never called");
+
+    expect(call[1].apps).toEqual([{ app: "dms", role: "dms.service_advisor" }]);
+  });
+
+  /*
+   * A DEALER ADMIN STILL PICKS ONE. Which dealership and which app are decided
+   * for them (C23), but a salesperson and a service advisor are different jobs
+   * and only the person hiring knows which this is. The other fields stay
+   * absent — this is the one question they get.
+   */
+  it("asks a dealer admin for it, and nothing else", async () => {
+    mockFetchMe.mockResolvedValue(me({ memberships: [dealerAdminMembership()] }));
+
+    const dialog = await openInviteForm();
+
+    expect(await within(dialog).findByLabelText("Role in DMS")).toBeInTheDocument();
+    expect(within(dialog).queryByRole("radio")).not.toBeInTheDocument();
+    expect(within(dialog).queryByLabelText("Dealership")).not.toBeInTheDocument();
+    expect(within(dialog).queryByLabelText("Organisation role")).not.toBeInTheDocument();
+  });
+});
+
+describe("editing somebody's role", () => {
+  const ADVISOR = user({
+    id: "ravi",
+    first_name: "Ravi",
+    last_name: "Shankar",
+    unit_id: "unit-1",
+    unit_name: "Chennai — Guindy",
+    apps: [{ app: "dms", role: "Service advisor" }],
+  });
+
+  beforeEach(() => {
+    mockFetchUsers.mockResolvedValue([ANITA, ADVISOR]);
+  });
+
+  /*
+   * SEEDED FROM WHAT THEY HOLD, by display name, because that is what a stored
+   * user carries while the form speaks in codes. Get this wrong and the picker
+   * silently shows the first role in the list — so opening the dialog to fix a
+   * spelling and saving would quietly demote a Dealer manager.
+   */
+  it("starts from the role they already hold", async () => {
+    const dialog = await openEditForm("ravi", "Ravi Shankar");
+
+    expect(await within(dialog).findByLabelText("Role in DMS")).toHaveValue(
+      "dms.service_advisor",
+    );
+  });
+
+  /*
+   * C25's rule, which survives roles becoming assignable: granting another app
+   * or moving somebody between dealerships must leave their existing roles
+   * alone. Only an explicit change to this picker reassigns anything.
+   */
+  it("keeps it through an edit that was about something else", async () => {
+    const dialog = await openEditForm("ravi", "Ravi Shankar");
+
+    await within(dialog).findByLabelText("Role in DMS");
+    fireEvent.change(within(dialog).getByLabelText(/First name/), {
+      target: { value: "Ravindra" },
+    });
+    fireEvent.click(within(dialog).getByRole("button", { name: /Save changes/ }));
+
+    await waitFor(() => {
+      expect(mockUpdateUser).toHaveBeenCalled();
+    });
+
+    const call = mockUpdateUser.mock.calls[0];
+    if (!call) throw new Error("updateUser was never called");
+
+    expect(call[2].apps).toEqual([{ app: "dms", role: "dms.service_advisor" }]);
+    expect(call[2].first_name).toBe("Ravindra");
+  });
+
+  it("sends the new one when it is actually changed", async () => {
+    const dialog = await openEditForm("ravi", "Ravi Shankar");
+
+    fireEvent.change(await within(dialog).findByLabelText("Role in DMS"), {
+      target: { value: "dms.dealer_manager" },
+    });
+    fireEvent.click(within(dialog).getByRole("button", { name: /Save changes/ }));
+
+    await waitFor(() => {
+      expect(mockUpdateUser).toHaveBeenCalled();
+    });
+
+    const call = mockUpdateUser.mock.calls[0];
+    if (!call) throw new Error("updateUser was never called");
+
+    expect(call[2].apps).toEqual([{ app: "dms", role: "dms.dealer_manager" }]);
   });
 });
 
