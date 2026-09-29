@@ -146,14 +146,6 @@ function InviteForm({ membership, initialUnitId, onDone }: InviteFormProps) {
    */
   const [appRoles, setAppRoles] = useState<Record<string, string>>({});
   const [unitId, setUnitId] = useState<string>(initialUnitId ?? "");
-  /**
-   * Makes them a dealer admin: `role: "admin"` WITH a dealership attached (C31).
-   *
-   * Not an app grant. Administration comes with the platform and is gated by
-   * role alone (C17), so the server derives access from this rather than the
-   * form handing out the app.
-   */
-  const [managesPeople, setManagesPeople] = useState(false);
   /** Standing in the organisation, for somebody not scoped to a dealership. */
   const [orgRole, setOrgRole] = useState<"admin" | "member">("member");
   const [scopeError, setScopeError] = useState<string | null>(null);
@@ -210,6 +202,17 @@ function InviteForm({ membership, initialUnitId, onDone }: InviteFormProps) {
     return options.length === 1 ? (options[0]?.code ?? "") : "";
   }
 
+  /**
+   * Whether the role chosen for an app carries administration of the scope.
+   *
+   * ASKED OF THE ROLE, never decided here. A list of "codes that also make you
+   * an admin" living in this form would be the backend's vocabulary copied
+   * into the frontend (C19), and wrong the first time a role was added.
+   */
+  function roleAdministers(appKey: string) {
+    return optionsFor(appKey).find((role) => role.code === roleFor(appKey))?.administers ?? false;
+  }
+
   /*
    * Only fetched once a dealership is actually being chosen: most invitations
    * are organisation-wide, and a request nobody needed is still a request.
@@ -263,17 +266,22 @@ function InviteForm({ membership, initialUnitId, onDone }: InviteFormProps) {
       return {
         unit_id: membership.unit_id,
         apps: [{ app: "dms", role: roleFor("dms") }],
-        role: "member" as const,
+        // A dealer admin can appoint another, by giving them that DMS role.
+        role: roleAdministers("dms") ? ("admin" as const) : ("member" as const),
       };
     }
 
     if (scopedToDealer) {
-      // `admin` + a dealership IS a dealer admin (C31). Administration is not
-      // sent as an app; the server derives it from the role.
+      /*
+       * `admin` + a dealership IS a dealer admin (C31), and the DMS role chosen
+       * is now what decides it: the "Dealer admin" role carries `administers`.
+       * Administration is still never sent as an app; the server derives that
+       * from the standing, as it always did.
+       */
       return {
         unit_id: unitId,
         apps: [{ app: "dms", role: roleFor("dms") }],
-        role: managesPeople ? ("admin" as const) : ("member" as const),
+        role: roleAdministers("dms") ? ("admin" as const) : ("member" as const),
       };
     }
 
@@ -548,39 +556,6 @@ function InviteForm({ membership, initialUnitId, onDone }: InviteFormProps) {
               )}
             </fieldset>
 
-            {/*
-              ITS OWN QUESTION, not a trailing tick under App access.
-
-              The two sat adjacent and read as redundant: "Dealer manager"
-              plainly implies managing people, so a separate people-management
-              checkbox underneath looked like it either repeated the role or
-              contradicted it. They ARE different things — the role is what
-              this user does in DMS, this is their standing in the ORGANISATION
-              (C31) — and the fix is to say so, not to merge them. Folding it
-              into the role dropdown would make a DMS field quietly change
-              somebody's organisation role, which is the conflation C32 exists
-              to prevent.
-            */}
-            {scopedToDealer && (
-              <fieldset className={styles.fieldset}>
-                <legend className={styles.legend}>Dealer administration</legend>
-
-                <label className={styles.checkbox}>
-                  <input
-                    type="checkbox"
-                    checked={managesPeople}
-                    onChange={(event) => setManagesPeople(event.target.checked)}
-                  />
-                  <span>Also allow this user to manage users at this dealer</span>
-                </label>
-
-                <p className={styles.hint}>
-                  Independent of the role above &mdash; any role can be given this. They
-                  can add and remove users at this dealer, and nothing else in{" "}
-                  {membership.org_name}. This is what makes a user a dealer admin.
-                </p>
-              </fieldset>
-            )}
           </>
         )}
 

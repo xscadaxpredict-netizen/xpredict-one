@@ -172,6 +172,11 @@ function EditUserForm({ user, membership, onDone }: EditUserFormProps) {
      */
     return options.length === 1 ? (options[0]?.code ?? "") : "";
   }
+
+  /** Whether the role chosen for an app carries administration of the scope. */
+  function roleAdministers(appKey: string) {
+    return optionsFor(appKey).find((role) => role.code === roleFor(appKey))?.administers ?? false;
+  }
   const { mutateAsync: update, isPending } = useUpdateUser();
 
   /*
@@ -235,7 +240,22 @@ function EditUserForm({ user, membership, onDone }: EditUserFormProps) {
           apps: (isDealerAdmin ? user.apps.map((app) => app.app) : selectedApps)
             .filter((app) => app !== "admin")
             .map((app) => ({ app, role: roleFor(app) })),
-          role: isDealerAdmin || isOwner ? editableRole : role,
+          /*
+           * A DEALERSHIP USER'S STANDING COMES FROM THEIR DMS ROLE (C34), not
+           * from the Organisation role select — which is hidden for them,
+           * because "admin at this dealer" and "admin of the organisation" are
+           * the same field and only one of them is theirs to be.
+           *
+           * Somebody organisation-wide still answers it directly: an admin
+           * there spans every app, so no single app's role could carry it.
+           */
+          role: isDealerAdmin || isOwner
+            ? editableRole
+            : scopedToDealer
+              ? roleAdministers("dms")
+                ? ("admin" as const)
+                : ("member" as const)
+              : role,
         },
       });
       onDone();
@@ -358,7 +378,19 @@ function EditUserForm({ user, membership, onDone }: EditUserFormProps) {
                 <p className={styles.hint}>{scope.dealerNote}</p>
               </fieldset>
 
-              <fieldset className={styles.section} disabled={isOwner}>
+              {/*
+                HIDDEN FOR A DEALERSHIP USER (C34). "Admin at this dealer" and
+                "admin of the organisation" are the same field, and for somebody
+                scoped to a dealership only the first is available — so it is
+                carried by their DMS role instead. Leaving this here would be
+                two controls writing one value and free to disagree, which is
+                what the separate dealer-admin tick already was.
+              */}
+              <fieldset
+                className={styles.section}
+                disabled={isOwner}
+                hidden={scopedToDealer}
+              >
                 <legend className={styles.legend}>Organisation role</legend>
                 <select
                   className={styles.select}

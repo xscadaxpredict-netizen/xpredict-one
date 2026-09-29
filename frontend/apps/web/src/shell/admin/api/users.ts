@@ -22,6 +22,7 @@
 import { ApiError, type Problem } from "@xpredict/api-client";
 
 import { fakeDealerName } from "./dealers";
+import { fakeRoleName } from "./roles";
 
 /** Active, invited but not yet accepted, or switched off. */
 export type UserStatus = "active" | "invited" | "disabled";
@@ -505,25 +506,7 @@ function appsFor(
   return [...products, { app: "admin", role: unitId ? "Dealer admin" : "Organisation admin" }];
 }
 
-/**
- * FAKE BACKEND ONLY: a role code as the server would return its display name.
- *
- * The forms send codes (`dms.sales_executive`); a stored user carries the name
- * the list shows. The real endpoint resolves this from the Role table, the way
- * it resolves `unit_name` from a dealership.
- */
-function fakeRoleName(code: string): string {
-  return FAKE_ROLE_NAMES[code] ?? code;
-}
 
-const FAKE_ROLE_NAMES: Record<string, string> = {
-  "dms.dealer_manager": "Dealer manager",
-  "dms.sales_executive": "Sales executive",
-  "dms.service_advisor": "Service advisor",
-  "dms.tech_support_agent": "Tech support agent",
-  "dms.fleet_viewer": "Fleet viewer",
-  "crm.member": "CRM user",
-};
 
 export async function inviteUser(orgSlug: string, body: NewInvitation): Promise<OrgUser> {
   if (USE_FAKE_USERS) {
