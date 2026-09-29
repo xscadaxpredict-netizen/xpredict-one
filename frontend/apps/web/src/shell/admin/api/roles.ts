@@ -114,6 +114,23 @@ const FAKE_ROLES: Role[] = [
     summary: "Reads every dealership. Changes nothing.",
   },
   {
+    /*
+     * The writing counterpart to Fleet viewer, and the reason there is now a
+     * real choice at organisation level rather than one role stated at you.
+     *
+     * DELIBERATELY THE ONLY ONE. Somebody organisation-wide has no dealership,
+     * so `resolve_allowed_units()` returns unrestricted (C7) — this role acts
+     * across EVERY dealership at once. That is head-office staff processing
+     * centrally, and it is powerful enough that a tier of similar roles would
+     * be a liability rather than a convenience.
+     */
+    code: "dms.group_operations",
+    name: "Group operations",
+    app: "dms",
+    level: "org",
+    summary: "Works across every dealership, not just one.",
+  },
+  {
     code: "crm.member",
     name: "CRM user",
     app: "crm",

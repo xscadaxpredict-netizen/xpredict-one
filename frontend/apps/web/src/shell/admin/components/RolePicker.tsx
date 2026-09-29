@@ -6,12 +6,20 @@
  * of them, and the disagreement here would be which roles are legal at which
  * scope — a difference nobody sees until a record the backend refuses.
  *
- * STATES ONE OPTION RATHER THAN ASKING. When only one role is possible — CRM
- * today, and DMS for somebody organisation-wide, who can only be a read-only
- * Fleet viewer (C32) — this renders a line of text instead of a select with a
- * single entry. Same reasoning as the absent pickers on a dealer admin's
- * invite form (C23): a question with one possible answer wastes a decision,
- * and a disabled control invites somebody to hunt for the other options.
+ * ALWAYS A SELECT, so granting a role is visibly something the person did.
+ * It used to state the role as a line of text whenever only one was possible,
+ * which read as the form deciding rather than the admin assigning.
+ *
+ * WHAT CHANGES WITH THE NUMBER OF OPTIONS IS THE DEFAULT, not the control:
+ *
+ *   one option   — preselected. There is no decision to make, so making
+ *                  somebody confirm it would be the wasted question C23 warns
+ *                  about.
+ *   several      — starts on "Select a role…" and the form refuses to submit
+ *                  until one is chosen. Defaulting to the first would quietly
+ *                  grant whatever happens to head the list — and the list is
+ *                  ordered most-capable first, so the silent default would be
+ *                  the most powerful role. Fail closed instead.
  *
  * NEVER RENDERS NOTHING. No options at all means the role list has not
  * arrived, or the backend has an app this frontend does not know the roles
@@ -42,22 +50,6 @@ export function RolePicker({ appName, appKey, options, value, onChange }: RolePi
     );
   }
 
-  /*
-   * The single-option case. The role is still SENT: it is stated here, not
-   * skipped, so the person is granted the app as something rather than as
-   * nothing.
-   */
-  if (options.length === 1) {
-    const only = options[0];
-    if (!only) return null;
-
-    return (
-      <p className={styles.note}>
-        <strong>{appName}</strong> — {only.name}. {only.summary}
-      </p>
-    );
-  }
-
   const chosen = options.find((role) => role.code === value);
 
   return (
@@ -74,6 +66,12 @@ export function RolePicker({ appName, appKey, options, value, onChange }: RolePi
           onChange(event.target.value);
         }}
       >
+        {/*
+          Only when nothing is chosen yet, and only when there was a choice to
+          make — a single-option app arrives preselected, so this never appears
+          for it and nobody is asked to confirm the obvious.
+        */}
+        {!value && <option value="">Select a role…</option>}
         {options.map((role) => (
           <option key={role.code} value={role.code}>
             {role.name}

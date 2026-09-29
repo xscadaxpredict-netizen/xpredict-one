@@ -157,9 +157,20 @@ function EditUserForm({ user, membership, onDone }: EditUserFormProps) {
     if (chosen) return chosen;
 
     const held = user.apps.find((app) => app.app === appKey);
-    const matching = optionsFor(appKey).find((role) => role.name === held?.role);
+    const options = optionsFor(appKey);
+    const matching = options.find((role) => role.name === held?.role);
+    if (matching) return matching.code;
 
-    return matching?.code ?? optionsFor(appKey)[0]?.code ?? "";
+    /*
+     * Nothing held, so this app is being granted right now. One option is
+     * preselected because there is no decision to make; several stay empty and
+     * the save is refused, rather than quietly assigning whatever heads the
+     * list — which is the most capable role, since that is the order.
+     *
+     * The `matching` case above is why an edit about a spelling never lands
+     * here: a role already held is found and returned first (C25).
+     */
+    return options.length === 1 ? (options[0]?.code ?? "") : "";
   }
   const { mutateAsync: update, isPending } = useUpdateUser();
 
@@ -194,6 +205,19 @@ function EditUserForm({ user, membership, onDone }: EditUserFormProps) {
 
   async function onSubmit(values: EditFields) {
     setFormError(null);
+
+    const unanswered = (isDealerAdmin ? [] : selectedApps)
+      .filter((app) => app !== "admin")
+      .filter((app) => !roleFor(app));
+
+    if (unanswered.length > 0) {
+      setFormError({
+        message: roles
+          ? `Choose a role for ${unanswered.map((app) => app.toUpperCase()).join(" and ")}.`
+          : "Roles are still loading. Try again in a moment.",
+      });
+      return;
+    }
 
     try {
       await update({

@@ -163,6 +163,18 @@ function chooseScope(dialog: HTMLElement, label: string) {
   fireEvent.click(within(dialog).getByRole("radio", { name: label }));
 }
 
+/**
+ * Picks a role, which is REQUIRED wherever more than one is possible.
+ *
+ * Nothing is preselected in that case on purpose: the list is ordered
+ * most-capable first, so a silent default would hand out the most powerful
+ * role to anybody who did not look.
+ */
+async function chooseRole(dialog: HTMLElement, appName: string, code: string) {
+  const picker = await within(dialog).findByLabelText(`Role in ${appName}`);
+  fireEvent.change(picker, { target: { value: code } });
+}
+
 describe("inviting somebody into one dealership", () => {
   /*
    * The strongest form of C27 on this screen: for a dealer-scoped person the
@@ -181,7 +193,7 @@ describe("inviting somebody into one dealership", () => {
 
     expect(within(dialog).queryByRole("checkbox", { name: "CRM" })).not.toBeInTheDocument();
     expect(dialog).toHaveTextContent(/CRM and E-commerce are\s+organisation-wide/i);
-    expect(within(dialog).getByRole("checkbox", { name: /Manage this dealership/i })).toBeInTheDocument();
+    expect(within(dialog).getByRole("checkbox", { name: /manage users at this dealer/i })).toBeInTheDocument();
   });
 
   /*
@@ -196,10 +208,17 @@ describe("inviting somebody into one dealership", () => {
     chooseScope(dialog, "Dealership");
     await chooseDealer(dialog, "Chennai — Guindy", "unit-1");
 
-    expect(within(dialog).getByRole("checkbox", { name: /Manage this dealership/i })).toBeInTheDocument();
+    expect(within(dialog).getByRole("checkbox", { name: /manage users at this dealer/i })).toBeInTheDocument();
     expect(dialog).toHaveTextContent(/This is what makes a user a dealer admin/i);
     // The old, ambiguous control is gone from this branch entirely.
     expect(within(dialog).queryByRole("checkbox", { name: "Administration" })).not.toBeInTheDocument();
+
+    /*
+     * EXACTLY ONE. Two controls bound to the same state look identical on a
+     * passing test and identical in the payload — the only place the duplicate
+     * shows is on screen, which is where it was found.
+     */
+    expect(within(dialog).getAllByRole("checkbox")).toHaveLength(1);
   });
 
   /*
@@ -267,7 +286,7 @@ describe("what standing an invited person gets", () => {
 
     chooseScope(dialog, "Dealership");
     await chooseDealer(dialog, "Chennai — Guindy", "unit-1");
-    await within(dialog).findByLabelText("Role in DMS");
+    await chooseRole(dialog, "DMS", "dms.dealer_manager");
     fillNames(dialog);
     fireEvent.click(within(dialog).getByRole("button", { name: /Send invitation/ }));
 
@@ -286,8 +305,8 @@ describe("what standing an invited person gets", () => {
 
     chooseScope(dialog, "Dealership");
     await chooseDealer(dialog, "Chennai — Guindy", "unit-1");
-    fireEvent.click(within(dialog).getByRole("checkbox", { name: /Manage this dealership/i }));
-    await within(dialog).findByLabelText("Role in DMS");
+    fireEvent.click(within(dialog).getByRole("checkbox", { name: /manage users at this dealer/i }));
+    await chooseRole(dialog, "DMS", "dms.dealer_manager");
     fillNames(dialog);
     fireEvent.click(within(dialog).getByRole("button", { name: /Send invitation/ }));
 
@@ -322,7 +341,7 @@ describe("what standing an invited person gets", () => {
       target: { value: "admin" },
     });
     fireEvent.click(within(dialog).getByRole("checkbox", { name: "DMS" }));
-    await within(dialog).findByText(/Fleet viewer/);
+    await chooseRole(dialog, "DMS", "dms.fleet_viewer");
     fillNames(dialog);
     fireEvent.click(within(dialog).getByRole("button", { name: /Send invitation/ }));
 
@@ -358,29 +377,77 @@ describe("the role somebody holds inside an app", () => {
       .map((option) => option.textContent);
 
     expect(names).toEqual([
+      // Nothing is preselected where there is a real choice, so the form opens
+      // on a prompt rather than on the most capable role.
+      "Select a role…",
       "Dealer manager",
       "Sales executive",
       "Service advisor",
       "Tech support agent",
     ]);
-    // Read-only across every dealership is not a thing you can be AT one.
+    // Roles that span every dealership are not things you can be AT one.
     expect(names).not.toContain("Fleet viewer");
+    expect(names).not.toContain("Group operations");
   });
 
   /*
    * Somebody organisation-wide in DMS has no dealership to be scoped to, so
    * `resolve_allowed_units()` returns unrestricted and they see every
-   * dealership's records (C7). Fleet viewer — read-only — is the only safe
-   * shape, and being the only one it is STATED rather than asked (C23's rule
-   * about questions with one answer).
+   * dealership's records (C7). Both org-level roles reflect that: one reads
+   * everywhere, the other acts everywhere.
    */
-  it("states the single organisation-wide role instead of asking", async () => {
+  it("offers the organisation-wide roles as a real choice", async () => {
     const dialog = await openInviteForm();
 
     fireEvent.click(within(dialog).getByRole("checkbox", { name: "DMS" }));
 
-    expect(await within(dialog).findByText(/Fleet viewer/)).toBeInTheDocument();
-    expect(within(dialog).queryByLabelText("Role in DMS")).not.toBeInTheDocument();
+    const picker = await within(dialog).findByLabelText("Role in DMS");
+    const names = within(picker)
+      .getAllByRole("option")
+      .map((option) => option.textContent);
+
+    expect(names).toEqual(["Select a role…", "Fleet viewer", "Group operations"]);
+    // Dealership roles are not things you can be across ALL of them.
+    expect(names).not.toContain("Sales executive");
+    expect(picker).toHaveValue("");
+  });
+
+  /*
+   * ONE OPTION IS PRESELECTED, because there is no decision to make and asking
+   * somebody to confirm it would be the wasted question C23 warns about. The
+   * control is still a select rather than a line of text, so granting a role
+   * always looks like the same act.
+   */
+  it("preselects an app that has only one role", async () => {
+    const dialog = await openInviteForm();
+
+    fireEvent.click(within(dialog).getByRole("checkbox", { name: "CRM" }));
+
+    const picker = await within(dialog).findByLabelText("Role in CRM");
+
+    expect(picker).toHaveValue("crm.member");
+    expect(within(picker).queryByText("Select a role…")).not.toBeInTheDocument();
+  });
+
+  /*
+   * The other half of failing closed: an app granted with its role unanswered
+   * is access to something with no permissions inside it. The message names
+   * the app rather than making the person hunt for which one.
+   */
+  it("refuses to send until every granted app has a role", async () => {
+    const dialog = await openInviteForm();
+
+    fireEvent.click(within(dialog).getByRole("checkbox", { name: "DMS" }));
+    await within(dialog).findByLabelText("Role in DMS");
+    fireEvent.change(within(dialog).getByLabelText(/First name/), { target: { value: "Asha" } });
+    fireEvent.change(within(dialog).getByLabelText(/Last name/), { target: { value: "Pillai" } });
+    fireEvent.change(within(dialog).getByLabelText(/Email/), {
+      target: { value: "asha.p@acmemotors.in" },
+    });
+    fireEvent.click(within(dialog).getByRole("button", { name: /Send invitation/ }));
+
+    expect(await within(dialog).findByText(/Choose a role for DMS/i)).toBeInTheDocument();
+    expect(mockInviteUser).not.toHaveBeenCalled();
   });
 
   it("sends the role that was chosen", async () => {
