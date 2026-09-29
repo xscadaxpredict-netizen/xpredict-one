@@ -1,0 +1,94 @@
+.form { display: flex; flex-direction: column; gap: var(--space-4); }
+
+/* Activation codes are read off a screen or a letter and typed character by
+   character — mono so 0/O and 1/l cannot be confused, and spaced so the eye
+   can track position. */
+.codeInput {
+  font-family: var(--font-mono);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.nameRow {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-3);
+}
+
+.slugPreview {
+  margin: var(--space-2) 0 0;
+  font-size: var(--text-xs);
+  color: var(--color-text-3);
+}
+
+.slugPreview code {
+  font-family: var(--font-mono);
+  padding: 1px var(--space-1);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface-alt);
+  color: var(--color-text-2);
+}
+
+.backLink {
+  padding: 0;
+  border: none;
+  background: none;
+  font-family: inherit;
+  font-size: inherit;
+  color: var(--color-primary);
+  cursor: pointer;
+  text-decoration: none;
+}
+
+.backLink:hover { text-decoration: underline; }
+
+.provisioning { display: flex; flex-direction: column; gap: var(--space-4); }
+
+.progressTrack {
+  height: 6px;
+  overflow: hidden;
+  border-radius: var(--radius-pill);
+  background: var(--color-surface-alt);
+}
+
+/* Indeterminate: we genuinely do not know how long provisioning will take, and
+   a bar that claims 70% when it has no idea is a lie the user will notice. */
+.progressBar {
+  width: 40%;
+  height: 100%;
+  border-radius: var(--radius-pill);
+  background: var(--color-primary);
+  animation: slide 1.4s ease-in-out infinite;
+}
+
+@keyframes slide {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(250%); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .progressBar { animation: none; width: 100%; opacity: 0.55; }
+}
+
+.provisioningNote {
+  margin: 0;
+  font-size: var(--text-sm);
+  line-height: 1.5;
+  color: var(--color-text-3);
+}
+
+/* A way off the provisioning screen that is not the browser's back button. */
+.provisioningExit {
+  padding: var(--space-2);
+  border: none;
+  background: none;
+  color: var(--color-text-3);
+  font: inherit;
+  font-size: var(--text-sm);
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.provisioningExit:hover {
+  color: var(--color-text);
+}

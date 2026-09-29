@@ -45,9 +45,24 @@ export function useLogin() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: (credentials: Credentials) => login(credentials),
-    onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: authKeys.me() });
+    /*
+     * ONE `/me` PER SIGN-IN, and it returns the answer.
+     *
+     * This used to invalidate the query here AND have the login screen call
+     * `fetchMe()` itself — two requests for one question. `fetchQuery` does
+     * both jobs at once: it fetches, and it writes the result into the cache
+     * that `useMe` is already watching, so the guard sees it too.
+     */
+    mutationFn: async (credentials: Credentials) => {
+      await login(credentials);
+
+      return queryClient.fetchQuery({
+        queryKey: authKeys.me(),
+        queryFn: fetchMe,
+        // Force it: a `/me` cached from a previous session on this machine
+        // would otherwise be served to whoever just signed in.
+        staleTime: 0,
+      });
     },
   });
 }

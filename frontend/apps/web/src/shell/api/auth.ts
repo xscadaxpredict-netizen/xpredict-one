@@ -13,12 +13,90 @@
 
 import { ApiError, type Problem } from "@xpredict/api-client";
 
+/** The apps the suite can offer. Administration is one of them, not a settings page. */
+export type AppKey = "dms" | "crm" | "ecommerce" | "admin";
+
+/**
+ * Whether one app is available, and why not when it is not.
+ *
+ * TWO SEPARATE FACTS, deliberately not collapsed into one `visible` boolean:
+ *
+ *   subscribed — the ORGANISATION pays for this app.
+ *   accessible — THIS PERSON is allowed into it.
+ *
+ * They produce different screens. An app the org has not bought is shown
+ * disabled, because someone has to know it exists before they can ask for it.
+ * An app the person simply lacks access to is hidden, because that is a
+ * permission decision and advertising it is not a sales opportunity.
+ *
+ * Collapsing these into one flag loses that distinction permanently, and the
+ * wrong half is the one that leaks who-can-do-what.
+ */
+export interface AppAccess {
+  key: AppKey;
+  subscribed: boolean;
+  accessible: boolean;
+  /**
+   * A line of fact the SERVER knows and the frontend cannot, such as how many
+   * dealers this org has. Static wording ("Dealership management") lives in the
+   * frontend catalog instead — it is copy, not data.
+   */
+  summary: string | null;
+
+  /**
+   * Module keys inside this app that this person may open — "sales",
+   * "service". A module they may not open is simply absent.
+   *
+   * Module keys are safe for the frontend to know because it already names
+   * them: they are URL segments and they are in the catalog. Contrast
+   * `permissions` below.
+   */
+  modules: string[];
+
+  /**
+   * What this person may DO, as opaque strings — "dms.enquiry.create".
+   *
+   * DELIBERATELY UNTYPED. The backend owns this vocabulary. If the frontend
+   * declared a union of valid permission names, adding one server-side would
+   * mean a frontend release before anybody could be granted it, and the two
+   * lists would drift the first time somebody was in a hurry.
+   *
+   * It also means this mechanism could be built while Q11 (custom roles per
+   * organisation) and Q12 (the permission list per role) are still open. The
+   * machinery does not need the words.
+   *
+   * THIS IS A MIRROR, NOT A SOURCE. The same check exists in Django and Django
+   * is the one that matters. If the two ever disagree, this is the bug.
+   */
+  permissions: string[];
+}
+
 export interface Membership {
   org_id: string;
   org_name: string;
   org_slug: string;
+  /**
+   * Standing in THIS organisation. Read it together with `unit_id` below:
+   * an admin with no unit administers the organisation, an admin with one
+   * administers that dealer and nothing else (C3).
+   */
   role: "owner" | "admin" | "member";
+
+  /**
+   * The dealer this membership is scoped to, or null for organisation-wide.
+   *
+   * The id as well as the name, because a dealer admin inviting somebody sends
+   * their own unit — and sending a display name as an identifier is how you
+   * get a record attached to the wrong dealer after a rename.
+   */
+  unit_id: string | null;
   unit_name: string | null;
+  /**
+   * Per organisation, not per user. Subscriptions are bought by an org, so the
+   * same person can have DMS in one and CRM in another. Hanging this off `Me`
+   * would quietly show one organisation's apps while inside the other.
+   */
+  apps: AppAccess[];
 }
 
 export interface Me {
@@ -42,9 +120,52 @@ export interface Credentials {
  * applied by the browser). So this pretends, purely so the screen is usable
  * while we build it.
  *
- * To see the failure path, sign in with the password: wrong
+ * To see the failure path, sign in with the password: wrong@123
+ *
+ * IT HAS A REAL SIGNED-OUT STATE. An earlier version answered `/me` with a
+ * user unconditionally, which made `/login` and `/signup` unreachable the
+ * moment the shell started redirecting signed-in people away from them — you
+ * could no longer look at the two screens you most want to look at while
+ * building the UI.
+ *
+ * So the fake keeps a session flag. Sign in sets it, sign out clears it, and
+ * `/me` refuses without it. `sessionStorage`, not `localStorage`: a fake
+ * session should not outlive the browser tab and quietly convince somebody
+ * the backend is working.
  * ------------------------------------------------------------------------ */
 const USE_FAKE_AUTH = true;
+
+const FAKE_SESSION_KEY = "xpredict-fake-session";
+
+/** Storage throws in some privacy modes, and a dev fake must not crash the app. */
+function setFakeSession(signedIn: boolean) {
+  try {
+    if (signedIn) sessionStorage.setItem(FAKE_SESSION_KEY, "1");
+    else sessionStorage.removeItem(FAKE_SESSION_KEY);
+  } catch {
+    // Ignored: the fake degrades to "signed out", which is the safe direction.
+  }
+}
+
+function hasFakeSession(): boolean {
+  try {
+    return sessionStorage.getItem(FAKE_SESSION_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+
+/** What the real `/me` returns when nobody is signed in. */
+function fakeUnauthenticated(): ApiError {
+  return new ApiError({
+    type: "https://api.xpredict.one/errors/not-authenticated",
+    title: "Authentication required",
+    status: 401,
+    detail: "Sign in to continue.",
+    code: "not_authenticated",
+    trace_id: "fake-0000",
+  });
+}
 
 function wait(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -76,7 +197,97 @@ const FAKE_ME: Me = {
       org_name: "Acme Motors",
       org_slug: "acme-motors",
       role: "owner",
+      unit_id: null,
       unit_name: null,
+      apps: [
+        {
+          key: "dms",
+          subscribed: true,
+          accessible: true,
+          summary: "Sales · Service · Tech support across 12 dealers",
+          modules: ["sales", "service", "tech-support", "settings"],
+          permissions: [
+            "dms.enquiry.create",
+            "dms.enquiry.assign",
+            "dms.quotation.create",
+            "dms.unit.manage_people",
+          ],
+        },
+        {
+          key: "crm",
+          subscribed: true,
+          accessible: true,
+          summary: "Organisation-wide — no dealer split",
+          modules: [],
+          permissions: [],
+        },
+        // Not bought. Shown disabled rather than hidden — see AppAccess above.
+        {
+          key: "ecommerce",
+          subscribed: false,
+          accessible: false,
+          summary: null,
+          modules: [],
+          permissions: [],
+        },
+        // Never "bought": Administration comes with the platform and is gated
+        // by role alone. Same two flags, so the launcher needs no special case.
+        {
+          key: "admin",
+          subscribed: true,
+          accessible: true,
+          summary: "Organisation admins only",
+          modules: ["users", "dealers", "roles", "billing", "audit"],
+          permissions: ["org.dealer.create", "org.person.invite", "org.role.assign"],
+        },
+      ],
+    },
+    /*
+     * A SECOND ORGANISATION, so the switcher is visible while the UI is being
+     * built — it only appears with two or more (C13).
+     *
+     * Not the expected shape of a real account: people are expected to belong
+     * to one organisation each, which is why there is no picker screen. Delete
+     * this entry to see the single-organisation case, where the topbar renders
+     * plain text instead of a button.
+     *
+     * Deliberately different from Acme: fewer DMS modules and no Administration,
+     * so switching visibly changes the sidebar and hides "Manage". A second
+     * organisation identical to the first would prove nothing.
+     */
+    {
+      org_id: "1a2b3c4d-0000-0000-0000-000000000002",
+      org_name: "Northway Auto Group",
+      org_slug: "northway-auto",
+      role: "admin",
+      unit_id: "unit-2",
+      unit_name: "Bangalore — Whitefield",
+      apps: [
+        {
+          key: "dms",
+          subscribed: true,
+          accessible: true,
+          summary: "Sales · Service across 3 dealers",
+          modules: ["sales", "service"],
+          permissions: ["dms.enquiry.create"],
+        },
+        { key: "crm", subscribed: false, accessible: false, summary: null, modules: [], permissions: [] },
+        { key: "ecommerce", subscribed: false, accessible: false, summary: null, modules: [], permissions: [] },
+        /*
+         * A DEALER ADMIN, and the reason this second organisation is worth
+         * having in the fake. Administration is open to them, but with one
+         * module: their own dealer's people (C23). Switch to Northway in the
+         * topbar to see that side of the product.
+         */
+        {
+          key: "admin",
+          subscribed: true,
+          accessible: true,
+          summary: "Your dealer’s people",
+          modules: ["users"],
+          permissions: ["unit.person.invite"],
+        },
+      ],
     },
   ],
 };
@@ -112,6 +323,7 @@ export async function login(credentials: Credentials): Promise<void> {
   if (USE_FAKE_AUTH) {
     await wait(700);
     if (credentials.password === "wrong@123") throw fakeProblem();
+    setFakeSession(true);
     return;
   }
 
@@ -126,14 +338,26 @@ export async function login(credentials: Credentials): Promise<void> {
 export async function fetchMe(): Promise<Me> {
   if (USE_FAKE_AUTH) {
     await wait(250);
+    if (!hasFakeSession()) throw fakeUnauthenticated();
     return FAKE_ME;
   }
   return request<Me>("/api/v1/me");
 }
 
+/**
+ * Sign the fake session in without a password.
+ *
+ * Only for sign-up, which creates an account and must land in it. Exported so
+ * `signup.ts` does not reach into this module's storage key.
+ */
+export function fakeSignIn(): void {
+  if (USE_FAKE_AUTH) setFakeSession(true);
+}
+
 export async function logout(): Promise<void> {
   if (USE_FAKE_AUTH) {
     await wait(200);
+    setFakeSession(false);
     return;
   }
   await request<void>("/api/v1/auth/logout", { method: "POST" });

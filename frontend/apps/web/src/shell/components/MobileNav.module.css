@@ -1,0 +1,94 @@
+/*
+ * The button exists only where the rail does not. Above 640px the rail is on
+ * screen permanently and a second way to open the same links is clutter.
+ *
+ * The breakpoint is the same value as the one hiding the rail in
+ * Sidebar.module.css. They have to stay in step: a gap between them is either
+ * both on screen at once or neither, and neither means no navigation at all.
+ */
+.trigger {
+  display: none;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--color-text-2);
+  cursor: pointer;
+}
+
+@media (max-width: 640px) {
+  .trigger {
+    display: inline-flex;
+  }
+}
+
+.trigger:hover,
+.trigger[data-state="open"] {
+  background: var(--color-surface-alt);
+  color: var(--color-text);
+}
+
+.overlay {
+  position: fixed;
+  inset: 0;
+  background: rgb(16 22 29 / 0.45);
+  z-index: 60;
+}
+
+.panel {
+  position: fixed;
+  top: 0;
+  left: 0;
+  bottom: 0;
+  /* Never the full width: the strip of dimmed page on the right is what says
+     this is a layer over the page rather than a new screen, and it is the
+     easiest thing to tap to dismiss. */
+  width: min(300px, 84vw);
+  display: flex;
+  flex-direction: column;
+  background: var(--color-surface);
+  border-right: 1px solid var(--color-border);
+  box-shadow: var(--shadow-lg);
+  overflow-y: auto;
+  z-index: 61;
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  height: var(--topbar-height);
+  padding: 0 var(--space-3) 0 var(--space-4);
+  border-bottom: 1px solid var(--color-border);
+}
+
+.title {
+  margin: 0;
+  font-size: var(--text-md);
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+.close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: none;
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--color-text-3);
+  cursor: pointer;
+}
+
+.close:hover {
+  background: var(--color-surface-alt);
+  color: var(--color-text);
+}

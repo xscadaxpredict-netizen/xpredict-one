@@ -1,0 +1,46 @@
+/*
+ * Two rows: a fixed topbar and everything else. `min-height: 0` on the second
+ * row is not decoration — without it a grid row refuses to shrink below its
+ * content, so a long page scrolls the whole window and takes the topbar with it.
+ */
+.shell {
+  display: grid;
+  /*
+   * `minmax(0, 1fr)`, not `1fr`. A grid column sized `1fr` still refuses to go
+   * below its content's minimum, so the topbar would size the whole page to
+   * its widest possible self and the page would scroll sideways on a phone —
+   * with the account avatar off the right-hand edge. Same trap as
+   * `min-width: 0` on a flex item, one level up.
+   */
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: auto minmax(0, 1fr);
+  height: 100%;
+  background: var(--color-canvas);
+}
+
+.body {
+  display: flex;
+  min-height: 0;
+}
+
+.content {
+  flex: 1;
+  min-width: 0;
+  padding: var(--space-6) var(--space-8);
+  overflow-y: auto;
+}
+
+.waiting {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  color: var(--color-text-3);
+  font-size: var(--text-md);
+}
+
+@media (max-width: 640px) {
+  .content {
+    padding: var(--space-4);
+  }
+}

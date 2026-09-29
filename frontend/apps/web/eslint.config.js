@@ -128,8 +128,11 @@ export default tseslint.config(
      * easier and wrong: the rest of the shell is the admin console, which is
      * very much org-scoped, and an admin screen serving another organisation's
      * cached user list is precisely the disaster this rule exists to prevent.
+     *
+     * Files are listed individually rather than matched by pattern, so adding
+     * one is a deliberate act that shows up in a diff.
      */
-    files: ["src/shell/hooks/useAuth.ts"],
+    files: ["src/shell/hooks/useAuth.ts", "src/shell/hooks/useSignup.ts"],
     rules: {
       "no-restricted-imports": ["error", { patterns: SHELL_PATTERNS }],
     },

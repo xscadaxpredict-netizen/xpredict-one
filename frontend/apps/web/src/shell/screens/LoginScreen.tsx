@@ -16,11 +16,9 @@
 import { useState } from "react";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm } from "react-hook-form";
-import { useNavigate } from "react-router-dom";
 import { z } from "zod";
 import { asProblem } from "@xpredict/api-client";
 
-import { fetchMe } from "../api/auth";
 import { useLogin } from "../hooks/useAuth";
 import { AuthLayout } from "../components/AuthLayout";
 import { Button } from "../components/Button";
@@ -36,7 +34,6 @@ const loginFormSchema = z.object({
 type LoginFormFields = z.infer<typeof loginFormSchema>;
 
 export function LoginScreen() {
-  const navigate = useNavigate();
   const { mutateAsync: signIn, isPending, } = useLogin();
   const [formError, setFormError] = useState<{ message: string; traceId?: string } | null>(null);
   const {register, handleSubmit, formState: { errors }, } = useForm<LoginFormFields>({
@@ -49,20 +46,26 @@ export function LoginScreen() {
     setFormError(null);
 
     try {
-      await signIn(values);
-      const me = await fetchMe();
-      const first = me.memberships[0];
+      /*
+       * `signIn` returns the fresh `/me` and puts it in the cache, so there is
+       * one request and one copy of the answer.
+       *
+       * NO NAVIGATION HERE. `RedirectIfSignedIn` wraps this screen and sends
+       * people on the moment `/me` resolves — including to the page they were
+       * blocked from. This used to navigate as well and the two raced, with
+       * the deep link surviving only when it happened to win.
+       *
+       * The one case the guard cannot handle is below: somebody with no
+       * organisation has nowhere to be sent, so the guard leaves them here and
+       * this screen explains why.
+       */
+      const me = await signIn(values);
 
-      if (!first) {
+      if (me.memberships.length === 0) {
         setFormError({
           message: "Your access has been removed. Contact your administrator.",
         });
-        return;
       }
-
-      // No organisation picker (C13): straight to the first one. The topbar
-      // switcher is how someone with several reaches the others.
-      void navigate(`/${first.org_slug}/dms`, { replace: true });
     } catch (error) {
       const problem = asProblem(error);
       setFormError({
@@ -76,7 +79,13 @@ export function LoginScreen() {
     <AuthLayout
       title="Sign in"
       subtitle="Use the email your organisation invited."
-      footer="No account? Your organisation admin invites you — there is no public sign-up."
+      footer={
+        <>
+          Registering a new organisation? <a href="/signup">Use your activation code</a>
+          <br />
+          Joining an existing one? Your administrator invites you.
+        </>
+      }
     >
       {formError && <FormBanner traceId={formError.traceId}>{formError.message}</FormBanner>}
 

@@ -45,6 +45,9 @@
 
   --color-danger-700: #8f1d17;
   --color-danger: #b3261e;
+  /* Text on a filled danger button. Mirrors --color-primary-text: it flips in
+     dark mode, where the danger fill is bright rather than deep. */
+  --color-danger-text: #ffffff;
   --color-danger-100: #fbe4e2;
   --color-danger-border: #e9b6b2;
 
@@ -75,6 +78,24 @@
   --space-6: 1.5rem;    /* 24 — card padding */
   --space-8: 2rem;      /* 32 — page gutter */
   --space-12: 3rem;     /* 48 — between sections */
+
+  /* ---- App identity — the one exception to "primary is the only accent" ---
+   * Each app in the suite gets a colour, used ONLY for its launcher tile and
+   * its mark. Not decoration: the launcher is the one screen whose entire job
+   * is telling four apps apart at a glance, and colour does that faster than
+   * reading four headings. Everywhere else, primary is still the only accent.
+   *
+   * Deliberately not reusing success/attention/danger. Those carry meaning, and
+   * an app tinted "attention" would read as a warning about the app.
+   */
+  --app-dms: #2450b5;
+  --app-dms-tint: #e8eefc;
+  --app-crm: #0c7c6b;
+  --app-crm-tint: #dcf1ee;
+  --app-ecommerce: #7a3fb8;
+  --app-ecommerce-tint: #f0e7fa;
+  --app-admin: #475569;
+  --app-admin-tint: #e9edf2;
 
   /* ---- Radius ---------------------------------------------------------- */
   --radius-sm: 4px;     /* badges */
@@ -135,8 +156,18 @@
 
     --color-danger-700: #f4b5b0;
     --color-danger: #e5534b;
+    --color-danger-text: #2a0d0b;
     --color-danger-100: #3d1d1b;
     --color-danger-border: #5c2b28;
+
+    --app-dms: #7aa6f8;
+    --app-dms-tint: #16233f;
+    --app-crm: #4cc0a8;
+    --app-crm-tint: #0f2b27;
+    --app-ecommerce: #b98df0;
+    --app-ecommerce-tint: #261a38;
+    --app-admin: #9fb0c4;
+    --app-admin-tint: #1e242c;
 
     --shadow-sm: 0 1px 2px rgb(0 0 0 / 0.4);
     --shadow-md: 0 8px 24px rgb(0 0 0 / 0.5);
@@ -175,8 +206,18 @@
 
   --color-danger-700: #f4b5b0;
   --color-danger: #e5534b;
+  --color-danger-text: #2a0d0b;
   --color-danger-100: #3d1d1b;
   --color-danger-border: #5c2b28;
+
+  --app-dms: #7aa6f8;
+  --app-dms-tint: #16233f;
+  --app-crm: #4cc0a8;
+  --app-crm-tint: #0f2b27;
+  --app-ecommerce: #b98df0;
+  --app-ecommerce-tint: #261a38;
+  --app-admin: #9fb0c4;
+  --app-admin-tint: #1e242c;
 
   --shadow-sm: 0 1px 2px rgb(0 0 0 / 0.4);
   --shadow-md: 0 8px 24px rgb(0 0 0 / 0.5);

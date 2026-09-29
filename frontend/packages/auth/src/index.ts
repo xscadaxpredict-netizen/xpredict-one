@@ -35,10 +35,36 @@ export function useOrgSlug(): string {
   return orgSlug;
 }
 
-export type AppCode = "dms" | "crm" | "ecom";
+/**
+ * The apps in the suite.
+ *
+ * "ecommerce", not "ecom": the URL segment, the catalog key, the `/me`
+ * response and the tokens all say "ecommerce", and this was the only place
+ * that disagreed. A value nothing else produces cannot match anything.
+ *
+ * "admin" is here too. Administration is an app (C17) — it appears in the
+ * launcher and is entitled through the same `apps[]` as the rest — and leaving
+ * it out made this type unusable for the one screen that gates on it.
+ */
+export type AppCode = "dms" | "crm" | "ecommerce" | "admin";
 
 /**
  * Whether the current user may perform an action in an app.
+ *
+ * ⚠️ THIS IS A STUB THAT ALWAYS RETURNS TRUE. Anything gated on it is visible
+ * to everybody. Do not build a new screen against it.
+ *
+ * ⚠️ AND IT IS NOW THE SECOND PERMISSION API. `shell/access.ts` has the real
+ * one — `useAccess().can("dms.enquiry.create")` — reading the modules and
+ * permissions `/me` actually returns (C19). Two of these is one too many, and
+ * the reconciliation is deliberately not done here: permission work is paused
+ * until the roles themselves are defined (Q11, Q12).
+ *
+ * When it resumes, the likely answer is that this function goes and product
+ * code calls `useAccess` — but that means deciding whether a permission helper
+ * belongs in a package or in the shell, which is a decision, not a tidy-up.
+ * `products/dms/sales/screens/EnquiryListScreen.tsx` and CONTRIBUTING.md
+ * section on permissions both need updating with it.
  *
  * Hiding UI is a courtesy, never a control — the backend enforces every
  * permission regardless of what renders. Never leave an action visible because
