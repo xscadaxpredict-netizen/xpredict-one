@@ -19,6 +19,7 @@
 
 import { ModuleRoutes, type ModuleRoute } from "../routing";
 import { DealersScreen } from "./screens/DealersScreen";
+import { RolesScreen } from "./screens/RolesScreen";
 import { UsersScreen } from "./screens/UsersScreen";
 
 /*
@@ -31,7 +32,7 @@ const routes: ModuleRoute[] = [
   { path: "users/:userId", module: "users", element: <UsersScreen /> },
   { path: "dealers", module: "dealers", element: <DealersScreen /> },
   { path: "dealers/:dealerId", module: "dealers", element: <DealersScreen /> },
-  { path: "roles", module: "roles", element: <AdminPlaceholder name="Roles" /> },
+  { path: "roles", module: "roles", element: <RolesScreen /> },
   { path: "billing", module: "billing", element: <AdminPlaceholder name="Apps & billing" /> },
   { path: "audit", module: "audit", element: <AdminPlaceholder name="Audit log" /> },
 ];
