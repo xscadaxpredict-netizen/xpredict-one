@@ -14,6 +14,7 @@ import { ApiError } from "@xpredict/api-client";
 import type * as authApi from "../api/auth";
 import { fetchMe } from "../api/auth";
 import { ModuleRoutes, type ModuleRoute } from "../routing";
+import AdminRoutes from "../admin/routes";
 import { renderRoute } from "./harness";
 import { appAccess, me, membership, ownerMembership, salespersonMembership } from "./factories";
 
@@ -48,6 +49,15 @@ const dmsRoutes: ModuleRoute[] = [
 ];
 
 const withDms = [{ path: "dms/*", element: <ModuleRoutes routes={dmsRoutes} /> }];
+
+/*
+ * The REAL Administration routes, so the module guard is what decides rather
+ * than a missing route. Without this, `/admin/audit` simply falls through to
+ * the catch-all and a test asserting "Page not found" passes whether or not
+ * the module is granted — which is exactly what one of these did until the
+ * revert check caught it.
+ */
+const withAdmin = [{ path: "admin/*", element: <AdminRoutes /> }];
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -145,7 +155,7 @@ describe("app entitlement", () => {
   it("sends someone typing the URL of an app they cannot open back to the launcher", async () => {
     mockFetchMe.mockResolvedValue(me({ memberships: [salespersonMembership()] }));
 
-    renderRoute({ path: "/acme-motors/admin/users", children: withDms });
+    renderRoute({ path: "/acme-motors/admin/users", children: withAdmin });
 
     expect(await screen.findByRole("heading", { name: "Your apps" })).toBeInTheDocument();
   });
@@ -180,6 +190,36 @@ describe("module privilege", () => {
     renderRoute({ path: "/acme-motors/dms/settings", children: withDms });
 
     expect(await screen.findByRole("heading", { name: "Page not found" })).toBeInTheDocument();
+  });
+
+  /*
+   * OUT OF THE FIRST RELEASE (C38), and that is expressed by not granting the
+   * module — not by deleting the screen. The placeholder and its route still
+   * exist, so shipping the feature later is the backend adding a word to
+   * `modules[]`, with no frontend release.
+   *
+   * Worth a test because the failure is invisible: grant the module by
+   * accident and an unfinished screen reads as a finished one.
+   */
+  it("does not expose a module held back from the release", async () => {
+    mockFetchMe.mockResolvedValue(me({ memberships: [ownerMembership()] }));
+
+    renderRoute({ path: "/acme-motors/admin/audit", children: withAdmin });
+
+    expect(await screen.findByRole("heading", { name: "Page not found" })).toBeInTheDocument();
+    expect(screen.queryByText(/Not built yet/i)).not.toBeInTheDocument();
+  });
+
+  it("does not link to one either", async () => {
+    mockFetchMe.mockResolvedValue(me({ memberships: [ownerMembership()] }));
+
+    renderRoute({ path: "/acme-motors/admin/users", children: withDms });
+
+    await screen.findByRole("heading", { name: "Users" });
+
+    expect(screen.getByRole("link", { name: "Users" })).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "Audit log" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: /Apps & billing/ })).not.toBeInTheDocument();
   });
 
   it("hides links to modules the person lacks", async () => {
