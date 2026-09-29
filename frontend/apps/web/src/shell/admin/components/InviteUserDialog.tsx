@@ -279,7 +279,7 @@ function InviteForm({ membership, initialUnitId, onDone }: InviteFormProps) {
      * the branch and then did not answer it.
      */
     if (!isDealerAdmin && scopedToDealer && !unitId) {
-      setScopeError("Choose which dealership they work for.");
+      setScopeError("Select the dealer this user belongs to.");
       return;
     }
 
@@ -363,7 +363,11 @@ function InviteForm({ membership, initialUnitId, onDone }: InviteFormProps) {
         ) : (
           <>
             <fieldset className={styles.fieldset}>
-              <legend className={styles.legend}>Where they work</legend>
+              <legend className={styles.legend}>Scope</legend>
+              <p className={styles.hint}>
+                Whether this user works across {membership.org_name} or for a single
+                dealer.
+              </p>
 
               <label className={styles.checkbox}>
                 <input
@@ -372,7 +376,7 @@ function InviteForm({ membership, initialUnitId, onDone }: InviteFormProps) {
                   checked={!scopedToDealer}
                   onChange={() => setScope("org")}
                 />
-                <span>The whole organisation</span>
+                <span>Organisation</span>
               </label>
 
               <label className={styles.checkbox}>
@@ -382,19 +386,27 @@ function InviteForm({ membership, initialUnitId, onDone }: InviteFormProps) {
                   checked={scopedToDealer}
                   onChange={() => setScope("dealer")}
                 />
-                <span>One dealership</span>
+                <span>Dealership</span>
               </label>
 
               {scopedToDealer && (
                 <>
+                  {/*
+                    A real <label>, not an aria-label. It is a question the
+                    person has to answer, so it should be legible on screen and
+                    not only to a screen reader.
+                  */}
+                  <label className={styles.label} htmlFor="invite-dealer">
+                    Select dealer
+                  </label>
                   <select
+                    id="invite-dealer"
                     className={styles.select}
                     value={unitId}
                     onChange={(event) => setUnitId(event.target.value)}
-                    aria-label="Dealership"
                   >
-                    <option value="">Select a dealership…</option>
-                    {dealersPending && <option disabled>Loading dealerships…</option>}
+                    <option value="">Choose a dealer…</option>
+                    {dealersPending && <option disabled>Loading dealers…</option>}
                     {openDealers?.map((dealer) => (
                       <option key={dealer.id} value={dealer.id}>
                         {dealer.name}
@@ -408,8 +420,8 @@ function InviteForm({ membership, initialUnitId, onDone }: InviteFormProps) {
             </fieldset>
 
             {/*
-              WHAT THEY CAN OPEN, and the two branches are deliberately
-              different shapes rather than one list with things greyed out.
+              APP ACCESS, and the two branches are deliberately different shapes
+              rather than one list with things greyed out.
 
               Somebody who belongs to a dealership can hold DMS and
               Administration and nothing else (C27), so there is no choice of
@@ -418,14 +430,13 @@ function InviteForm({ membership, initialUnitId, onDone }: InviteFormProps) {
               be asking a question that has one answer.
             */}
             <fieldset className={styles.fieldset}>
-              <legend className={styles.legend}>What they can open</legend>
+              <legend className={styles.legend}>App access</legend>
 
               {scopedToDealer ? (
                 <>
                   <p className={styles.hint}>
-                    <strong>DMS</strong>, at this dealership only. CRM and E-commerce are
-                    organisation-wide and cannot be given to somebody scoped to a
-                    dealership.
+                    <strong>DMS</strong>, limited to this dealer. CRM and E-commerce are
+                    organisation-wide and cannot be granted to a dealership user.
                   </p>
 
                   <RolePicker
@@ -463,16 +474,15 @@ function InviteForm({ membership, initialUnitId, onDone }: InviteFormProps) {
                     name, and the old label said none of it.
                   */}
                   <p className={styles.hint}>
-                    They can invite and remove people at this dealership, and nothing
-                    else in {membership.org_name}. This is what makes somebody a dealer
-                    admin.
+                    They can invite and remove users at this dealer, and nothing else in{" "}
+                    {membership.org_name}. This is what makes a user a dealer admin.
                   </p>
                 </>
               ) : (
                 <>
                   <p className={styles.hint}>
-                    Which apps this person can open. Only apps {membership.org_name}{" "}
-                    subscribes to are listed.
+                    The apps this user can open. Only apps {membership.org_name} subscribes
+                    to are listed.
                   </p>
 
                   <div className={styles.appChoices}>

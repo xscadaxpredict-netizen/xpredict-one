@@ -154,7 +154,7 @@ async function chooseDealer(dialog: HTMLElement, name: string, id: string) {
   // "Dealership" on the invite form, "Dealer" on the edit form, which still
   // uses the older layout. Whichever this dialog has.
   const picker =
-    within(dialog).queryByLabelText("Dealership") ?? within(dialog).getByLabelText("Dealer");
+    within(dialog).queryByLabelText("Select dealer") ?? within(dialog).getByLabelText("Dealer");
   fireEvent.change(picker, { target: { value: id } });
 }
 
@@ -176,7 +176,7 @@ describe("inviting somebody into one dealership", () => {
   it("offers no organisation-wide app once the person belongs to a dealership", async () => {
     const dialog = await openInviteForm();
 
-    chooseScope(dialog, "One dealership");
+    chooseScope(dialog, "Dealership");
     await chooseDealer(dialog, "Chennai — Guindy", "unit-1");
 
     expect(within(dialog).queryByRole("checkbox", { name: "CRM" })).not.toBeInTheDocument();
@@ -193,11 +193,11 @@ describe("inviting somebody into one dealership", () => {
   it("names the dealer-admin grant instead of leaving it to be deduced", async () => {
     const dialog = await openInviteForm();
 
-    chooseScope(dialog, "One dealership");
+    chooseScope(dialog, "Dealership");
     await chooseDealer(dialog, "Chennai — Guindy", "unit-1");
 
     expect(within(dialog).getByRole("checkbox", { name: /Manage this dealership/i })).toBeInTheDocument();
-    expect(dialog).toHaveTextContent(/This is what makes somebody a dealer\s+admin/i);
+    expect(dialog).toHaveTextContent(/This is what makes a user a dealer admin/i);
     // The old, ambiguous control is gone from this branch entirely.
     expect(within(dialog).queryByRole("checkbox", { name: "Administration" })).not.toBeInTheDocument();
   });
@@ -209,15 +209,15 @@ describe("inviting somebody into one dealership", () => {
   it("restores the full app list when they work across the organisation", async () => {
     const dialog = await openInviteForm();
 
-    chooseScope(dialog, "One dealership");
+    chooseScope(dialog, "Dealership");
     expect(within(dialog).queryByRole("checkbox", { name: "CRM" })).not.toBeInTheDocument();
 
-    chooseScope(dialog, "The whole organisation");
+    chooseScope(dialog, "Organisation");
 
     expect(within(dialog).getByRole("checkbox", { name: "CRM" })).toBeInTheDocument();
     expect(within(dialog).getByRole("checkbox", { name: "DMS" })).toBeInTheDocument();
     // No dealership to pick when they are not scoped to one.
-    expect(within(dialog).queryByLabelText("Dealership")).not.toBeInTheDocument();
+    expect(within(dialog).queryByLabelText("Select dealer")).not.toBeInTheDocument();
   });
 
   /*
@@ -228,7 +228,7 @@ describe("inviting somebody into one dealership", () => {
   it("will not send an invitation with the dealership unanswered", async () => {
     const dialog = await openInviteForm();
 
-    chooseScope(dialog, "One dealership");
+    chooseScope(dialog, "Dealership");
     fireEvent.change(within(dialog).getByLabelText(/First name/), { target: { value: "Asha" } });
     fireEvent.change(within(dialog).getByLabelText(/Last name/), { target: { value: "Pillai" } });
     fireEvent.change(within(dialog).getByLabelText(/Email/), {
@@ -236,7 +236,7 @@ describe("inviting somebody into one dealership", () => {
     });
     fireEvent.click(within(dialog).getByRole("button", { name: /Send invitation/ }));
 
-    expect(await within(dialog).findByText(/Choose which dealership they work for/i)).toBeInTheDocument();
+    expect(await within(dialog).findByText(/Select the dealer this user belongs to/i)).toBeInTheDocument();
     expect(mockInviteUser).not.toHaveBeenCalled();
   });
 });
@@ -265,7 +265,7 @@ describe("what standing an invited person gets", () => {
   it("makes a dealer user a member unless the toggle is set", async () => {
     const dialog = await openInviteForm();
 
-    chooseScope(dialog, "One dealership");
+    chooseScope(dialog, "Dealership");
     await chooseDealer(dialog, "Chennai — Guindy", "unit-1");
     await within(dialog).findByLabelText("Role in DMS");
     fillNames(dialog);
@@ -284,7 +284,7 @@ describe("what standing an invited person gets", () => {
   it("makes them a dealer admin when it is", async () => {
     const dialog = await openInviteForm();
 
-    chooseScope(dialog, "One dealership");
+    chooseScope(dialog, "Dealership");
     await chooseDealer(dialog, "Chennai — Guindy", "unit-1");
     fireEvent.click(within(dialog).getByRole("checkbox", { name: /Manage this dealership/i }));
     await within(dialog).findByLabelText("Role in DMS");
@@ -349,7 +349,7 @@ describe("the role somebody holds inside an app", () => {
   it("offers the four dealership roles to somebody at a dealership", async () => {
     const dialog = await openInviteForm();
 
-    chooseScope(dialog, "One dealership");
+    chooseScope(dialog, "Dealership");
     await chooseDealer(dialog, "Chennai — Guindy", "unit-1");
 
     const picker = await within(dialog).findByLabelText("Role in DMS");
@@ -386,7 +386,7 @@ describe("the role somebody holds inside an app", () => {
   it("sends the role that was chosen", async () => {
     const dialog = await openInviteForm();
 
-    chooseScope(dialog, "One dealership");
+    chooseScope(dialog, "Dealership");
     await chooseDealer(dialog, "Chennai — Guindy", "unit-1");
 
     fireEvent.change(await within(dialog).findByLabelText("Role in DMS"), {
@@ -423,7 +423,7 @@ describe("the role somebody holds inside an app", () => {
 
     expect(await within(dialog).findByLabelText("Role in DMS")).toBeInTheDocument();
     expect(within(dialog).queryByRole("radio")).not.toBeInTheDocument();
-    expect(within(dialog).queryByLabelText("Dealership")).not.toBeInTheDocument();
+    expect(within(dialog).queryByLabelText("Select dealer")).not.toBeInTheDocument();
     expect(within(dialog).queryByLabelText("Organisation role")).not.toBeInTheDocument();
   });
 });
@@ -512,9 +512,9 @@ describe("staffing a dealership that has nobody in it", () => {
 
     const dialog = await screen.findByRole("dialog");
 
-    expect(within(dialog).getByRole("radio", { name: "One dealership" })).toBeChecked();
+    expect(within(dialog).getByRole("radio", { name: "Dealership" })).toBeChecked();
     await within(dialog).findByRole("option", { name: "Chennai — Guindy" });
-    expect(within(dialog).getByLabelText("Dealership")).toHaveValue("unit-1");
+    expect(within(dialog).getByLabelText("Select dealer")).toHaveValue("unit-1");
 
     // Scoped, so the organisation-wide apps are not on offer (C27).
     expect(within(dialog).queryByRole("checkbox", { name: "CRM" })).not.toBeInTheDocument();
