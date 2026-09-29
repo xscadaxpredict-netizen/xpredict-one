@@ -73,7 +73,7 @@ function wait(ms: number) {
 }
 
 /**
- * The five DMS roles of C32, plus CRM's single default.
+ * The DMS roles (C32, revised by C35), plus CRM's single default.
  *
  * THE DEALERSHIP IS THE RECORD BOUNDARY (C32). A Sales executive sees all of
  * their dealership's enquiries, not only the ones assigned to them —
@@ -93,49 +93,60 @@ const FAKE_ROLES: Role[] = [
     /*
      * THE TOP ROLE AT A DEALERSHIP, and the only one that administers.
      *
-     * It replaces a separate "also let them manage users" tick that sat under
-     * the role picker. That tick read as redundant next to "Dealer manager" —
-     * which plainly implies managing people — and as contradictory when the
-     * two disagreed.
+     * `administers` is what makes this more than a job title: holding it sets
+     * `Membership.role: "admin"` with the dealership attached, which is a
+     * dealer admin (C31). There is no separate "also let them manage users"
+     * tick — that read as redundant beside a role that plainly implies
+     * managing people, and as contradictory when the two disagreed (C34).
      *
-     * WHAT IS GIVEN UP, knowingly: a Sales executive who also hires can no
-     * longer be expressed, because administering now travels with the top role
-     * rather than being granted alongside any of them.
+     * WHAT IS GIVEN UP, knowingly: a Sales representative who also hires
+     * cannot be expressed. Administering travels with this role rather than
+     * being grantable alongside any of them.
      */
-    code: "dms.dealer_admin",
-    name: "Dealer admin",
+    code: "dms.manager",
+    name: "Manager",
     app: "dms",
     level: "unit",
     summary: "Everything at this dealer, including adding and removing its users.",
     administers: true,
   },
   {
-    code: "dms.dealer_manager",
-    name: "Dealer manager",
-    app: "dms",
-    level: "unit",
-    summary: "Everything at this dealer except its users.",
-    administers: false,
-  },
-  {
-    code: "dms.sales_executive",
-    name: "Sales executive",
+    code: "dms.sales_representative",
+    name: "Sales representative",
     app: "dms",
     level: "unit",
     summary: "Enquiries, quotations, orders and follow-ups.",
     administers: false,
   },
   {
+    /*
+     * The advisor books the work and raises the job card; the technician below
+     * carries it out. Different people at a real dealership, and different
+     * screens, so they are different roles rather than one "service" role.
+     */
     code: "dms.service_advisor",
     name: "Service advisor",
     app: "dms",
     level: "unit",
-    summary: "Appointments and job cards.",
+    summary: "Books appointments and raises job cards.",
     administers: false,
   },
   {
-    code: "dms.tech_support_agent",
-    name: "Tech support agent",
+    code: "dms.technician",
+    name: "Technician",
+    app: "dms",
+    level: "unit",
+    summary: "Carries out the work recorded on job cards.",
+    administers: false,
+  },
+  {
+    /*
+     * Tech support is its own MODULE (C18), not a corner of service, so it
+     * keeps its own role. A technician works on vehicles; this answers
+     * support tickets.
+     */
+    code: "dms.tech_support",
+    name: "Tech support",
     app: "dms",
     level: "unit",
     summary: "Support tickets.",

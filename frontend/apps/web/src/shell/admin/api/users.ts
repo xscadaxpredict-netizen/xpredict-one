@@ -152,8 +152,8 @@ const FAKE_USERS: OrgUser[] = [
     role: "owner",
     status: "active",
     apps: [
-      { app: "dms", role: "Admin" },
-      { app: "crm", role: "Admin" },
+      { app: "dms", role: "Group operations" },
+      { app: "crm", role: "CRM user" },
     ],
   },
   {
@@ -165,7 +165,7 @@ const FAKE_USERS: OrgUser[] = [
     unit_id: "unit-1",
     role: "member",
     status: "active",
-    apps: [{ app: "dms", role: "Sales executive" }],
+    apps: [{ app: "dms", role: "Sales representative" }],
   },
   {
     id: "user-3",
@@ -177,7 +177,7 @@ const FAKE_USERS: OrgUser[] = [
     role: "admin",
     status: "active",
     apps: [
-      { app: "dms", role: "Dealer manager" },
+      { app: "dms", role: "Manager" },
       // WHAT ACTUALLY MAKES THEM A DEALER ADMIN (C23): Administration, narrowed
       // to Users at their own dealer. It used to say `{ app: "dms", role: "Dealer
       // admin" }` and nothing else, which modelled the power as a role INSIDE DMS
@@ -195,7 +195,7 @@ const FAKE_USERS: OrgUser[] = [
     unit_id: null,
     role: "member",
     status: "active",
-    apps: [{ app: "crm", role: "Marketing" }],
+    apps: [{ app: "crm", role: "CRM user" }],
   },
   {
     id: "user-5",
@@ -206,7 +206,7 @@ const FAKE_USERS: OrgUser[] = [
     unit_id: "unit-1",
     role: "member",
     status: "invited",
-    apps: [{ app: "dms", role: "Sales executive" }],
+    apps: [{ app: "dms", role: "Sales representative" }],
   },
   {
     id: "user-6",
@@ -246,7 +246,7 @@ const FAKE_DEALER_USERS: OrgUser[] = [
     role: "admin",
     status: "active",
     apps: [
-      { app: "dms", role: "Dealer manager" },
+      { app: "dms", role: "Manager" },
       // WHAT ACTUALLY MAKES THEM A DEALER ADMIN (C23): Administration, narrowed
       // to Users at their own dealer. It used to say `{ app: "dms", role: "Dealer
       // admin" }` and nothing else, which modelled the power as a role INSIDE DMS
@@ -264,7 +264,7 @@ const FAKE_DEALER_USERS: OrgUser[] = [
     unit_id: "unit-2",
     role: "member",
     status: "active",
-    apps: [{ app: "dms", role: "Sales executive" }],
+    apps: [{ app: "dms", role: "Sales representative" }],
   },
 ];
 
