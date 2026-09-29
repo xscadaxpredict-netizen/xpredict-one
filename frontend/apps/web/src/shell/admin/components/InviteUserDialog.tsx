@@ -146,14 +146,6 @@ function InviteForm({ membership, initialUnitId, onDone }: InviteFormProps) {
    */
   const [appRoles, setAppRoles] = useState<Record<string, string>>({});
   const [unitId, setUnitId] = useState<string>(initialUnitId ?? "");
-  /**
-   * Makes them a dealer admin: `role: "admin"` WITH a dealership attached (C31).
-   *
-   * Not an app grant. Administration comes with the platform and is gated by
-   * role alone (C17), so the server derives access from this rather than the
-   * form handing out the app.
-   */
-  const [managesPeople, setManagesPeople] = useState(false);
   /** Standing in the organisation, for somebody not scoped to a dealership. */
   const [orgRole, setOrgRole] = useState<"admin" | "member">("member");
   const [scopeError, setScopeError] = useState<string | null>(null);
@@ -191,8 +183,34 @@ function InviteForm({ membership, initialUnitId, onDone }: InviteFormProps) {
     return rolesFor(roles ?? [], appKey, inviteeIsUnitScoped);
   }
 
+  /**
+   * The role chosen for an app, or "" while the question is still open.
+   *
+   * ONE OPTION IS PRESELECTED; SEVERAL ARE NOT. Where a single role is
+   * possible there is no decision to make, so asking somebody to confirm it
+   * would be the wasted question C23 warns about. Where several are, this
+   * stays empty and the form refuses to submit — the list is ordered
+   * most-capable first, so silently defaulting would hand the most powerful
+   * role to anybody who did not look. Fail closed.
+   */
   function roleFor(appKey: string) {
-    return appRoles[appKey] ?? optionsFor(appKey)[0]?.code ?? "";
+    const chosen = appRoles[appKey];
+    if (chosen) return chosen;
+
+    const options = optionsFor(appKey);
+
+    return options.length === 1 ? (options[0]?.code ?? "") : "";
+  }
+
+  /**
+   * Whether the role chosen for an app carries administration of the scope.
+   *
+   * ASKED OF THE ROLE, never decided here. A list of "codes that also make you
+   * an admin" living in this form would be the backend's vocabulary copied
+   * into the frontend (C19), and wrong the first time a role was added.
+   */
+  function roleAdministers(appKey: string) {
+    return optionsFor(appKey).find((role) => role.code === roleFor(appKey))?.administers ?? false;
   }
 
   /*
@@ -248,17 +266,22 @@ function InviteForm({ membership, initialUnitId, onDone }: InviteFormProps) {
       return {
         unit_id: membership.unit_id,
         apps: [{ app: "dms", role: roleFor("dms") }],
-        role: "member" as const,
+        // A dealer admin can appoint another, by giving them that DMS role.
+        role: roleAdministers("dms") ? ("admin" as const) : ("member" as const),
       };
     }
 
     if (scopedToDealer) {
-      // `admin` + a dealership IS a dealer admin (C31). Administration is not
-      // sent as an app; the server derives it from the role.
+      /*
+       * `admin` + a dealership IS a dealer admin (C31), and the DMS role chosen
+       * is now what decides it: the "Dealer admin" role carries `administers`.
+       * Administration is still never sent as an app; the server derives that
+       * from the standing, as it always did.
+       */
       return {
         unit_id: unitId,
         apps: [{ app: "dms", role: roleFor("dms") }],
-        role: managesPeople ? ("admin" as const) : ("member" as const),
+        role: roleAdministers("dms") ? ("admin" as const) : ("member" as const),
       };
     }
 
@@ -285,11 +308,18 @@ function InviteForm({ membership, initialUnitId, onDone }: InviteFormProps) {
 
     /*
      * A grant with no role is access to an app with no permissions inside it.
-     * The only way to reach it is submitting before the role list arrives, so
-     * the message says that rather than blaming the person.
+     * Two ways to get here — the role list has not arrived, or an app with
+     * several roles was left unanswered — so the message names the app rather
+     * than guessing which.
      */
-    if (accessForScope().apps.some((grant) => !grant.role)) {
-      setFormError({ message: "Roles are still loading. Try again in a moment." });
+    const unanswered = accessForScope().apps.filter((grant) => !grant.role);
+
+    if (unanswered.length > 0) {
+      setFormError({
+        message: roles
+          ? `Choose a role for ${unanswered.map((grant) => grant.app.toUpperCase()).join(" and ")}.`
+          : "Roles are still loading. Try again in a moment.",
+      });
       return;
     }
 
@@ -448,35 +478,6 @@ function InviteForm({ membership, initialUnitId, onDone }: InviteFormProps) {
                       setAppRoles((current) => ({ ...current, dms: code }));
                     }}
                   />
-
-                  {/*
-                    SEPARATE FROM THE ROLE ABOVE, and deliberately. The role is
-                    what they do in DMS; this is whether they administer the
-                    dealership (C31, C32). A Dealer manager who does not hire
-                    is ordinary, and so is an office administrator who never
-                    opens a job card.
-                  */}
-                  <label className={styles.checkbox}>
-                    <input
-                      type="checkbox"
-                      checked={managesPeople}
-                      onChange={(event) => setManagesPeople(event.target.checked)}
-                    />
-                    <span>Manage this dealership&rsquo;s people</span>
-                  </label>
-
-                  {/*
-                    THIS IS WHAT A "DEALER ADMIN" IS (C23), said in words rather
-                    than left to be deduced from ticking "Administration" and a
-                    dealership together. The grant is the same Administration
-                    app an organisation admin holds, narrowed to one module at
-                    one dealership — which is a different power under the same
-                    name, and the old label said none of it.
-                  */}
-                  <p className={styles.hint}>
-                    They can invite and remove users at this dealer, and nothing else in{" "}
-                    {membership.org_name}. This is what makes a user a dealer admin.
-                  </p>
                 </>
               ) : (
                 <>
@@ -554,6 +555,7 @@ function InviteForm({ membership, initialUnitId, onDone }: InviteFormProps) {
                 </>
               )}
             </fieldset>
+
           </>
         )}
 

@@ -50,6 +50,17 @@ export interface Role {
   level: RoleLevel;
   /** One line under the name in the picker. Copy, not data. */
   summary: string;
+  /**
+   * Whether holding this role makes the person an administrator of their scope
+   * — `Membership.role: "admin"` (C31), which at a dealership means they can
+   * add and remove that dealership's users.
+   *
+   * IT LIVES ON THE ROLE, not in the form. The form must not carry a list of
+   * "roles that also make you an admin" — that is the backend's vocabulary
+   * (C19), and a hardcoded role code here would be wrong the first time a role
+   * was renamed or added. The form asks the role what it confers.
+   */
+  administers: boolean;
 }
 
 /* --------------------------------------------------------------------------
@@ -79,11 +90,32 @@ function wait(ms: number) {
  */
 const FAKE_ROLES: Role[] = [
   {
+    /*
+     * THE TOP ROLE AT A DEALERSHIP, and the only one that administers.
+     *
+     * It replaces a separate "also let them manage users" tick that sat under
+     * the role picker. That tick read as redundant next to "Dealer manager" —
+     * which plainly implies managing people — and as contradictory when the
+     * two disagreed.
+     *
+     * WHAT IS GIVEN UP, knowingly: a Sales executive who also hires can no
+     * longer be expressed, because administering now travels with the top role
+     * rather than being granted alongside any of them.
+     */
+    code: "dms.dealer_admin",
+    name: "Dealer admin",
+    app: "dms",
+    level: "unit",
+    summary: "Everything at this dealer, including adding and removing its users.",
+    administers: true,
+  },
+  {
     code: "dms.dealer_manager",
     name: "Dealer manager",
     app: "dms",
     level: "unit",
-    summary: "Runs the dealership — sales, service and tech support.",
+    summary: "Everything at this dealer except its users.",
+    administers: false,
   },
   {
     code: "dms.sales_executive",
@@ -91,6 +123,7 @@ const FAKE_ROLES: Role[] = [
     app: "dms",
     level: "unit",
     summary: "Enquiries, quotations, orders and follow-ups.",
+    administers: false,
   },
   {
     code: "dms.service_advisor",
@@ -98,6 +131,7 @@ const FAKE_ROLES: Role[] = [
     app: "dms",
     level: "unit",
     summary: "Appointments and job cards.",
+    administers: false,
   },
   {
     code: "dms.tech_support_agent",
@@ -105,6 +139,7 @@ const FAKE_ROLES: Role[] = [
     app: "dms",
     level: "unit",
     summary: "Support tickets.",
+    administers: false,
   },
   {
     code: "dms.fleet_viewer",
@@ -112,6 +147,25 @@ const FAKE_ROLES: Role[] = [
     app: "dms",
     level: "org",
     summary: "Reads every dealership. Changes nothing.",
+    administers: false,
+  },
+  {
+    /*
+     * The writing counterpart to Fleet viewer, and the reason there is now a
+     * real choice at organisation level rather than one role stated at you.
+     *
+     * DELIBERATELY THE ONLY ONE. Somebody organisation-wide has no dealership,
+     * so `resolve_allowed_units()` returns unrestricted (C7) — this role acts
+     * across EVERY dealership at once. That is head-office staff processing
+     * centrally, and it is powerful enough that a tier of similar roles would
+     * be a liability rather than a convenience.
+     */
+    code: "dms.group_operations",
+    name: "Group operations",
+    app: "dms",
+    level: "org",
+    summary: "Works across every dealership, not just one.",
+    administers: false,
   },
   {
     code: "crm.member",
@@ -119,8 +173,25 @@ const FAKE_ROLES: Role[] = [
     app: "crm",
     level: "org",
     summary: "The whole organisation's contacts and deals.",
+    administers: false,
   },
 ];
+
+/**
+ * FAKE BACKEND ONLY: a role code as the server would return its display name.
+ *
+ * The forms send codes (`dms.sales_executive`); a stored user carries the name
+ * the list shows. The real endpoint resolves this from the Role table, the way
+ * it resolves `unit_name` from a dealership.
+ *
+ * IT READS THE LIST ABOVE rather than a second map of its own. `users.ts` used
+ * to keep one, and adding a role there meant remembering to add it here too —
+ * which was forgotten the first time it happened, so a brand new Dealer admin
+ * showed up in the Users panel as the literal string "dms.dealer_admin".
+ */
+export function fakeRoleName(code: string): string {
+  return FAKE_ROLES.find((role) => role.code === code)?.name ?? code;
+}
 
 /* ---------------------------- real shape -------------------------------- */
 
