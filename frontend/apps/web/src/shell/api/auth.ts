@@ -205,12 +205,11 @@ const FAKE_ME: Me = {
           subscribed: true,
           accessible: true,
           summary: "Sales · Service · Tech support across 12 dealers",
-          modules: ["sales", "service", "tech-support", "settings"],
+          modules: ["sales", "service", "tech-support"],
           permissions: [
             "dms.enquiry.create",
             "dms.enquiry.assign",
             "dms.quotation.create",
-            "dms.unit.manage_people",
           ],
         },
         {
