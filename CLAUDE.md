@@ -69,14 +69,31 @@ roles, permissions or models until it is explicitly picked up.
 each dealer's users are managed at the **dealer** level. An org admin reaching into a
 dealer's users is an audited override, not the normal path.
 
-Full rationale: `context/02-DECISIONS.md` C1–C7 — all `[Decided]`. Don't reopen them.
+Full rationale: `context/02-DECISIONS.md` C1–C38 — all `[Decided]`. Don't reopen them.
 
 ## Status
 
-**Pre-implementation, unblocked.** No code has been written yet. The architecture is
-fully settled and Phase 1 (project scaffold) is ready to start. One mechanism still
-needs an answer inside Phase 2, which does not block Phase 1: **Q17** — how JWTs are
-revoked on logout and on disabling a user.
+**The frontend ships Administration; the backend is a scaffold that has never run.**
+Keep this section current — it is the first thing a new developer reads.
+
+**Frontend — built and merged, running on hand-written fakes.** Sign-in, the app
+launcher, the shell, and Administration (Users, Dealers, Roles) all work in a browser.
+Every `api/*.ts` has a `USE_FAKE_*` flag that falls through to the URL Django will
+serve, so switching over is deleting a block per function. **The fake data lives in
+module memory and resets on every full page load** — that is the fake, not a bug.
+
+**Backend — Phase 1 scaffold only.** Django 5.2.17, split settings, the fail-closed
+`TenantRouter`, `shared/base_models.py`, `core.accounts.User`, Celery wiring, 10 apps
+with unique labels, and an OpenAPI schema that generates. **No `migrate` has ever run
+and it has never connected to a database.** Phase 2 (control-plane models, tenancy,
+identity) has not started.
+
+**Blocked on:** Docker is not installed, so there is no Postgres, Redis or PgBouncer
+— that is what pauses the backend. **Q17** (how a JWT is revoked on logout and on
+disabling a user) must be answered before the auth work inside Phase 2.
+
+**Gates, all green:** `npm run test -w web` (73), `npm run typecheck -w web`,
+`npm run lint`, and `pytest` in `backend/` (40). Run all four before opening a PR.
 
 ---
 
