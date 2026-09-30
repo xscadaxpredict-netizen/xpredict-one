@@ -237,7 +237,17 @@ const FAKE_ME: Me = {
           subscribed: true,
           accessible: true,
           summary: "Organisation admins only",
-          modules: ["users", "dealers", "roles", "billing", "audit"],
+          /*
+           * NOT IN THE FIRST RELEASE: `billing` and `audit` (C38). Their
+           * screens still exist as placeholders and their routes are still
+           * declared — they are simply not granted, so C20 drops the routes
+           * and C22 leaves the sidebar silent about them.
+           *
+           * THIS IS THE MECHANISM DOING ITS JOB, not a workaround. Shipping a
+           * feature later is the backend adding a word to this list; no
+           * frontend release, nothing to delete and re-add.
+           */
+          modules: ["users", "dealers", "roles"],
           permissions: ["org.dealer.create", "org.person.invite", "org.role.assign"],
         },
       ],
