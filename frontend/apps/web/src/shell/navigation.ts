@@ -125,19 +125,14 @@ export const APP_CATALOG: AppDefinition[] = [
           },
         ],
       },
-      {
-        /*
-         * A dealer admin manages their OWN dealer's people here, not in the
-         * organisation's Administration app (C17). Two-level administration
-         * (C3) means these are genuinely different jobs with different scopes,
-         * and putting a dealer admin into the org console to do the smaller one
-         * would hand them a screen listing every dealer's users.
-         */
-        label: "This dealer",
-        items: [
-          { label: "Dealer settings", path: "settings", icon: "sliders", module: "settings" },
-        ],
-      },
+      /*
+       * NO dealer-settings group, deliberately. A dealer admin manages their
+       * own dealer's people in the Administration app, narrowed to their
+       * dealership — C23, which superseded C21's separate area in here.
+       * None of the six DMS roles carries such a module, so a group here would
+       * render for nobody while telling everybody who reads this file the
+       * opposite of how the product works.
+       */
     ],
   },
   {

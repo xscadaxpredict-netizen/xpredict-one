@@ -69,8 +69,8 @@ export function ownerMembership(): Membership {
     role: "owner",
     apps: [
       appAccess("dms", {
-        modules: ["sales", "service", "tech-support", "settings"],
-        permissions: ["dms.enquiry.create", "dms.unit.manage_people"],
+        modules: ["sales", "service", "tech-support"],
+        permissions: ["dms.enquiry.create"],
       }),
       appAccess("crm"),
       appAccess("ecommerce", { subscribed: false, accessible: false }),

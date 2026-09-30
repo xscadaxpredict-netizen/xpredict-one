@@ -45,7 +45,6 @@ function unauthorised() {
 const dmsRoutes: ModuleRoute[] = [
   { path: "sales", module: "sales", element: <h1>Sales</h1> },
   { path: "service", module: "service", element: <h1>Service</h1> },
-  { path: "settings", module: "settings", element: <h1>Dealer settings</h1> },
 ];
 
 const withDms = [{ path: "dms/*", element: <ModuleRoutes routes={dmsRoutes} /> }];
@@ -177,19 +176,6 @@ describe("module privilege", () => {
 
     expect(await screen.findByRole("heading", { name: "Page not found" })).toBeInTheDocument();
     expect(screen.queryByRole("heading", { name: "Service" })).not.toBeInTheDocument();
-  });
-
-  /*
-   * A dealer salesperson must not reach the dealer-settings area, which is a
-   * dealer admin's job (C3). Same organisation, same dealer, same app — only
-   * the privilege differs, so nothing about tenancy catches this one.
-   */
-  it("keeps a salesperson out of the dealer settings area", async () => {
-    mockFetchMe.mockResolvedValue(me({ memberships: [salespersonMembership()] }));
-
-    renderRoute({ path: "/acme-motors/dms/settings", children: withDms });
-
-    expect(await screen.findByRole("heading", { name: "Page not found" })).toBeInTheDocument();
   });
 
   /*

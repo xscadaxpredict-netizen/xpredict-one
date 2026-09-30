@@ -7,8 +7,9 @@
  * Modules per C18: Sales, Service and Tech support are the modules, and
  * enquiries, quotations and the rest are screens INSIDE them. Org-level dealer
  * management lives in Administration (C17), which is why there is no Dealers
- * entry here — but a dealer admin manages their own dealer's people in
- * "Dealer settings" below, because that is a different, smaller job (C3).
+ * entry here — and no dealer-settings area either. A dealer admin manages
+ * their own dealer's people in that SAME Administration app, narrowed to their
+ * dealership (C23, which superseded C21's separate area inside DMS).
  *
  * EVERY SCREEN DECLARES ITS MODULE. The field is required, so a new screen
  * cannot be added without saying what it needs; `shell/routing.tsx` is the
@@ -28,7 +29,6 @@ const routes: ModuleRoute[] = [
   { path: "sales", module: "sales", element: <Placeholder name="Sales" /> },
   { path: "service", module: "service", element: <Placeholder name="Service" /> },
   { path: "tech-support", module: "tech-support", element: <Placeholder name="Tech support" /> },
-  { path: "settings", module: "settings", element: <Placeholder name="Dealer settings" /> },
 ];
 
 export default function DmsRoutes() {
