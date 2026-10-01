@@ -22,6 +22,7 @@
     "@xpredict/api-client": "*",
     "@xpredict/auth": "*",
     "@xpredict/ui": "*",
+    "lucide-react": "^1.49.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "react-hook-form": "^7.54.0",

@@ -1,0 +1,37 @@
+.row { transition: background 0.15s ease; cursor: pointer; }
+.row:hover { background: var(--color-primary-050); }
+.rowExpanded { background: var(--color-primary-050); border-left: 3px solid var(--color-primary); }
+.td { padding: var(--space-4) var(--space-5); vertical-align: top; border-bottom: 1px solid var(--color-border); }
+.tdRight { padding: var(--space-4) var(--space-5); vertical-align: top; border-bottom: 1px solid var(--color-border); text-align: right; }
+.customerName { font-weight: 700; color: var(--color-text); margin-bottom: 4px; }
+.customerContact { font-size: 0.8rem; color: var(--color-text-2); }
+.ocNumber { font-size: 0.85rem; font-weight: 600; color: var(--color-text); }
+.quoteTitle { font-size: 0.85rem; font-weight: 600; color: var(--color-text); }
+.quoteAmount { font-size: 0.95rem; font-weight: 700; color: var(--color-primary); }
+.activeAmcId { font-size: 0.85rem; font-weight: 700; color: var(--color-success); }
+.muted { color: var(--color-text-3); font-size: 0.8rem; }
+.actions { display: flex; gap: var(--space-2); align-items: center; justify-content: flex-end; }
+.btnSecondary { display: inline-flex; align-items: center; gap: var(--space-2); padding: 6px 12px; border-radius: var(--radius-md); font: inherit; font-size: 0.8rem; font-weight: 600; cursor: pointer; background: var(--color-surface); color: var(--color-text); border: 1px solid var(--color-border-strong); }
+.btnSecondary:hover { background: var(--color-surface-alt); }
+.expandBtn { background: none; border: none; cursor: pointer; color: var(--color-text-2); padding: 4px; border-radius: 4px; display: flex; align-items: center; justify-content: center; }
+.expandBtn:hover { background: var(--color-border); color: var(--color-text); }
+.iconBtn { background: transparent; border: none; cursor: pointer; color: var(--color-text-3); padding: 6px; border-radius: 4px; display: inline-flex; align-items: center; justify-content: center; transition: all 0.2s ease; }
+.iconBtn:hover { background: var(--color-border); color: var(--color-text); }
+.iconBtnPrimary:hover { background: #EFF6FF; color: #2563EB; }
+.iconBtnSuccess:hover { background: #F0FDF4; color: #16A34A; }
+.iconBtnDanger:hover { background: #FEF2F2; color: #DC2626; }
+.expandedCell { padding: 0; border-bottom: 1px solid var(--color-border); }
+.expandedContent { background: #FAFAFA; padding: var(--space-5); border-left: 3px solid var(--color-primary); }
+.detailGrid { display: grid; grid-template-columns: 1fr 2fr; gap: var(--space-6); }
+.sectionTitle { margin: 0 0 var(--space-3) 0; font-size: 0.9rem; font-weight: 700; color: var(--color-text); text-transform: uppercase; letter-spacing: 0.5px; }
+.infoRow { display: flex; gap: 8px; font-size: 0.85rem; color: var(--color-text-2); margin-bottom: 8px; line-height: 1.5; }
+.infoIcon { color: var(--color-primary); flex-shrink: 0; margin-top: 2px; }
+.quoteHistoryList { display: flex; flex-direction: column; gap: var(--space-3); }
+.historyCard { background: var(--color-surface); border: 1px solid var(--color-border); border-radius: var(--radius-md); padding: var(--space-3) var(--space-4); display: flex; justify-content: space-between; align-items: center; box-shadow: 0 2px 5px rgba(0,0,0,0.02); }
+.historyCardConfirmed { border-color: #86EFAC; background: #F0FDF4; }
+.historyCardTitle { font-weight: 700; font-size: 0.9rem; margin-bottom: 4px; }
+.historyCardMeta { font-size: 0.8rem; color: var(--color-text-2); }
+.historyCardActions { display: flex; gap: 4px; }
+.statusBadge { display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 0.7rem; font-weight: 700; }
+.statusBadgeSuccess { background: #DCFCE7; color: #16A34A; }
+.statusBadgePending { background: #FEF3C7; color: #D97706; }

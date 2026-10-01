@@ -1,0 +1,8 @@
+.accordionItem { border: 1px solid var(--color-border); border-radius: var(--radius-md); overflow: hidden; background: var(--color-surface); margin-bottom: var(--space-3); }
+.accordionHeader { display: flex; justify-content: space-between; align-items: center; padding: var(--space-3) var(--space-4); cursor: pointer; font-weight: 600; font-size: 1rem; color: var(--color-text); background: var(--color-surface); transition: background 0.1s ease; }
+.accordionHeader:hover { background: var(--color-surface-alt); }
+.accordionTitle { display: flex; align-items: center; gap: var(--space-2); }
+.accordionCount { font-size: var(--text-xs); font-weight: 700; padding: 2px 8px; border-radius: 999px; background: var(--color-primary-050); color: var(--color-primary); }
+.accordionBody { padding: var(--space-5); border-top: 1px solid var(--color-border); background: var(--color-surface-alt); }
+.grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: var(--space-4); }
+.emptyState { color: var(--color-text-3); font-size: 0.9rem; margin: 0; }
