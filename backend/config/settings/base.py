@@ -6,6 +6,7 @@ Nothing in this file may read a secret without a default that is safe to commit 
 real values come from the environment. See .env.example.
 """
 
+from datetime import timedelta
 from pathlib import Path
 
 import environ
@@ -50,6 +51,14 @@ CONTROL_PLANE_APPS = [
     "core.organizations",
     "core.permissions",
     "core.billing",
+    # The refresh-token denylist. Identity, so it belongs in the control
+    # database --- and listing it HERE is what puts it there: its label,
+    # "token_blacklist", derives from the last path segment just below.
+    #
+    # IT WAS MISSING UNTIL 2026-10-01, while BLACKLIST_AFTER_ROTATION had been
+    # True since Phase 1. Without the app there are no denylist tables, so the
+    # setting did nothing at all and looked exactly like a working denylist.
+    "rest_framework_simplejwt.token_blacklist",
 ]
 
 # Each module inside a product is its own Django app with a unique, product-
@@ -193,7 +202,10 @@ AUTH_PASSWORD_VALIDATORS = [
 
 REST_FRAMEWORK = {
     "DEFAULT_AUTHENTICATION_CLASSES": (
-        "rest_framework_simplejwt.authentication.JWTAuthentication",
+        # Reads the access token from an httpOnly cookie and enforces CSRF
+        # (C12). NOT simplejwt's own class, which expects an Authorization
+        # header the frontend is deliberately unable to build.
+        "core.accounts.authentication.CookieJWTAuthentication",
     ),
     "DEFAULT_PERMISSION_CLASSES": ("rest_framework.permissions.IsAuthenticated",),
     "DEFAULT_SCHEMA_CLASS": "drf_spectacular.openapi.AutoSchema",
@@ -203,14 +215,49 @@ REST_FRAMEWORK = {
     "EXCEPTION_HANDLER": "config.exception_handler.api_exception_handler",
 }
 
-# Access-token lifetime is a product decision, not a default to inherit:
-# it is how long a disabled user keeps working. Tracked as Q17 in
-# context/04-OPEN-QUESTIONS.md --- revisit before Phase 2 ships.
+# Answered 2026-10-01 (Q17). The premise of the question turned out to be
+# wrong in a useful way: JWTAuthentication.get_user() loads the user row on
+# EVERY request and refuses an inactive one, so disabling an account takes
+# effect on the next request rather than after a token expires. The lifetime
+# below is therefore not "how long a sacked employee keeps working" --- it is
+# how long a STOLEN access token stays usable after its owner logs out.
 SIMPLE_JWT = {
+    "ACCESS_TOKEN_LIFETIME": timedelta(minutes=15),
+    "REFRESH_TOKEN_LIFETIME": timedelta(days=7),
     "ROTATE_REFRESH_TOKENS": True,
+    # Needs the token_blacklist app above. It is listed there now.
     "BLACKLIST_AFTER_ROTATION": True,
     "UPDATE_LAST_LOGIN": True,
+    # Changing a password invalidates every existing token. Free: the token
+    # carries a hash of the password and the user row is already loaded.
+    "CHECK_REVOKE_TOKEN": True,
 }
+
+# --------------------------------------------------------------------------
+# Auth cookies (C12)
+#
+# Tokens are set as httpOnly cookies and the frontend never holds one. So
+# these are not simplejwt settings --- simplejwt returns tokens in the response
+# body and knows nothing about cookies; core.accounts.cookies does the work.
+# --------------------------------------------------------------------------
+
+AUTH_COOKIE_ACCESS = "xp_access"
+AUTH_COOKIE_REFRESH = "xp_refresh"
+
+# Overridden to False in dev, where the server is plain http and a Secure
+# cookie would be set and then never sent back --- which presents as "login
+# succeeds and every request is still 401".
+AUTH_COOKIE_SECURE = True
+
+# Lax, not Strict: Strict withholds the cookie on a top-level navigation INTO
+# the app, so following a link from an email lands the user on a signed-out
+# page despite a valid session.
+AUTH_COOKIE_SAMESITE = "Lax"
+
+# THE REFRESH COOKIE IS SCOPED TO THE AUTH ENDPOINTS, deliberately. It is the
+# long-lived credential (7 days), and there is no reason for the browser to
+# attach it to every API call for a week. The access cookie is site-wide.
+AUTH_COOKIE_REFRESH_PATH = "/api/v1/auth/"
 
 SPECTACULAR_SETTINGS = {
     "TITLE": "Xpredict One API",
