@@ -56,7 +56,8 @@ Run `/session-wrap`, or do it by hand:
 A multi-tenant SaaS platform (Zoho-style) built as a **Django modular monolith** with a
 **React + TypeScript** frontend. One login, one app launcher, shared platform services,
 separate apps: **DMS** (dealership management), **CRM**, and **E-commerce**. The tenant
-is the **Organization**, and each organization gets its **own PostgreSQL database**.
+is the **Organization**, and each organization gets its **own MySQL database** (C39
+replaced PostgreSQL; nothing else about the tenancy model changed).
 Authentication is **JWT, issued by the platform layer (`core/`) — never by the apps.**
 DMS is **unit-aware**: an organization's dealerships are `BusinessUnit` rows, and
 dealers manage their own scoped users. CRM and E-commerce have no business units;
@@ -69,7 +70,7 @@ roles, permissions or models until it is explicitly picked up.
 each dealer's users are managed at the **dealer** level. An org admin reaching into a
 dealer's users is an audited override, not the normal path.
 
-Full rationale: `context/02-DECISIONS.md` C1–C38 — all `[Decided]`. Don't reopen them.
+Full rationale: `context/02-DECISIONS.md` C1–C42 — all `[Decided]`. Don't reopen them.
 
 ## Status
 
@@ -82,14 +83,23 @@ Every `api/*.ts` has a `USE_FAKE_*` flag that falls through to the URL Django wi
 serve, so switching over is deleting a block per function. **The fake data lives in
 module memory and resets on every full page load** — that is the fake, not a bug.
 
-**Backend — Phase 1 scaffold only.** Django 5.2.17, split settings, the fail-closed
-`TenantRouter`, `shared/base_models.py`, `core.accounts.User`, Celery wiring, 10 apps
-with unique labels, and an OpenAPI schema that generates. **No `migrate` has ever run
-and it has never connected to a database.** Phase 2 (control-plane models, tenancy,
-identity) has not started.
+**Backend — it runs on a database now.** Django 5.2.17 on **MySQL 8.0** (C39), split
+settings, the fail-closed `TenantRouter`, `shared/base_models.py`, `core.accounts.User`,
+Celery wiring, 10 apps with unique labels, an OpenAPI schema that generates. **`migrate`
+has run** and ten control-plane tables exist in `xpredict_control`.
 
-**Blocked on:** Docker is not installed, so there is no Postgres, Redis or PgBouncer
-— that is what pauses the backend. **Q17** (how a JWT is revoked on logout and on
+Set the database up once, as a MySQL admin: `mysql -u root -p < backend/scripts/create_dev_db.sql`.
+
+**Phase 2 is designed but unbuilt** — nine control-plane tables, 48 permissions and nine
+roles are agreed (C40, C41, C42) and no model is written. `core.accounts.User` is the
+only model in the repo.
+
+> **`Applying <app>.0001_initial... OK` does not mean tables were created.** Django
+> prints it whether it built them or the router refused every operation, so a migration
+> that did nothing reads exactly like one that worked. **Check the tables.**
+
+**Blocked on:** nothing in the backend. Redis is still missing, which leaves only the
+Celery broker round-trip unverified. **Q17** (how a JWT is revoked on logout and on
 disabling a user) must be answered before the auth work inside Phase 2.
 
 **Gates, all green:** `npm run test -w web` (73), `npm run typecheck -w web`,
@@ -126,7 +136,10 @@ Every module has the same anatomy:
 Adding a module means adding it to `TENANT_APPS` (or `CONTROL_PLANE_APPS`) in
 `config/settings/base.py`. A module missing from those lists never migrates, silently.
 
-`products/dms/sales/` is the worked reference --- copy its shape.
+`products/dms/sales/` is the worked reference — copy its shape. Its **models.py is
+deliberately empty**: the illustrative model was deleted once it became clear that a
+placeholder would create a real table in every tenant database. The conventions it
+taught are the file's docstring.
 
 ## Error handling
 
