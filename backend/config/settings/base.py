@@ -137,18 +137,34 @@ ASGI_APPLICATION = "config.asgi.application"
 
 DATABASES = {
     "default": {
-        "ENGINE": "django.db.backends.postgresql",
-        "NAME": env("POSTGRES_DB", default="xpredict_control"),
-        "USER": env("POSTGRES_USER", default="xpredict"),
-        "PASSWORD": env("POSTGRES_PASSWORD", default="xpredict"),
-        "HOST": env("POSTGRES_HOST", default="127.0.0.1"),
-        "PORT": env.int("POSTGRES_PORT", default=5432),
-        # PgBouncer sits in front in every environment, so persistent
-        # connections here would defeat the pool.
+        # MySQL, not PostgreSQL (C39). Django 5.2 requires MySQL 8.0.11+.
+        "ENGINE": "django.db.backends.mysql",
+        "NAME": env("MYSQL_DB", default="xpredict_control"),
+        "USER": env("MYSQL_USER", default="xpredict"),
+        "PASSWORD": env("MYSQL_PASSWORD", default="xpredict"),
+        "HOST": env("MYSQL_HOST", default="127.0.0.1"),
+        "PORT": env.int("MYSQL_PORT", default=3306),
+        # No pooler in front any more --- PgBouncer went with PostgreSQL and
+        # has no drop-in MySQL equivalent (Q27). Connections are closed at the
+        # end of each request instead: database-per-tenant means a persistent
+        # connection is held PER TENANT per worker, so CONN_MAX_AGE multiplies
+        # by the number of organizations rather than staying constant.
         "CONN_MAX_AGE": 0,
-        # Fail fast when Postgres is not up, rather than hanging a request
-        # (or a management command) on the OS connect timeout.
-        "OPTIONS": {"connect_timeout": 5},
+        "OPTIONS": {
+            # Fail fast when MySQL is not up, rather than hanging a request
+            # (or a management command) on the OS connect timeout.
+            "connect_timeout": 5,
+            # utf8mb4 is real four-byte UTF-8. MySQL's "utf8" is a three-byte
+            # subset that silently truncates anything outside the BMP --- an
+            # emoji in a customer name, for one.
+            "charset": "utf8mb4",
+            # STRICT MODE IS NOT OPTIONAL HERE. Without it MySQL "helpfully"
+            # coerces bad data instead of refusing it: an over-length string is
+            # truncated, an invalid date becomes 0000-00-00, and the write
+            # succeeds. Django assumes the database rejects what it is told to
+            # reject, so a validation hole becomes silent data loss.
+            "init_command": "SET sql_mode='STRICT_TRANS_TABLES'",
+        },
     }
 }
 
