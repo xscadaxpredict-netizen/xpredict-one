@@ -38,9 +38,18 @@ def client() -> APIClient:
     return APIClient(enforce_csrf_checks=True)
 
 
-def login(client: APIClient, email: str = "rahul@acmemotors.in", password: str = PASSWORD):
+def login(
+    client: APIClient,
+    email: str = "rahul@acmemotors.in",
+    password: str = PASSWORD,
+    origin: str | None = None,
+):
+    extra = {"HTTP_ORIGIN": origin, "HTTP_REFERER": f"{origin}/"} if origin else {}
     return client.post(
-        reverse("accounts:login"), {"email": email, "password": password}, format="json"
+        reverse("accounts:login"),
+        {"email": email, "password": password},
+        format="json",
+        **extra,
     )
 
 
@@ -181,6 +190,47 @@ class TestCsrf:
         login(client)
 
         assert client.get(reverse("accounts:session")).status_code == 200
+
+    def test_accepts_a_request_from_the_frontend_origin(self, client, user):
+        """
+        THE TEST CLIENT IS SAME-ORIGIN AND THE REAL FRONTEND IS NOT. Every other
+        test here sends no Origin header, so Django's origin check never runs and
+        they all pass whether or not CSRF_TRUSTED_ORIGINS is set.
+
+        It was not set. Against a real browser every POST, PATCH and DELETE from
+        the Vite dev server answered 403 "Origin checking failed", and nothing in
+        this file noticed. This test sends the header a browser sends.
+
+        THE ORIGIN IS WRITTEN OUT, not read from CSRF_TRUSTED_ORIGINS. Reading
+        the allowed list and sending it straight back asserts only that the list
+        matches itself; it would pass with the frontend's real origin missing.
+        This is the address the Vite dev server actually serves on.
+        """
+        origin = "http://localhost:5173"
+        login(client, origin=origin)
+
+        response = client.post(
+            reverse("accounts:logout"),
+            HTTP_ORIGIN=origin,
+            HTTP_REFERER=f"{origin}/",
+            **csrf_headers(client),
+        )
+
+        assert response.status_code == 204
+
+    def test_refuses_a_request_from_an_unknown_origin(self, client, user):
+        """A site the user happens to be visiting is not a trusted origin."""
+        login(client)
+
+        response = client.post(
+            reverse("accounts:logout"),
+            HTTP_ORIGIN="https://evil.example.com",
+            HTTP_REFERER="https://evil.example.com/",
+            **csrf_headers(client),
+        )
+
+        assert response.status_code == 403
+        assert "Origin checking failed" in str(response.json())
 
 
 # ---------------------------------------------------------------------------
