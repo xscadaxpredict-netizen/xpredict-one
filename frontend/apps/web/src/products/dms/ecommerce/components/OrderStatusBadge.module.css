@@ -1,0 +1,4 @@
+.badgePending { display: inline-flex; align-items: center; gap: 4px; font-size: 0.72rem; font-weight: 700; padding: 2px 8px; border-radius: 999px; background: #FEF3C7; color: #D97706; border: 1px solid #FDE68A; }
+.badgeApproved { display: inline-flex; align-items: center; gap: 4px; font-size: 0.72rem; font-weight: 700; padding: 2px 8px; border-radius: 999px; background: #DBEAFE; color: #2563EB; border: 1px solid #BFDBFE; }
+.badgeRejected { display: inline-flex; align-items: center; gap: 4px; font-size: 0.72rem; font-weight: 700; padding: 2px 8px; border-radius: 999px; background: #FEE2E2; color: #B91C1C; border: 1px solid #FECACA; }
+.badgeDelivered { display: inline-flex; align-items: center; gap: 4px; font-size: 0.72rem; font-weight: 700; padding: 2px 8px; border-radius: 999px; background: #F0FDF4; color: #16A34A; border: 1px solid #BBF7D0; }

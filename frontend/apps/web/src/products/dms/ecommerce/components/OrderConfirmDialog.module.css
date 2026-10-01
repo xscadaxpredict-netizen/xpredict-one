@@ -1,0 +1,27 @@
+.modalOverlay { position: fixed; inset: 0; background-color: rgba(0,0,0,0.5); z-index: 1100; display: flex; align-items: center; justify-content: center; }
+.modalContent { background: var(--color-surface); border-radius: var(--radius-lg); width: 600px; max-width: 95%; max-height: 92vh; display: flex; flex-direction: column; box-shadow: 0 10px 25px rgba(0,0,0,0.2); }
+.modalHeader { padding: var(--space-4) var(--space-5); border-bottom: 1px solid var(--color-border); display: flex; justify-content: space-between; align-items: center; }
+.modalTitle { font-size: 1.1rem; font-weight: 700; margin: 0; }
+.modalClose { background: none; border: none; cursor: pointer; color: var(--color-text-2); display: flex; align-items: center; justify-content: center; }
+.modalBody { padding: var(--space-5); overflow-y: auto; flex: 1; display: flex; flex-direction: column; gap: var(--space-4); }
+.modalFooter { padding: var(--space-4) var(--space-5); border-top: 1px solid var(--color-border); display: flex; justify-content: flex-end; gap: var(--space-3); }
+.poPreview { background: var(--color-surface-alt); border: 1px dashed var(--color-border-strong); border-radius: var(--radius-md); padding: var(--space-4); font-size: 0.85rem; }
+.poTop { display: flex; justify-content: space-between; border-bottom: 2px solid var(--color-border-strong); padding-bottom: 10px; margin-bottom: 15px; }
+.companyName { margin: 0; color: var(--color-primary); }
+.companyMeta { font-size: 0.75rem; color: var(--color-text-2); }
+.shipTo { display: flex; flex-direction: column; margin-bottom: 20px; }
+.shipToLabel { font-size: 0.75rem; font-weight: 700; color: var(--color-text-3); text-transform: uppercase; }
+.poTable { width: 100%; border-collapse: collapse; margin-bottom: 15px; font-size: 0.85rem; }
+.poTableHead { background-color: var(--color-surface-alt); border-top: 1px solid var(--color-border); border-bottom: 1px solid var(--color-border); }
+.poTableRow { border-bottom: 1px solid var(--color-border); }
+.totalBlock { display: flex; flex-direction: column; align-items: flex-end; }
+.totalRow { display: flex; justify-content: space-between; padding: 4px 8px; font-size: 0.85rem; width: 250px; }
+.totalRowMuted { display: flex; justify-content: space-between; padding: 4px 8px; font-size: 0.85rem; color: var(--color-text-2); width: 250px; }
+.grandTotal { display: flex; justify-content: space-between; padding: 8px; font-size: 1.05rem; font-weight: 700; border-top: 2px solid var(--color-border-strong); margin-top: 4px; width: 250px; }
+.poFooter { margin-top: 30px; border-top: 1px dashed var(--color-border); padding-top: 15px; display: flex; justify-content: space-between; }
+.sigLine { width: 120px; border-bottom: 1px solid var(--color-border-strong); margin-bottom: 4px; height: 30px; }
+.sigLabel { font-size: 0.75rem; font-weight: 600; }
+.btnPrimary { display: inline-flex; align-items: center; gap: var(--space-1); padding: var(--space-2) var(--space-3); border-radius: var(--radius-md); font: inherit; font-size: var(--text-sm); font-weight: 600; cursor: pointer; border: none; background: var(--color-primary); color: var(--color-primary-text); }
+.btnPrimary:hover { background: var(--color-primary-hover); }
+.btnSecondary { display: inline-flex; align-items: center; gap: var(--space-1); padding: var(--space-2) var(--space-3); border-radius: var(--radius-md); font: inherit; font-size: var(--text-sm); font-weight: 600; cursor: pointer; background: var(--color-surface); color: var(--color-text); border: 1px solid var(--color-border-strong); }
+.btnSecondary:hover { background: var(--color-surface-alt); }

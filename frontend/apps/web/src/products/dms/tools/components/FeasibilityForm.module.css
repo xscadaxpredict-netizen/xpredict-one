@@ -1,0 +1,12 @@
+.formCard { background: var(--color-surface); border: 1px solid var(--color-border); border-radius: var(--radius-lg); padding: var(--space-6); box-shadow: 0 4px 15px rgba(0,0,0,0.03); }
+.cardTitle { margin: 0 0 var(--space-5) 0; font-size: 1.1rem; font-weight: 600; color: var(--color-text); border-bottom: 1px solid var(--color-border); padding-bottom: var(--space-3); }
+.formGroup { margin-bottom: var(--space-4); }
+.label { display: block; margin-bottom: var(--space-2); font-weight: 600; font-size: 0.85rem; color: var(--color-text-2); }
+.input { width: 100%; padding: 10px 12px; border: 1px solid var(--color-border-strong); border-radius: var(--radius-md); font-size: 0.95rem; font-family: inherit; transition: border-color 0.2s ease; }
+.input:focus { outline: none; border-color: var(--color-primary); box-shadow: 0 0 0 3px var(--color-primary-050); }
+.hint { display: block; margin-top: 4px; font-size: 0.75rem; color: var(--color-text-3); }
+.buttonGroup { display: flex; gap: var(--space-3); margin-top: var(--space-6); }
+.btnPrimary { flex: 1; padding: 10px; background: var(--color-primary); color: white; border: none; border-radius: var(--radius-md); font-weight: 600; font-size: 0.9rem; cursor: pointer; transition: background 0.2s ease; }
+.btnPrimary:hover { background: var(--color-primary-600); }
+.btnSecondary { padding: 10px 20px; background: var(--color-surface); color: var(--color-text); border: 1px solid var(--color-border-strong); border-radius: var(--radius-md); font-weight: 600; font-size: 0.9rem; cursor: pointer; transition: all 0.2s ease; }
+.btnSecondary:hover { background: var(--color-surface-alt); }

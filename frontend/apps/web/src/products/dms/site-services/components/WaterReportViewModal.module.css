@@ -1,0 +1,23 @@
+.modalOverlay { position: fixed; inset: 0; background-color: rgba(0,0,0,0.5); z-index: 1100; display: flex; align-items: center; justify-content: center; overflow-y: auto; }
+.modalContent { background: var(--color-surface); border-radius: var(--radius-lg); width: 680px; max-width: 95%; max-height: 92vh; display: flex; flex-direction: column; }
+.modalHeader { padding: var(--space-4) var(--space-5); border-bottom: 1px solid var(--color-border); display: flex; justify-content: space-between; align-items: center; position: sticky; top: 0; z-index: 10; background: var(--color-surface); }
+.modalTitle { font-size: 1.1rem; font-weight: 700; margin: 0; }
+.modalSubtitle { font-size: 0.75rem; color: var(--color-text-2); }
+.headerActions { display: flex; gap: 0.5rem; align-items: center; }
+.modalClose { background: none; border: none; font-size: 1.2rem; cursor: pointer; color: var(--color-text-2); display: flex; align-items: center; justify-content: center; }
+.modalBody { padding: 1.75rem; display: flex; flex-direction: column; gap: 1.5rem; overflow-y: auto; flex: 1; background: #FFFFFF; }
+.bannerContainer { display: flex; justify-content: space-between; border-bottom: 2px solid var(--color-primary); padding-bottom: 1rem; }
+.bannerTitle { font-size: 1.1rem; font-weight: 800; color: var(--color-primary); }
+.bannerSubtitle { font-size: 0.8rem; color: var(--color-text-2); }
+.bannerRight { text-align: right; }
+.reportCode { font-size: 0.88rem; font-weight: 700; }
+.reportDate { font-size: 0.78rem; color: var(--color-text-2); }
+.infoGrid { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; background: var(--color-surface-alt); padding: 1rem; border-radius: var(--radius-sm); }
+.infoLabel { font-size: 0.72rem; color: var(--color-text-2); text-transform: uppercase; }
+.infoValue { font-weight: 700; font-size: 0.95rem; }
+.infoSubValue { font-size: 0.75rem; color: var(--color-text-2); }
+.sectionTitle { font-size: 0.85rem; font-weight: 700; margin-bottom: 0.5rem; text-transform: uppercase; }
+.attachmentBox { border: 1px solid var(--color-border); border-radius: var(--radius-sm); padding: 1rem; font-size: 0.88rem; line-height: 1.5; background: #FAFAFA; }
+.modalFooter { padding: var(--space-4) var(--space-5); border-top: 1px solid var(--color-border); display: flex; justify-content: flex-end; gap: var(--space-3); background: var(--color-surface); }
+.btnPrimary { display: inline-flex; align-items: center; gap: var(--space-2); padding: 6px 12px; border-radius: var(--radius-md); font: inherit; font-size: 0.8rem; font-weight: 600; cursor: pointer; border: none; background: var(--color-primary); color: var(--color-primary-text); }
+.btnSecondary { display: inline-flex; align-items: center; gap: var(--space-2); padding: 6px 12px; border-radius: var(--radius-md); font: inherit; font-size: 0.8rem; font-weight: 600; cursor: pointer; background: var(--color-surface); color: var(--color-text); border: 1px solid var(--color-border-strong); }

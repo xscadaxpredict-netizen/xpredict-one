@@ -204,8 +204,8 @@ const FAKE_ME: Me = {
           key: "dms",
           subscribed: true,
           accessible: true,
-          summary: "Sales · Service · Tech support across 12 dealers",
-          modules: ["sales", "service", "tech-support", "settings"],
+          summary: "Sales · Service · Tech support · Ecommerce · Tools across 12 dealers",
+          modules: ["sales", "service", "tech-support", "ecommerce", "tools", "settings"],
           permissions: [
             "dms.enquiry.create",
             "dms.enquiry.assign",
