@@ -1,48 +1,44 @@
 # Local development stack.
 #
-# Postgres is reached through PgBouncer on 6432, not directly on 5432.
-# Database-per-tenant (C1) means connection count grows with the number of
-# organizations, so the pool is part of the design rather than a later addition.
-# Port 5432 stays exposed for psql and migrations that need to bypass the pool.
+# MYSQL IS OPTIONAL HERE, and on the owner's machine it is not used at all:
+# MySQL 8.0 is installed natively as the MySQL80 service on 3306, which is why
+# the engine moved off PostgreSQL in the first place (C39) --- Docker was never
+# installed, and it was the only thing blocking the backend.
+#
+# This file is for a machine that has Docker but no MySQL. If you run it
+# alongside a native MySQL, change the published port: both want 3306.
+#
+# PGBOUNCER IS GONE with PostgreSQL, and nothing replaces it yet. Pooling still
+# matters --- database-per-tenant (C1) means connections grow with the number of
+# organizations --- but MySQL has no drop-in equivalent, so it is an open
+# question rather than a service here (Q27).
 
 name: xpredict-one
 
 services:
-  postgres:
-    image: postgres:16-alpine
+  mysql:
+    image: mysql:8.0
     environment:
-      POSTGRES_DB: ${POSTGRES_DB:-xpredict_control}
-      POSTGRES_USER: ${POSTGRES_USER:-xpredict}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-xpredict}
+      MYSQL_DATABASE: ${MYSQL_DB:-xpredict_control}
+      MYSQL_USER: ${MYSQL_USER:-xpredict}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-xpredict}
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-xpredict-root}
+    command:
+      # Matches config/settings/base.py. Set here too so that anything reaching
+      # the server without Django's OPTIONS --- a shell, a restore, Workbench ---
+      # gets the same refusals rather than silent coercion.
+      - --sql-mode=STRICT_TRANS_TABLES
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_0900_ai_ci
     ports:
-      - "5432:5432"
+      - "3306:3306"
     volumes:
-      - pgdata:/var/lib/postgresql/data
+      - mysqldata:/var/lib/mysql
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-xpredict}"]
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1"]
       interval: 5s
       timeout: 5s
       retries: 10
-
-  pgbouncer:
-    image: edoburu/pgbouncer:latest
-    environment:
-      DB_HOST: postgres
-      DB_PORT: 5432
-      DB_USER: ${POSTGRES_USER:-xpredict}
-      DB_PASSWORD: ${POSTGRES_PASSWORD:-xpredict}
-      # transaction pooling: required for many tenant databases on few
-      # server-side connections. Note it disallows session-level features
-      # such as server-side prepared statements and LISTEN/NOTIFY.
-      POOL_MODE: transaction
-      MAX_CLIENT_CONN: 1000
-      DEFAULT_POOL_SIZE: 25
-      AUTH_TYPE: scram-sha-256
-    ports:
-      - "6432:5432"
-    depends_on:
-      postgres:
-        condition: service_healthy
 
   redis:
     image: redis:7-alpine
@@ -64,13 +60,13 @@ services:
   # celery-worker:
   #   build: ./backend
   #   command: celery -A config worker -l info
-  #   depends_on: [redis, pgbouncer]
+  #   depends_on: [redis, mysql]
   #
   # celery-beat:
   #   build: ./backend
   #   command: celery -A config beat -l info
-  #   depends_on: [redis, pgbouncer]
+  #   depends_on: [redis, mysql]
 
 volumes:
-  pgdata:
+  mysqldata:
   redisdata:
