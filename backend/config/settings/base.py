@@ -42,7 +42,6 @@ DJANGO_APPS = [
 
 THIRD_PARTY_APPS = [
     "rest_framework",
-    "drf_spectacular",
     "corsheaders",
 ]
 
@@ -208,7 +207,6 @@ REST_FRAMEWORK = {
         "core.accounts.authentication.CookieJWTAuthentication",
     ),
     "DEFAULT_PERMISSION_CLASSES": ("rest_framework.permissions.IsAuthenticated",),
-    "DEFAULT_SCHEMA_CLASS": "drf_spectacular.openapi.AutoSchema",
     "UNAUTHENTICATED_USER": None,
     # Every error leaves the API as RFC 9457 problem+json, whatever raised it.
     # Views never catch domain exceptions --- this is the only translation point.
@@ -258,14 +256,6 @@ AUTH_COOKIE_SAMESITE = "Lax"
 # long-lived credential (7 days), and there is no reason for the browser to
 # attach it to every API call for a week. The access cookie is site-wide.
 AUTH_COOKIE_REFRESH_PATH = "/api/v1/auth/"
-
-SPECTACULAR_SETTINGS = {
-    "TITLE": "Xpredict One API",
-    "DESCRIPTION": "Multi-tenant platform: DMS, CRM, E-commerce.",
-    "VERSION": "0.1.0",
-    "SERVE_INCLUDE_SCHEMA": False,
-    "SCHEMA_PATH_PREFIX": "/api/v1",
-}
 
 
 # --------------------------------------------------------------------------

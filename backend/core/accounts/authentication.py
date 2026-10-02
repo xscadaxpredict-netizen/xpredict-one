@@ -12,6 +12,12 @@ Two differences from simplejwt's `JWTAuthentication`, and both matter.
    makes, including one triggered from another origin. Without the check below,
    any site the user visits could POST to this API as them.
 
+HOW A CALLER AUTHENTICATES, since there is no generated schema saying so:
+send the `xp_access` cookie (set by POST /api/v1/auth/login/, httpOnly, so
+the browser attaches it and JavaScript cannot read it), and on any
+state-changing request also send the `X-CSRFToken` header, read from the
+`csrftoken` cookie, which deliberately is readable.
+
 WHAT THIS CLASS DOES NOT DO: decide anything about organizations. The org comes
 from the URL path and is resolved by the tenant middleware (C3). A token proves
 who you are and nothing about where.
@@ -23,7 +29,6 @@ from typing import Any
 
 from django.conf import settings
 from django.middleware.csrf import CsrfViewMiddleware
-from drf_spectacular.extensions import OpenApiAuthenticationExtension
 from rest_framework import exceptions
 from rest_framework.request import Request
 from rest_framework_simplejwt.authentication import JWTAuthentication
@@ -80,28 +85,3 @@ class CookieJWTAuthentication(JWTAuthentication):
 
         return user, validated
 
-
-class CookieJWTScheme(OpenApiAuthenticationExtension):
-    """
-    Teach drf-spectacular what this class does.
-
-    Without it the generated schema simply omits the security scheme, with a
-    warning nobody reads — and the frontend's client is GENERATED from that
-    schema, so every endpoint would be documented as public. The warning is
-    the only sign, and it does not fail the build.
-    """
-
-    target_class = "core.accounts.authentication.CookieJWTAuthentication"
-    name = "cookieAuth"
-
-    def get_security_definition(self, auto_schema: object) -> dict:
-        return {
-            "type": "apiKey",
-            "in": "cookie",
-            "name": settings.AUTH_COOKIE_ACCESS,
-            "description": (
-                "httpOnly cookie set by POST /api/v1/auth/login/. The browser "
-                "attaches it automatically; JavaScript cannot read it. "
-                "State-changing requests must also send the X-CSRFToken header."
-            ),
-        }

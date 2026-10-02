@@ -85,7 +85,8 @@ module memory and resets on every full page load** — that is the fake, not a b
 
 **Backend — it runs on a database now.** Django 5.2.17 on **MySQL 8.0** (C39), split
 settings, the fail-closed `TenantRouter`, `shared/base_models.py`, `core.accounts.User`,
-Celery wiring, 10 apps with unique labels, an OpenAPI schema that generates. **`migrate`
+Celery wiring and 10 apps with unique labels. **Plain DRF** — drf-spectacular was
+removed (C43), so there is no schema endpoint and no generated client. **`migrate`
 has run** and ten control-plane tables exist in `xpredict_control`.
 
 Set the database up once, as a MySQL admin: `mysql -u root -p < backend/scripts/create_dev_db.sql`.

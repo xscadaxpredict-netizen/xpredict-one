@@ -1,9 +1,5 @@
 from django.contrib import admin
 from django.urls import include, path
-from drf_spectacular.views import (
-    SpectacularAPIView,
-    SpectacularSwaggerView,
-)
 
 urlpatterns = [
     path("admin/", admin.site.urls),
@@ -11,8 +7,9 @@ urlpatterns = [
     # known, and the token carries none (C3). AUTH_COOKIE_REFRESH_PATH is
     # pinned to this prefix --- move these routes and move that setting too.
     path("api/v1/auth/", include("core.accounts.api.urls")),
-    path("api/v1/schema/", SpectacularAPIView.as_view(), name="schema"),
-    path("api/v1/docs/", SpectacularSwaggerView.as_view(url_name="schema"), name="swagger-ui"),
+    # No schema or docs routes. drf-spectacular was removed on 2026-10-02:
+    # it had been in the scaffold since Phase 1 and the owner had never been
+    # asked for it. Plain DRF until after the first public release.
     # Organization-scoped app routes are added in Phase 2:
     #   /api/v1/orgs/<org_slug>/<app>/...
     # The org slug lives in the path, not in the token, so switching

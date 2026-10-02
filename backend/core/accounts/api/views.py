@@ -12,7 +12,6 @@ from typing import ClassVar
 
 from django.contrib.auth import authenticate
 from django.middleware.csrf import get_token
-from drf_spectacular.utils import extend_schema
 from rest_framework import status
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.request import Request
@@ -58,7 +57,6 @@ class LoginView(APIView):
     authentication_classes: ClassVar[list] = []
     permission_classes: ClassVar[list] = [AllowAny]
 
-    @extend_schema(request=LoginSerializer, responses={200: SignedInUserSerializer})
     def post(self, request: Request) -> Response:
         serializer = LoginSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
@@ -106,7 +104,6 @@ class SessionView(APIView):
 
     permission_classes: ClassVar[list] = [IsAuthenticated]
 
-    @extend_schema(responses={200: SignedInUserSerializer})
     def get(self, request: Request) -> Response:
         return Response(SignedInUserSerializer(request.user).data)
 
@@ -117,7 +114,6 @@ class RefreshView(APIView):
     authentication_classes: ClassVar[list] = []
     permission_classes: ClassVar[list] = [AllowAny]
 
-    @extend_schema(request=None, responses={204: None})
     def post(self, request: Request) -> Response:
         from django.conf import settings
 
@@ -162,7 +158,6 @@ class LogoutView(APIView):
     authentication_classes: ClassVar[list] = []
     permission_classes: ClassVar[list] = [AllowAny]
 
-    @extend_schema(request=None, responses={204: None})
     def post(self, request: Request) -> Response:
         from django.conf import settings
 
