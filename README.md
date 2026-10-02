@@ -15,7 +15,8 @@ Django REST backend + React/TypeScript frontend. **DMS is being built first.**
 |---|---|---|
 | **Node** | **24 LTS** | `node --version` |
 | Python | 3.12+ | `python --version` |
-| Docker Desktop | any current | `docker --version` |
+| **MySQL** | **8.0.11+** | `mysql --version` |
+| Docker Desktop | optional | `docker --version` |
 
 > **Node 18 will not work.** It is end-of-life and Vite refuses it. If
 > `node --version` shows v18, install the LTS before anything else:
@@ -51,23 +52,42 @@ npm install zod -w web            # add a dependency to ONE workspace
 `-w` takes the package **name**, not the folder: `web`, `@xpredict/ui`,
 `@xpredict/auth`, `@xpredict/api-client`.
 
-### Backend — not runnable yet
+### Backend — runs against MySQL
 
-The Django project is scaffolded and its tests pass, but it has **never
-connected to a database**. PostgreSQL and Redis come from Docker, which nobody
-has installed yet.
+**MySQL, not PostgreSQL** (C39). Install MySQL 8.0 for your platform; Docker is
+optional, and only needed if you would rather not install it natively.
 
 ```bash
 cd backend
 python -m venv .venv
 .venv\Scripts\activate          # Windows
 pip install -r requirements.lock.txt
-python -m pytest tests/ -q      # passes: no database needed
-python manage.py check
 ```
 
-`docker compose up -d` and `manage.py migrate` are the next steps, once Docker
-is on the machine.
+Create the development database and its user **once**, as a MySQL admin:
+
+```bash
+mysql -u root -p < scripts/create_dev_db.sql
+```
+
+That makes the `xpredict` user and the `xpredict_control` database, and grants
+the user two NAME PATTERNS rather than a global privilege — database-per-tenant
+means the app creates databases at runtime whose names do not exist yet, and a
+global grant would hand it every other schema on the server. The script
+explains itself.
+
+Then copy `.env.example` to `.env` and:
+
+```bash
+python manage.py check
+python manage.py migrate        # control plane only
+python -m pytest tests/ -q
+```
+
+> **The test suite passes without a database at all**, which is worth knowing
+> before you trust it. The 40 tests are unit tests of the router and the
+> exception handler; none of them opens a connection. A green suite does not
+> mean MySQL is reachable — `manage.py migrate` is what tells you that.
 
 ---
 

@@ -44,14 +44,83 @@ const QUERY_HOOK_PATHS = [
 ];
 
 /**
- * The shell routes to products but must not know their internals.
+ * The shell must not import a product at all.
+ *
+ * Products are wired in `src/router.tsx`, which lazy-imports each one's
+ * `routes` entry point. That file is outside `src/shell/**`, so it is not
+ * covered by this rule — which leaves the shell itself with no reason to name
+ * a product, and this rule saying exactly that.
+ *
+ * THIS RULE NEVER FIRED UNTIL 2026-09-30. It was written with an extglob
+ * exclusion to permit the `routes` entry point, and extglob inside a `group`
+ * pattern matches nothing at all — so the rule loaded, reported no error, and
+ * looked exactly like a rule that was passing. A shell file importing a
+ * product's internals linted clean for four sessions.
+ *
+ * The exception was dropped rather than repaired: no negation form tried would
+ * re-include the entry point (five variants were measured, every one left it
+ * blocked), and a rule whose message promises an exception it does not
+ * grant is worse than one without the exception. Nothing imports it from here
+ * anyway. If the shell ever genuinely needs to, move the wiring to
+ * `src/router.tsx` where it belongs, or widen this deliberately and PROVE the
+ * pattern with a throwaway file — these globs fail silently.
+ *
+ * Do not paste a glob containing a star-then-slash into a block comment here:
+ * it ends the comment, and the config dies with a ReferenceError naming a path
+ * segment. That is how this comment was first written.
  */
 const SHELL_PATTERNS = [
   {
-    group: ["**/products/*/!(routes)", "@/products/*/!(routes)"],
+    group: ["**/products/**"],
     message:
-      "The shell may only import a product's routes entry point, not its " +
-      "internal components.",
+      "The shell must not import a product. Products are wired in src/router.tsx, " +
+      "which lazy-imports each product's routes entry point; the shell itself never " +
+      "names one.",
+  },
+];
+
+/*
+ * What a product may take from the shell, and nothing else.
+ *
+ * A product renders inside the shell, so it needs three things from it: the
+ * route wrapper that drops modules the person lacks, the access rules that
+ * gate a button, and the membership the shell already resolved. That is the
+ * contract, and it is the list below.
+ *
+ * THE TWO THAT MATTER, of everything this shuts out:
+ *
+ *   `shell/components/*` — Button, TextField, FormBanner. Borrowing one works
+ *   and lints clean, which is exactly the problem: the component then never
+ *   gets promoted into packages/ui when a second caller appears, and the rule
+ *   of two quietly stops working. By the time CRM wants a button, DMS is
+ *   welded to the admin console's private copy of one.
+ *
+ *   `shell/admin/*` — the Administration console's own hooks and API layer. A
+ *   DMS screen calling `useUsers()` is one product reading another app's data
+ *   through the back door.
+ *
+ * To share a component, move it to `packages/ui` and import it from there.
+ * That is the rule of two working, not an obstacle to it.
+ *
+ * WHY NEGATION RATHER THAN `!(routing|access|context)`: extglob in a `group`
+ * pattern silently matches NOTHING here — the rule loads, reports no error, and
+ * you believe you are protected. Measured, not assumed: the extglob form
+ * caught 0 of 5 forbidden imports, the form below catches 5 of 5 and allows
+ * all three permitted ones. If you change these patterns, prove it with a
+ * throwaway file that imports something banned.
+ */
+const PRODUCT_SHELL_PATTERNS = [
+  {
+    group: [
+      "**/shell/**",
+      "!**/shell/routing",
+      "!**/shell/access",
+      "!**/shell/context",
+    ],
+    message:
+      "A product may import only shell/routing, shell/access and shell/context. " +
+      "A shared component belongs in packages/ui -- move it there, then import it. " +
+      "The Administration console's hooks and API are not a product's to call.",
   },
 ];
 
@@ -89,7 +158,7 @@ export default tseslint.config(
         "error",
         {
           paths: QUERY_HOOK_PATHS,
-          patterns: [crossProduct("crm", "DMS")],
+          patterns: [crossProduct("crm", "DMS"), ...PRODUCT_SHELL_PATTERNS],
         },
       ],
     },
@@ -101,7 +170,7 @@ export default tseslint.config(
         "error",
         {
           paths: QUERY_HOOK_PATHS,
-          patterns: [crossProduct("dms", "CRM")],
+          patterns: [crossProduct("dms", "CRM"), ...PRODUCT_SHELL_PATTERNS],
         },
       ],
     },

@@ -31,15 +31,12 @@ describe("accessFor", () => {
 
     expect(access.hasModule("service")).toBe(false);
     expect(access.hasModule("tech-support")).toBe(false);
-    // The dealer-settings area is a dealer ADMIN's job, not a salesperson's.
-    expect(access.hasModule("settings")).toBe(false);
   });
 
   it("refuses a permission the server did not send", () => {
     const access = accessFor(salespersonMembership(), "dms");
 
     expect(access.can("dms.enquiry.delete")).toBe(false);
-    expect(access.can("dms.unit.manage_people")).toBe(false);
   });
 
   /*
@@ -136,6 +133,5 @@ describe("accessFor", () => {
 
     expect(access.hasModule("sales")).toBe(true);
     expect(access.hasModule("tech-support")).toBe(true);
-    expect(access.hasModule("settings")).toBe(true);
   });
 });

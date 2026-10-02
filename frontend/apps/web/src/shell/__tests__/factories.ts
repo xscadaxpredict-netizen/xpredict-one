@@ -69,12 +69,17 @@ export function ownerMembership(): Membership {
     role: "owner",
     apps: [
       appAccess("dms", {
-        modules: ["sales", "service", "tech-support", "settings"],
-        permissions: ["dms.enquiry.create", "dms.unit.manage_people"],
+        modules: ["sales", "service", "tech-support"],
+        permissions: ["dms.enquiry.create"],
       }),
       appAccess("crm"),
       appAccess("ecommerce", { subscribed: false, accessible: false }),
-      appAccess("admin", { modules: ["users", "dealers", "roles", "billing", "audit"] }),
+      /*
+       * Three modules, not five: `billing` and `audit` are out of the first
+       * release (C38) and simply are not granted. The factory follows the fake
+       * `/me`, so a test written against it describes the product that ships.
+       */
+      appAccess("admin", { modules: ["users", "dealers", "roles"] }),
     ],
   });
 }

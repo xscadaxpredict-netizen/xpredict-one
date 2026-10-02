@@ -51,7 +51,7 @@ export function Sidebar({ app, orgSlug, inDrawer = false, onNavigate }: SidebarP
 
   /*
    * Drop modules this person cannot open, then drop groups that are left
-   * empty — otherwise a heading like "This dealer" hangs over nothing, which
+   * empty — otherwise a heading like "Sales" hangs over nothing, which
    * tells the reader precisely what they are not allowed to see.
    *
    * SILENTLY. The UI mock showed a line reading "Tech support hidden — your

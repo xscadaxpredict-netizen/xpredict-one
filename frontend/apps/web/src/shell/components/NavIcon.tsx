@@ -21,7 +21,6 @@ export type NavIconName =
   | "tag"
   | "wrench"
   | "headset"
-  | "sliders"
   | "users"
   | "store"
   | "key"
@@ -82,17 +81,6 @@ function glyph(name: NavIconName) {
           <rect x="2.6" y="13.4" width="4" height="6" rx="1.8" />
           <rect x="17.4" y="13.4" width="4" height="6" rx="1.8" />
           <path d="M19.4 19.4v.6a2.2 2.2 0 0 1-2.2 2.2H13.4" />
-        </>
-      );
-
-    // Dealer settings — sliders.
-    case "sliders":
-      return (
-        <>
-          <path d="M4 7.2h8.4M17.4 7.2H20" />
-          <path d="M4 16.8h4.4M13.4 16.8H20" />
-          <circle cx="14.9" cy="7.2" r="2.4" />
-          <circle cx="10.9" cy="16.8" r="2.4" />
         </>
       );
 
