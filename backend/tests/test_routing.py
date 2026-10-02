@@ -124,7 +124,6 @@ def test_every_installed_app_lands_in_exactly_one_plane(router):
     for config in apps.get_app_configs():
         if config.name.startswith("django.") or config.name in {
             "rest_framework",
-            "drf_spectacular",
             "corsheaders",
         }:
             continue
