@@ -84,4 +84,3 @@ class CookieJWTAuthentication(JWTAuthentication):
         enforce_csrf(request)
 
         return user, validated
-
