@@ -55,6 +55,7 @@ from rest_framework.views import exception_handler as drf_default_handler
 
 from config.routers import TenantContextMissingError
 from shared.exceptions import (
+    AuthenticationError,
     AuthorizationError,
     ConflictError,
     DomainError,
@@ -70,6 +71,7 @@ ERROR_TYPE_BASE = "https://api.xpredict.one/errors"
 # Domain category -> HTTP status. The only mapping in the codebase.
 _DOMAIN_STATUS: list[tuple[type[DomainError], int]] = [
     (InvalidInputError, status.HTTP_422_UNPROCESSABLE_ENTITY),
+    (AuthenticationError, status.HTTP_401_UNAUTHORIZED),
     (NotFoundError, status.HTTP_404_NOT_FOUND),
     (AuthorizationError, status.HTTP_403_FORBIDDEN),
     (ConflictError, status.HTTP_409_CONFLICT),

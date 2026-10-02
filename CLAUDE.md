@@ -74,7 +74,7 @@ Full rationale: `context/02-DECISIONS.md` C1–C42 — all `[Decided]`. Don't re
 
 ## Status
 
-**The frontend ships Administration; the backend is a scaffold that has never run.**
+**The frontend ships Administration; the backend runs on MySQL and signs people in.**
 Keep this section current — it is the first thing a new developer reads.
 
 **Frontend — built and merged, running on hand-written fakes.** Sign-in, the app
@@ -85,7 +85,8 @@ module memory and resets on every full page load** — that is the fake, not a b
 
 **Backend — it runs on a database now.** Django 5.2.17 on **MySQL 8.0** (C39), split
 settings, the fail-closed `TenantRouter`, `shared/base_models.py`, `core.accounts.User`,
-Celery wiring, 10 apps with unique labels, an OpenAPI schema that generates. **`migrate`
+Celery wiring and 10 apps with unique labels. **Plain DRF** — drf-spectacular was
+removed (C43), so there is no schema endpoint and no generated client. **`migrate`
 has run** and ten control-plane tables exist in `xpredict_control`.
 
 Set the database up once, as a MySQL admin: `mysql -u root -p < backend/scripts/create_dev_db.sql`.
@@ -98,12 +99,24 @@ only model in the repo.
 > prints it whether it built them or the router refused every operation, so a migration
 > that did nothing reads exactly like one that worked. **Check the tables.**
 
-**Blocked on:** nothing in the backend. Redis is still missing, which leaves only the
-Celery broker round-trip unverified. **Q17** (how a JWT is revoked on logout and on
-disabling a user) must be answered before the auth work inside Phase 2.
+**Authentication is built.** Login, refresh, logout and `GET /api/v1/auth/session/`,
+with the token in an **httpOnly cookie** the frontend never reads (C12). Send
+`X-CSRFToken` on anything that changes state, and `credentials: "include"` on every
+request. **`/me` does not exist yet** — it needs the control-plane models.
+
+**Blocked on:** nothing. Redis is still missing, which leaves only the Celery broker
+round-trip unverified. **Q17 is answered** — and its premise was wrong in a useful
+way. simplejwt loads the user row on every request and refuses an inactive one, so
+**disabling somebody takes effect on their next request**, not after a token expires.
+The 15-minute access lifetime is how long a STOLEN token survives a logout.
 
 **Gates, all green:** `npm run test -w web` (73), `npm run typecheck -w web`,
-`npm run lint`, and `pytest` in `backend/` (40). Run all four before opening a PR.
+`npm run lint`, and in `backend/`: `pytest` (60), `ruff check .`, and
+`.venv/Scripts/lint-imports.exe` — **not** `python -m importlinter.cli`, which exits 0
+without running. Run them before pushing.
+
+**One branch per FEATURE, not per commit.** Commit as the work goes; the owner merges
+when the whole feature is done.
 
 ---
 
@@ -143,13 +156,17 @@ taught are the file's docstring.
 
 ## Error handling
 
-Six domain categories in `shared/exceptions.py`; `config/exception_handler.py` is the
+Seven domain categories in `shared/exceptions.py`; `config/exception_handler.py` is the
 only place they become HTTP. Full rationale: `context/02-DECISIONS.md` C9.
 
 - **Services raise domain exceptions. Views never catch them.** A try/except around a
   service call duplicates the handler and will drift from it.
 - **Never raise DRF exceptions from a service** — it couples business logic to HTTP and
   breaks the same service being called from a Celery task.
+- **`AuthenticationError` is 401, `AuthorizationError` is 403**, and they are not
+  interchangeable. 401 means authenticate and try again, which is what sends somebody
+  to the sign-in page; 403 means we know who you are and the answer is still no, which
+  should leave them where they are.
 - **Cross-scope access raises `NotFoundError`, not `AuthorizationError`.** 404, not 403
   — a record the caller may not see must be indistinguishable from one that never
   existed. `AuthorizationError` is only for entitled-but-not-permitted.

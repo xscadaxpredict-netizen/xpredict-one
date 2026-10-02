@@ -7,11 +7,12 @@ Celery task, a management command and a test, so it cannot raise an exception
 that only means something over HTTP. The translation to a status code happens
 in exactly one place --- `config.exception_handler`.
 
-Six categories, and the boundaries between them are what matter:
+Seven categories, and the boundaries between them are what matter:
 
 | Category                | HTTP | Means                                            |
-|-------------------------|------|--------------------------------------------------|
+|————————-|——|————————————————--|
 | `InvalidInputError`     | 422  | Input is malformed or breaks a field rule        |
+| `AuthenticationError`   | 401  | We do not know who you are                       |
 | `NotFoundError`         | 404  | Absent --- **or present but not the caller's**    |
 | `AuthorizationError`    | 403  | Caller can see it, but may not do this to it     |
 | `ConflictError`         | 409  | Well-formed, but not allowed in the current state|
@@ -90,6 +91,27 @@ class InvalidInputError(DomainError):
 
     code = "validation_failed"
     message = "The submitted data is not valid."
+
+
+class AuthenticationError(DomainError):
+    """
+    The caller has not proved who they are: bad credentials, or no session.
+
+    **401, not 403.** The distinction is not pedantry: 401 means "authenticate
+    and try again", which is what tells a frontend to send the user to the
+    sign-in page. 403 means "we know who you are and the answer is still no",
+    which should leave them where they are. Collapsing the two produces a
+    product that either bounces people to login for permission errors or
+    leaves them staring at a dead screen when their session ends.
+
+    Added 2026-10-01, when the auth endpoints needed it. There were six
+    categories and none of them meant "who are you" — so an invalid-password
+    error fell through to the 400 default, and the frontend could not tell a
+    failed login from a malformed request.
+    """
+
+    code = "not_authenticated"
+    message = "Authentication is required."
 
 
 class NotFoundError(DomainError):
