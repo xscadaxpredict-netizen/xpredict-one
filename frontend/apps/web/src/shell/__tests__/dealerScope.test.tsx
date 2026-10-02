@@ -280,10 +280,10 @@ describe("what standing an invited person gets", () => {
   }
 
   /*
-   * A DEALER USER IS NOT AUTOMATICALLY THE ADMIN. Which DMS role was chosen is
-   * the whole difference, and what it sets is `Membership.role` — `admin` with
-   * a dealership attached IS a dealer admin (C31). Only Manager carries
-   * `administers` (C35); every other role leaves them a member.
+   * A DEALER USER IS NOT AUTOMATICALLY THE ADMIN, and under C40 the DMS role is
+   * the ONLY thing that says so. Standing stays `member` for everybody with a
+   * dealership, whichever role they hold — so these two tests now differ in the
+   * `apps` they send and agree on `role`.
    */
   it("leaves a dealer user a member when their role does not administer", async () => {
     const dialog = await openInviteForm();
@@ -309,7 +309,17 @@ describe("what standing an invited person gets", () => {
     });
   });
 
-  it("makes them a dealer admin when it does", async () => {
+  /*
+   * THE SAME TEST FOR THE ROLE THAT DOES ADMINISTER, and it is the one that
+   * changed with C40. It used to assert `role: "admin"` — standing escalated by
+   * the app role, which C31 called a dealer admin.
+   *
+   * C40 made the two independent: the DMS System administrator role carries the
+   * power by itself and standing stays `member`. This is not cosmetic. The
+   * database now REFUSES `admin` with a dealership attached, so the old payload
+   * would be rejected on write.
+   */
+  it("still leaves standing at member when the role does administer", async () => {
     const dialog = await openInviteForm();
 
     chooseScope(dialog, "Dealership");
@@ -324,19 +334,19 @@ describe("what standing an invited person gets", () => {
 
     const body = inviteBody();
 
-    // The role carries the standing: `administers` on the Role, never a list of
-    // privileged codes copied into the form.
     expect(body).toMatchObject({
       unit_id: "unit-1",
       apps: [{ app: "dms", role: "dms.system_admin" }],
-      role: "admin",
+      // NOT "admin" (C40). What they administer travels in the DMS role above;
+      // standing is a separate axis and a dealership person is always a member.
+      role: "member",
     });
     /*
-     * ADMINISTRATION IS NOT SENT AS AN APP. It comes with the platform and is
-     * gated by role alone (C17), so the server derives it. Sending both would
-     * mean two sources for one thing, and they would eventually disagree —
-     * which is exactly the record this form used to produce: admin access with
-     * member standing.
+     * ADMINISTRATION IS NOT SENT AS AN APP. It comes with the platform, and the
+     * server derives it from the permissions this DMS role grants (C40).
+     * Sending it too would mean two sources for one thing, and they would
+     * eventually disagree — which is exactly the record this form used to
+     * produce: admin access with member standing.
      */
     expect(body.apps.map((grant) => grant.app)).not.toContain("admin");
   });

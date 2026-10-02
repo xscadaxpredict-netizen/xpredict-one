@@ -173,10 +173,10 @@ function EditUserForm({ user, membership, onDone }: EditUserFormProps) {
     return options.length === 1 ? (options[0]?.code ?? "") : "";
   }
 
-  /** Whether the role chosen for an app carries administration of the scope. */
-  function roleAdministers(appKey: string) {
-    return optionsFor(appKey).find((role) => role.code === roleFor(appKey))?.administers ?? false;
-  }
+  /*
+   * `roleAdministers` was deleted with C40 — see InviteUserDialog for why.
+   * Nothing derives standing from an app role any more.
+   */
   const { mutateAsync: update, isPending } = useUpdateUser();
 
   /*
@@ -241,8 +241,14 @@ function EditUserForm({ user, membership, onDone }: EditUserFormProps) {
             .filter((app) => app !== "admin")
             .map((app) => ({ app, role: roleFor(app) })),
           /*
-           * A DEALERSHIP USER'S STANDING COMES FROM THEIR DMS ROLE (C34), not
-           * from the Organisation role select — which is hidden for them,
+           * A DEALERSHIP PERSON IS ALWAYS `member` (C40). What they administer
+           * comes from their DMS role, and the two never touch — the database
+           * refuses `admin` with a dealership attached. C34 used to read the DMS
+           * role's `administers` here and write `admin` into standing, which
+           * stored a derived value in a second column that then had to be kept
+           * in step by hand.
+           *
+           * The Organisation role select stays hidden for them,
            * because "admin at this dealer" and "admin of the organisation" are
            * the same field and only one of them is theirs to be.
            *
@@ -252,9 +258,7 @@ function EditUserForm({ user, membership, onDone }: EditUserFormProps) {
           role: isDealerAdmin || isOwner
             ? editableRole
             : scopedToDealer
-              ? roleAdministers("dms")
-                ? ("admin" as const)
-                : ("member" as const)
+              ? ("member" as const)
               : role,
         },
       });
