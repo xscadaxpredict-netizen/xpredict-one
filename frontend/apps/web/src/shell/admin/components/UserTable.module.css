@@ -129,6 +129,23 @@
   white-space: nowrap;
 }
 
+/*
+ * Under the standing pill, not beside it: the pill answers "may they
+ * administer", this answers "what do they do", and the second is the longer
+ * string. Side by side they push the Status column off a narrow screen.
+ */
+.appRoles,
+.appRolesEmpty {
+  display: block;
+  margin-top: 4px;
+  font-size: var(--text-xs);
+  color: var(--color-text-3);
+}
+
+.appRolesEmpty {
+  font-style: italic;
+}
+
 .role[data-role="owner"] {
   background: var(--color-attention-100);
   color: var(--color-attention-700);

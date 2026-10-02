@@ -202,16 +202,15 @@ function InviteForm({ membership, initialUnitId, onDone }: InviteFormProps) {
     return options.length === 1 ? (options[0]?.code ?? "") : "";
   }
 
-  /**
-   * Whether the role chosen for an app carries administration of the scope.
+  /*
+   * `roleAdministers` USED TO LIVE HERE and was deleted with C40. It answered
+   * "does the chosen DMS role make this person an administrator", and the only
+   * thing that ever asked was the line that wrote `admin` into standing.
    *
-   * ASKED OF THE ROLE, never decided here. A list of "codes that also make you
-   * an admin" living in this form would be the backend's vocabulary copied
-   * into the frontend (C19), and wrong the first time a role was added.
+   * Standing and app roles are independent axes now, so nothing in this form
+   * needs the answer. `administers` is still on the role for the Roles page's
+   * badge; it simply does not decide anything here.
    */
-  function roleAdministers(appKey: string) {
-    return optionsFor(appKey).find((role) => role.code === roleFor(appKey))?.administers ?? false;
-  }
 
   /*
    * Only fetched once a dealership is actually being chosen: most invitations
@@ -266,22 +265,29 @@ function InviteForm({ membership, initialUnitId, onDone }: InviteFormProps) {
       return {
         unit_id: membership.unit_id,
         apps: [{ app: "dms", role: roleFor("dms") }],
-        // A dealer admin can appoint another, by giving them that DMS role.
-        role: roleAdministers("dms") ? ("admin" as const) : ("member" as const),
+        /*
+         * ALWAYS `member`, even when appointing another dealer admin. The
+         * DMS role carries that now (C40), and standing stays out of it: a
+         * dealership person with `admin` standing is refused by the database,
+         * because an administrator of the ORGANISATION is never scoped to one
+         * dealership.
+         */
+        role: "member" as const,
       };
     }
 
     if (scopedToDealer) {
       /*
-       * `admin` + a dealership IS a dealer admin (C31), and the DMS role chosen
-       * is now what decides it: the "Dealer admin" role carries `administers`.
+       * C31 SAID `admin` + a dealership WAS a dealer admin. C40 superseded it:
+       * the DMS role carries the power by itself and standing stays `member`.
+       * The two columns are independent axes and neither derives the other.
        * Administration is still never sent as an app; the server derives that
        * from the standing, as it always did.
        */
       return {
         unit_id: unitId,
         apps: [{ app: "dms", role: roleFor("dms") }],
-        role: roleAdministers("dms") ? ("admin" as const) : ("member" as const),
+        role: "member" as const,
       };
     }
 
