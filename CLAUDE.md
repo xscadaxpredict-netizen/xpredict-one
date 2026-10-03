@@ -70,7 +70,7 @@ roles, permissions or models until it is explicitly picked up.
 each dealer's users are managed at the **dealer** level. An org admin reaching into a
 dealer's users is an audited override, not the normal path.
 
-Full rationale: `context/02-DECISIONS.md` C1–C42 — all `[Decided]`. Don't reopen them.
+Full rationale: `context/02-DECISIONS.md` C1–C44 — all `[Decided]`. Don't reopen them.
 
 ## Status
 
@@ -84,16 +84,33 @@ serve, so switching over is deleting a block per function. **The fake data lives
 module memory and resets on every full page load** — that is the fake, not a bug.
 
 **Backend — it runs on a database now.** Django 5.2.17 on **MySQL 8.0** (C39), split
-settings, the fail-closed `TenantRouter`, `shared/base_models.py`, `core.accounts.User`,
-Celery wiring and 10 apps with unique labels. **Plain DRF** — drf-spectacular was
-removed (C43), so there is no schema endpoint and no generated client. **`migrate`
-has run** and ten control-plane tables exist in `xpredict_control`.
+settings, the fail-closed `TenantRouter`, `shared/base_models.py`, Celery wiring and 10
+apps with unique labels. **Plain DRF** — drf-spectacular was removed (C43), so there is
+no schema endpoint and no generated client. **`migrate` has run** and `xpredict_control`
+holds **22 tables**.
 
 Set the database up once, as a MySQL admin: `mysql -u root -p < backend/scripts/create_dev_db.sql`.
 
-**Phase 2 is designed but unbuilt** — nine control-plane tables, 48 permissions and nine
-roles are agreed (C40, C41, C42) and no model is written. `core.accounts.User` is the
-only model in the repo.
+**The control plane is BUILT and MIGRATED.** Eleven models: `Organization`,
+`BusinessUnit`, `Membership`, `Invitation`, `InvitationAppGrant` in `core/organizations`;
+`Permission`, `Role`, `RolePermission`, `AppAccess` in `core/permissions`;
+`AppSubscription` in `core/billing`; and `User`, which was already there. **48 permissions
+and nine roles are seeded** by `core/permissions/migrations/0002_seed_catalogue.py` from
+`core/permissions/catalogue.py` — idempotent, reversible, and it withdraws a grant the
+catalogue no longer makes.
+
+**Permissions are ROWS, not a Python registry (C44)** — reversing the last part of C42,
+because the owner wants the list queryable in Workbench rather than readable only by
+somebody who knows where to look. Adding a capability is therefore **a data migration**,
+not a one-line diff. Everything else in C42 stands: the `app.resource.action` shape,
+scope staying out of the name, export as its own action, and **modules derived from
+`Permission.module`** rather than stored anywhere.
+
+**Three rules the schema enforces itself, and they will bite you:** a membership with
+standing `owner` or `admin` must have `unit_id IS NULL` (C40); there is exactly one owner
+per organisation, via a nullable `owner_marker` and a unique pair, because **MySQL has no
+partial indexes**; and `admin` can never be granted on `AppAccess` or sold on
+`AppSubscription` (C44).
 
 > **`Applying <app>.0001_initial... OK` does not mean tables were created.** Django
 > prints it whether it built them or the router refused every operation, so a migration
@@ -102,7 +119,9 @@ only model in the repo.
 **Authentication is built.** Login, refresh, logout and `GET /api/v1/auth/session/`,
 with the token in an **httpOnly cookie** the frontend never reads (C12). Send
 `X-CSRFToken` on anything that changes state, and `credentials: "include"` on every
-request. **`/me` does not exist yet** — it needs the control-plane models.
+request. **`/me` does not exist yet** — the models are in place, so what it now waits on
+is the tenant resolution middleware and `resolve_allowed_units()`. It is the endpoint that
+lets the frontend drop its fakes.
 
 **Blocked on:** nothing. Redis is still missing, which leaves only the Celery broker
 round-trip unverified. **Q17 is answered** — and its premise was wrong in a useful
@@ -110,8 +129,8 @@ way. simplejwt loads the user row on every request and refuses an inactive one, 
 **disabling somebody takes effect on their next request**, not after a token expires.
 The 15-minute access lifetime is how long a STOLEN token survives a logout.
 
-**Gates, all green:** `npm run test -w web` (73), `npm run typecheck -w web`,
-`npm run lint`, and in `backend/`: `pytest` (60), `ruff check .`, and
+**Gates, all green:** `npm run test -w web` (75), `npm run typecheck -w web`,
+`npm run lint`, and in `backend/`: `pytest` (81), `ruff check .`, and
 `.venv/Scripts/lint-imports.exe` — **not** `python -m importlinter.cli`, which exits 0
 without running. Run them before pushing.
 
