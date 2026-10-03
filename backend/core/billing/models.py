@@ -40,8 +40,11 @@ class AppSubscription(BaseModel):
     which is only expressible while these stay two rows in two tables.
 
     ADMINISTRATION IS NOT SUBSCRIBABLE. It comes with the platform and is gated
-    by standing and permissions alone (C40), so `AppCode` does not list it and
-    `/me` reports it as subscribed without reading this table.
+    by standing and permissions alone (C40), so `/me` reports it as subscribed
+    without reading this table. The check constraint below is what makes that a
+    rule rather than a habit — `AppCode` lists Administration now, because
+    `admin.*` permissions need an app, so leaving it out of the enum no longer
+    does the job.
     """
 
     organization = models.ForeignKey(
@@ -58,6 +61,10 @@ class AppSubscription(BaseModel):
         constraints = [
             models.UniqueConstraint(
                 fields=["organization", "app"], name="subscription_unique_org_app"
+            ),
+            models.CheckConstraint(
+                condition=~models.Q(app=AppCode.ADMIN),
+                name="subscription_never_administration",
             ),
         ]
         ordering = ["app"]

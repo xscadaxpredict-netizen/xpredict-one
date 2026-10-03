@@ -1,15 +1,17 @@
 """
-What an app is, what a role is, and which apps a person may open.
+What an app is, what a permission is, what a role grants, and which apps a
+person may open.
 
-THERE IS NO `Permission` MODEL HERE, and that is deliberate. The 48 permission
-strings and the role that holds each one live in a Python registry (C42), not in
-tables: they are identical for every organization, nobody edits them at runtime,
-and roles are read-only in the product (C28). A table would mean a data
-migration to add a capability, a join on the hot path, and two environments that
-can disagree. A constant means a reviewable diff.
+PERMISSIONS ARE ROWS, NOT A PYTHON CONSTANT. C42 chose a code registry and C44
+reversed it: the owner wants the list queryable and visible in Workbench rather
+than readable only by someone who knows where to look in the source. For a team
+coming to this fresh, a table you can open and sort beats an elegant constant.
 
-`Role` stays a table so `AppAccess.role_id` has a real foreign key and nobody
-can point at a role that does not exist.
+The trade is real and worth knowing: adding a capability is now a data migration
+rather than a reviewable diff, two environments can disagree about what a role
+grants, and `/me` joins through `role_permission` on every build. The first is
+mitigated by seeding in migrations so the history is still in git; the last by
+caching the answer per role.
 """
 
 from __future__ import annotations
@@ -21,15 +23,17 @@ from shared.base_models import BaseModel
 
 class AppCode(models.TextChoices):
     """
-    The apps a person can be granted.
+    Every app the platform knows, including Administration.
 
-    ADMINISTRATION IS NOT HERE, and its absence is C40. Administration is never
-    granted through an `AppAccess` row: it comes from standing on the membership
-    for an organization admin, and from holding a role that grants `admin.*`
-    permissions for a dealer admin. `/me` builds that entry rather than reading
-    it, so a row for it would be a second, conflicting source.
+    ADMINISTRATION IS HERE BUT IS NOT GRANTABLE, and that distinction used to be
+    expressed by leaving it out of this enum entirely. It is back because
+    `admin.*` permissions are real and need an app; what stops it being granted
+    is now a check constraint on `AppAccess` and on `AppSubscription`, which is
+    the better place for it. One vocabulary, narrowed where it narrows, rather
+    than two enums that have to agree.
     """
 
+    ADMIN = "admin", "Administration"
     DMS = "dms", "DMS"
     CRM = "crm", "CRM"
     ECOMMERCE = "ecommerce", "E-commerce"
@@ -49,6 +53,47 @@ class RoleLevel(models.TextChoices):
     UNIT = "unit", "Dealership"
 
 
+class Permission(BaseModel):
+    """
+    One thing somebody can do, named `app.resource.action`.
+
+    `module` IS WHAT MAKES A SCREEN APPEAR, and it is the reason this column
+    exists rather than being parsed out of the code. Module visibility is
+    DERIVED (C42): a module shows when the role holds at least one permission
+    inside it. There is therefore no "modules" table and nothing stores which
+    modules a role can see --- so a role cannot own an empty screen, and cannot
+    hold buttons on a page it may not reach. One list, nothing to disagree.
+
+    `group` and `label` are for the Roles page, which DISPLAYS a permission
+    rather than checking one (C28). The frontend never parses `code` to make
+    something readable --- the vocabulary is the backend's (C19), so the backend
+    sends the words.
+
+    SEEDED BY DATA MIGRATION, never written through the API. Nobody authors
+    permissions at runtime; they arrive with a release, like a column does.
+    """
+
+    code = models.CharField(max_length=80, unique=True)
+    app = models.CharField(max_length=20, choices=AppCode.choices)
+    module = models.CharField(
+        max_length=40,
+        help_text="Which module this makes visible: sales, service, users, dealers...",
+    )
+    group = models.CharField(max_length=60, help_text='Display grouping: "Enquiries".')
+    label = models.CharField(max_length=120, help_text='What it lets you do: "Create an enquiry".')
+
+    class Meta:
+        ordering = ["app", "module", "group", "code"]
+        indexes = [
+            # Deriving a person's modules asks "which modules do these
+            # permissions touch", so the lookup leads with app.
+            models.Index(fields=["app", "module"]),
+        ]
+
+    def __str__(self) -> str:
+        return self.code
+
+
 class Role(BaseModel):
     """
     A named bundle of permissions inside one app.
@@ -58,10 +103,11 @@ class Role(BaseModel):
     --- the same nine rows serve every tenant.
 
     THERE IS NO `administers` COLUMN, and there used to be. C40 removed it:
-    whether a role confers administration is now "does it grant any `admin.*`
-    permission", read from the registry. The API still returns an `administers`
-    field for the Roles page's badge; it is computed, so it cannot fall out of
-    step with what the role actually grants.
+    whether a role confers administration is "does it grant any `admin.*`
+    permission", which is now a question this table can answer by joining rather
+    than a flag somebody has to remember to set. The API still returns an
+    `administers` field for the Roles page's badge; it is computed, so it cannot
+    fall out of step with what the role actually grants.
     """
 
     code = models.CharField(max_length=60)
@@ -69,6 +115,13 @@ class Role(BaseModel):
     app = models.CharField(max_length=20, choices=AppCode.choices)
     level = models.CharField(max_length=10, choices=RoleLevel.choices)
     summary = models.CharField(max_length=300)
+
+    permissions = models.ManyToManyField(
+        Permission,
+        through="RolePermission",
+        related_name="roles",
+        blank=True,
+    )
 
     class Meta:
         constraints = [
@@ -78,6 +131,48 @@ class Role(BaseModel):
 
     def __str__(self) -> str:
         return f"{self.name} ({self.app})"
+
+    @property
+    def administers(self) -> bool:
+        """
+        Whether holding this role lets somebody administer their scope.
+
+        Derived, never stored (C40). An organization admin gets this from
+        standing instead; a dealer admin gets it from holding a role --- the DMS
+        System administrator --- that grants `admin.*` permissions, narrowed to
+        their own dealership by `Membership.unit_id`.
+
+        Prefetch `permissions` before asking this for a list of roles, or it is
+        a query each.
+        """
+        return any(permission.app == AppCode.ADMIN for permission in self.permissions.all())
+
+
+class RolePermission(BaseModel):
+    """
+    One permission granted by one role.
+
+    AN EXPLICIT THROUGH MODEL rather than letting Django build the join table,
+    for one reason: an implicit table gets an auto-incrementing integer key, and
+    this project uses UUIDs everywhere. Inheriting `BaseModel` also means the
+    row carries when it was created and by whom, which for a table that decides
+    what people can do is worth having.
+    """
+
+    role = models.ForeignKey(Role, on_delete=models.CASCADE, related_name="role_permissions")
+    permission = models.ForeignKey(
+        Permission, on_delete=models.PROTECT, related_name="role_permissions"
+    )
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["role", "permission"], name="rolepermission_unique_role_permission"
+            ),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.role_id} grants {self.permission_id}"
 
 
 class AppAccess(BaseModel):
@@ -89,7 +184,10 @@ class AppAccess(BaseModel):
     both ways is a cycle; Django resolves "app_label.Model" lazily, so only one
     side needs to be a real import.
 
-    NEVER A ROW FOR ADMINISTRATION --- see `AppCode`.
+    NEVER A ROW FOR ADMINISTRATION, and the check constraint below is what says
+    so. Administration comes from standing, or from a role that grants `admin.*`
+    permissions (C40), and `/me` builds that entry rather than reading it. A row
+    here would be a second, conflicting source.
 
     SUBSCRIPTION IS A SEPARATE FACT (C16). A row here says this person may open
     the app; `billing.AppSubscription` says the organization pays for it. Both
@@ -112,6 +210,10 @@ class AppAccess(BaseModel):
         constraints = [
             models.UniqueConstraint(
                 fields=["membership", "app"], name="appaccess_unique_membership_app"
+            ),
+            models.CheckConstraint(
+                condition=~models.Q(app=AppCode.ADMIN),
+                name="appaccess_never_administration",
             ),
         ]
 
