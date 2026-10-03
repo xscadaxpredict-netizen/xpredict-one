@@ -174,15 +174,15 @@ const FAKE_USERS: OrgUser[] = [
     email: "vikram.n@acmemotors.in",
     unit_name: "Bangalore — Whitefield",
     unit_id: "unit-2",
-    role: "admin",
+    // `member`, NOT `admin` (C40). What makes them a dealer admin is the DMS
+    // System administrator role below; standing is a separate axis and the
+    // database refuses `admin` with a dealership attached.
+    role: "member",
     status: "active",
     apps: [
       { app: "dms", role: "System administrator" },
-      // WHAT ACTUALLY MAKES THEM A DEALER ADMIN (C23): Administration, narrowed
-      // to Users at their own dealer. It used to say `{ app: "dms", role: "Dealer
-      // admin" }` and nothing else, which modelled the power as a role INSIDE DMS
-      // and contradicted `/me` in `shell/api/auth.ts`. Two fakes answering the same
-      // question differently is how the wrong one gets built.
+      // Administration, narrowed to Users at their own dealer. Derived from
+      // what that DMS role grants, never granted directly — see appsFor().
       { app: "admin", role: "Dealer admin" },
     ],
   },
@@ -243,15 +243,15 @@ const FAKE_DEALER_USERS: OrgUser[] = [
     email: "vikram.n@northwayauto.in",
     unit_name: "Bangalore — Whitefield",
     unit_id: "unit-2",
-    role: "admin",
+    // `member`, NOT `admin` (C40). What makes them a dealer admin is the DMS
+    // System administrator role below; standing is a separate axis and the
+    // database refuses `admin` with a dealership attached.
+    role: "member",
     status: "active",
     apps: [
       { app: "dms", role: "System administrator" },
-      // WHAT ACTUALLY MAKES THEM A DEALER ADMIN (C23): Administration, narrowed
-      // to Users at their own dealer. It used to say `{ app: "dms", role: "Dealer
-      // admin" }` and nothing else, which modelled the power as a role INSIDE DMS
-      // and contradicted `/me` in `shell/api/auth.ts`. Two fakes answering the same
-      // question differently is how the wrong one gets built.
+      // Administration, narrowed to Users at their own dealer. Derived from
+      // what that DMS role grants, never granted directly — see appsFor().
       { app: "admin", role: "Dealer admin" },
     ],
   },
@@ -483,14 +483,24 @@ export async function resendInvitation(orgSlug: string, userId: string): Promise
 /**
  * FAKE BACKEND ONLY: the apps a person ends up holding.
  *
- * Administration is NOT in `app_keys` and never was granted by the form — it
- * comes with the platform and is gated by role alone (C17), so the server
- * derives it. `unit_id` decides which kind: an admin with no dealership
- * administers the organisation, one with a dealership administers that
- * dealership and nothing else (C23, C31).
+ * Administration is never granted by the form and never stored as an app
+ * grant. It is DERIVED, and C40 changed what from: the app appears when the
+ * person holds any `admin.*` permission, whatever the source.
  *
- * The per-app role strings here are placeholders. Which role somebody holds
- * inside a product is Q12 and nothing can set it yet.
+ * Two sources, and they are the two branches below:
+ *
+ *   standing   — `admin` or `owner` on the membership, which also means no
+ *                dealership, so they administer the whole organisation.
+ *   a role     — DMS System administrator, which grants `admin.person.*`
+ *                narrowed to that person's own dealership.
+ *
+ * IT USED TO READ `role === "admin"` ALONE (C31), when a dealer admin was
+ * `admin` plus a dealership. That is now refused by the database, so this
+ * function would have reported Administration for nobody at a dealership.
+ *
+ * Checking a role CODE here is fine in a way it would not be in a component:
+ * this file is standing in for the server, and the server owns the vocabulary.
+ * Django will read the permission registry rather than compare a string.
  */
 function appsFor(
   grants: AppGrant[],
@@ -501,9 +511,17 @@ function appsFor(
     .filter((grant) => grant.app !== "admin")
     .map((grant) => ({ app: grant.app, role: fakeRoleName(grant.role) }));
 
-  if (role !== "admin") return products;
+  if (role === "admin" && unitId === null) {
+    return [...products, { app: "admin", role: "Organisation admin" }];
+  }
 
-  return [...products, { app: "admin", role: unitId ? "Dealer admin" : "Organisation admin" }];
+  const administersTheirDealer = grants.some((grant) => grant.role === "dms.system_admin");
+
+  if (administersTheirDealer) {
+    return [...products, { app: "admin", role: "Dealer admin" }];
+  }
+
+  return products;
 }
 
 

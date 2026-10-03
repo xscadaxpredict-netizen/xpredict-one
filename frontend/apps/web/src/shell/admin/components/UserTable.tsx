@@ -77,6 +77,7 @@ export function UserTable({ users, basePath, selectedId, onSelect }: UserTablePr
 
               <td>
                 <RolePill role={user.role} />
+                <AppRoles apps={user.apps} />
               </td>
 
               <td>
@@ -96,6 +97,33 @@ function RolePill({ role }: { role: OrgUser["role"] }) {
   return (
     <span className={styles.role} data-role={role}>
       {label}
+    </span>
+  );
+}
+
+/**
+  * What this person actually does, under their standing in the organisation.
+  *
+  * STANDING ALONE IS NOT ENOUGH ANY MORE (C40). A dealer admin is `member`
+  * with the DMS System administrator role --- so a column showing only standing
+  * labels the person who runs a dealership "Member", beside a salesperson who
+  * also reads "Member". That exact display was reported as a bug once already,
+  * when the power came from a checkbox instead of a role.
+  *
+  * The names are the backend's, already resolved for display; this never maps
+  * a code to a label itself (C19).
+  */
+function AppRoles({ apps }: { apps: OrgUser["apps"] }) {
+  if (apps.length === 0) {
+    // Somebody with standing and no apps is a real case --- an organisation
+    // admin who administers and opens nothing. Say so rather than leave a gap
+    // that reads like data still loading.
+    return <span className={styles.appRolesEmpty}>No apps</span>;
+  }
+
+  return (
+    <span className={styles.appRoles}>
+      {apps.map((grant) => grant.role).join(" · ")}
     </span>
   );
 }
