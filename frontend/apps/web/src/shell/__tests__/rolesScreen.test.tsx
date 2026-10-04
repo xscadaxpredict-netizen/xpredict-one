@@ -98,7 +98,8 @@ describe("the Roles reference page", () => {
   });
 
   /*
-   * `administers` is what sets `Membership.role: "admin"` (C31). A role that
+   * `administers` means the role grants `admin.*` permissions, and it writes
+   * nothing into standing (C40 — C31's write-back is gone). A role that
    * carries it grants more than its description implies, so the page marks it
    * — and must not mark the ones that do not.
    */

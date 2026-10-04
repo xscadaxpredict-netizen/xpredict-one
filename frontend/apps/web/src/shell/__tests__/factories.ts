@@ -63,7 +63,14 @@ export function salespersonMembership(): Membership {
   });
 }
 
-/** An organisation owner: everything the organisation pays for. */
+/**
+ * An organisation owner: everything the organisation pays for.
+ *
+ * The permission lists here are deliberate SUBSETS — the real `/me` sends an
+ * owner 33 DMS permissions and all 11 `admin.*` ones. Every string present is
+ * a real one from the catalogue, which is the part that matters: a test that
+ * grants an invented permission proves nothing about the product.
+ */
 export function ownerMembership(): Membership {
   return membership({
     role: "owner",
@@ -79,7 +86,10 @@ export function ownerMembership(): Membership {
        * release (C38) and simply are not granted. The factory follows the fake
        * `/me`, so a test written against it describes the product that ships.
        */
-      appAccess("admin", { modules: ["users", "dealers", "roles"] }),
+      appAccess("admin", {
+        modules: ["users", "dealers", "roles"],
+        permissions: ["admin.person.invite", "admin.dealer.create", "admin.role.view"],
+      }),
     ],
   });
 }
@@ -87,17 +97,41 @@ export function ownerMembership(): Membership {
 /**
  * A dealer admin: Administration is open to them, but only its Users module
  * and only for their own dealer (C23). They can grant DMS and nothing else.
+ *
+ * STANDING IS `member`, NOT `admin` (C40). This read `role: "admin"` with a
+ * dealership attached, which was correct under C31 and is now a row the
+ * database REFUSES outright — `membership_org_standing_has_no_unit` requires
+ * `unit_id IS NULL` for anything above `member`. What makes this person an
+ * admin is holding the DMS System administrator role, which grants
+ * `admin.person.*`; nothing is written into their standing.
+ *
+ * That is also why the permissions are spelled out here rather than left
+ * empty: they are now the ONLY thing that distinguishes a dealer admin from a
+ * salesperson, so a factory without them describes neither.
  */
 export function dealerAdminMembership(): Membership {
   return membership({
-    role: "admin",
+    role: "member",
     unit_id: "unit-2",
     unit_name: "Bangalore — Whitefield",
     apps: [
-      appAccess("dms", { modules: ["sales", "service"] }),
+      appAccess("dms", {
+        modules: ["sales", "service"],
+        permissions: ["dms.enquiry.view", "dms.jobcard.view"],
+      }),
       appAccess("crm", { accessible: false }),
       appAccess("ecommerce", { subscribed: false, accessible: false }),
-      appAccess("admin", { modules: ["users"] }),
+      appAccess("admin", {
+        modules: ["users"],
+        permissions: [
+          "admin.person.view",
+          "admin.person.invite",
+          "admin.person.update",
+          "admin.person.remove",
+          "admin.person.set_status",
+          "admin.person.resend_invitation",
+        ],
+      }),
     ],
   });
 }
