@@ -71,8 +71,10 @@ TENANT_APPS = [
     "core.events",
     # DMS --- the only unit-aware product (C5).
     "products.dms.sales",
-    "products.dms.service",
+    "products.dms.site_services",
     "products.dms.tech_support",
+    "products.dms.ecommerce",
+    "products.dms.tools",
     # CRM --- organization level, no business units.
     "products.crm",
 ]

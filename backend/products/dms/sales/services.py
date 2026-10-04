@@ -5,146 +5,289 @@ Every state change goes through a function here --- never through a view, a
 serializer, or another module reaching in. This module owns `Enquiry`, so this
 is the only place that can enforce its numbering, validation, audit and events
 consistently.
-
-Calling into other modules:
-
-- Same product: call the other module's service function.
-  `from products.dms.service.services import open_job_card` --- never
-  `JobCard.objects.create(...)`. The owning module enforces its own rules.
-- Different product (CRM, E-commerce): publish an event, or call a small public
-  service interface. Never import another product's models.
-
-One user action = one public function here = one transaction.
 """
 
 from __future__ import annotations
 
+import random
 import uuid
 
 from django.db import transaction
 
-from shared.exceptions import ErrorAccumulator, not_found
-
-from .exceptions import EnquiryAlreadyClosedError
-from .models import Enquiry
+from shared.exceptions import not_found, ConflictError
+from .models import Enquiry, Followup, Quotation, QuotationItem, ConfirmedSite
 
 
 @transaction.atomic
 def create_enquiry(
     *,
     unit_id: uuid.UUID,
-    source: str,
-    customer_name: str,
     created_by_user_id: uuid.UUID,
-    customer_phone: str = "",
-    customer_email: str = "",
-    notes: str = "",
+    customer_name: str,
+    contact_person: str = "",
+    address: str = "",
+    pincode: str = "",
+    phone: str = "",
+    remarks: str = "",
+    followup_remarks: str,
+    followup_next_date: str,
 ) -> Enquiry:
-    """
-    Record a new enquiry for a dealer.
-
-    `unit_id` is passed explicitly rather than read from context: a service
-    must be callable from a Celery task or a management command, where there
-    is no request. The *caller* is responsible for checking the unit is one the
-    actor may write to --- see the write-side validation note below.
-    """
-    # Write-side validation belongs here, not in the serializer. A record
-    # referenced by this one (customer, vehicle, quote) must belong to an
-    # allowed unit --- otherwise a caller can attach their enquiry to another
-    # dealer's data by passing its ID.
-
-    return Enquiry.objects.create(
+    """Record a new enquiry for a dealer, and its initial followup."""
+    enquiry = Enquiry.objects.create(
         unit_id=unit_id,
-        reference=_next_reference(unit_id),
-        source=source,
-        customer_name=customer_name,
-        customer_phone=customer_phone,
-        customer_email=customer_email,
-        notes=notes,
         created_by_user_id=created_by_user_id,
+        customer_name=customer_name,
+        contact_person=contact_person,
+        address=address,
+        pincode=pincode,
+        phone=phone,
+        remarks=remarks,
+        status=Enquiry.Status.PENDING,
     )
+    
+    Followup.objects.create(
+        unit_id=unit_id,
+        enquiry=enquiry,
+        created_by_user_id=created_by_user_id,
+        remarks=followup_remarks,
+        next_followup_date=followup_next_date,
+    )
+    
+    return enquiry
 
 
 @transaction.atomic
-def assign_enquiry(
+def update_enquiry(
     *,
-    enquiry: Enquiry,
-    assignee_user_id: uuid.UUID,
+    enquiry_id: uuid.UUID,
+    actor_user_id: uuid.UUID,
+    **updates,
+) -> Enquiry:
+    """Update general fields on an enquiry."""
+    enquiry = Enquiry.objects.filter(id=enquiry_id).first()
+    if not enquiry:
+        raise not_found("Enquiry")
+        
+    for key, value in updates.items():
+        setattr(enquiry, key, value)
+        
+    enquiry.updated_by_user_id = actor_user_id
+    enquiry.save()
+    return enquiry
+
+
+@transaction.atomic
+def delete_enquiry(*, enquiry_id: uuid.UUID) -> None:
+    """Delete an enquiry completely."""
+    enquiry = Enquiry.objects.filter(id=enquiry_id).first()
+    if not enquiry:
+        raise not_found("Enquiry")
+    enquiry.delete()
+
+
+@transaction.atomic
+def add_followup(
+    *,
+    enquiry_id: uuid.UUID,
+    unit_id: uuid.UUID,
+    actor_user_id: uuid.UUID,
+    remarks: str,
+    next_followup_date: str,
+) -> Enquiry:
+    enquiry = Enquiry.objects.filter(id=enquiry_id).first()
+    if not enquiry:
+        raise not_found("Enquiry")
+        
+    Followup.objects.create(
+        unit_id=unit_id,
+        enquiry=enquiry,
+        created_by_user_id=actor_user_id,
+        remarks=remarks,
+        next_followup_date=next_followup_date,
+    )
+    return enquiry
+
+
+@transaction.atomic
+def save_quotation(
+    *,
+    enquiry_id: uuid.UUID,
+    unit_id: uuid.UUID,
+    actor_user_id: uuid.UUID,
+    quote_data: dict,
+    existing_quote_id: uuid.UUID | None = None,
+) -> Enquiry:
+    enquiry = Enquiry.objects.filter(id=enquiry_id).first()
+    if not enquiry:
+        raise not_found("Enquiry")
+        
+    from_details = quote_data.pop("from_details")
+    to_details = quote_data.pop("to_details")
+    items_data = quote_data.pop("items")
+    
+    if existing_quote_id:
+        quote = Quotation.objects.filter(id=existing_quote_id, enquiry=enquiry).first()
+        if not quote:
+            raise not_found("Quotation")
+        
+        # Update quote fields
+        for key, value in quote_data.items():
+            if key == "selected_bank_id":
+                quote.bank_account_id = value
+            elif key == "type":
+                quote.quote_type = value
+            else:
+                setattr(quote, key, value)
+                
+        # Update snapshot address fields
+        for key, value in from_details.items():
+            setattr(quote, f"from_{key}", value)
+        for key, value in to_details.items():
+            setattr(quote, f"to_{key}", value)
+            
+        quote.updated_by_user_id = actor_user_id
+        quote.save()
+        
+        # Recreate items (simplest approach for a draft)
+        quote.items.all().delete()
+    else:
+        quote = Quotation(
+            unit_id=unit_id,
+            enquiry=enquiry,
+            created_by_user_id=actor_user_id,
+            bank_account_id=quote_data.pop("selected_bank_id"),
+            quote_type=quote_data.pop("type"),
+            **quote_data,
+        )
+        for key, value in from_details.items():
+            setattr(quote, f"from_{key}", value)
+        for key, value in to_details.items():
+            setattr(quote, f"to_{key}", value)
+        quote.save()
+        
+    for item in items_data:
+        QuotationItem.objects.create(
+            unit_id=unit_id,
+            quotation=quote,
+            product_id=item.get("product_id"),
+            description=item.get("description", ""),
+            hsn_code=item.get("hsn", ""),
+            locked_base_price=item.get("base_price", 0),
+            locked_margin=item.get("margin", 0),
+            locked_gst_rate=item.get("gst_rate", 18),
+            quantity=item.get("quantity", 1),
+            created_by_user_id=actor_user_id,
+        )
+        
+    return enquiry
+
+
+@transaction.atomic
+def delete_quotation(
+    *,
+    enquiry_id: uuid.UUID,
+    quote_id: uuid.UUID,
     actor_user_id: uuid.UUID,
 ) -> Enquiry:
-    """Assign an enquiry to a member of staff."""
-    # The assignee must have a membership scoped to this enquiry's unit.
-    # Checking that is a control-plane question --- ask core.permissions rather
-    # than querying Membership directly from here.
-    enquiry.assigned_to_user_id = assignee_user_id
-    enquiry.updated_by_user_id = actor_user_id
-    enquiry.save(update_fields=["assigned_to_user_id", "updated_by_user_id", "updated_at"])
-    return enquiry
-
-
-@transaction.atomic
-def mark_enquiry_lost(*, enquiry: Enquiry, reason: str, actor_user_id: uuid.UUID) -> Enquiry:
-    """
-    Close an enquiry as lost.
-
-    Shows the two error patterns:
-
-    - A state rule raises a `ConflictError` subclass. The input is fine; the
-      world does not allow it. The handler turns that into 409 automatically.
-    - Several field problems are accumulated and raised together, so the form
-      reports everything at once rather than one problem per round trip.
-
-    A transition like this is also where an event belongs once the outbox
-    exists (Phase 6): write the row and the outbox entry in this same
-    transaction, so they cannot diverge.
-    """
-    if not enquiry.is_open:
-        # Context is for the log, never the response --- it carries IDs the
-        # caller may not be entitled to see.
-        raise EnquiryAlreadyClosedError(
-            enquiry_id=str(enquiry.id),
-            current_status=enquiry.status,
-        )
-
-    errors = ErrorAccumulator()
-    if not reason.strip():
-        errors.add("reason", "required", "A reason is required when closing as lost.")
-    errors.raise_if_any()
-
-    enquiry.status = Enquiry.Status.LOST
-    enquiry.notes = f"{enquiry.notes}\n[lost] {reason}".strip()
-    enquiry.updated_by_user_id = actor_user_id
-    enquiry.save(update_fields=["status", "notes", "updated_by_user_id", "updated_at"])
-    return enquiry
-
-
-@transaction.atomic
-def reopen_enquiry(*, enquiry_id: uuid.UUID, actor_user_id: uuid.UUID) -> Enquiry:
-    """
-    Reopen a lost enquiry.
-
-    Demonstrates the 404-not-403 rule, and why it needs no judgement call:
-    `Enquiry.objects` is unit-scoped, so another dealer's enquiry is already
-    filtered out and `.first()` returns None --- indistinguishable from an ID
-    that never existed. Raising `not_found()` here is both the correct answer
-    and the safe one.
-    """
-    enquiry = Enquiry.objects.filter(pk=enquiry_id).first()
-    if enquiry is None:
+    enquiry = Enquiry.objects.filter(id=enquiry_id).first()
+    if not enquiry:
         raise not_found("Enquiry")
-
-    enquiry.status = Enquiry.Status.NEW
-    enquiry.updated_by_user_id = actor_user_id
-    enquiry.save(update_fields=["status", "updated_by_user_id", "updated_at"])
+        
+    quote = Quotation.objects.filter(id=quote_id, enquiry=enquiry).first()
+    if not quote:
+        raise not_found("Quotation")
+        
+    quote.delete()
+    
+    if enquiry.confirmed_quote_id == quote_id:
+        enquiry.status = Enquiry.Status.PENDING
+        enquiry.confirmed_quote_id = None
+        enquiry.oc_number = ""
+        enquiry.updated_by_user_id = actor_user_id
+        enquiry.save(update_fields=["status", "confirmed_quote_id", "oc_number", "updated_by_user_id"])
+        
     return enquiry
 
 
-def _next_reference(unit_id: uuid.UUID) -> str:
-    """
-    Allocate the next enquiry reference for a dealer.
+@transaction.atomic
+def confirm_order(
+    *,
+    enquiry_id: uuid.UUID,
+    quote_id: uuid.UUID,
+    unit_id: uuid.UUID,
+    actor_user_id: uuid.UUID,
+) -> Enquiry:
+    enquiry = Enquiry.objects.filter(id=enquiry_id).first()
+    if not enquiry:
+        raise not_found("Enquiry")
+        
+    if enquiry.status == Enquiry.Status.CONFIRMED:
+        raise ConflictError(code="already_confirmed", message="Enquiry is already confirmed.")
+        
+    quote = Quotation.objects.filter(id=quote_id, enquiry=enquiry).first()
+    if not quote:
+        raise not_found("Quotation")
+        
+    # Generate OC number
+    oc_number = f"STP/OC/26-27/{random.randint(100, 999):03d}"
+    
+    enquiry.status = Enquiry.Status.CONFIRMED
+    enquiry.confirmed_quote_id = quote_id
+    enquiry.oc_number = oc_number
+    enquiry.updated_by_user_id = actor_user_id
+    enquiry.save(update_fields=["status", "confirmed_quote_id", "oc_number", "updated_by_user_id"])
+    
+    # Create the ConfirmedSite pivot
+    # Note: Using the enquiry's existing customer if available, else we'd create one.
+    # For now, we assume the customer is linked or we create a dummy one for the site.
+    if not enquiry.customer_id:
+        from .models import Customer
+        customer = Customer.objects.create(
+            unit_id=unit_id,
+            name=enquiry.customer_name,
+            contact_person=enquiry.contact_person,
+            phone=enquiry.phone,
+            address=enquiry.address,
+            pincode=enquiry.pincode,
+            created_by_user_id=actor_user_id,
+        )
+        enquiry.customer = customer
+        enquiry.save(update_fields=["customer_id"])
+        
+    ConfirmedSite.objects.create(
+        unit_id=unit_id,
+        enquiry=enquiry,
+        customer=enquiry.customer,
+        confirmed_quote=quote,
+        oc_number=oc_number,
+        address=enquiry.address,
+        pincode=enquiry.pincode,
+        created_by_user_id=actor_user_id,
+    )
+    
+    return enquiry
 
-    Sequence allocation must not race. Use a database sequence or
-    `select_for_update` on a per-unit counter row --- never MAX(reference) + 1,
-    which hands two concurrent callers the same number.
-    """
-    raise NotImplementedError("Numbering strategy is a Phase 5 decision.")
+
+@transaction.atomic
+def unconfirm_order(
+    *,
+    enquiry_id: uuid.UUID,
+    actor_user_id: uuid.UUID,
+) -> Enquiry:
+    enquiry = Enquiry.objects.filter(id=enquiry_id).first()
+    if not enquiry:
+        raise not_found("Enquiry")
+        
+    enquiry.status = Enquiry.Status.PENDING
+    enquiry.confirmed_quote_id = None
+    enquiry.oc_number = ""
+    enquiry.updated_by_user_id = actor_user_id
+    enquiry.save(update_fields=["status", "confirmed_quote_id", "oc_number", "updated_by_user_id"])
+    
+    # Cascade delete ConfirmedSite if needed, but for now we just mark inactive
+    site = ConfirmedSite.objects.filter(enquiry=enquiry).first()
+    if site:
+        site.is_active = False
+        site.save(update_fields=["is_active"])
+        
+    return enquiry

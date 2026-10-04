@@ -21,11 +21,5 @@ urlpatterns = [
     # slug is unknown or the organization is suspended. Views therefore read
     # `request.organization` rather than taking a slug argument.
     path("api/v1/orgs/<slug:org_slug>/", include("core.organizations.api.urls")),
-    # No schema or docs routes. drf-spectacular was removed on 2026-10-02:
-    # it had been in the scaffold since Phase 1 and the owner had never been
-    # asked for it. Plain DRF until after the first public release.
-    # Organization-scoped app routes are added in Phase 2:
-    #   /api/v1/orgs/<org_slug>/<app>/...
-    # The org slug lives in the path, not in the token, so switching
-    # organizations needs no new token.
+    path("api/v1/orgs/<str:org_slug>/dms/sales/", include("products.dms.sales.api.urls")),
 ]

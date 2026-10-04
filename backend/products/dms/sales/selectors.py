@@ -15,47 +15,32 @@ from __future__ import annotations
 import uuid
 from typing import TYPE_CHECKING
 
-from .models import Enquiry
+from django.db.models import Prefetch
+
+from .models import Enquiry, BankAccount, ProductCatalog, Quotation, Followup
 
 if TYPE_CHECKING:
     from django.db.models import QuerySet
 
 
-def list_enquiries(*, status: str | None = None) -> QuerySet[Enquiry]:
+def list_enquiries() -> QuerySet[Enquiry]:
     """Enquiries the caller may see, newest first. Already dealer-scoped."""
-    qs = Enquiry.objects.all()
-    if status:
-        qs = qs.filter(status=status)
-    return qs
+    # Pre-fetch relations to avoid N+1 queries.
+    return Enquiry.objects.prefetch_related(
+        Prefetch("followups", queryset=Followup.objects.order_by("-created_at")),
+        Prefetch("quotations", queryset=Quotation.objects.prefetch_related("items").order_by("-created_at"))
+    ).order_by("-created_at")
 
 
 def get_enquiry(*, enquiry_id: uuid.UUID) -> Enquiry | None:
-    """
-    One enquiry, or None if it is not the caller's to see.
-
-    Another dealer's enquiry is indistinguishable from one that does not exist
-    --- the manager filtered it out before this query ran. The view turns None
-    into 404, which is what stops record existence leaking across dealers.
-    """
-    return Enquiry.objects.filter(pk=enquiry_id).first()
+    return list_enquiries().filter(pk=enquiry_id).first()
 
 
-def count_open_by_unit() -> dict[uuid.UUID, int]:
-    """
-    Open enquiries per dealer, for the fleet dashboard.
+def list_banks() -> QuerySet[BankAccount]:
+    """Bank accounts for the dealer."""
+    return BankAccount.objects.filter(is_active=True).order_by("-is_default")
 
-    A deliberate `all_units` use: the fleet dashboard is org-level reporting and
-    is only reachable by a caller with org-wide scope. The permission check
-    belongs at the endpoint --- this function trusts its caller, so do not call
-    it from a dealer-scoped view.
-    """
-    from django.db.models import Count
 
-    rows = (
-        Enquiry.all_units.exclude(
-            status__in=[Enquiry.Status.WON, Enquiry.Status.LOST],
-        )
-        .values("unit_id")
-        .annotate(total=Count("id"))
-    )
-    return {row["unit_id"]: row["total"] for row in rows}
+def list_products() -> QuerySet[ProductCatalog]:
+    """Product catalog (presets) for the dealer."""
+    return ProductCatalog.objects.filter(is_active=True)
