@@ -9,15 +9,23 @@ imports DRF. Named after the business situation rather than the HTTP shape:
 
 from __future__ import annotations
 
-from shared.exceptions import ConflictError, InvalidInputError, NotFoundError
+from shared.exceptions import ConflictError, InvalidInputError
 
 
-class ActivationCodeInvalidError(NotFoundError):
+class ActivationCodeInvalidError(InvalidInputError):
     """
     No such code.
 
-    404 rather than 403, for the usual reason: an unknown code and a code
-    belonging to somebody else must look identical.
+    422, NOT 404, and the frontend decided this before the backend existed.
+    404 would be defensible --- a code is a secret and an unknown one should
+    not be distinguishable from somebody else's --- but there is no scoping
+    here to leak: codes belong to nobody until they are spent. The submitted
+    value is simply not valid input, which is what 422 means.
+
+    THE `code` STRING IS THE CONTRACT, not the status. The frontend switches
+    on it to choose its own wording, so these three strings match
+    `shell/api/signup.ts` exactly. A rename here is a silent fallback to a
+    generic message there, which is the whole cost C43 took on.
     """
 
     code = "activation_code_invalid"
@@ -34,12 +42,23 @@ class ActivationCodeSpentError(ConflictError):
     answers their question instead of generating a support call.
     """
 
-    code = "activation_code_spent"
+    code = "activation_code_used"
     message = "That activation code has already been used."
 
 
 class ActivationCodeExpiredError(ConflictError):
-    """The code was real, unspent, and is past its expiry."""
+    """
+    The code was real, unspent, and is past its expiry.
+
+    A THIRD STATE THE FRONTEND DOES NOT YET HANDLE. C14 named two --- invalid
+    and already used --- because expiry was Q20 and unanswered at the time.
+    Q20 chose 90 days (C47), so this is now reachable, and `signup.ts` has no
+    case for the string: the signup screen will show its generic fallback
+    rather than "your code expired, ask for a new one". Worth a line of
+    frontend copy, and deliberately not folded into `invalid` --- telling a
+    customer their real code is invalid is the support call C14 set out to
+    avoid.
+    """
 
     code = "activation_code_expired"
     message = "That activation code has expired."
@@ -62,7 +81,7 @@ class EmailAlreadyRegisteredError(ConflictError):
     one login). It is a different flow, because it must happen while signed in.
     """
 
-    code = "email_already_registered"
+    code = "email_taken"
     message = "An account with that email address already exists. Sign in instead."
 
 

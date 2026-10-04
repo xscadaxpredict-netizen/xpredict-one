@@ -159,6 +159,28 @@ def sign_up(
     return SignupResult(user=user, organization=organization, membership=membership)
 
 
+def check_activation_code(raw: str) -> None:
+    """
+    Would this code be accepted right now? Raises if not, returns nothing.
+
+    READ-ONLY, AND IT PROMISES NOTHING ABOUT LATER. It takes no lock and
+    changes nothing, so a code that passes here can still be spent by somebody
+    else before the signup form is submitted. That race is real and it is
+    fine: it is C14's first step existing to avoid making a customer fill in a
+    long form before being told the code is wrong, not a reservation.
+    `sign_up()` re-checks under a lock, which is the check that counts.
+
+    It shares `_assert_code_usable` with the claiming path so the three
+    failures cannot drift into two different answers for the same code.
+    """
+    try:
+        code = ActivationCode.objects.get(code=raw.strip())
+    except ActivationCode.DoesNotExist as exc:
+        raise ActivationCodeInvalidError() from exc
+
+    _assert_code_usable(code)
+
+
 def _claim_activation_code(raw: str) -> ActivationCode:
     """
     Take exclusive hold of an unspent code, or raise saying exactly why.
@@ -167,23 +189,27 @@ def _claim_activation_code(raw: str) -> ActivationCode:
     on `code` does not help here: two simultaneous signups would both read the
     same unspent row, both see `spent_at IS NULL`, and both proceed. The row
     lock makes the second wait and then find it spent.
-
-    THREE DISTINCT FAILURES, on purpose (C14). Login is vague because an
-    attacker is guessing; this is the opposite --- the code was handed to this
-    customer, and "invalid" when they mean "already used" is a support call.
     """
     try:
         code = ActivationCode.objects.select_for_update().get(code=raw.strip())
     except ActivationCode.DoesNotExist as exc:
         raise ActivationCodeInvalidError() from exc
 
+    _assert_code_usable(code)
+    return code
+
+
+def _assert_code_usable(code: ActivationCode) -> None:
+    """
+    THREE DISTINCT FAILURES, on purpose (C14). Login is vague because an
+    attacker is guessing; this is the opposite --- the code was handed to this
+    customer, and "invalid" when they mean "already used" is a support call.
+    """
     if code.spent_at is not None:
         raise ActivationCodeSpentError(code_id=str(code.id))
 
     if code.expires_at is not None and code.expires_at <= timezone.now():
         raise ActivationCodeExpiredError(code_id=str(code.id))
-
-    return code
 
 
 def _derive_unique_slug(organization_name: str) -> str:

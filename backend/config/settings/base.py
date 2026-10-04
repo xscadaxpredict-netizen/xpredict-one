@@ -208,6 +208,33 @@ REST_FRAMEWORK = {
     ),
     "DEFAULT_PERMISSION_CLASSES": ("rest_framework.permissions.IsAuthenticated",),
     "UNAUTHENTICATED_USER": None,
+    # Rate limits for the UNAUTHENTICATED endpoints, by IP (Q20, C47). Only
+    # the two signup endpoints opt in, via ScopedRateThrottle --- everything
+    # else needs a session, which is its own limit on volume.
+    #
+    # DRF's OWN THROTTLING, not a new dependency. The rule about never adding a
+    # library the lead has not agreed to (C43) applies to rate limiting as
+    # much as to anything else, and this is already installed.
+    #
+    # 20/hour is not the thing stopping enumeration --- 32 characters of
+    # `secrets.token_urlsafe` entropy is, and no rate makes a guessable code
+    # safe. This is defence in depth and a brake on automation, set high
+    # enough not to lock out an office behind one NAT where two people sign up
+    # the same afternoon.
+    #
+    # THROTTLING NEEDS THE CACHE, AND THE CACHE IS NOT OPTIONAL HERE. DRF keeps
+    # each IP's history in CACHES["default"], so an unreachable cache does not
+    # mean "no limit" --- it means the throttled endpoint raises and answers 500.
+    #
+    # CACHES pointed at Redis from Phase 1 while Redis was never installed, and
+    # nothing noticed for nine sessions because nothing used the cache. This
+    # setting is the first thing that does. Development and tests therefore use
+    # LocMemCache (see dev.py), which counts PER PROCESS: with several workers
+    # the real limit is 20 x workers. Correct enough for development, and
+    # production wants the shared Redis below so one tally covers every worker.
+    "DEFAULT_THROTTLE_RATES": {
+        "signup": "20/hour",
+    },
     # Every error leaves the API as RFC 9457 problem+json, whatever raised it.
     # Views never catch domain exceptions --- this is the only translation point.
     "EXCEPTION_HANDLER": "config.exception_handler.api_exception_handler",
