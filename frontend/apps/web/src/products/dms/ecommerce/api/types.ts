@@ -1,37 +1,43 @@
-/**
- * E-Commerce module types.
- *
- * Types for catalog products, orders, and purchase orders.
- */
-
-// ---- Catalog ---------------------------------------------------------------
-
-export interface CatalogProduct {
+export interface SpareProduct {
   id: string;
   name: string;
+  description: string;
   price: number;
-  specs: string[];
+  category: string;
+  part_number: string;
+  hsn_code: string;
 }
-
-export type CatalogData = Record<string, CatalogProduct[]>;
-
-// ---- Orders ----------------------------------------------------------------
 
 export type OrderStatus = "PENDING" | "APPROVED" | "REJECTED" | "DELIVERED";
 
 export interface OrderItem {
+  id?: string;
+  product_id: string;
   name: string;
-  qty: number;
   price: number;
+  quantity: number;
+  line_total: number;
 }
 
-export interface PurchaseOrder {
+export interface EcommerceOrder {
   id: string;
-  siteName: string;
-  ocNumber: string;
+  site_id: string;
+  order_number: string;
+  site_name: string;
+  oc_number: string;
+  status: OrderStatus;
+  reject_reason: string;
+  total_amount: number;
   date: string;
   items: OrderItem[];
-  total: number;
+}
+
+export interface OrderCreatePayload {
+  site_id: string;
+  items: { product_id: string; quantity: number }[];
+}
+
+export interface OrderStatusUpdate {
   status: OrderStatus;
-  rejectReason: string;
+  reject_reason?: string;
 }

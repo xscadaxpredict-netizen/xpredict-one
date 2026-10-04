@@ -22,4 +22,6 @@ urlpatterns = [
     # `request.organization` rather than taking a slug argument.
     path("api/v1/orgs/<slug:org_slug>/", include("core.organizations.api.urls")),
     path("api/v1/orgs/<str:org_slug>/dms/sales/", include("products.dms.sales.api.urls")),
+    path("api/v1/orgs/<str:org_slug>/dms/site-services/", include("products.dms.site_services.api.urls")),
+    path("api/v1/orgs/<str:org_slug>/dms/ecommerce/", include("products.dms.ecommerce.api.urls")),
 ]

@@ -2,7 +2,7 @@
  * Sales API functions. No React in this file.
  */
 
-import { ApiError, type Problem } from "@xpredict/api-client";
+// Removed local ApiError import as it is in request.ts
 
 import type {
   BankAccount,
@@ -13,41 +13,7 @@ import type {
   ProductPreset,
 } from "./types";
 
-/* ---------------------------- request helper -------------------------------- */
-
-async function request<T>(url: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(url, {
-    ...init,
-    // Required for httpOnly cookie auth (C12). Omit it and the cookie is not
-    // sent, and every call comes back 401.
-    credentials: "include",
-    headers: { "Content-Type": "application/json", ...init?.headers },
-  });
-
-  if (!response.ok) {
-    let problem: Problem | null = null;
-    if (response.status !== 204) {
-      problem = (await response.json().catch(() => null)) as Problem | null;
-    }
-    
-    throw new ApiError(
-      problem ?? {
-        type: "about:blank",
-        title: "Error",
-        status: response.status,
-        detail: "An unexpected error occurred.",
-        code: "internal_error",
-        trace_id: "",
-      },
-    );
-  }
-
-  if (response.status === 204) {
-    return {} as T;
-  }
-
-  return (await response.json()) as T;
-}
+import { request } from "../../shared/api/request";
 
 
 // ---- API functions ---------------------------------------------------------
@@ -152,4 +118,15 @@ export async function fetchProductPresets(
   orgSlug: string,
 ): Promise<ProductPreset[]> {
   return request<ProductPreset[]>(`/api/v1/orgs/${orgSlug}/dms/sales/products/`);
+}
+
+
+export async function confirmAmcQuote(
+  orgSlug: string,
+  enquiryId: string,
+  quoteId: string,
+): Promise<Enquiry> {
+  return request<Enquiry>(`/api/v1/orgs/${orgSlug}/dms/sales/enquiries/${enquiryId}/quotations/${quoteId}/confirm-amc/`, {
+    method: 'POST',
+  });
 }

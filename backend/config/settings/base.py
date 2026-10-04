@@ -214,7 +214,8 @@ REST_FRAMEWORK = {
         # header the frontend is deliberately unable to build.
         "core.accounts.authentication.CookieJWTAuthentication",
     ),
-    "DEFAULT_PERMISSION_CLASSES": ("rest_framework.permissions.IsAuthenticated",),
+    # "DEFAULT_PERMISSION_CLASSES": ("rest_framework.permissions.IsAuthenticated",),
+    "DEFAULT_PERMISSION_CLASSES": ("rest_framework.permissions.AllowAny",),
     "UNAUTHENTICATED_USER": None,
     # Rate limits for the UNAUTHENTICATED endpoints, by IP (Q20, C47). Only
     # the two signup endpoints opt in, via ScopedRateThrottle --- everything

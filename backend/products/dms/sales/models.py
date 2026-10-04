@@ -214,6 +214,7 @@ class ProductCatalog(UnitScopedModel):
         choices=ProductType.choices,
         default=ProductType.NORMAL,
     )
+    category = models.CharField(max_length=100, blank=True, default="")
     name = models.CharField(max_length=255)
     description = models.TextField(blank=True, default="")
     hsn_code = models.CharField(max_length=20, blank=True, default="")

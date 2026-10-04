@@ -129,3 +129,14 @@ class ProductPresetListView(APIView):
     def get(self, request: Request, org_slug: str) -> Response:
         products = selectors.list_products()
         return Response(ProductPresetReadSerializer(products, many=True).data)
+
+
+class EnquiryConfirmAmcView(APIView):
+    def post(self, request: Request, org_slug: str, pk: str, quote_id: str) -> Response:
+        enquiry = services.confirm_amc_quote(
+            enquiry_id=pk,
+            quote_id=quote_id,
+            actor_user_id=request.user.id,
+        )
+        enquiry_fetched = selectors.get_enquiry(enquiry_id=enquiry.id)
+        return Response(EnquiryReadSerializer(enquiry_fetched).data)

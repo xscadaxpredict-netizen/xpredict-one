@@ -1,12 +1,14 @@
 import { useState } from "react";
 import { ShieldCheckIcon } from "lucide-react";
-import { useEnquiries } from "../../sales/hooks/useEnquiries";
+import { useSites } from "../hooks/useSiteServices";
+import { useConfirmAmcQuote } from "../../sales/hooks/useEnquiries";
 import { QuoteBuilderDialog } from "../../sales/components/QuoteBuilderDialog";
 import { AmcRow } from "../components/AmcRow";
 import styles from "./AMCScreen.module.css";
 
 export function AMCScreen() {
-  const { data: enquiries, isPending, isError, error } = useEnquiries();
+  const confirmQuoteMutation = useConfirmAmcQuote();
+  const { data: sites, isPending, isError, error } = useSites();
   
   const [selectedSiteId, setSelectedSiteId] = useState("");
   const [expandedRowId, setExpandedRowId] = useState<string | null>(null);
@@ -19,11 +21,10 @@ export function AMCScreen() {
   if (isPending) return <div style={{ padding: "var(--space-4)" }}>Loading...</div>;
   if (isError) return <div style={{ padding: "var(--space-4)" }}>Error: {(error as Error).message}</div>;
 
-  // Filter for confirmed sites
-  const confirmedSites = (enquiries || []).filter((e) => e.status === "CONFIRMED");
+  // Sites are already confirmed sites by definition of the backend
   const displaySites = selectedSiteId
-    ? confirmedSites.filter((s) => s.id === selectedSiteId)
-    : confirmedSites;
+    ? (sites || []).filter((s) => s.id === selectedSiteId)
+    : (sites || []);
 
   const handleOpenQuoteModal = (enquiryId: string, quoteId?: string) => {
     setEditingEnquiryId(enquiryId);
@@ -31,9 +32,15 @@ export function AMCScreen() {
     setIsQuoteModalOpen(true);
   };
 
-  const handleConfirmQuote = (_enquiryId: string, _quoteId: string) => {
+  const handleConfirmQuote = async (enquiryId: string, quoteId: string) => {
     if (!window.confirm("Are you sure you want to confirm this AMC quote? This will set it as the Active AMC for this site.")) return;
-    alert("In a real app, this would call confirmAmcQuote(quoteId)");
+    try {
+      await confirmQuoteMutation.mutateAsync({ enquiryId, quoteId });
+      alert("AMC Quote confirmed! Site Service Profile updated.");
+      setIsQuoteModalOpen(false);
+    } catch (e: any) {
+      alert(`Failed to confirm quote: ${e.message}`);
+    }
   };
 
   const handleDeleteQuote = (_enquiryId: string, _quoteId: string) => {
@@ -49,8 +56,8 @@ export function AMCScreen() {
           value={selectedSiteId}
           onChange={(e) => setSelectedSiteId(e.target.value)}
         >
-          <option value="">All Deployed Sites ({confirmedSites.length})</option>
-          {confirmedSites.map((s) => (
+          <option value="">All Deployed Sites ({sites?.length || 0})</option>
+          {(sites || []).map((s) => (
             <option key={s.id} value={s.id}>
               {s.customer_name} ({s.oc_number || "No OC"})
             </option>
@@ -60,8 +67,11 @@ export function AMCScreen() {
         <button
           type="button"
           className={styles.btnPrimary}
-          onClick={() => handleOpenQuoteModal(selectedSiteId || confirmedSites[0]?.id || "")}
-          disabled={confirmedSites.length === 0}
+          onClick={() => {
+            const site = sites?.find((s) => s.id === selectedSiteId) || sites?.[0];
+            if (site) handleOpenQuoteModal(site.enquiry_id);
+          }}
+          disabled={!sites?.length}
         >
           <ShieldCheckIcon size={16} /> Create AMC Quote
         </button>
@@ -95,16 +105,16 @@ export function AMCScreen() {
                 return (
                   <AmcRow
                     key={site.id}
-                    site={site}
+                    site={site as any} // AmcRow expects type Site that has enquiry fields, need to cast or adapt AmcRow
                     amcQuotes={amcQuotes}
                     latestQuote={latestQuote}
                     activeQuote={activeQuote}
                     isExpanded={expandedRowId === site.id}
                     onToggle={() => setExpandedRowId(expandedRowId === site.id ? null : site.id)}
-                    onNewQuote={() => handleOpenQuoteModal(site.id)}
-                    onEditQuote={(quoteId) => handleOpenQuoteModal(site.id, quoteId)}
-                    onConfirmQuote={(quoteId) => handleConfirmQuote(site.id, quoteId)}
-                    onDeleteQuote={(quoteId) => handleDeleteQuote(site.id, quoteId)}
+                    onNewQuote={() => handleOpenQuoteModal(site.enquiry_id)}
+                    onEditQuote={(quoteId) => handleOpenQuoteModal(site.enquiry_id, quoteId)}
+                    onConfirmQuote={(quoteId) => handleConfirmQuote(site.enquiry_id, quoteId)}
+                    onDeleteQuote={(quoteId) => handleDeleteQuote(site.enquiry_id, quoteId)}
                   />
                 );
               })

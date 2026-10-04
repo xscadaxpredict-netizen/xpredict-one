@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { PlusIcon } from "lucide-react";
 import { ConfirmDeleteModal } from "../../../../shell/components/ConfirmDeleteModal";
-import { useEnquiries } from "../../sales/hooks/useEnquiries";
+import { useSites, useComplaints, useCreateComplaint } from "../hooks/useSiteServices";
 import { ComplaintTable } from "../components/ComplaintTable";
 import { ComplaintModal } from "../components/ComplaintModal";
 import { ComplaintViewModal } from "../components/ComplaintViewModal";
@@ -17,7 +17,9 @@ const INITIAL_FORM = {
 };
 
 export function ComplaintsScreen() {
-  const { data: enquiries, isPending, isError, error } = useEnquiries();
+  const { data: sites, isPending: sitesPending, isError: sitesError, error } = useSites();
+  const { data: reports, isPending: reportsPending } = useComplaints();
+  const createComplaintMutation = useCreateComplaint();
   const [selectedSiteId, setSelectedSiteId] = useState("");
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [viewingReport, setViewingReport] = useState<any>(null);
@@ -25,22 +27,23 @@ export function ComplaintsScreen() {
   const [deleteData, setDeleteData] = useState<any>(null);
   const [form, setForm] = useState(INITIAL_FORM);
 
-  if (isPending) return <div style={{ padding: "var(--space-4)" }}>Loading...</div>;
-  if (isError) return <div style={{ padding: "var(--space-4)" }}>Error: {(error as Error).message}</div>;
+  if (sitesPending || reportsPending) return <div style={{ padding: "var(--space-4)" }}>Loading...</div>;
+  if (sitesError) return <div style={{ padding: "var(--space-4)" }}>Error: {(error as Error).message}</div>;
 
-  const confirmedSites = (enquiries || []).filter((e) => e.status === "CONFIRMED");
+  const confirmedSites = sites || [];
   const displaySites = selectedSiteId
     ? confirmedSites.filter((s) => s.id === selectedSiteId)
     : confirmedSites;
 
-  // Flatten reports
-  const allReports = displaySites.flatMap((s) =>
-    (s.complaints || []).map((r) => ({
+  // Flatten reports, matching them to sites
+  const allReports = (reports || []).map((r) => {
+    const site = confirmedSites.find(s => s.id === r.site_id);
+    return {
       ...r,
-      siteName: s.customer_name,
-      ocNumber: s.oc_number,
-    }))
-  );
+      siteName: site?.customer_name || "Unknown",
+      ocNumber: site?.oc_number || "",
+    };
+  }).filter((r) => !selectedSiteId || r.site_id === selectedSiteId);
 
   const openNewModal = () => {
     setEditingReport(null);
@@ -60,10 +63,21 @@ export function ComplaintsScreen() {
     setIsModalOpen(true);
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setIsModalOpen(false);
-    alert("Complaint Logged!");
+    try {
+      const formData = new FormData();
+      formData.append("site_id", form.siteId);
+      formData.append("description", form.issue);
+      formData.append("priority", "MEDIUM"); // Default or add to form
+      formData.append("status", "OPEN");
+
+      await createComplaintMutation.mutateAsync(formData);
+      setIsModalOpen(false);
+      alert("Complaint Logged!");
+    } catch (e: any) {
+      alert(`Failed to save complaint: ${e.message}`);
+    }
   };
 
   return (
@@ -99,7 +113,7 @@ export function ComplaintsScreen() {
         isOpen={isModalOpen}
         isEditing={!!editingReport}
         form={form}
-        confirmedSites={confirmedSites}
+        confirmedSites={confirmedSites as any}
         onFormChange={(updates) => setForm(prev => ({ ...prev, ...updates }))}
         onSubmit={handleSubmit}
         onClose={() => setIsModalOpen(false)}

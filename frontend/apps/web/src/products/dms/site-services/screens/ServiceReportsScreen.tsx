@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { PlusIcon } from "lucide-react";
-import { useEnquiries } from "../../sales/hooks/useEnquiries";
+import { useSites, useServiceReports, useCreateServiceReport } from "../hooks/useSiteServices";
 import { ServiceReportTable } from "../components/ServiceReportTable";
 import { ServiceReportModal } from "../components/ServiceReportModal";
 import { ReportViewModal } from "../components/ReportViewModal";
@@ -11,7 +11,9 @@ const INITIAL_FORM = {
 };
 
 export function ServiceReportsScreen() {
-  const { data: enquiries, isPending, isError, error } = useEnquiries();
+  const { data: sites, isPending: sitesPending, isError: sitesError, error } = useSites();
+  const { data: reports, isPending: reportsPending } = useServiceReports();
+  const createReportMutation = useCreateServiceReport();
   
   const [selectedSiteId, setSelectedSiteId] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
@@ -21,28 +23,30 @@ export function ServiceReportsScreen() {
   const [editingReport, setEditingReport] = useState<any>(null);
   const [form, setForm] = useState(INITIAL_FORM);
 
-  if (isPending) return <div style={{ padding: "var(--space-4)" }}>Loading...</div>;
-  if (isError) return <div style={{ padding: "var(--space-4)" }}>Error: {(error as Error).message}</div>;
+  if (sitesPending || reportsPending) return <div style={{ padding: "var(--space-4)" }}>Loading...</div>;
+  if (sitesError) return <div style={{ padding: "var(--space-4)" }}>Error: {(error as Error).message}</div>;
 
-  const confirmedSites = (enquiries || []).filter((e) => e.status === "CONFIRMED");
+  const confirmedSites = sites || [];
   const displaySites = selectedSiteId
     ? confirmedSites.filter((s) => s.id === selectedSiteId)
     : confirmedSites;
 
-  // Flatten reports
-  const allReports = displaySites.flatMap((s) =>
-    (s.service_reports || []).map((r) => ({
+  // Flatten reports, matching them to sites
+  const allReports = (reports || []).map((r) => {
+    const site = confirmedSites.find(s => s.id === r.site_id);
+    return {
       ...r,
-      siteName: s.customer_name,
-      ocNumber: s.oc_number,
-    }))
-  );
+      siteName: site?.customer_name || "Unknown",
+      ocNumber: site?.oc_number || "",
+    };
+  });
 
   const filteredReports = allReports.filter(
     (r) =>
-      r.siteName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      (r.report_code || "").toLowerCase().includes(searchQuery.toLowerCase()) ||
-      r.technician.toLowerCase().includes(searchQuery.toLowerCase())
+      (!selectedSiteId || r.site_id === selectedSiteId) &&
+      (r.siteName.toLowerCase().includes(searchQuery.toLowerCase()) ||
+       (r.report_code || "").toLowerCase().includes(searchQuery.toLowerCase()) ||
+       (r.technician_display_name || "").toLowerCase().includes(searchQuery.toLowerCase()))
   );
 
   const openNewModal = () => {
@@ -62,10 +66,26 @@ export function ServiceReportsScreen() {
     setIsModalOpen(true);
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setIsModalOpen(false);
-    alert("Service Report Logged!");
+    try {
+      const formData = new FormData();
+      formData.append("site_id", form.siteId);
+      formData.append("service_date", form.date);
+      formData.append("zone", form.zone === "Other" ? form.customZone : form.zone);
+      formData.append("technician_display_name", form.technician);
+      formData.append("remarks", form.remarks);
+      formData.append("service_person_name", form.servicePersonName);
+      formData.append("service_person_signature", form.servicePersonSignature);
+      formData.append("client_name", form.clientName);
+      formData.append("client_signature", form.clientSignature);
+
+      await createReportMutation.mutateAsync(formData);
+      setIsModalOpen(false);
+      alert("Service Report Logged!");
+    } catch (e: any) {
+      alert(`Failed to save report: ${e.message}`);
+    }
   };
 
   const handleDelete = (_id: string) => {
@@ -112,7 +132,7 @@ export function ServiceReportsScreen() {
         isOpen={isModalOpen}
         isEditing={!!editingReport}
         form={form}
-        confirmedSites={confirmedSites}
+        confirmedSites={confirmedSites as any}
         onFormChange={(updates) => setForm(prev => ({ ...prev, ...updates }))}
         onSubmit={handleSubmit}
         onClose={() => setIsModalOpen(false)}

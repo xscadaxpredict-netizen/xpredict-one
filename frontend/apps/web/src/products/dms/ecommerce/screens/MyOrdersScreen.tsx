@@ -1,14 +1,15 @@
 import { useState } from "react";
-import { useOrders } from "../hooks/useEcommerce";
+import { useOrders, useUpdateOrderStatus } from "../hooks/useEcommerce";
 import { OrdersTable } from "../components/OrdersTable";
 import { RejectOrderDialog } from "../components/RejectOrderDialog";
 import { POViewDialog } from "../components/POViewDialog";
 import { ConfirmDeleteModal } from "../../../../shell/components/ConfirmDeleteModal";
-import type { PurchaseOrder } from "../api/types";
+import type { EcommerceOrder } from "../api/types";
 import styles from "./MyOrdersScreen.module.css";
 
 export function MyOrdersScreen() {
-  const { orders, changeStatus, removeOrder } = useOrders();
+  const { data: orders, isPending, isError, error } = useOrders();
+  const updateStatusMutation = useUpdateOrderStatus();
   
   const [deleteId, setDeleteId] = useState<string | null>(null);
   
@@ -17,14 +18,19 @@ export function MyOrdersScreen() {
   const [rejectReason, setRejectReason] = useState("");
 
   // View Modal
-  const [viewOrder, setViewOrder] = useState<PurchaseOrder | null>(null);
+  const [viewOrder, setViewOrder] = useState<EcommerceOrder | null>(null);
 
-  const handleApprove = (id: string) => changeStatus(id, "APPROVED");
+  if (isPending) return <div style={{ padding: "var(--space-4)" }}>Loading...</div>;
+  if (isError) return <div style={{ padding: "var(--space-4)" }}>Error: {(error as Error).message}</div>;
+
+  const handleApprove = (id: string) => {
+    updateStatusMutation.mutate({ orderId: id, payload: { status: "APPROVED" } });
+  };
   
   const handleReject = (e: React.FormEvent) => {
     e.preventDefault();
     if (rejectData && rejectReason.trim()) {
-      changeStatus(rejectData, "REJECTED", rejectReason);
+      updateStatusMutation.mutate({ orderId: rejectData, payload: { status: "REJECTED", reject_reason: rejectReason } });
       setRejectData(null);
       setRejectReason("");
     }
@@ -62,7 +68,7 @@ export function MyOrdersScreen() {
       <ConfirmDeleteModal 
         isOpen={!!deleteId}
         onCancel={() => setDeleteId(null)}
-        onConfirm={() => { if(deleteId) { removeOrder(deleteId); setDeleteId(null); } }}
+        onConfirm={() => { alert("Deleting orders is not supported yet."); setDeleteId(null); }}
       />
     </div>
   );
