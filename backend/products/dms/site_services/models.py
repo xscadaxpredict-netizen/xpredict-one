@@ -16,6 +16,37 @@ from shared.base_models import UnitScopedModel
 
 
 # ============================================================================
+# SiteServiceProfile
+# ============================================================================
+
+class SiteServiceProfile(UnitScopedModel):
+    """
+    Service details for a confirmed site, editable from the Scheduling screen.
+    """
+    site = models.OneToOneField(
+        "dms_sales.ConfirmedSite",
+        on_delete=models.CASCADE,
+        related_name="service_profile",
+    )
+    dc_number = models.CharField(max_length=100, blank=True, default="")
+    service_type = models.CharField(max_length=100, blank=True, default="")
+    service_interval_days = models.PositiveIntegerField(null=True, blank=True)
+    last_serviced_date = models.DateField(null=True, blank=True)
+    
+    technician_user_id = models.UUIDField(null=True, blank=True)
+    technician_display_name = models.CharField(max_length=255, blank=True, default="")
+    notes = models.TextField(blank=True, default="")
+
+    class Meta:
+        indexes = [
+            models.Index(fields=["unit_id", "site_id"]),
+        ]
+
+    def __str__(self) -> str:
+        return f"Profile for {self.site_id}"
+
+
+# ============================================================================
 # ServiceSchedule
 # ============================================================================
 

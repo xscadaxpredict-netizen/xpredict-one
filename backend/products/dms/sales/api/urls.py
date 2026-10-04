@@ -18,6 +18,7 @@ from .views import (
     EnquiryUnconfirmView,
     BankAccountListView,
     ProductPresetListView,
+    EnquiryConfirmAmcView,
 )
 
 app_name = "dms_sales"
@@ -30,6 +31,7 @@ urlpatterns = [
     path("enquiries/<uuid:pk>/quotations/", EnquiryQuotationListCreateView.as_view(), name="enquiry-quotation-create"),
     path("enquiries/<uuid:pk>/quotations/<uuid:quote_id>/", EnquiryQuotationDetailView.as_view(), name="enquiry-quotation-detail"),
     path("enquiries/<uuid:pk>/confirm/", EnquiryConfirmView.as_view(), name="enquiry-confirm"),
+    path("enquiries/<uuid:pk>/quotations/<uuid:quote_id>/confirm-amc/", EnquiryConfirmAmcView.as_view(), name="enquiry-confirm-amc"),
     path("enquiries/<uuid:pk>/unconfirm/", EnquiryUnconfirmView.as_view(), name="enquiry-unconfirm"),
     
     # Static lookups for quotes

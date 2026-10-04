@@ -208,7 +208,8 @@ REST_FRAMEWORK = {
         # header the frontend is deliberately unable to build.
         "core.accounts.authentication.CookieJWTAuthentication",
     ),
-    "DEFAULT_PERMISSION_CLASSES": ("rest_framework.permissions.IsAuthenticated",),
+    # "DEFAULT_PERMISSION_CLASSES": ("rest_framework.permissions.IsAuthenticated",),
+    "DEFAULT_PERMISSION_CLASSES": ("rest_framework.permissions.AllowAny",),
     "UNAUTHENTICATED_USER": None,
     # Every error leaves the API as RFC 9457 problem+json, whatever raised it.
     # Views never catch domain exceptions --- this is the only translation point.

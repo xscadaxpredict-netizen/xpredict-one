@@ -291,3 +291,35 @@ def unconfirm_order(
         site.save(update_fields=["is_active"])
         
     return enquiry
+
+
+@transaction.atomic
+def confirm_amc_quote(
+    *,
+    enquiry_id: uuid.UUID,
+    quote_id: uuid.UUID,
+    actor_user_id: uuid.UUID,
+) -> Enquiry:
+    enquiry = Enquiry.objects.filter(id=enquiry_id).first()
+    if not enquiry:
+        raise not_found('Enquiry')
+        
+    quote = Quotation.objects.filter(id=quote_id, enquiry=enquiry).first()
+    if not quote:
+        raise not_found('Quotation')
+
+    if quote.quote_type != Quotation.QuoteType.AMC:
+        raise ConflictError(code='not_amc', message='Only AMC quotes can be confirmed via this endpoint.')
+        
+    if quote.status == Quotation.QuotationStatus.CONFIRMED:
+        raise ConflictError(code='already_confirmed', message='Quotation is already confirmed.')
+
+    quote.status = Quotation.QuotationStatus.CONFIRMED
+    quote.save(update_fields=['status'])
+
+    site = ConfirmedSite.objects.filter(enquiry=enquiry).first()
+    if site:
+        quote.site = site
+        quote.save(update_fields=['site_id'])
+
+    return enquiry

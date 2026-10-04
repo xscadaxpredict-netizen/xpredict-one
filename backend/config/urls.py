@@ -15,4 +15,6 @@ urlpatterns = [
     # The org slug lives in the path, not in the token, so switching
     # organizations needs no new token.
     path("api/v1/orgs/<str:org_slug>/dms/sales/", include("products.dms.sales.api.urls")),
+    path("api/v1/orgs/<str:org_slug>/dms/site-services/", include("products.dms.site_services.api.urls")),
+    path("api/v1/orgs/<str:org_slug>/dms/ecommerce/", include("products.dms.ecommerce.api.urls")),
 ]

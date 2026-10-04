@@ -1,17 +1,19 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { PlusIcon } from "lucide-react";
-import { useEnquiries } from "../../sales/hooks/useEnquiries";
-import { useCatalog } from "../hooks/useEcommerce";
+import { useSites } from "../../site-services/hooks/useSiteServices";
+import { useCatalog, useCreateOrder } from "../hooks/useEcommerce";
 import { ProductCatalog } from "../components/ProductCatalog";
 import { CartSidebar } from "../components/CartSidebar";
 import { ProductFormDialog } from "../components/ProductFormDialog";
 import { OrderConfirmDialog } from "../components/OrderConfirmDialog";
 import { ConfirmDeleteModal } from "../../../../shell/components/ConfirmDeleteModal";
 import styles from "./StoreCatalogScreen.module.css";
+import type { SpareProduct } from "../api/types";
 
 export function StoreCatalogScreen() {
-  const { data: enquiries } = useEnquiries();
-  const { catalog, addProduct, updateProduct, deleteProduct: removeProduct } = useCatalog();
+  const { data: sites } = useSites();
+  const { data: catalogData } = useCatalog();
+  const createOrderMutation = useCreateOrder();
   
   const [selectedSiteId, setSelectedSiteId] = useState("");
   const [expandedCategory, setExpandedCategory] = useState("Pumps");
@@ -25,15 +27,23 @@ export function StoreCatalogScreen() {
   const [productForm, setProductForm] = useState({ category: "Pumps", newCategory: "", name: "", price: "", specs: "" });
 
   // Data helpers
-  const confirmedSites = (enquiries || []).filter((e) => e.status === "CONFIRMED");
+  const confirmedSites = sites || [];
   const selectedSite = confirmedSites.find((s) => String(s.id) === selectedSiteId);
 
-  const findItem = (itemId: string) => {
-    for (const cat of Object.values(catalog)) {
-      const item = cat.find((i) => i.id === itemId);
-      if (item) return item;
+  // Group catalog into categories
+  const groupedCatalog = useMemo(() => {
+    const groups: Record<string, SpareProduct[]> = {};
+    if (!catalogData) return groups;
+    for (const item of catalogData) {
+      const cat = item.category || "Uncategorized";
+      if (!groups[cat]) groups[cat] = [];
+      groups[cat].push(item);
     }
-    return null;
+    return groups;
+  }, [catalogData]);
+
+  const findItem = (itemId: string): SpareProduct | null => {
+    return catalogData?.find((i) => i.id === itemId) || null;
   };
 
   // Cart operations
@@ -50,47 +60,25 @@ export function StoreCatalogScreen() {
   const cartTotal = cartItems.reduce((s, i) => s + i.price * i.quantity, 0);
 
   // Handlers
-  const handleGeneratePO = () => {
-    const orderId = `PO-${Math.floor(1000 + Math.random() * 9000)}`;
-    const newOrder = {
-      id: orderId,
-      siteName: selectedSite!.customer_name,
-      ocNumber: selectedSite!.oc_number || "N/A",
-      date: new Date().toISOString().split("T")[0],
-      items: cartItems.map(i => ({ name: i.name, qty: i.quantity, price: i.price })),
-      total: cartTotal,
-      status: "PENDING" as const,
-      rejectReason: ""
-    };
+  const handleGeneratePO = async () => {
+    if (!selectedSiteId || cartItems.length === 0) return;
     
-    // Quick hack for prototyping without fully importing useOrders
-    const savedOrders = JSON.parse(localStorage.getItem("dms_orders") || "[]");
-    localStorage.setItem("dms_orders", JSON.stringify([newOrder, ...savedOrders]));
-
-    alert(`Order ${orderId} placed successfully!`);
-    setCart({});
-    setIsConfirmingOrder(false);
+    try {
+      await createOrderMutation.mutateAsync({
+        site_id: selectedSiteId,
+        items: cartItems.map(i => ({ product_id: i.id, quantity: i.quantity }))
+      });
+      alert(`Order placed successfully!`);
+      setCart({});
+      setIsConfirmingOrder(false);
+    } catch (e: any) {
+      alert(`Failed to place order: ${e.message}`);
+    }
   };
 
   const handleSaveProduct = (e: React.FormEvent) => {
     e.preventDefault();
-    const catName = productForm.category === "NEW" ? productForm.newCategory : productForm.category;
-    if (!catName) return;
-
-    const specsArray = productForm.specs.split(",").map(s => s.trim()).filter(Boolean);
-    const newProduct = {
-      id: editingProduct ? editingProduct.id : `prod-${Date.now()}`,
-      name: productForm.name,
-      price: Number(productForm.price),
-      specs: specsArray
-    };
-
-    if (editingProduct) {
-      updateProduct(editingProduct.oldCategory, catName, newProduct);
-    } else {
-      addProduct(catName, newProduct);
-    }
-
+    alert("Adding/Updating products should be done from the Sales module product catalog screen.");
     setIsProductModalOpen(false);
   };
 
@@ -125,7 +113,7 @@ export function StoreCatalogScreen() {
       <div className={styles.contentRow}>
         <div style={{ flex: 1 }}>
           <ProductCatalog 
-            catalog={catalog}
+            catalog={groupedCatalog as any}
             expandedCategory={expandedCategory}
             onToggleCategory={(cat) => setExpandedCategory(expandedCategory === cat ? "" : cat)}
             onAddToCart={handleAddToCart}
@@ -166,7 +154,7 @@ export function StoreCatalogScreen() {
       <ConfirmDeleteModal 
         isOpen={!!deleteData} 
         onCancel={() => setDeleteData(null)} 
-        onConfirm={() => { if(deleteData) removeProduct(deleteData.category, deleteData.id); }} 
+        onConfirm={() => { alert("Product deletion must be done from the Sales module."); setDeleteData(null); }} 
       />
     </div>
   );

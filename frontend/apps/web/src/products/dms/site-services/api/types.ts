@@ -1,77 +1,130 @@
 /**
  * Site Services module types.
- *
- * Types for service reports, water reports, scheduling,
- * complaints, and AMC contracts.
  */
+import type { Quotation } from "../../sales/api/types";
 
-// ---- Service Reports -------------------------------------------------------
+// ---- Site & Profile --------------------------------------------------------
 
-export type ReportStatus = "COMPLETED" | "PENDING" | "IN_PROGRESS";
-
-export interface ServiceReportEntry {
+export interface SiteServiceProfile {
   id: string;
-  report_code: string;
-  date: string;
-  technician: string;
-  zone: string;
-  remarks: string;
-  status: ReportStatus;
+  dc_number: string;
+  service_type: string;
+  service_interval_days: number | null;
+  last_serviced_date: string | null;
+  technician_user_id: string | null;
+  technician_display_name: string;
+  notes: string;
 }
 
-// ---- Water Reports ---------------------------------------------------------
-
-export interface WaterReportEntry {
-  id: string;
-  date: string;
-  ph: number;
-  tds: number;
-  hardness: number;
-  iron: number;
-  technician: string;
-  remarks: string;
+export interface SiteProfileUpdate {
+  dc_number?: string;
+  service_type?: string;
+  service_interval_days?: number | null;
+  last_serviced_date?: string | null;
+  technician_display_name?: string;
+  notes?: string;
 }
 
-// ---- Scheduling ------------------------------------------------------------
+export interface ConfirmedSite {
+  id: string;
+  enquiry_id: string;
+  customer_name: string;
+  site_name: string;
+  address: string;
+  pincode: string;
+  city: string;
+  state: string;
+  oc_number: string;
+  installation_date: string | null;
+  service_profile: SiteServiceProfile | null;
+  quotes: Quotation[];
+}
 
-export type ScheduleStatus = "SCHEDULED" | "COMPLETED" | "MISSED" | "CANCELLED";
+// ---- Schedule --------------------------------------------------------------
+
+export type ScheduleStatus = "SCHEDULED" | "IN_PROGRESS" | "COMPLETED" | "MISSED" | "CANCELLED";
 
 export interface ScheduleEntry {
   id: string;
-  date: string;
-  time: string;
-  type: string;
-  technician: string;
+  site_id: string;
+  amc_quote_id: string | null;
+  service_type: string;
+  scheduled_date: string;
+  scheduled_time: string | null;
+  technician_display_name: string;
   status: ScheduleStatus;
   notes: string;
 }
 
-// ---- Complaints ------------------------------------------------------------
+export interface ScheduleCreateUpdate {
+  site_id?: string;
+  amc_quote_id?: string | null;
+  service_type?: string;
+  scheduled_date?: string;
+  scheduled_time?: string | null;
+  technician_display_name?: string;
+  status?: ScheduleStatus;
+  notes?: string;
+}
 
-export type ComplaintPriority = "Low" | "Medium" | "High" | "Critical";
-export type ComplaintStatus = "OPEN" | "RESOLVED";
+// ---- Service Report --------------------------------------------------------
+
+export type ReportStatus = "PENDING" | "IN_PROGRESS" | "COMPLETED" | "AWAITING_CLIENT_SIGN";
+
+export interface ReportAttachment {
+  id: string;
+  file: string;
+  file_name: string;
+  file_type: string;
+  file_size: number;
+}
+
+export interface ServiceReportEntry {
+  id: string;
+  site_id: string;
+  schedule_id: string | null;
+  report_code: string;
+  service_date: string;
+  zone: string;
+  technician_display_name: string;
+  remarks: string;
+  service_person_name: string;
+  service_person_signature: string;
+  client_name: string;
+  client_signature: string;
+  status: ReportStatus;
+  attachments: ReportAttachment[];
+}
+
+// ---- Water Report ----------------------------------------------------------
+
+export interface WaterReportEntry {
+  id: string;
+  site_id: string;
+  date_tested: string;
+  ph: number | null;
+  tds: number | null;
+  hardness: number | null;
+  iron: number | null;
+  technician_display_name: string;
+  remarks: string;
+  attachment: string;
+}
+
+// ---- Complaint -------------------------------------------------------------
+
+export type ComplaintPriority = "LOW" | "MEDIUM" | "HIGH" | "CRITICAL";
+export type ComplaintStatus = "OPEN" | "IN_PROGRESS" | "RESOLVED" | "CLOSED";
 
 export interface ComplaintEntry {
   id: string;
-  date: string;
-  issue: string;
+  site_id: string;
+  description: string;
   priority: ComplaintPriority;
   status: ComplaintStatus;
-  servicePersonName: string;
-  siteId?: string;
-}
-
-// ---- AMC -------------------------------------------------------------------
-
-export type AMCStatus = "ACTIVE" | "EXPIRED" | "PENDING_RENEWAL";
-
-export interface AMCContract {
-  id: string;
-  contractNumber: string;
-  startDate: string;
-  endDate: string;
-  status: AMCStatus;
-  type: string;
-  visitFrequency: string;
-  amount: number;
+  assigned_service_person_name: string;
+  attachment: string;
+  resolved_at: string | null;
+  created_at: string;
+  complainant_user_id: string | null;
 }

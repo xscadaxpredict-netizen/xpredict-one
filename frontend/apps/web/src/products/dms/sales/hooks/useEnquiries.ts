@@ -10,6 +10,7 @@ import { useOrgMutation, useOrgQuery } from "@xpredict/api-client";
 import {
   addFollowup,
   confirmOrder,
+  confirmAmcQuote,
   createEnquiry,
   deleteQuotation,
   fetchBanks,
@@ -91,6 +92,16 @@ export function useConfirmOrder() {
       orgSlug,
       variables: { enquiryId: string; quoteId: string },
     ) => confirmOrder(orgSlug, variables.enquiryId, variables.quoteId),
+    invalidates: [salesKeys.enquiries()],
+  });
+}
+
+export function useConfirmAmcQuote() {
+  return useOrgMutation({
+    mutationFn: (
+      orgSlug,
+      variables: { enquiryId: string; quoteId: string },
+    ) => confirmAmcQuote(orgSlug, variables.enquiryId, variables.quoteId),
     invalidates: [salesKeys.enquiries()],
   });
 }

@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { PlusIcon } from "lucide-react";
-import { useEnquiries } from "../../sales/hooks/useEnquiries";
+import { useSites, useUpdateSiteProfile, useCreateSchedule } from "../hooks/useSiteServices";
 import { ScheduleTable } from "../components/ScheduleTable";
 import { ScheduleModal } from "../components/ScheduleModal";
 import styles from "./SchedulingScreen.module.css";
@@ -16,7 +16,10 @@ const INITIAL_SCHEDULE_FORM = {
 };
 
 export function SchedulingScreen() {
-  const { data: enquiries, isPending, isError, error } = useEnquiries();
+  const { data: sites, isPending, isError, error } = useSites();
+  const updateProfileMutation = useUpdateSiteProfile();
+  const createScheduleMutation = useCreateSchedule();
+  
   const [selectedSiteId, setSelectedSiteId] = useState("");
   const [isScheduleModalOpen, setIsScheduleModalOpen] = useState(false);
   const [scheduleForm, setScheduleForm] = useState(INITIAL_SCHEDULE_FORM);
@@ -25,20 +28,38 @@ export function SchedulingScreen() {
   if (isError) return <div style={{ padding: "var(--space-4)" }}>Error: {(error as Error).message}</div>;
 
   // Filter for confirmed sites
-  const confirmedSites = (enquiries || []).filter((e) => e.status === "CONFIRMED");
+  const confirmedSites = sites || [];
   const displaySites = selectedSiteId
     ? confirmedSites.filter((s) => s.id === selectedSiteId)
     : confirmedSites;
 
   const updateSiteDetails = (siteId: string, field: string, value: string) => {
-    // In a real app, this would dispatch a mutation (e.g. useUpdateSiteDetails().mutate(...))
-    console.log(`Updating ${field} to ${value} for site ${siteId}`);
+    let payload = {};
+    if (field === "dc_number") payload = { dc_number: value };
+    else if (field === "service_type") payload = { service_type: value };
+    else if (field === "service_interval_days") payload = { service_interval_days: parseInt(value, 10) || null };
+    else if (field === "last_serviced_date") payload = { last_serviced_date: value };
+    else if (field === "technician_display_name") payload = { technician_display_name: value };
+
+    updateProfileMutation.mutate({ siteId, payload });
   };
 
-  const handleScheduleSubmit = (e: React.FormEvent) => {
+  const handleScheduleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setIsScheduleModalOpen(false);
-    alert("Schedule saved!");
+    try {
+      await createScheduleMutation.mutateAsync({
+        site_id: scheduleForm.siteId,
+        service_type: scheduleForm.serviceType,
+        scheduled_date: scheduleForm.scheduledDate,
+        technician_display_name: scheduleForm.technician,
+        notes: scheduleForm.notes,
+        status: "SCHEDULED"
+      });
+      setIsScheduleModalOpen(false);
+      alert("Schedule saved!");
+    } catch (e: any) {
+      alert(`Failed to save schedule: ${e.message}`);
+    }
   };
 
   return (
@@ -72,7 +93,8 @@ export function SchedulingScreen() {
       <ScheduleModal 
         isOpen={isScheduleModalOpen}
         form={scheduleForm}
-        confirmedSites={confirmedSites}
+        confirmedSites={confirmedSites as any} // we might need to adjust types in components later
+
         onFormChange={(updates) => setScheduleForm(prev => ({ ...prev, ...updates }))}
         onSubmit={handleScheduleSubmit}
         onClose={() => setIsScheduleModalOpen(false)}
