@@ -19,10 +19,15 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework_simplejwt.exceptions import TokenError
 
-from core.accounts.api.serializers import LoginSerializer, SignedInUserSerializer
+from core.accounts.api.serializers import (
+    LoginSerializer,
+    MeSerializer,
+    SignedInUserSerializer,
+)
 from core.accounts.authentication import enforce_csrf
 from core.accounts.cookies import clear_auth_cookies, set_auth_cookies
 from core.accounts.services import issue_tokens, revoke_refresh_token, rotate_tokens
+from core.organizations.selectors import me as build_me
 from shared.exceptions import AuthenticationError
 
 
@@ -95,17 +100,44 @@ class SessionView(APIView):
     the token in an httpOnly cookie there is nothing in JavaScript to inspect,
     so the only honest answer is whether a request succeeds.
 
-    This is not `/me`. `/me` carries memberships, app access and permissions,
-    and needs control-plane models that do not exist yet. This endpoint needs
-    only `User`, so the frontend has something to ask in the meantime, and the
-    auth tests have a real protected view to prove themselves against rather
-    than one invented inside the test file.
+    This is not `/me`, and both are kept. `/me` below answers the same question
+    and much more, so this one looks redundant --- it is not. It touches a
+    single table, which makes it the right thing for an interceptor to call on
+    a 401 to find out whether the session is gone or the request was simply
+    refused, and it is what the auth tests prove themselves against without
+    needing an organization to exist.
     """
 
     permission_classes: ClassVar[list] = [IsAuthenticated]
 
     def get(self, request: Request) -> Response:
         return Response(SignedInUserSerializer(request.user).data)
+
+
+class MeView(APIView):
+    """
+    Who is signed in, where they belong, and what they may open.
+
+    THE ENDPOINT THAT LETS THE FRONTEND DELETE ITS FAKES. Everything the shell
+    needs to render itself comes from here in one request: the launcher's tiles
+    (C15, C16), the organization switcher (C13), the sidebar's modules, and the
+    permission strings `useAccess()` mirrors.
+
+    NO ORGANIZATION IN THE PATH, deliberately, while almost everything else
+    will be under `/api/v1/orgs/<slug>/`. This is the request that TELLS the
+    browser which slugs exist --- it cannot require one it does not yet know.
+    It is also why the token carries no organization (C3).
+
+    A MIRROR, NOT A SOURCE. The permissions returned here are what the frontend
+    hides buttons with. Every one of them is enforced again server-side on the
+    request that acts (C19); nothing is authorised because it appeared in this
+    payload.
+    """
+
+    permission_classes: ClassVar[list] = [IsAuthenticated]
+
+    def get(self, request: Request) -> Response:
+        return Response(MeSerializer(build_me(request.user)).data)
 
 
 class RefreshView(APIView):
