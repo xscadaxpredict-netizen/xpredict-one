@@ -15,6 +15,12 @@ urlpatterns = [
     # login either. It is also deliberately outside AUTH_COOKIE_REFRESH_PATH:
     # the refresh cookie is scoped to /api/v1/auth/ and must not be sent here.
     path("api/v1/me/", MeView.as_view(), name="me"),
+    # Everything organization-scoped. The slug is read by
+    # config.middleware.TenantMiddleware before any view runs, which binds that
+    # organization's database for the request and refuses the request if the
+    # slug is unknown or the organization is suspended. Views therefore read
+    # `request.organization` rather than taking a slug argument.
+    path("api/v1/orgs/<slug:org_slug>/", include("core.organizations.api.urls")),
     # No schema or docs routes. drf-spectacular was removed on 2026-10-02:
     # it had been in the scaffold since Phase 1 and the owner had never been
     # asked for it. Plain DRF until after the first public release.

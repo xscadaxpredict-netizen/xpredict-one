@@ -83,11 +83,39 @@ class Organization(BaseModel):
         max_length=20, choices=OrganizationStatus.choices, default=OrganizationStatus.ACTIVE
     )
 
+    provisioned_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        editable=False,
+        help_text="When this organization's database was created and migrated.",
+    )
+    """
+    NULL UNTIL THE TENANT DATABASE EXISTS, and a separate column from `status`
+    on purpose.
+
+    `status` answers "is this customer active or suspended", which is a
+    commercial question. This answers "is their database there yet", which is a
+    mechanical one. They are independent --- a suspended organization still has
+    a database, and a brand-new one is active while its database is seconds
+    from existing --- so one column could not carry both without a state nobody
+    could name.
+
+    It is what `is_ready` reports, and it exists because of C1: signup commits
+    and a Celery task then creates the database, so for a few seconds the
+    account exists and its workspace does not. C14 gave that its own screen
+    rather than sending somebody into an app that is not there.
+    """
+
     class Meta:
         ordering = ["name"]
 
     def __str__(self) -> str:
         return self.name
+
+    @property
+    def is_ready(self) -> bool:
+        """Whether this organization's database has been provisioned."""
+        return self.provisioned_at is not None
 
 
 class ActivationCode(BaseModel):

@@ -202,14 +202,26 @@ class SignupView(APIView):
 
         access, refresh = issue_tokens(result.user)
 
+        # READ IT, DO NOT ASSUME IT. This was hardcoded `False` on the grounds
+        # that provisioning always happens later -- which stopped being true
+        # the moment provisioning existed. `sign_up()` schedules it on
+        # `transaction.on_commit`, so by the time we get here the transaction
+        # HAS committed and the callback has already fired. In development
+        # that callback runs the task inline (CELERY_TASK_ALWAYS_EAGER), so
+        # the database is already there and `False` would be a lie the
+        # provisioning screen is built to believe -- it would poll for a
+        # workspace that existed before it asked.
+        #
+        # In production the callback hands the job to a worker and returns, so
+        # this reads False and the screen does its job. One expression, right
+        # in both, instead of a constant that is right in one.
+        result.organization.refresh_from_db(fields=["provisioned_at"])
+
         response = Response(
             SignupResultSerializer(
                 {
                     "org_slug": result.organization.slug,
-                    # False because it is: the tenant database is created by a
-                    # task that does not exist yet. Saying True here would be
-                    # a lie the provisioning screen is built to believe.
-                    "is_ready": False,
+                    "is_ready": result.organization.is_ready,
                 }
             ).data,
             status=status.HTTP_201_CREATED,
