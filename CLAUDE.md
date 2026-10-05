@@ -70,7 +70,7 @@ roles, permissions or models until it is explicitly picked up.
 each dealer's users are managed at the **dealer** level. An org admin reaching into a
 dealer's users is an audited override, not the normal path.
 
-Full rationale: `context/02-DECISIONS.md` C1–C44 — all `[Decided]`. Don't reopen them.
+Full rationale: `context/02-DECISIONS.md` C1–C47 — all `[Decided]`. Don't reopen them.
 
 ## Status
 
@@ -87,7 +87,7 @@ module memory and resets on every full page load** — that is the fake, not a b
 settings, the fail-closed `TenantRouter`, `shared/base_models.py`, Celery wiring and 10
 apps with unique labels. **Plain DRF** — drf-spectacular was removed (C43), so there is
 no schema endpoint and no generated client. **`migrate` has run** and `xpredict_control`
-holds **22 tables**.
+holds **23 tables**, and each organisation gets its own database beside it.
 
 Set the database up once, as a MySQL admin: `mysql -u root -p < backend/scripts/create_dev_db.sql`.
 
@@ -119,18 +119,47 @@ partial indexes**; and `admin` can never be granted on `AppAccess` or sold on
 **Authentication is built.** Login, refresh, logout and `GET /api/v1/auth/session/`,
 with the token in an **httpOnly cookie** the frontend never reads (C12). Send
 `X-CSRFToken` on anything that changes state, and `credentials: "include"` on every
-request. **`/me` does not exist yet** — the models are in place, so what it now waits on
-is the tenant resolution middleware and `resolve_allowed_units()`. It is the endpoint that
-lets the frontend drop its fakes.
+request. **`GET /api/v1/me/` is built** — user, memberships, and per organisation the
+standing, unit, app access, modules and permissions. It is control plane only, so it
+needs no tenant database.
 
-**Blocked on:** nothing. Redis is still missing, which leaves only the Celery broker
-round-trip unverified. **Q17 is answered** — and its premise was wrong in a useful
-way. simplejwt loads the user row on every request and refuses an inactive one, so
-**disabling somebody takes effect on their next request**, not after a token expires.
-The 15-minute access lifetime is how long a STOLEN token survives a logout.
+**THE FRONTEND RUNS ON THIS, NOT ON FAKES.** `USE_FAKE_AUTH` and `USE_FAKE_SIGNUP`
+are off: signing up, signing in, the launcher and the sidebar all read Django.
+Administration keeps `USE_FAKE_USERS`, `USE_FAKE_DEALERS` and `USE_FAKE_ROLES`,
+because those endpoints do not exist yet — they are the next piece of work.
 
-**Gates, all green:** `npm run test -w web` (75), `npm run typecheck -w web`,
-`npm run lint`, and in `backend/`: `pytest` (81), `ruff check .`, and
+**`X-CSRFToken` IS SENT BY `csrfHeaders()` in `packages/api-client`**, used by all
+five `request()` helpers. The rule above was in this file for four sessions and
+implemented by none of them, which made logout answer 403 and leave people signed
+in. The `csrftoken` cookie is deliberately readable by JavaScript while `xp_access`
+is httpOnly — that asymmetry is the mechanism, not an oversight.
+
+**Tenancy is live.** Signup fires a Celery task on `transaction.on_commit` that
+creates and migrates the organisation's own database (C1), and
+`config/middleware.py` binds it per request from the URL slug, resetting the
+contextvars in a `finally`. **Dev runs Celery eagerly and caches in memory**,
+because Redis is still not installed.
+
+**EVERY ENDPOINT UNDER `/api/v1/orgs/<slug>/` MUST CALL
+`require_organization_member()` FIRST.** The middleware binds the database but
+cannot check the caller — DRF authenticates inside the view — and it deliberately
+does not refuse an unknown slug either, because that leaked which organisations
+exist. An endpoint that forgets this is readable by any signed-in stranger. Making
+it structural is **Q32**.
+
+**Blocked on:** nothing. **Redis is still missing**, which leaves the Celery broker
+round-trip unverified — and now also means the throttle counter and cache are
+per-process in development. **An unreachable cache is not a missing rate limit, it
+is a 500:** DRF keeps throttle history there, which is how nine sessions of
+`CACHES` pointing at an uninstalled Redis finally surfaced.
+
+**Q17 is answered** — and its premise was wrong in a useful way. simplejwt loads the
+user row on every request and refuses an inactive one, so **disabling somebody takes
+effect on their next request**, not after a token expires. The 15-minute access
+lifetime is how long a STOLEN token survives a logout.
+
+**Gates, all green:** `npm run test -w web` (85), `npm run typecheck -w web`,
+`npm run lint`, and in `backend/`: `pytest` (172), `ruff check .`, and
 `.venv/Scripts/lint-imports.exe` — **not** `python -m importlinter.cli`, which exits 0
 without running. Run them before pushing.
 
