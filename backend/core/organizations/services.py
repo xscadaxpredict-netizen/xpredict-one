@@ -40,6 +40,7 @@ from core.organizations.models import (
     MembershipStatus,
     Organization,
 )
+from core.organizations.tasks import schedule_provisioning
 from core.permissions.models import AppAccess, AppCode, Role
 
 # WHAT A NEW ORGANIZATION IS SUBSCRIBED TO. DMS only, because DMS is the
@@ -155,6 +156,12 @@ def sign_up(
     code.spent_at = timezone.now()
     code.organization = organization
     code.save(update_fields=["spent_at", "organization", "updated_at"])
+
+    # AFTER COMMIT, never inside this transaction (C1, C14 step three).
+    # `CREATE DATABASE` is DDL that MySQL cannot roll back, so a task that ran
+    # inline would leave an orphan database behind if anything below it failed
+    # -- and a worker could pick the job up before this row was even visible.
+    schedule_provisioning(organization)
 
     return SignupResult(user=user, organization=organization, membership=membership)
 

@@ -39,7 +39,11 @@ ignore = [
 ]
 
 [tool.ruff.lint.per-file-ignores]
-"*/tests/*" = ["S105", "S106"]     # hardcoded test credentials are fine
+# The leading ** matters. This read "*/tests/*", which requires a directory
+# before "tests" -- so it covered core/<app>/tests/ and silently missed the
+# project-level tests/ directory entirely. Nobody noticed, because nothing in
+# there had used a credential until the tenant middleware tests did.
+"**/tests/*" = ["S105", "S106"]    # hardcoded test credentials are fine
 "config/settings/*" = ["F403", "F405"]  # star imports are the settings idiom
 # RUF012 wants ClassVar on mutable class attributes. Django and DRF `Meta`
 # inner classes are pure declarative config (fields, ordering, indexes), and

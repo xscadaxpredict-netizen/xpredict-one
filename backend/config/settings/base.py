@@ -109,9 +109,15 @@ MIDDLEWARE = [
     "django.contrib.auth.middleware.AuthenticationMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
-    # Tenant resolution middleware is added in Phase 2. It must run after
-    # authentication (it needs the user to verify membership) and must reset
-    # its contextvars in a finally block.
+    # LAST, and after authentication. It resolves the organization from the URL
+    # path (C3), binds that tenant's database for the request and resets the
+    # contextvars in a finally block.
+    #
+    # It does NOT check membership, and cannot: DRF authenticates inside the
+    # view, so request.user is still anonymous here. It binds the DATABASE and
+    # each org-scoped endpoint checks WHO -- see the docstring, and the Phase 3
+    # authorization chain that makes that structural rather than per endpoint.
+    "config.middleware.TenantMiddleware",
 ]
 
 ROOT_URLCONF = "config.urls"

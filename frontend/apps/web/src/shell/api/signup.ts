@@ -9,7 +9,7 @@
  * a moment to exist.
  */
 
-import { ApiError, type Problem } from "@xpredict/api-client";
+import { ApiError, csrfHeaders, type Problem } from "@xpredict/api-client";
 
 import { fakeSignIn } from "./auth";
 
@@ -50,7 +50,7 @@ export function toSlug(name: string): string {
  *   XPRD-USED-0001  already spent
  *   anything else   invalid
  * ------------------------------------------------------------------------ */
-const USE_FAKE_SIGNUP = true;
+const USE_FAKE_SIGNUP = false;
 
 function wait(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -71,7 +71,14 @@ async function request<T>(url: string, init?: RequestInit): Promise<T> {
   const response = await fetch(url, {
     ...init,
     credentials: "include",
-    headers: { "Content-Type": "application/json", ...init?.headers },
+    // X-CSRFToken on anything that changes state. Django refuses an unsafe
+    // request without it -- which is what made logout answer 403 and leave
+    // somebody signed in, the moment the fake stopped intercepting it.
+    headers: {
+      "Content-Type": "application/json",
+      ...csrfHeaders(init?.method),
+      ...init?.headers,
+    },
   });
 
   if (!response.ok) {

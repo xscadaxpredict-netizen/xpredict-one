@@ -52,6 +52,30 @@ EMAIL_BACKEND = "django.core.mail.backends.console.EmailBackend"
 # WHAT THIS COSTS: LocMemCache is per process, so the limit is per worker and
 # restarting the server forgets every tally. Both are fine for development and
 # neither is fine in production, which keeps the Redis cache in base.py.
+# RUN CELERY TASKS INLINE, because Redis is not installed.
+#
+# Tenant provisioning is a Celery task fired on transaction.on_commit after
+# signup, and without a broker it would be queued into nothing: signup would
+# answer 201 and the organization would never get a database. Eager means the
+# task function runs in-process, synchronously, the moment it is "sent".
+#
+# WHAT THIS DOES NOT PROVE, and it is the last Phase 1 gap: the broker
+# round-trip. The task CODE is exercised fully, and production is unchanged
+# -- it reads CELERY_TASK_ALWAYS_EAGER from the environment and defaults to
+# False -- but nothing here shows that a real worker ever receives a message.
+# Installing Redis is what closes that.
+#
+# It also makes provisioning SYNCHRONOUS in development, so signup takes as
+# long as CREATE DATABASE plus migrate. is_ready still comes back False from
+# signup, because the task runs on_commit -- after the response body is built
+# -- so the provisioning screen still appears and then immediately succeeds.
+CELERY_TASK_ALWAYS_EAGER = True
+
+# Eager tasks raise in-process rather than being retried by a worker. Keeping
+# that visible: a provisioning failure during development should stop the
+# request loudly, not be swallowed into a result nobody reads.
+CELERY_TASK_EAGER_PROPAGATES = True
+
 CACHES = {
     "default": {
         "BACKEND": "django.core.cache.backends.locmem.LocMemCache",
