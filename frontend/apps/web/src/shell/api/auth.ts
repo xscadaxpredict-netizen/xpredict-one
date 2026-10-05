@@ -11,7 +11,7 @@
  * cookie; only the server that set it can clear it.
  */
 
-import { ApiError, type Problem } from "@xpredict/api-client";
+import { ApiError, csrfHeaders, type Problem } from "@xpredict/api-client";
 
 /** The apps the suite can offer. Administration is one of them, not a settings page. */
 export type AppKey = "dms" | "crm" | "ecommerce" | "admin";
@@ -145,7 +145,7 @@ export interface Credentials {
  * session should not outlive the browser tab and quietly convince somebody
  * the backend is working.
  * ------------------------------------------------------------------------ */
-const USE_FAKE_AUTH = true;
+const USE_FAKE_AUTH = false;
 
 const FAKE_SESSION_KEY = "xpredict-fake-session";
 
@@ -367,7 +367,14 @@ async function request<T>(url: string, init?: RequestInit): Promise<T> {
     ...init,
     // Required for httpOnly cookie auth. Omit it and the cookie is not sent.
     credentials: "include",
-    headers: { "Content-Type": "application/json", ...init?.headers },
+    // X-CSRFToken on anything that changes state. Django refuses an unsafe
+    // request without it -- which is what made logout answer 403 and leave
+    // somebody signed in, the moment the fake stopped intercepting it.
+    headers: {
+      "Content-Type": "application/json",
+      ...csrfHeaders(init?.method),
+      ...init?.headers,
+    },
   });
 
   if (!response.ok) {

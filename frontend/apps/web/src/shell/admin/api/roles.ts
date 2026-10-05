@@ -28,7 +28,7 @@
  * needs the list.
  */
 
-import { ApiError, type Problem } from "@xpredict/api-client";
+import { ApiError, csrfHeaders, type Problem } from "@xpredict/api-client";
 
 /**
  * Whether a role scopes its holder to one dealership or to the whole
@@ -251,7 +251,14 @@ async function request<T>(url: string, init?: RequestInit): Promise<T> {
     // Required for httpOnly cookie auth (C12). Omit it and the cookie is not
     // sent, and every call comes back 401.
     credentials: "include",
-    headers: { "Content-Type": "application/json", ...init?.headers },
+    // X-CSRFToken on anything that changes state. Django refuses an unsafe
+    // request without it -- which is what made logout answer 403 and leave
+    // somebody signed in, the moment the fake stopped intercepting it.
+    headers: {
+      "Content-Type": "application/json",
+      ...csrfHeaders(init?.method),
+      ...init?.headers,
+    },
   });
 
   if (!response.ok) {
