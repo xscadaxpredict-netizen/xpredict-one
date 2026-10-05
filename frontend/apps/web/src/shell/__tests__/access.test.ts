@@ -36,7 +36,7 @@ describe("accessFor", () => {
   it("refuses a permission the server did not send", () => {
     const access = accessFor(salespersonMembership(), "dms");
 
-    expect(access.can("dms.enquiry.delete")).toBe(false);
+    expect(access.can("dms.enquiry.close")).toBe(false);
   });
 
   /*
@@ -48,7 +48,7 @@ describe("accessFor", () => {
     const access = accessFor(salespersonMembership(), "admin");
 
     expect(access.hasModule("users")).toBe(false);
-    expect(access.can("org.person.invite")).toBe(false);
+    expect(access.can("admin.person.invite")).toBe(false);
     expect(access.permissions).toEqual([]);
   });
 

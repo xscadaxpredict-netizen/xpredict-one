@@ -76,9 +76,21 @@ export interface Membership {
   org_name: string;
   org_slug: string;
   /**
-   * Standing in THIS organisation. Read it together with `unit_id` below:
-   * an admin with no unit administers the organisation, an admin with one
-   * administers that dealer and nothing else (C3).
+   * Standing in THIS organisation, and NOTHING ELSE (C40).
+   *
+   * READING THIS ALONE WILL MISLEAD YOU. `admin` always means the whole
+   * organisation and never a single dealer: a membership above `member` must
+   * have `unit_id` null, and the database refuses anything else. A DEALER
+   * ADMIN IS `member` with a `unit_id`, made an admin by holding the DMS
+   * System administrator role — so what somebody may DO is in
+   * `apps[].permissions`, never here.
+   *
+   * This doc comment said the opposite until 2026-10-04, describing C31's
+   * model where `admin` plus a dealership meant a dealer admin. C40 removed
+   * that: the two axes never touch, and nothing writes standing when an app
+   * role changes. The cost was accepted knowingly — a list showing standing
+   * alone displays a dealer admin as "Member", which is a bug the owner found
+   * and the reason lists must show what people do.
    */
   role: "owner" | "admin" | "member";
 
@@ -247,7 +259,23 @@ const FAKE_ME: Me = {
            * frontend release, nothing to delete and re-add.
            */
           modules: ["users", "dealers", "roles"],
-          permissions: ["org.dealer.create", "org.person.invite", "org.role.assign"],
+          /*
+           * A SUBSET of the 11 `admin.*` permissions the real `/me` sends an
+           * owner — but every string is a real one from the catalogue.
+           *
+           * These read `org.dealer.create`, `org.person.invite` and
+           * `org.role.assign` until 2026-10-04, and none of the three exists.
+           * C42 put the scope OUT of permission names — there is one
+           * `admin.person.invite`, narrowed by `Membership.unit_id` — and C42
+           * claimed only one frontend string needed changing. It was four.
+           *
+           * `org.role.assign` was the worst of them: it is not a rename but a
+           * capability nobody has. The catalogue holds `admin.role.view` and
+           * nothing else, because C28 made the Roles screen read-only. A fake
+           * promising it is the same shape of bug as the role summary that
+           * advertised a password capability the platform forbids.
+           */
+          permissions: ["admin.person.invite", "admin.dealer.create", "admin.role.view"],
         },
       ],
     },
@@ -268,7 +296,18 @@ const FAKE_ME: Me = {
       org_id: "1a2b3c4d-0000-0000-0000-000000000002",
       org_name: "Northway Auto Group",
       org_slug: "northway-auto",
-      role: "admin",
+      /*
+       * `member`, NOT `admin` (C40). This said `admin` with a dealership
+       * attached, which was right under C31 and is now a row the database
+       * refuses: `membership_org_standing_has_no_unit` requires `unit_id IS
+       * NULL` for anything above `member`.
+       *
+       * So this fake described an impossible account — and the fakes are what
+       * the backend gets built from. PR #12 fixed the dialogs, the Users list
+       * and the table when C40 landed; this payload and the test factory were
+       * the two places it missed.
+       */
+      role: "member",
       unit_id: "unit-2",
       unit_name: "Bangalore — Whitefield",
       apps: [
@@ -294,7 +333,27 @@ const FAKE_ME: Me = {
           accessible: true,
           summary: "Your dealer’s people",
           modules: ["users"],
-          permissions: ["unit.person.invite"],
+          /*
+           * THE SAME SIX `admin.person.*` PERMISSIONS THE OWNER HOLDS, and
+           * that is the point of C42 rather than an oversight. One permission
+           * set, narrowed by `Membership.unit_id`: a dealer admin and an org
+           * admin both hold `admin.person.invite`, and what differs is whose
+           * people they reach. Spelling the scope into the name would make two
+           * things that have to agree.
+           *
+           * They get `users` and not `dealers` or `roles` because those come
+           * from standing, which they do not have.
+           *
+           * This read `unit.person.invite` — the one string C42 did flag.
+           */
+          permissions: [
+            "admin.person.view",
+            "admin.person.invite",
+            "admin.person.update",
+            "admin.person.remove",
+            "admin.person.set_status",
+            "admin.person.resend_invitation",
+          ],
         },
       ],
     },
@@ -338,7 +397,7 @@ export async function login(credentials: Credentials): Promise<void> {
 
   // Returns no body worth reading: the value of this call is the Set-Cookie
   // header, which the browser stores and we never see.
-  await request<void>("/api/v1/auth/login", {
+  await request<void>("/api/v1/auth/login/", {
     method: "POST",
     body: JSON.stringify(credentials),
   });
@@ -350,7 +409,7 @@ export async function fetchMe(): Promise<Me> {
     if (!hasFakeSession()) throw fakeUnauthenticated();
     return FAKE_ME;
   }
-  return request<Me>("/api/v1/me");
+  return request<Me>("/api/v1/me/");
 }
 
 /**
@@ -369,5 +428,5 @@ export async function logout(): Promise<void> {
     setFakeSession(false);
     return;
   }
-  await request<void>("/api/v1/auth/logout", { method: "POST" });
+  await request<void>("/api/v1/auth/logout/", { method: "POST" });
 }

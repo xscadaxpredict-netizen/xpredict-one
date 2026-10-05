@@ -61,13 +61,15 @@ class Organization(BaseModel):
     `db_name` from the slug must check the length on write rather than discover
     it at provisioning time.
 
-    `db_host` and `db_port` are **Q28, still open.** They let a tenant move to a
-    different MySQL server by changing a row rather than shipping code, which
-    matters the first time one organization outgrows the shared instance. Today
-    every tenant sits beside the control database, so both columns hold the same
-    value on every row --- and duplicated constant data is how rows start
-    disagreeing with the settings file nobody updated. Drop them for `db_name`
-    alone if that trade is not wanted; adding them back later is one migration.
+    `db_host` and `db_port` STAY, and Q28 is answered (C46, 2026-10-04). The tenant
+    middleware builds each connection from THIS ROW, never from settings, so one
+    organization can be moved to its own MySQL server by editing a row --- no code
+    change, no redeploy, which is most of the point of a database per tenant (C1).
+
+    The duplication objection was real: today every row holds the same host and port.
+    What answers it is that settings carry no tenant host at all, so this row is the
+    only source and there is no second value to drift from. Provisioning writes both
+    columns once, from settings, at creation.
     """
 
     name = models.CharField(max_length=200)
@@ -87,6 +89,67 @@ class Organization(BaseModel):
     def __str__(self) -> str:
         return self.name
 
+
+class ActivationCode(BaseModel):
+    """
+    A single-use licence to found one organization (C14).
+
+    ONE CODE CREATES ONE ORGANIZATION, THEN IT IS SPENT. Reusable codes were
+    rejected in C14 on blast radius: a leaked single-use code costs one bogus
+    organization, a leaked reusable one costs unlimited organizations on your
+    infrastructure until somebody notices. `spend_activation_code()` claims a row
+    under `select_for_update`, so two simultaneous signups cannot both win --- the
+    unique index on `code` is not enough on its own, because both would be reading
+    an unspent row before either wrote.
+
+    THE CODE IS STORED RAW, matching `Invitation.token` directly above the same way
+    for the same reason: both are bearer secrets with an expiry, and having one of
+    the two hashed and the other not is how somebody later "fixes" the wrong one.
+    It does mean a read of this table yields every unspent code. Worth revisiting
+    for both tables together, never for one.
+
+    `label` is the "where are they recorded?" half of **Q20** --- who the code was
+    issued to, so support can answer "is ours used yet" without a guessing game.
+    The REST of Q20 is still open and deliberately not decided here: code length and
+    entropy, whether an unused code should expire, and the rate limiting on the
+    public validation endpoint, which is the part that actually matters because that
+    endpoint is unauthenticated and checks a secret. `expires_at` is nullable so
+    that NULL means "no expiry" and a policy can be applied later without a
+    migration.
+    """
+
+    code = models.CharField(max_length=64, unique=True)
+    label = models.CharField(max_length=200, blank=True)
+
+    expires_at = models.DateTimeField(null=True, blank=True)
+    spent_at = models.DateTimeField(null=True, blank=True)
+
+    organization = models.OneToOneField(
+        Organization,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="activation_code",
+        help_text="The organization this code founded. Set when the code is spent.",
+    )
+
+    class Meta:
+        ordering = ["-created_at"]
+        constraints = [
+            # Attached to an organization implies spent. Only this direction:
+            # SET_NULL above means a deleted organization leaves a spent code with
+            # no organization, which is honest history, not a broken row.
+            models.CheckConstraint(
+                condition=(
+                    models.Q(organization__isnull=True) | models.Q(spent_at__isnull=False)
+                ),
+                name="activationcode_attached_implies_spent",
+            ),
+        ]
+
+    def __str__(self) -> str:
+        state = "spent" if self.spent_at else "unspent"
+        return f"{self.label or self.pk} ({state})"
 
 class BusinessUnit(BaseModel):
     """

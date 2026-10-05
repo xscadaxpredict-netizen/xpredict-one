@@ -38,3 +38,23 @@ CORS_ALLOW_CREDENTIALS = True
 CSRF_TRUSTED_ORIGINS = FRONTEND_ORIGINS
 
 EMAIL_BACKEND = "django.core.mail.backends.console.EmailBackend"
+
+
+# IN MEMORY, BECAUSE REDIS IS NOT INSTALLED AND THE CACHE IS NOW LOAD-BEARING.
+#
+# base.py points CACHES at Redis and has since Phase 1. Nothing read the cache
+# until the signup endpoints were throttled, so an unreachable Redis cost
+# nothing and nobody knew --- the same shape as BLACKLIST_AFTER_ROTATION without
+# the app, or CSRF_TRUSTED_ORIGINS unset. The difference is the failure mode:
+# DRF stores throttle history in the cache, so a dead cache does not degrade to
+# "unlimited", it raises ConnectionError and the endpoint answers 500.
+#
+# WHAT THIS COSTS: LocMemCache is per process, so the limit is per worker and
+# restarting the server forgets every tally. Both are fine for development and
+# neither is fine in production, which keeps the Redis cache in base.py.
+CACHES = {
+    "default": {
+        "BACKEND": "django.core.cache.backends.locmem.LocMemCache",
+        "LOCATION": "xpredict-dev",
+    }
+}

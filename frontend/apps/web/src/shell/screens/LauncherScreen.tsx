@@ -72,11 +72,29 @@ export function LauncherScreen() {
 /**
  * Plain words for the role, because "admin" alone does not say admin of what —
  * and in a two-level system (C3) that is the whole question.
+ *
+ * IT CANNOT READ STANDING ALONE, which is what it used to do (C40). Standing
+ * `admin` now always means the whole organisation: a membership above `member`
+ * must have `unit_id` null and the database refuses anything else, so the old
+ * `admin` + unit_name branch described a row that cannot exist.
+ *
+ * A dealer admin is `member` with a dealership, made an admin by holding the
+ * DMS System administrator role. Read by standing alone they came out as "a
+ * member of Bangalore — Whitefield", which is the exact "shows them as Member"
+ * bug the owner reported in session 5, surfacing here because PR #12 fixed the
+ * Users list and the dialogs and nothing told it this file said it too.
+ *
+ * So administration is read where it actually lives: the Administration app
+ * being accessible, which is true whether it came from standing or a role.
  */
 function describeRole(membership: Membership): string {
   if (membership.role === "owner") return "the owner";
-  if (membership.role === "admin") {
-    return membership.unit_name ? `an admin of ${membership.unit_name}` : "an organisation admin";
+  if (membership.role === "admin") return "an organisation admin";
+
+  const administers = membership.apps.some((app) => app.key === "admin" && app.accessible);
+  if (administers) {
+    return membership.unit_name ? `an admin of ${membership.unit_name}` : "an administrator";
   }
+
   return membership.unit_name ? `a member of ${membership.unit_name}` : "a member";
 }

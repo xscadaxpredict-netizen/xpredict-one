@@ -113,7 +113,7 @@ export async function validateActivationCode(code: string): Promise<void> {
     throw problem(422, "activation_code_invalid", "That activation code is not valid.");
   }
 
-  await request<void>("/api/v1/auth/activation-code/validate", {
+  await request<void>("/api/v1/auth/activation-code/validate/", {
     method: "POST",
     body: JSON.stringify({ code }),
   });
@@ -142,7 +142,7 @@ export async function createOrganisation(
     return { org_slug: toSlug(details.organisation_name), is_ready: false };
   }
 
-  return request<SignupResult>("/api/v1/auth/signup", {
+  return request<SignupResult>("/api/v1/auth/signup/", {
     method: "POST",
     body: JSON.stringify({ activation_code: code, ...details }),
   });

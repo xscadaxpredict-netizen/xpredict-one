@@ -51,9 +51,20 @@ export interface Role {
   /** One line under the name in the picker. Copy, not data. */
   summary: string;
   /**
-   * Whether holding this role makes the person an administrator of their scope
-   * — `Membership.role: "admin"` (C31), which at a dealership means they can
-   * add and remove that dealership's users.
+   * Whether holding this role makes the person an administrator of their
+   * scope — at a dealership, that they can add and remove that dealership's
+   * users.
+   *
+   * IT WRITES NOTHING INTO STANDING (C40). This said holding the role sets
+   * `Membership.role: "admin"` with the dealership attached, which was C31 and
+   * is now a row the database REFUSES: anything above `member` must have
+   * `unit_id` null. Standing and app role are independent axes and neither is
+   * derived from the other, so a dealer admin keeps `member` standing and is
+   * an admin purely by holding this role.
+   *
+   * On the server this field is DERIVED, never stored — "does this role grant
+   * any `admin.*` permission" (C44 makes it a join). So it cannot drift from
+   * what the role actually grants.
    *
    * IT LIVES ON THE ROLE, not in the form. The form must not carry a list of
    * "roles that also make you an admin" — that is the backend's vocabulary
@@ -109,11 +120,18 @@ const FAKE_ROLES: Role[] = [
     /*
      * THE ONE ROLE THAT ADMINISTERS THE DEALERSHIP.
      *
-     * `administers` is what makes this more than a job title: holding it sets
-     * `Membership.role: "admin"` with the dealership attached, which IS a
-     * dealer admin (C31). There is no separate "also let them manage users"
+     * `administers` is what makes this more than a job title: holding it is
+     * what a dealer admin IS (C40). It changes no other field — standing stays
+     * `member`, and the capability comes from the `admin.person.*` permissions
+     * this role grants. There is no separate "also let them manage users"
      * tick — that read as redundant beside a role that implies it, and as
      * contradictory when the two disagreed (C34).
+     *
+     * This said holding it "sets `Membership.role: admin` with the dealership
+     * attached", which was C31's model. C40 removed that write-back because it
+     * stored a derived value in a second column that then had to agree — and
+     * the day somebody changed the role without recomputing standing, they
+     * kept administrative standing they no longer earned.
      *
      * WHAT IS GIVEN UP, knowingly: a Sales representative who also hires
      * cannot be expressed. Administering travels with this role rather than

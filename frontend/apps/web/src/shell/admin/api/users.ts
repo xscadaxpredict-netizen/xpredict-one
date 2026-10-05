@@ -117,9 +117,16 @@ export interface NewInvitation {
    * Standing in the organisation. Never "owner": there is exactly one per
    * organisation (C14), so appointing one is a transfer, not an invitation.
    *
-   * WITH `unit_id` THIS IS WHAT MAKES A DEALER ADMIN (C31). `admin` with no
-   * unit administers the organisation; `admin` with a unit administers that
-   * dealership; `member` administers nothing.
+   * IT IS STANDING AND NOTHING MORE (C40). `admin` always means the whole
+   * organisation and is only valid with `unit_id` null — the database refuses
+   * anything else. `member` administers nothing BY STANDING, which is not the
+   * same as administering nothing: a dealer admin is `member` with a
+   * dealership, and what makes them an admin is the DMS System administrator
+   * role in `apps` above.
+   *
+   * This said `admin` with a unit administers that dealership, which was C31.
+   * C40 removed the write-back from app role into standing, so the two never
+   * touch and neither is derived from the other.
    */
   role: "admin" | "member";
 }

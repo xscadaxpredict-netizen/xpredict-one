@@ -11,7 +11,14 @@ from __future__ import annotations
 
 from django.urls import path
 
-from core.accounts.api.views import LoginView, LogoutView, RefreshView, SessionView
+from core.accounts.api.views import (
+    ActivationCodeValidateView,
+    LoginView,
+    LogoutView,
+    RefreshView,
+    SessionView,
+    SignupView,
+)
 
 app_name = "accounts"
 
@@ -20,4 +27,14 @@ urlpatterns = [
     path("session/", SessionView.as_view(), name="session"),
     path("refresh/", RefreshView.as_view(), name="refresh"),
     path("logout/", LogoutView.as_view(), name="logout"),
+    # Signup, step one and step two of C14's three. Both are
+    # UNAUTHENTICATED and both take an activation code, so both are
+    # throttled -- see the views. Step three, provisioning, is polled at
+    # /api/v1/orgs/<slug>/provisioning and does not exist yet.
+    path(
+        "activation-code/validate/",
+        ActivationCodeValidateView.as_view(),
+        name="activation-code-validate",
+    ),
+    path("signup/", SignupView.as_view(), name="signup"),
 ]
