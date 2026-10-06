@@ -31,6 +31,8 @@ from __future__ import annotations
 import itertools
 
 import pytest
+from django.core.management import call_command
+from django.core.management.base import CommandError
 from django.db import connections, transaction
 from django.utils import timezone
 
@@ -385,3 +387,80 @@ class TestSignupSchedulesIt:
         # Out of the block the commit has happened, so the task has run.
         organization.refresh_from_db()
         assert organization.provisioned_at is not None
+
+
+class TestReprovisionTenantCommand:
+    """
+    `reprovision_tenant`, the only recovery that does not need a Django shell
+    (C50).
+
+    It matters because `provision_tenant` retries five times and then gives up
+    permanently: after that the organisation is real, the activation code is
+    spent, the owner can sign in, and `provisioned_at` is NULL forever.
+    """
+
+    def test_it_provisions_an_organisation_that_was_left_unfinished(self):
+        organization = make_org()
+        drop_tenant_database(organization)
+        Organization.objects.filter(pk=organization.pk).update(provisioned_at=None)
+
+        call_command("reprovision_tenant", organization.slug, verbosity=0)
+
+        organization.refresh_from_db()
+        assert organization.is_ready is True
+        # The database is really there, asked of MySQL.
+        alias = register_tenant_connection(organization)
+        with connections[alias].cursor() as cursor:
+            cursor.execute("SELECT DATABASE()")
+            assert cursor.fetchone()[0] == TEST_TENANT_ALIAS
+
+    def test_an_unknown_slug_is_a_command_error_not_a_traceback(self):
+        """A typo in a slug is the likeliest way to arrive here, and is not a bug."""
+        with pytest.raises(CommandError, match="No organisation with slug"):
+            call_command("reprovision_tenant", "does-not-exist", verbosity=0)
+
+    def test_it_refuses_an_organisation_that_is_already_provisioned(self):
+        """
+        REFUSED RATHER THAN SILENTLY SKIPPED. The task returns early for an
+        organisation already stamped, so running it would do nothing and report
+        success -- which reads as "repaired" to somebody working an incident.
+        """
+        organization = make_org()
+        provision_tenant(str(organization.pk))
+
+        with pytest.raises(CommandError, match="already provisioned"):
+            call_command("reprovision_tenant", organization.slug, verbosity=0)
+
+    def test_force_reprovisions_a_database_that_went_missing(self):
+        """
+        The row says ready and the database is gone --- dropped by hand, or lost
+        with a server. `--force` clears the stamp so the task does its work
+        instead of returning early; that is the only thing it does.
+        """
+        organization = make_org()
+        provision_tenant(str(organization.pk))
+        drop_tenant_database(organization)
+
+        call_command("reprovision_tenant", organization.slug, force=True, verbosity=0)
+
+        organization.refresh_from_db()
+        assert organization.is_ready is True
+        alias = register_tenant_connection(organization)
+        with connections[alias].cursor() as cursor:
+            cursor.execute("SELECT DATABASE()")
+            assert cursor.fetchone()[0] == TEST_TENANT_ALIAS
+
+    def test_it_does_not_put_control_plane_tables_in_the_database(self):
+        """
+        It calls the same task, so it inherits the same scoping --- but a
+        recovery path that quietly did something different from the normal one
+        is exactly the kind of difference nobody would look for.
+        """
+        organization = make_org()
+        drop_tenant_database(organization)
+        Organization.objects.filter(pk=organization.pk).update(provisioned_at=None)
+
+        call_command("reprovision_tenant", organization.slug, verbosity=0)
+        recorded = recorded_apps_in(register_tenant_connection(organization))
+
+        assert recorded <= tenant_app_labels(), sorted(recorded - tenant_app_labels())
