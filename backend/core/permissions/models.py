@@ -116,6 +116,35 @@ class Role(BaseModel):
     level = models.CharField(max_length=10, choices=RoleLevel.choices)
     summary = models.CharField(max_length=300)
 
+    display_order = models.PositiveSmallIntegerField(
+        default=0,
+        help_text="Order within one app and level. Seeded from the catalogue.",
+    )
+    """
+    THE ORDER A PICKER READS IN, and it is a column because the alphabet gets
+    it wrong.
+
+    `ordering` used to end in `name`, which sorted the six dealership roles as
+    Manager, Sales representative, Service advisor, System administrator, Tech
+    support, Technician. That separates the two roles that RUN a dealership ---
+    Manager and System administrator, the pair C36 deliberately created by
+    splitting them --- and puts "Tech support" ahead of "Technician", which
+    reads like a typo. The intended order groups the two senior roles first and
+    then the operational ones, which is the order `catalogue.py` declares them
+    in and the order the frontend's tests already pinned.
+
+    STORED RATHER THAN DERIVED IN PYTHON, following C44. Sorting by the
+    catalogue's declaration order in the selector would have worked and needed
+    no migration, and it was rejected for the reason C44 reversed C42: the
+    owner wants this readable in Workbench, not only by somebody who knows
+    which module to open. An order that exists nowhere in the data is also
+    invisible to anything that queries these rows without going through the
+    selector.
+
+    NOT UNIQUE, and not a sequence to be careful with. Ties simply fall back to
+    `name`, so a duplicate or a gap is untidy rather than broken.
+    """
+
     permissions = models.ManyToManyField(
         Permission,
         through="RolePermission",
@@ -127,7 +156,10 @@ class Role(BaseModel):
         constraints = [
             models.UniqueConstraint(fields=["app", "code"], name="role_unique_app_code"),
         ]
-        ordering = ["app", "level", "name"]
+        # `name` stays as the tie-breaker, so two roles sharing a
+        # `display_order` are still returned in a stable order rather than
+        # whatever MySQL feels like.
+        ordering = ["app", "level", "display_order", "name"]
 
     def __str__(self) -> str:
         return f"{self.name} ({self.app})"

@@ -271,3 +271,89 @@ def _summary(app: str, membership: Membership) -> str | None:
         organization_id=membership.organization_id, status=UnitStatus.ACTIVE
     ).count()
     return f"{count} dealership" if count == 1 else f"{count} dealerships"
+
+
+# ---------------------------------------------------------------------------
+# The authorization chain, links two and three (C49).
+#
+# `OrgScopedAPIView` is link one: it answers "do you belong to this
+# organization". These two answer "may you do this" and "to whom".
+#
+# THEY DELIBERATELY REUSE `_membership_data()` RATHER THAN RE-DERIVING. The
+# launcher and the guards have to agree about what somebody holds, and the
+# cheap way to write `permissions_for()` would have been a fresh loop over
+# `app_access` -- which is the same shape as the CSRF header and the token
+# denylist: two implementations of one rule, where the drift is invisible until
+# it matters. Here the dangerous direction is a guard believing in a permission
+# the launcher never granted, so there is one derivation and both callers go
+# through it.
+# ---------------------------------------------------------------------------
+
+
+def permissions_for(membership: Membership) -> frozenset[str]:
+    """
+    Every permission code this membership holds right now.
+
+    Flattened across apps, because a guard asks "may you invite somebody",
+    not "may you invite somebody in DMS". The bucketing `/me` does is for the
+    sidebar, which needs to know which app a capability showed up under; an
+    authorization check does not care where it came from.
+
+    THE C16 GATE APPLIES HERE TOO, which is the reason this goes through
+    `_membership_data()`. A grant left behind on a cancelled subscription
+    opens nothing (`_app_data`), so it must also permit nothing -- otherwise
+    the launcher hides an app while the endpoints behind it still answer.
+
+    ONE KNOWN ASYMMETRY, inherited rather than introduced: Administration is
+    never bought, so its bucket is not gated on a subscription. A dealer admin
+    whose organization cancelled DMS therefore keeps `admin.person.*`, because
+    those permissions arrive through the DMS System administrator role but land
+    in the `admin` bucket. Whether that is right is a product question -- it is
+    arguably correct, since somebody has to be able to manage people in an
+    organization that has stopped paying for DMS -- and it is recorded in Q34
+    rather than changed quietly here.
+
+    Costs a few queries. Prefetch as `me()` does if you are asking for a list
+    of memberships; for one caller on one request it is not worth caching.
+    """
+    admin_permissions = list(Permission.objects.filter(app=AppCode.ADMIN))
+    active_subscriptions = set(
+        AppSubscription.objects.filter(
+            organization_id=membership.organization_id,
+            status=SubscriptionStatus.ACTIVE,
+        ).values_list("organization_id", "app")
+    )
+
+    data = _membership_data(membership, admin_permissions, active_subscriptions)
+
+    return frozenset(code for app in data.apps if app.accessible for code in app.permissions)
+
+
+def can_manage(membership: Membership, target_unit_id: uuid.UUID | None) -> bool:
+    """
+    May this person administer somebody attached to `target_unit_id`?
+
+    `None` as the target means an organization-wide person -- an owner, an org
+    admin, or somebody holding an org-level role like Fleet viewer.
+
+    TWO KINDS OF ADMINISTRATOR, and they are the two branches (C40, C23):
+
+    - **Organization-wide** (`unit_id IS NULL`, which the check constraint
+      guarantees for owner and admin standing): manages everybody, including
+      every dealership's people. Reaching into a dealership's users is an
+      audited override rather than the normal path, but it is allowed.
+    - **A dealer admin** (`member` standing, a dealership, and the DMS System
+      administrator role): manages exactly their own dealership's people and
+      nobody else's -- not another dealership's, and not an organization-wide
+      person, who is senior to them and whose scope they do not share.
+
+    THIS ANSWERS SCOPE ONLY, never capability. Holding `admin.person.update` is
+    a separate question asked by the view; a Sales representative passes this
+    function for their own dealership and still may not manage anybody. Both
+    checks are required and they refuse differently: failing this is a 404,
+    because a person outside your scope must be indistinguishable from one who
+    does not exist, while failing the permission check is a 403.
+    """
+    if membership.unit_id is None:
+        return True
+    return target_unit_id == membership.unit_id

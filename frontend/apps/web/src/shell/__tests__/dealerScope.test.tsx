@@ -24,7 +24,8 @@ import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 
 import type * as dealersApi from "../admin/api/dealers";
 import { fetchDealers } from "../admin/api/dealers";
-import { fakeRoleName } from "../admin/api/roles";
+import type * as rolesApi from "../admin/api/roles";
+import { fakeRoleName, fetchRoles } from "../admin/api/roles";
 import type * as usersApi from "../admin/api/users";
 import { fetchUsers, inviteUser, updateUser } from "../admin/api/users";
 import { DealersScreen } from "../admin/screens/DealersScreen";
@@ -32,7 +33,7 @@ import { UsersScreen } from "../admin/screens/UsersScreen";
 import { fetchMe } from "../api/auth";
 import type * as authApi from "../api/auth";
 import { renderRoute } from "./harness";
-import { dealerAdminMembership, me, ownerMembership } from "./factories";
+import { dealerAdminMembership, me, ownerMembership, roleCatalogue } from "./factories";
 
 vi.mock("../api/auth", async (importOriginal) => ({
   ...(await importOriginal<typeof authApi>()),
@@ -52,11 +53,22 @@ vi.mock("../admin/api/dealers", async (importOriginal) => ({
   fetchDealers: vi.fn(),
 }));
 
+// `fetchRoles` READS DJANGO NOW, so it has to be mocked like the rest. It used
+// to answer from the module's own fake, which is why these tests never
+// mentioned roles while asserting the exact contents of a role picker.
+// `importOriginal` keeps `fakeRoleName`, which `users.ts` still uses and the
+// last test in this file checks directly.
+vi.mock("../admin/api/roles", async (importOriginal) => ({
+  ...(await importOriginal<typeof rolesApi>()),
+  fetchRoles: vi.fn(),
+}));
+
 const mockFetchMe = vi.mocked(fetchMe);
 const mockFetchUsers = vi.mocked(fetchUsers);
 const mockFetchDealers = vi.mocked(fetchDealers);
 const mockInviteUser = vi.mocked(inviteUser);
 const mockUpdateUser = vi.mocked(updateUser);
+const mockFetchRoles = vi.mocked(fetchRoles);
 
 function user(overrides: Partial<usersApi.OrgUser> & { id: string }): usersApi.OrgUser {
   return {
@@ -128,6 +140,7 @@ beforeEach(() => {
   mockFetchMe.mockResolvedValue(me({ memberships: [ownerMembership()] }));
   mockFetchUsers.mockResolvedValue([ANITA, LEGACY]);
   mockFetchDealers.mockResolvedValue([GUINDY]);
+  mockFetchRoles.mockResolvedValue(roleCatalogue());
 });
 
 async function openInviteForm() {

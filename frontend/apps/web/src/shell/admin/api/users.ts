@@ -360,7 +360,7 @@ export async function fetchUsers(orgSlug: string): Promise<OrgUser[]> {
     return isDealerOrg(orgSlug) ? fakeDealerUsers : fakeUsers;
   }
 
-  return request<OrgUser[]>(`/api/v1/orgs/${orgSlug}/admin/users`);
+  return request<OrgUser[]>(`/api/v1/orgs/${orgSlug}/admin/users/`);
 }
 
 export async function updateUser(
@@ -415,7 +415,7 @@ export async function updateUser(
     return updated;
   }
 
-  return request<OrgUser>(`/api/v1/orgs/${orgSlug}/admin/users/${userId}`, {
+  return request<OrgUser>(`/api/v1/orgs/${orgSlug}/admin/users/${userId}/`, {
     method: "PUT",
     body: JSON.stringify(body),
   });
@@ -463,7 +463,7 @@ export async function removeUser(orgSlug: string, userId: string): Promise<void>
     return;
   }
 
-  await request<void>(`/api/v1/orgs/${orgSlug}/admin/users/${userId}`, { method: "DELETE" });
+  await request<void>(`/api/v1/orgs/${orgSlug}/admin/users/${userId}/`, { method: "DELETE" });
 }
 
 export async function setUserStatus( orgSlug: string, userId: string, status: Extract<UserStatus, "active" | "disabled">, ): Promise<OrgUser> {
@@ -479,7 +479,7 @@ export async function setUserStatus( orgSlug: string, userId: string, status: Ex
     return updated;
   }
   return request<OrgUser>(
-    `/api/v1/orgs/${orgSlug}/admin/users/${userId}/${status === "active" ? "activate" : "deactivate"}`,
+    `/api/v1/orgs/${orgSlug}/admin/users/${userId}/${status === "active" ? "activate" : "deactivate"}/`,
     { method: "POST" },
   );
 }
@@ -491,7 +491,7 @@ export async function resendInvitation(orgSlug: string, userId: string): Promise
     return;
   }
 
-  await request<void>(`/api/v1/orgs/${orgSlug}/admin/users/${userId}/resend-invitation`, {
+  await request<void>(`/api/v1/orgs/${orgSlug}/admin/users/${userId}/resend-invitation/`, {
     method: "POST",
   });
 }
@@ -571,7 +571,7 @@ export async function inviteUser(orgSlug: string, body: NewInvitation): Promise<
     return invited;
   }
 
-  return request<OrgUser>(`/api/v1/orgs/${orgSlug}/admin/invitations`, {
+  return request<OrgUser>(`/api/v1/orgs/${orgSlug}/admin/invitations/`, {
     method: "POST",
     body: JSON.stringify(body),
   });

@@ -75,9 +75,15 @@ export interface Role {
 }
 
 /* --------------------------------------------------------------------------
- * FAKE BACKEND — delete this block when the endpoint lands.
+ * THE ENDPOINT HAS LANDED: `fetchRoles` reads Django.
+ *
+ * The block below survives anyway, and deliberately, because `fakeRoleName()`
+ * at the bottom reads `FAKE_ROLES` — and `users.ts` still calls it to turn a
+ * role code into a display name while USE_FAKE_USERS is on. It goes when that
+ * flag does, not before, and the `Role` type above is now the backend's shape
+ * rather than a guess at it (`core/permissions/api/serializers.py`).
  * ------------------------------------------------------------------------ */
-const USE_FAKE_ROLES = true;
+const USE_FAKE_ROLES = false;
 
 function wait(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -286,7 +292,7 @@ export async function fetchRoles(orgSlug: string): Promise<Role[]> {
     return FAKE_ROLES;
   }
 
-  return request<Role[]>(`/api/v1/orgs/${orgSlug}/admin/roles`);
+  return request<Role[]>(`/api/v1/orgs/${orgSlug}/admin/roles/`);
 }
 
 /**

@@ -1,5 +1,5 @@
 /**
- * Builders for `/me` responses.
+ * Builders for `/me` responses, and for the role catalogue.
  *
  * Tests describe only what they are about — "a dealer salesperson with Sales"
  * — and inherit the rest. Hand-written literals in every test mean adding one
@@ -7,6 +7,7 @@
  * quietly grants access the test never meant to grant.
  */
 
+import type { Role } from "../admin/api/roles";
 import type { AppAccess, AppKey, Me, Membership } from "../api/auth";
 
 export function appAccess(key: AppKey, overrides: Partial<AppAccess> = {}): AppAccess {
@@ -137,4 +138,104 @@ export function dealerAdminMembership(): Membership {
       }),
     ],
   });
+}
+
+/**
+ * The nine built-in roles, in the order Django sends them.
+ *
+ * THE ORDER IS PART OF THE CONTRACT, not incidental. `rolesFor()` preserves
+ * whatever order it is given, so this list is what a picker shows --- and the
+ * alphabet gets it wrong, which is why `Role.display_order` exists on the
+ * backend. Manager and System administrator sit together because C36 split
+ * them into a pair, and Technician precedes Tech support because sorting them
+ * the other way reads like a typo.
+ *
+ * IT MIRRORS `backend/core/permissions/catalogue.py` BY HAND, and nothing
+ * checks that the two agree --- C43 removed the generated client, so this is
+ * the same trade every other hand-written type in the frontend makes. The
+ * backend pins the same order in `test_roles_api.py`; if these two ever
+ * disagree, that test and this factory are where to look.
+ *
+ * It exists because `fetchRoles` reads Django now. Tests that open a role
+ * picker used to get this list from the fake for free; they have to supply it
+ * themselves, which is the correct shape anyway --- a test that needs a role
+ * catalogue should say which one.
+ */
+export function roleCatalogue(): Role[] {
+  return [
+    {
+      code: "dms.manager",
+      name: "Manager",
+      app: "dms",
+      level: "unit",
+      summary: "Everything at this dealer except its user accounts.",
+      administers: false,
+    },
+    {
+      code: "dms.system_admin",
+      name: "System administrator",
+      app: "dms",
+      level: "unit",
+      summary: "Creates user profiles and assigns roles at this dealer.",
+      // The only role that administers, and derived on the server from
+      // whether it grants any `admin.*` permission (C40, C44).
+      administers: true,
+    },
+    {
+      code: "dms.sales_representative",
+      name: "Sales representative",
+      app: "dms",
+      level: "unit",
+      summary: "Enquiries, quotations, orders and follow-ups.",
+      administers: false,
+    },
+    {
+      code: "dms.service_advisor",
+      name: "Service advisor",
+      app: "dms",
+      level: "unit",
+      summary: "Books appointments and raises job cards.",
+      administers: false,
+    },
+    {
+      code: "dms.technician",
+      name: "Technician",
+      app: "dms",
+      level: "unit",
+      summary: "Carries out the work recorded on job cards.",
+      administers: false,
+    },
+    {
+      code: "dms.tech_support",
+      name: "Tech support",
+      app: "dms",
+      level: "unit",
+      summary: "Support tickets.",
+      administers: false,
+    },
+    {
+      code: "dms.fleet_viewer",
+      name: "Fleet viewer",
+      app: "dms",
+      level: "org",
+      summary: "Reads every dealership. Changes nothing.",
+      administers: false,
+    },
+    {
+      code: "dms.group_operations",
+      name: "Group operations",
+      app: "dms",
+      level: "org",
+      summary: "Works across every dealership, not just one.",
+      administers: false,
+    },
+    {
+      code: "crm.member",
+      name: "CRM user",
+      app: "crm",
+      level: "org",
+      summary: "The whole organisation's contacts and deals.",
+      administers: false,
+    },
+  ];
 }

@@ -172,7 +172,7 @@ export async function checkProvisioning(orgSlug: string): Promise<boolean> {
   }
 
   const result = await request<{ is_ready: boolean }>(
-    `/api/v1/orgs/${encodeURIComponent(orgSlug)}/provisioning`,
+    `/api/v1/orgs/${encodeURIComponent(orgSlug)}/provisioning/`,
   );
   return result.is_ready;
 }

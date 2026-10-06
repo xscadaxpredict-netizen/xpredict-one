@@ -22,12 +22,14 @@ from __future__ import annotations
 
 from typing import ClassVar
 
+from django.core.exceptions import ImproperlyConfigured
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.request import Request
 from rest_framework.views import APIView
 
 from core.organizations.models import Membership, MembershipStatus, Organization
-from shared.exceptions import not_found
+from core.organizations.selectors import permissions_for
+from shared.exceptions import AuthorizationError, not_found
 
 # Where `config.middleware.TenantMiddleware` leaves the resolved organization.
 #
@@ -49,12 +51,53 @@ class OrgScopedAPIView(APIView):
 
     permission_classes: ClassVar[list] = [IsAuthenticated]
 
+    required_permissions: ClassVar[list[str] | None] = None
+    """
+    The permission codes the caller must hold, ALL of them, or 403.
+
+    `None` IS NOT "no permissions needed" --- it is "nobody has said", and it
+    raises. An endpoint that simply does not need one declares `[]` with a
+    line saying why, which is a sentence somebody wrote on purpose rather
+    than a field nobody filled in.
+
+    That asymmetry is the same lesson as C49 one layer down. Organization
+    access could be made structural, because every endpoint under
+    `/orgs/<slug>/` needs the identical check; permissions cannot, because
+    each endpoint needs a DIFFERENT one, so the base class can only insist
+    that the question was answered. A default of `[]` would have been the
+    friendlier design and would fail exactly the way the old per-view
+    membership check failed: silently, and only for the endpoints somebody
+    forgot.
+
+    Scope is a separate question, answered by `can_manage()` and raising 404
+    rather than 403 --- holding `admin.person.update` does not say WHOSE
+    record you may touch.
+    """
+
+    required_any_permission: ClassVar[list[str]] = []
+    """
+    Permission codes of which the caller needs AT LEAST ONE.
+
+    For an endpoint two different kinds of administrator reach for two
+    different reasons --- the role catalogue being the first, read by the Roles
+    page and by every role picker. Checked in ADDITION to
+    `required_permissions`, so an endpoint can demand a floor and an
+    alternative at once; empty means no such requirement.
+
+    It is a declaration rather than an `if` in the handler on purpose. The
+    handler check was written first and is the same mistake one level up: the
+    requirement stops being visible from the class, which is exactly how the
+    membership check went missing before C49.
+    """
+
     def initial(self, request: Request, *args, **kwargs) -> None:
         # super() first: it authenticates, applies permission_classes and
         # enforces throttles. Checking membership before that would mean
         # deciding what an anonymous caller may see, which is backwards.
         super().initial(request, *args, **kwargs)
-        self._organization = self._require_membership(request)
+        self._membership = self._require_membership(request)
+        self._organization = self._membership.organization
+        self._require_permissions()
 
     @property
     def organization(self) -> Organization:
@@ -66,7 +109,46 @@ class OrgScopedAPIView(APIView):
         """
         return self._organization
 
-    def _require_membership(self, request: Request) -> Organization:
+    @property
+    def membership(self) -> Membership:
+        """
+        The CALLER's membership here: their standing, and their dealership.
+
+        What every scope decision is made against --- `can_manage()` takes it
+        --- and the reason `_require_membership()` fetches the row instead of
+        asking `.exists()`. A view that needed it otherwise had to query for
+        the thing the base class had just looked up, and the second lookup is
+        where a filter gets forgotten.
+        """
+        return self._membership
+
+    def _require_permissions(self) -> None:
+        if self.required_permissions is None:
+            # A 500, deliberately, and it fires on the first request to the
+            # endpoint rather than the first request from somebody
+            # unprivileged. An endpoint that quietly permitted everybody would
+            # look correct for exactly as long as only admins used it.
+            raise ImproperlyConfigured(
+                f"{type(self).__name__} must declare `required_permissions`. "
+                f"Use [] if membership alone is enough, and say why."
+            )
+
+        if not self.required_permissions and not self.required_any_permission:
+            return
+
+        held = permissions_for(self._membership)
+
+        # 403 in both branches, not 404. The caller is entitled to be here --
+        # they are a member of this organization -- and the answer to this
+        # particular action is still no, which is the one case
+        # `AuthorizationError` is for. Scope failures are the 404s.
+        if not held.issuperset(self.required_permissions):
+            raise AuthorizationError
+
+        if self.required_any_permission and not held.intersection(self.required_any_permission):
+            raise AuthorizationError
+
+    def _require_membership(self, request: Request) -> Membership:
         """
         ONE ANSWER FOR THREE DIFFERENT REFUSALS, deliberately: an unknown slug,
         a suspended organization, and a real organization the caller has
@@ -88,15 +170,23 @@ class OrgScopedAPIView(APIView):
             # authentication.
             raise not_found("Organization")
 
-        is_member = Membership.objects.filter(
-            user=request.user,
-            organization=organization,
-            status=MembershipStatus.ACTIVE,
-        ).exists()
+        membership = (
+            Membership.objects.filter(
+                user=request.user,
+                organization=organization,
+                status=MembershipStatus.ACTIVE,
+            )
+            # The row itself, not `.exists()`: `self.membership` is what scope
+            # decisions are made against, and `permissions_for()` walks these
+            # relations on every request that declares a required permission.
+            .select_related("organization", "unit")
+            .prefetch_related("app_access__role__permissions")
+            .first()
+        )
 
-        if not is_member:
+        if membership is None:
             # 404, never 403. 403 confirms the organization exists and that
             # somebody else works there.
             raise not_found("Organization")
 
-        return organization
+        return membership

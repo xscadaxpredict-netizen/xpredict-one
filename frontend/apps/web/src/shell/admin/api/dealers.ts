@@ -233,7 +233,7 @@ export async function fetchDealers(orgSlug: string): Promise<Dealer[]> {
     return fakeDealers;
   }
 
-  return request<Dealer[]>(`/api/v1/orgs/${orgSlug}/admin/dealers`);
+  return request<Dealer[]>(`/api/v1/orgs/${orgSlug}/admin/dealers/`);
 }
 
 export async function createDealer(orgSlug: string, body: NewDealer): Promise<Dealer> {
@@ -264,7 +264,7 @@ export async function createDealer(orgSlug: string, body: NewDealer): Promise<De
     return created;
   }
 
-  return request<Dealer>(`/api/v1/orgs/${orgSlug}/admin/dealers`, {
+  return request<Dealer>(`/api/v1/orgs/${orgSlug}/admin/dealers/`, {
     method: "POST",
     body: JSON.stringify(body),
   });
@@ -321,7 +321,7 @@ export async function updateDealer(
     return updated;
   }
 
-  return request<Dealer>(`/api/v1/orgs/${orgSlug}/admin/dealers/${dealerId}`, {
+  return request<Dealer>(`/api/v1/orgs/${orgSlug}/admin/dealers/${dealerId}/`, {
     method: "PUT",
     body: JSON.stringify(body),
   });
@@ -350,7 +350,7 @@ export async function setDealerStatus(
    * into "write any value into a column".
    */
   return request<Dealer>(
-    `/api/v1/orgs/${orgSlug}/admin/dealers/${dealerId}/${status === "active" ? "reopen" : "close"}`,
+    `/api/v1/orgs/${orgSlug}/admin/dealers/${dealerId}/${status === "active" ? "reopen" : "close"}/`,
     { method: "POST" },
   );
 }

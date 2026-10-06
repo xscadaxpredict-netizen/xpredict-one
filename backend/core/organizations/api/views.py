@@ -12,6 +12,8 @@ for why that is a base class rather than a line each view remembers.
 
 from __future__ import annotations
 
+from typing import ClassVar
+
 from rest_framework.request import Request
 from rest_framework.response import Response
 
@@ -32,6 +34,14 @@ class ProvisioningView(OrgScopedAPIView):
     control database, so this endpoint works perfectly well while the database
     it reports on does not exist -- which is the entire situation it describes.
     """
+
+    # MEMBERSHIP ALONE IS ENOUGH, and this is the endpoint that case was left
+    # open for. It is polled by the signup screen seconds after an
+    # organization is founded, before any role could have been granted, and it
+    # discloses one boolean about the asker's own workspace. Requiring a
+    # permission here would mean the owner cannot watch their own organization
+    # being created.
+    required_permissions: ClassVar[list[str]] = []
 
     # `org_slug` is captured by the URL and therefore handed to every view
     # under /orgs/<slug>/, so it has to be accepted. It is deliberately NOT
