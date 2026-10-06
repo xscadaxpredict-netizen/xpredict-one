@@ -19,6 +19,7 @@ three sessions.
 from __future__ import annotations
 
 import pytest
+from django.utils import timezone
 
 from core.accounts.models import User
 from core.billing.models import AppSubscription, SubscriptionStatus
@@ -28,6 +29,7 @@ from core.organizations.models import (
     Membership,
     MembershipRole,
     MembershipStatus,
+    Organization,
 )
 from core.organizations.selectors import me, resolve_allowed_units
 from core.organizations.services import sign_up
@@ -197,6 +199,55 @@ class TestTheOwner:
         BusinessUnit.objects.create(organization=result.organization, name="Whitefield")
 
         assert app_of(me(result.user), "acme-motors", AppCode.DMS).summary == "1 dealership"
+
+
+class TestWorkspaceReadiness:
+    """
+    `is_ready` per membership (C50), which the launcher refuses to open an app
+    without.
+    """
+
+    def test_a_provisioned_organisation_reports_ready(self):
+        result = found()
+        Organization.objects.filter(pk=result.organization.pk).update(
+            provisioned_at=timezone.now()
+        )
+
+        assert me(result.user).memberships[0].is_ready is True
+
+    def test_an_unprovisioned_organisation_reports_not_ready(self):
+        """
+        Normal for a few seconds after signup, and permanent if provisioning
+        failed for good. Signup itself leaves it null -- the task runs on
+        commit, which in these tests never fires.
+        """
+        result = found()
+
+        assert result.organization.provisioned_at is None
+        assert me(result.user).memberships[0].is_ready is False
+
+    def test_it_is_per_organisation_and_not_per_person(self):
+        """
+        THE REASON IT LIVES ON THE MEMBERSHIP. Somebody can belong to two
+        organisations with only one provisioned, and the launcher has to be
+        right about which one it is about to open -- a single flag on the user
+        would be wrong for one of them.
+        """
+        acme = found("Acme Motors", "owner@acme.test", "CODE-ACME")
+        northway = found("Northway Auto Group", "owner@northway.test", "CODE-NORTH")
+
+        Organization.objects.filter(pk=acme.organization.pk).update(
+            provisioned_at=timezone.now()
+        )
+        Membership.objects.create(
+            user=acme.user,
+            organization=northway.organization,
+            role=MembershipRole.MEMBER,
+        )
+
+        by_slug = {m.org_slug: m.is_ready for m in me(acme.user).memberships}
+
+        assert by_slug == {"acme-motors": True, "northway-auto-group": False}
 
 
 class TestTheDealerAdmin:

@@ -109,6 +109,21 @@ export interface Membership {
    * would quietly show one organisation's apps while inside the other.
    */
   apps: AppAccess[];
+
+  /**
+   * Whether this organisation's own database exists yet.
+   *
+   * PER ORGANISATION, NOT PER USER (C50). Somebody can belong to two
+   * organisations with only one provisioned, so a single flag on `Me` would be
+   * wrong for one of them.
+   *
+   * False is normal for a few seconds after signing up — each organisation
+   * gets its own database (C1), created after signup commits — and permanent
+   * if provisioning failed for good. The launcher refuses to open an app
+   * either way: the first business query would hit a database that is not
+   * there.
+   */
+  is_ready: boolean;
 }
 
 export interface Me {
@@ -208,6 +223,7 @@ const FAKE_ME: Me = {
       org_id: "1a2b3c4d-0000-0000-0000-000000000001",
       org_name: "Acme Motors",
       org_slug: "acme-motors",
+      is_ready: true,
       role: "owner",
       unit_id: null,
       unit_name: null,
@@ -296,6 +312,12 @@ const FAKE_ME: Me = {
       org_id: "1a2b3c4d-0000-0000-0000-000000000002",
       org_name: "Northway Auto Group",
       org_slug: "northway-auto",
+      /*
+       * Deliberately NOT ready, so the launcher's guard is visible in the fake
+       * without anybody having to edit this file. Switch to Northway in the
+       * topbar to see it.
+       */
+      is_ready: false,
       /*
        * `member`, NOT `admin` (C40). This said `admin` with a dealership
        * attached, which was right under C31 and is now a row the database
