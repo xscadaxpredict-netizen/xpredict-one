@@ -19,7 +19,8 @@ urlpatterns = [
     # config.middleware.TenantMiddleware before any view runs, which binds that
     # organization's database for the request and refuses the request if the
     # slug is unknown or the organization is suspended. Views therefore read
-    # `request.organization` rather than taking a slug argument.
+    # the organization from `OrgScopedAPIView` rather than taking a slug
+    # argument (C49).
     path("api/v1/orgs/<slug:org_slug>/", include("core.organizations.api.urls")),
     # No schema or docs routes. drf-spectacular was removed on 2026-10-02:
     # it had been in the scaffold since Phase 1 and the owner had never been
