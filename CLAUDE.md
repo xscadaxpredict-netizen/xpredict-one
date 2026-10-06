@@ -70,7 +70,7 @@ roles, permissions or models until it is explicitly picked up.
 each dealer's users are managed at the **dealer** level. An org admin reaching into a
 dealer's users is an audited override, not the normal path.
 
-Full rationale: `context/02-DECISIONS.md` C1–C47 — all `[Decided]`. Don't reopen them.
+Full rationale: `context/02-DECISIONS.md` C1–C50 — all `[Decided]`. Don't reopen them.
 
 ## Status
 
@@ -140,12 +140,36 @@ creates and migrates the organisation's own database (C1), and
 contextvars in a `finally`. **Dev runs Celery eagerly and caches in memory**,
 because Redis is still not installed.
 
-**EVERY ENDPOINT UNDER `/api/v1/orgs/<slug>/` MUST CALL
-`require_organization_member()` FIRST.** The middleware binds the database but
-cannot check the caller — DRF authenticates inside the view — and it deliberately
-does not refuse an unknown slug either, because that leaked which organisations
-exist. An endpoint that forgets this is readable by any signed-in stranger. Making
-it structural is **Q32**.
+**Only tenant apps are migrated into a tenant database**, by label. A bare
+`migrate` records all 39 control-plane migrations as applied — Django records a
+migration whether or not the router allowed one of its operations — which is a
+trap for whoever first moves an app between `CONTROL_PLANE_APPS` and
+`TENANT_APPS`. No tenant app has models yet, so **a fresh tenant database has no
+tables at all**, and that is correct rather than broken.
+
+**A provision that failed for good is repaired with
+`manage.py reprovision_tenant <slug>`** (C50). The launcher refuses to open an
+app whose workspace is not ready, so nobody lands in a product that would 500.
+Nothing *notices* a stuck organisation yet — that is the rest of **Q33** and it
+wants Sentry.
+
+**EVERY ENDPOINT UNDER `/api/v1/orgs/<slug>/` INHERITS `OrgScopedAPIView`**
+(C49, answering Q32). It verifies active membership before the handler runs and
+exposes the organisation as **`self.organization`** — which is the only way to
+reach it, because the middleware stows it under a private name. A view written
+without the base class does not get an insecure endpoint; it gets one that
+cannot see the organisation at all.
+
+This used to be a function each view called, and forgetting it meant any
+signed-in stranger could read another organisation's rows — while the tests
+passed, because you naturally test as a member. **`request.organization` is
+gone**; reaching for it now raises, which becomes an opaque 500 rather than a
+silent bypass.
+
+The split stays: the middleware decides WHICH database and deliberately refuses
+nothing for an unknown slug, because refusing there leaked which organisations
+exist. The base view decides WHO. It is also the first link of the Phase 3
+authorization chain, so the rest hangs off it.
 
 **Blocked on:** nothing. **Redis is still missing**, which leaves the Celery broker
 round-trip unverified — and now also means the throttle counter and cache are
@@ -158,8 +182,8 @@ user row on every request and refuses an inactive one, so **disabling somebody t
 effect on their next request**, not after a token expires. The 15-minute access
 lifetime is how long a STOLEN token survives a logout.
 
-**Gates, all green:** `npm run test -w web` (85), `npm run typecheck -w web`,
-`npm run lint`, and in `backend/`: `pytest` (172), `ruff check .`, and
+**Gates, all green:** `npm run test -w web` (103), `npm run typecheck -w web`,
+`npm run lint`, and in `backend/`: `pytest` (195), `ruff check .`, and
 `.venv/Scripts/lint-imports.exe` — **not** `python -m importlinter.cli`, which exits 0
 without running. Run them before pushing.
 
