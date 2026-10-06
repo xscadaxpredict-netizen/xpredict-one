@@ -50,7 +50,26 @@ def _declare_test_tenant_database() -> None:
         "NAME": TEST_TENANT_ALIAS,
         "CHARSET": "utf8mb4",
         "COLLATION": "utf8mb4_0900_ai_ci",
-        "MIGRATE": True,
+        # MIGRATE FALSE, so the test runner creates this database and puts
+        # NOTHING in it.
+        #
+        # `create_test_db` runs a BARE `migrate` on every declared alias at
+        # session setup. On a tenant alias that walks every app, lets the
+        # router veto each operation, and still records all 39 control-plane
+        # migrations as applied — so the test tenant database arrived
+        # pre-polluted with exactly the bookkeeping that
+        # `tenant_migration_targets()` exists to prevent, and no change to the
+        # product could stop it.
+        #
+        # It cost real time: a test asserting "no control-plane app is recorded
+        # here" passed only because an earlier test happened to drop the
+        # database first, and would have started failing — pointing at the
+        # product — the moment any tenant app gained a migration.
+        #
+        # False is also the truthful setting. In production a tenant database
+        # is created empty and `provision_tenant` is the only thing that ever
+        # migrates it. Now the tests work the same way.
+        "MIGRATE": False,
         "MIRROR": None,
         "DEPENDENCIES": [],
     }

@@ -16,7 +16,11 @@ from django.db import transaction
 from django.utils import timezone
 
 from core.organizations.models import Organization
-from core.organizations.tenancy import create_tenant_database, register_tenant_connection
+from core.organizations.tenancy import (
+    create_tenant_database,
+    register_tenant_connection,
+    tenant_migration_targets,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -45,13 +49,13 @@ def provision_tenant(org_id: str) -> str:
     `CREATE DATABASE IF NOT EXISTS`, then `migrate`, which applies only what is
     missing, and finally the stamp.
 
-    IT CREATES AN ALMOST-EMPTY DATABASE TODAY, and that is correct rather than
-    broken. `TENANT_APPS` have no models yet --- the one illustrative model was
-    deleted in session 7 precisely so it would not land a placeholder table in
-    every tenant database --- so `migrate` builds `django_migrations` and
-    nothing else. The moment the first DMS model exists, every provisioned
-    tenant gets its table from `migrate_all_tenants`, which is the next piece
-    of this and does not exist yet.
+    IT CREATES AN EMPTY DATABASE TODAY, and that is correct rather than broken.
+    `TENANT_APPS` have no models yet --- the one illustrative model was deleted
+    in session 7 precisely so it would not land a placeholder table in every
+    tenant database --- so there is nothing to migrate and the database is
+    created with no tables in it. The moment the first DMS model exists, every
+    provisioned tenant gets its table from `migrate_all_tenants`, which is the
+    next piece of this and does not exist yet.
     """
     organization = Organization.objects.get(pk=org_id)
 
@@ -67,14 +71,30 @@ def provision_tenant(org_id: str) -> str:
     create_tenant_database(organization)
     alias = register_tenant_connection(organization)
 
-    # `database=alias` is what keeps this honest: the router's `allow_migrate`
-    # is asked about every operation with that alias and refuses anything
-    # control-plane, so identity tables cannot land in a tenant database.
+    # NAMED APPS, NOT A BARE `migrate`. A bare migrate means "apply
+    # everything" and leaves the router to veto each operation one at a time.
+    # It does veto them, so no control-plane TABLE is ever built here --- but
+    # Django records a migration as applied whether or not the router allowed
+    # a single one of its operations, so a tenant database ended up claiming
+    # all 39 control-plane migrations while holding none of their tables.
     #
-    # And `Applying x.0001_initial... OK` means NOTHING about whether tables
-    # were built --- Django prints it either way, including when the router
-    # refused every operation in the migration. The tests check the tables.
-    call_command("migrate", database=alias, interactive=False, verbosity=0)
+    # `tenant_migration_targets()` has the full reasoning. The short version:
+    # that bookkeeping is a trap for whoever first moves an app between
+    # CONTROL_PLANE_APPS and TENANT_APPS.
+    #
+    # IT IS AN EMPTY LIST TODAY, so this loop does not run and a fresh tenant
+    # database has NO tables at all --- not even `django_migrations`, which
+    # Django creates only when it first records something. Correct rather than
+    # broken: no tenant app has a model yet.
+    #
+    # One to watch, and not provable until a tenant migration exists: migrating
+    # an app also applies its DEPENDENCIES. A tenant migration that depended on
+    # a control-plane one would drag it back in. It should not be able to ---
+    # tenant rows reference control-plane rows by plain UUID and never by
+    # foreign key (C1) --- and `test_the_tenant_bookkeeping_names_no_control_app`
+    # is what would catch it.
+    for app_label in tenant_migration_targets():
+        call_command("migrate", app_label, database=alias, interactive=False, verbosity=0)
 
     # .update(), not .save(): a plain save would write back every field loaded
     # at the top of this task, and minutes may have passed. If an admin renamed
