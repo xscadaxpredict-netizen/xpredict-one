@@ -84,6 +84,21 @@ class MembershipData:
     unit_name: str | None
     apps: list[AppAccessData]
 
+    """
+    WHETHER THIS ORGANIZATION'S DATABASE EXISTS YET (C50).
+
+    Per membership, not per user: somebody can belong to two organizations with
+    only one of them provisioned, and the launcher has to be right about which
+    one it is about to open.
+
+    False is normal for a few seconds after signup and permanent if
+    provisioning failed for good. Either way the launcher refuses to open an
+    app, because the first business query would hit a database that is not
+    there -- today that is nothing, since no tenant app has models, and the
+    moment DMS has one it is a 500 on every page.
+    """
+    is_ready: bool
+
 
 @dataclass(frozen=True)
 class MeData:
@@ -179,6 +194,8 @@ def _membership_data(
         role=membership.role,
         unit_id=membership.unit_id,
         unit_name=membership.unit.name if membership.unit_id else None,
+        # `organization` is select_related in `me()`, so this costs no query.
+        is_ready=membership.organization.is_ready,
         apps=[
             _app_data(app, membership, held, granted_apps, active_subscriptions)
             for app in AppCode

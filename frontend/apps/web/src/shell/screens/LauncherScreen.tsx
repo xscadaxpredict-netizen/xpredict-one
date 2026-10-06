@@ -43,7 +43,30 @@ export function LauncherScreen() {
         </p>
       </div>
 
-      {apps.length === 0 ? (
+      {!membership.is_ready ? (
+        /*
+         * THE WORKSPACE IS NOT THERE YET (C50). Each organisation gets its own
+         * database, created by a task after signup commits — so for a few
+         * seconds the account is real and the workspace is not, and if
+         * provisioning failed for good it stays that way.
+         *
+         * Opening an app in that state means the first business query hits a
+         * database that does not exist. Today that is harmless, because no
+         * tenant app has models and nothing queries anything; the moment DMS
+         * has its first model it is a 500 on every page, and the owner has no
+         * idea why a product they just paid for is broken.
+         *
+         * So the tiles are not rendered at all rather than shown disabled.
+         * A disabled tile invites clicking and explains nothing; this says
+         * what is happening.
+         */
+        <p className={styles.empty} aria-live="polite">
+          <strong>{membership.org_name}</strong> is still being set up. Its workspace is
+          being prepared and your apps will appear here once it is ready — this normally
+          takes a few seconds. If it has been longer than that, contact support and quote{" "}
+          <strong>{membership.org_slug}</strong>.
+        </p>
+      ) : apps.length === 0 ? (
         /*
          * Reachable: a member of an organisation that has bought nothing, or
          * whose access was revoked app by app rather than by removing the

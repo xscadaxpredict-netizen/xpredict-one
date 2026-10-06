@@ -29,6 +29,9 @@ export function membership(overrides: Partial<Membership> = {}): Membership {
     role: "member",
     unit_id: null,
     unit_name: null,
+    // Ready by default, because almost every test is about something else.
+    // The not-ready case is the exception and says so where it is used.
+    is_ready: true,
     apps: [],
     ...overrides,
   };

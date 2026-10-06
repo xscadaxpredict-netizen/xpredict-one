@@ -112,6 +112,9 @@ class MembershipSerializer(serializers.Serializer):
     role = serializers.CharField(read_only=True)
     unit_id = serializers.UUIDField(read_only=True, allow_null=True)
     unit_name = serializers.CharField(read_only=True, allow_null=True)
+    # Whether this organization's own database exists yet (C50, C1). The
+    # launcher refuses to open an app while this is false.
+    is_ready = serializers.BooleanField(read_only=True)
     apps = AppAccessSerializer(many=True, read_only=True)
 
 

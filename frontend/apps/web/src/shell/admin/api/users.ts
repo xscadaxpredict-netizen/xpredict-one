@@ -19,7 +19,7 @@
  * the backend settles on.
  */
 
-import { ApiError, csrfHeaders, type Problem } from "@xpredict/api-client";
+import { ApiError, csrfHeaders, readBody, type Problem } from "@xpredict/api-client";
 
 import { fakeDealerName } from "./dealers";
 import { fakeRoleName } from "./roles";
@@ -349,7 +349,9 @@ async function request<T>(url: string, init?: RequestInit): Promise<T> {
     );
   }
 
-  return (await response.json()) as T;
+  // readBody, not response.json(): a 204 has no body and json() throws on
+  // one, which reported a successful logout as a failure.
+  return readBody<T>(response);
 }
 
 export async function fetchUsers(orgSlug: string): Promise<OrgUser[]> {
