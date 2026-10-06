@@ -16,7 +16,7 @@
  * That is why this screen is in Administration and not in DMS.
  */
 
-import { ApiError, csrfHeaders, type Problem } from "@xpredict/api-client";
+import { ApiError, csrfHeaders, readBody, type Problem } from "@xpredict/api-client";
 
 export type DealerStatus = "active" | "disabled";
 
@@ -222,7 +222,9 @@ async function request<T>(url: string, init?: RequestInit): Promise<T> {
     );
   }
 
-  return (await response.json()) as T;
+  // readBody, not response.json(): a 204 has no body and json() throws on
+  // one, which reported a successful logout as a failure.
+  return readBody<T>(response);
 }
 
 export async function fetchDealers(orgSlug: string): Promise<Dealer[]> {

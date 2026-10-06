@@ -15,6 +15,7 @@
  * Note: org slug travels in the URL path, not the token, so every request
  * takes it explicitly: /api/v1/orgs/{orgSlug}/{app}/...
  */
+export * from "./body";
 export * from "./csrf";
 export * from "./problem";
 export * from "./orgQuery";
