@@ -70,18 +70,18 @@ roles, permissions or models until it is explicitly picked up.
 each dealer's users are managed at the **dealer** level. An org admin reaching into a
 dealer's users is an audited override, not the normal path.
 
-Full rationale: `context/02-DECISIONS.md` C1–C50 — all `[Decided]`. Don't reopen them.
+Full rationale: `context/02-DECISIONS.md` C1–C55 — all `[Decided]`. Don't reopen them.
 
 ## Status
 
 **The frontend ships Administration; the backend runs on MySQL and signs people in.**
 Keep this section current — it is the first thing a new developer reads.
 
-**Frontend — built and merged, running on hand-written fakes.** Sign-in, the app
-launcher, the shell, and Administration (Users, Dealers, Roles) all work in a browser.
-Every `api/*.ts` has a `USE_FAKE_*` flag that falls through to the URL Django will
-serve, so switching over is deleting a block per function. **The fake data lives in
-module memory and resets on every full page load** — that is the fake, not a bug.
+**Frontend — built, merged, and running on Django.** Sign-in, the app launcher, the
+shell and Administration (Users, Dealers, Roles) all work in a browser against the
+real backend. **The `USE_FAKE_*` blocks are deleted, not switched off**, with ONE
+exception: `USE_FAKE_DEALER_STATUS` in `admin/api/dealers.ts`, because closing a
+dealership has no endpoint and will not get one until **Q21** is answered (C52).
 
 **Backend — it runs on a database now.** Django 5.2.17 on **MySQL 8.0** (C39), split
 settings, the fail-closed `TenantRouter`, `shared/base_models.py`, Celery wiring and 10
@@ -123,10 +123,31 @@ request. **`GET /api/v1/me/` is built** — user, memberships, and per organisat
 standing, unit, app access, modules and permissions. It is control plane only, so it
 needs no tenant database.
 
-**THE FRONTEND RUNS ON THIS, NOT ON FAKES.** `USE_FAKE_AUTH` and `USE_FAKE_SIGNUP`
-are off: signing up, signing in, the launcher and the sidebar all read Django.
-Administration keeps `USE_FAKE_USERS`, `USE_FAKE_DEALERS` and `USE_FAKE_ROLES`,
-because those endpoints do not exist yet — they are the next piece of work.
+**THE FRONTEND RUNS ON THIS, NOT ON FAKES.** Signing up, signing in, the launcher,
+the sidebar and the whole of Administration read Django. `USE_FAKE_USERS`,
+`USE_FAKE_DEALERS` and `USE_FAKE_ROLES` are gone (PR #20).
+
+**ADMINISTRATION IS ELEVEN ENDPOINTS UNDER `/orgs/<slug>/admin/`** — users, dealers
+and roles. Three rules run through them and are not interchangeable: **scope fails
+with 404** (a person outside your dealership must look like one who does not exist),
+**capability fails with 403**, and **state fails with 409** (the owner, a taken
+address, a locked sign-in address).
+
+**A VIEW DECLARES `required_permissions`, AND NOT DECLARING IT IS A 500** — the
+default is `None`, not `[]`, so a view nobody finished is loud on its first request
+instead of quietly permitting everybody. An endpoint that genuinely needs none says
+`[]` and says why. `required_any_permission` and `method_permissions` cover "any one
+of these" and "more for this HTTP method".
+
+**EVERY ADMIN URL ENDS IN A SLASH, and that is not style.** `APPEND_SLASH` makes a
+slashless GET 301 silently and a slashless POST **raise** — so a frontend calling
+`/admin/users` renders the list perfectly and 500s on every button.
+
+**WHAT YOU MAY GRANT IS WHAT THE ORGANISATION BOUGHT** (C55), never what the admin
+filling in the form can open. `visibleApps()` is the launcher's rule and hides an app
+you are subscribed to but cannot open; using it for a grant form let an owner untick
+their own DMS and make it ungrantable for everybody. `grantableApps()` is the other
+question, and the backend refuses a grant for an unsubscribed app.
 
 **`X-CSRFToken` IS SENT BY `csrfHeaders()` in `packages/api-client`**, used by all
 five `request()` helpers. The rule above was in this file for four sessions and
@@ -171,6 +192,14 @@ nothing for an unknown slug, because refusing there leaked which organisations
 exist. The base view decides WHO. It is also the first link of the Phase 3
 authorization chain, so the rest hangs off it.
 
+**THE INVITATION FLOW IS HALF BUILT AND HONEST ABOUT IT.** `invite_person()` creates
+the invitation and its app grants; `resend_invitation()` mints a fresh token and
+invalidates the old one. **Neither sends an email** — deliberately, rather than mocked,
+because the half that exists is the half that has to be right. So an invitation can be
+created and **nobody can accept one**: no person invited through the UI can join yet.
+That is the next piece of work, and it needs an accept screen and
+`accept_invitation()` under `select_for_update`.
+
 **Blocked on:** nothing. **Redis is still missing**, which leaves the Celery broker
 round-trip unverified — and now also means the throttle counter and cache are
 per-process in development. **An unreachable cache is not a missing rate limit, it
@@ -182,8 +211,8 @@ user row on every request and refuses an inactive one, so **disabling somebody t
 effect on their next request**, not after a token expires. The 15-minute access
 lifetime is how long a STOLEN token survives a logout.
 
-**Gates, all green:** `npm run test -w web` (103), `npm run typecheck -w web`,
-`npm run lint`, and in `backend/`: `pytest` (195), `ruff check .`, and
+**Gates, all green:** `npm run test -w web` (112), `npm run typecheck -w web`,
+`npm run lint`, and in `backend/`: `pytest` (285), `ruff check .`, and
 `.venv/Scripts/lint-imports.exe` — **not** `python -m importlinter.cli`, which exits 0
 without running. Run them before pushing.
 
