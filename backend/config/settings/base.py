@@ -198,6 +198,16 @@ AUTH_USER_MODEL = "accounts.User"
 # app. Apps receive an authenticated principal and do authorization only.
 # --------------------------------------------------------------------------
 
+# WHERE THE SPA LIVES, used to build invitation links (C56).
+#
+# There is no email transport: an invitation's link is handed to an admin who
+# sends it by hand, so this is the one setting that decides whether that link
+# works. Empty by default and `invitation_link()` raises on empty rather than
+# producing a relative URL -- a link that is quietly wrong is noticed only by
+# the person who cannot use it, which is the failure mode this project keeps
+# finding in settings that look configured and do nothing.
+FRONTEND_BASE_URL = env("FRONTEND_BASE_URL", default="")
+
 AUTH_PASSWORD_VALIDATORS = [
     {"NAME": "django.contrib.auth.password_validation.UserAttributeSimilarityValidator"},
     {"NAME": "django.contrib.auth.password_validation.MinimumLengthValidator"},

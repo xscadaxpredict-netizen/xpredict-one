@@ -258,3 +258,75 @@ class AppNotSubscribedError(ConflictError):
 
     code = "app_not_subscribed"
     message = "This organisation has not subscribed to that app."
+
+
+class InvitationExpiredError(ConflictError):
+    """
+    The link is past `expires_at`.
+
+    NOT 404. An expired invitation is a real one whose window has closed, and
+    telling the holder so is what lets them ask for another --- answering "no
+    such invitation" would send them to an admin who can see it sitting in the
+    list, which is the support call this message prevents.
+
+    The remedy is Resend, which mints a fresh token (C56), so this is a state
+    the caller can get out of without anybody re-entering their details.
+    """
+
+    code = "invitation_expired"
+    message = "This invitation has expired. Ask whoever invited you for a new link."
+
+
+class InvitationAlreadyAcceptedError(ConflictError):
+    """
+    The link has been redeemed.
+
+    A LINK IS A ONE-TIME CREDENTIAL and this is the second click. Usually the
+    same person pressing back, or a browser prefetching -- so the wording is
+    about the account existing rather than about anything going wrong.
+
+    `accept_invitation()` reads the row `FOR UPDATE` before checking, so two
+    simultaneous clicks cannot both pass: the second waits, then lands here.
+    """
+
+    code = "invitation_already_accepted"
+    message = "This invitation has already been accepted. Sign in instead."
+
+
+class InvitationNeedsSignInError(ConflictError):
+    """
+    The invited address already has an account, so there is no password to set.
+
+    ONE LOGIN SPANS ORGANISATIONS (C1, C27), so somebody invited into a second
+    one already has credentials. Letting this link set a password would be a
+    password reset for an existing account with no proof of who is holding the
+    link -- an account takeover with extra steps (Q23 refuses the same thing
+    from the admin side).
+
+    So they sign in, and accepting is then a single authenticated request.
+
+    NOT `AuthenticationError`/401. The frontend's 401 handling bounces to the
+    sign-in screen, which would drop the token out of the URL and lose the
+    invitation; this is a state the accept screen explains in place, with the
+    token still in hand.
+    """
+
+    code = "invitation_needs_sign_in"
+    message = "This address already has an account. Sign in to accept the invitation."
+
+
+class InvitationWrongAccountError(ConflictError):
+    """
+    Somebody is signed in as a different person from the one invited.
+
+    The likely case is entirely innocent and will happen constantly: an admin
+    pastes a link to check it while signed in as themselves. Accepting on the
+    signed-in account instead would silently add the WRONG PERSON to the
+    organisation, with the invitation consumed and nothing to show what
+    happened.
+
+    So it refuses and says which address the invitation is for.
+    """
+
+    code = "invitation_wrong_account"
+    message = "This invitation is for a different email address. Sign out to accept it."

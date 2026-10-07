@@ -5,6 +5,7 @@ import { AppShell } from "./shell/AppShell";
 import { RedirectIfSignedIn } from "./shell/components/RedirectIfSignedIn";
 import { LauncherScreen } from "./shell/screens/LauncherScreen";
 import { NotFoundScreen } from "./shell/screens/NotFoundScreen";
+import { InviteAcceptRoute } from "./shell/screens/InviteAcceptScreen";
 import { LoginScreen } from "./shell/screens/LoginScreen";
 import { SignupScreen } from "./shell/screens/SignupScreen";
 
@@ -39,6 +40,20 @@ export const router = createBrowserRouter([
       </RedirectIfSignedIn>
     ),
   },
+  /*
+   * Accepting an invitation (C56). The link is handed over by hand -- there is
+   * no email -- so this is the first screen many people ever see.
+   *
+   * NOT WRAPPED IN `RedirectIfSignedIn`, and that is deliberate rather than an
+   * omission. The guard sends anybody already signed in to their own launcher,
+   * which is exactly what must not happen to somebody holding an invitation to
+   * a SECOND organisation (C1): one login spans organisations, so a signed-in
+   * person opening this link is the ordinary case and the screen handles it.
+   *
+   * No org slug either. The token names the organisation, which keeps a
+   * customer's name out of a URL that gets pasted into chat messages.
+   */
+  { path: "/invite/:token", element: <InviteAcceptRoute /> },
   {
     path: "/:orgSlug",
     element: <AppShell />,

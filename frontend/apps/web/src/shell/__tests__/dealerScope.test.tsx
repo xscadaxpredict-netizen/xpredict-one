@@ -51,7 +51,28 @@ vi.mock("../api/auth", async (importOriginal) => ({
 vi.mock("../admin/api/users", async (importOriginal) => ({
   ...(await importOriginal<typeof usersApi>()),
   fetchUsers: vi.fn(),
-  inviteUser: vi.fn().mockResolvedValue(undefined),
+  /*
+   * RESOLVES WITH A ROW, not `undefined`. The dialog now reads the created
+   * invitation's id so it can show the link to copy (C56) -- there is no
+   * email -- so a mock returning nothing sends it down its error path while
+   * these tests, which only assert the payload, carry on passing.
+   */
+  inviteUser: vi.fn().mockResolvedValue({
+    id: "invitation-1",
+    first_name: "Asha",
+    last_name: "Pillai",
+    email: "asha.p@acmemotors.in",
+    unit_id: null,
+    unit_name: null,
+    role: "member",
+    status: "invited",
+    apps: [],
+    administers: null,
+  }),
+  fetchInviteLink: vi.fn().mockResolvedValue({
+    link: "http://localhost:5173/invite/token-for-invitation-1",
+    expires_at: "2026-10-21T00:00:00Z",
+  }),
   updateUser: vi.fn().mockResolvedValue(undefined),
 }));
 
@@ -277,7 +298,7 @@ describe("inviting somebody into one dealership", () => {
     fireEvent.change(within(dialog).getByLabelText(/Email/), {
       target: { value: "asha.p@acmemotors.in" },
     });
-    fireEvent.click(within(dialog).getByRole("button", { name: /Send invitation/ }));
+    fireEvent.click(within(dialog).getByRole("button", { name: /Create invitation/ }));
 
     expect(await within(dialog).findByText(/Select the dealer this user belongs to/i)).toBeInTheDocument();
     expect(mockInviteUser).not.toHaveBeenCalled();
@@ -313,7 +334,7 @@ describe("what standing an invited person gets", () => {
     await chooseDealer(dialog, "Chennai — Guindy", "unit-1");
     await chooseRole(dialog, "DMS", "dms.manager");
     fillNames(dialog);
-    fireEvent.click(within(dialog).getByRole("button", { name: /Send invitation/ }));
+    fireEvent.click(within(dialog).getByRole("button", { name: /Create invitation/ }));
 
     await waitFor(() => {
       expect(mockInviteUser).toHaveBeenCalled();
@@ -347,7 +368,7 @@ describe("what standing an invited person gets", () => {
     await chooseDealer(dialog, "Chennai — Guindy", "unit-1");
     await chooseRole(dialog, "DMS", "dms.system_admin");
     fillNames(dialog);
-    fireEvent.click(within(dialog).getByRole("button", { name: /Send invitation/ }));
+    fireEvent.click(within(dialog).getByRole("button", { name: /Create invitation/ }));
 
     await waitFor(() => {
       expect(mockInviteUser).toHaveBeenCalled();
@@ -388,7 +409,7 @@ describe("what standing an invited person gets", () => {
     fireEvent.click(within(dialog).getByRole("checkbox", { name: "DMS" }));
     await chooseRole(dialog, "DMS", "dms.fleet_viewer");
     fillNames(dialog);
-    fireEvent.click(within(dialog).getByRole("button", { name: /Send invitation/ }));
+    fireEvent.click(within(dialog).getByRole("button", { name: /Create invitation/ }));
 
     await waitFor(() => {
       expect(mockInviteUser).toHaveBeenCalled();
@@ -492,7 +513,7 @@ describe("the role somebody holds inside an app", () => {
     fireEvent.change(within(dialog).getByLabelText(/Email/), {
       target: { value: "asha.p@acmemotors.in" },
     });
-    fireEvent.click(within(dialog).getByRole("button", { name: /Send invitation/ }));
+    fireEvent.click(within(dialog).getByRole("button", { name: /Create invitation/ }));
 
     expect(await within(dialog).findByText(/Choose a role for DMS/i)).toBeInTheDocument();
     expect(mockInviteUser).not.toHaveBeenCalled();
@@ -513,7 +534,7 @@ describe("the role somebody holds inside an app", () => {
     fireEvent.change(within(dialog).getByLabelText(/Email/), {
       target: { value: "asha.p@acmemotors.in" },
     });
-    fireEvent.click(within(dialog).getByRole("button", { name: /Send invitation/ }));
+    fireEvent.click(within(dialog).getByRole("button", { name: /Create invitation/ }));
 
     await waitFor(() => {
       expect(mockInviteUser).toHaveBeenCalled();
@@ -566,7 +587,7 @@ describe("what a stored user shows", () => {
     fireEvent.change(within(dialog).getByLabelText(/Email/), {
       target: { value: "kiran.b@acmemotors.in" },
     });
-    fireEvent.click(within(dialog).getByRole("button", { name: /Send invitation/ }));
+    fireEvent.click(within(dialog).getByRole("button", { name: /Create invitation/ }));
 
     await waitFor(() => {
       expect(mockInviteUser).toHaveBeenCalled();

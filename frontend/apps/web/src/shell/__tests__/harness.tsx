@@ -15,6 +15,7 @@ import { createMemoryRouter, Navigate, RouterProvider } from "react-router-dom";
 import { AppShell } from "../AppShell";
 import { UsersScreen } from "../admin/screens/UsersScreen";
 import { RedirectIfSignedIn } from "../components/RedirectIfSignedIn";
+import { InviteAcceptRoute } from "../screens/InviteAcceptScreen";
 import { LauncherScreen } from "../screens/LauncherScreen";
 import { LoginScreen } from "../screens/LoginScreen";
 import { NotFoundScreen } from "../screens/NotFoundScreen";
@@ -71,6 +72,14 @@ export function renderRoute({
           </RedirectIfSignedIn>
         ),
       },
+      /*
+       * MOUNTED WITHOUT `RedirectIfSignedIn`, exactly as `router.tsx` has it.
+       * That omission is the behaviour under test: the guard would bounce a
+       * signed-in person to their own launcher, and somebody accepting an
+       * invitation to a SECOND organisation (C1) is signed in already.
+       * Wrapping it here would make the real bug untestable.
+       */
+      { path: "/invite/:token", element: <InviteAcceptRoute /> },
       {
         path: "/:orgSlug",
         element: <AppShell />,

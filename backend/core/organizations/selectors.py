@@ -19,9 +19,12 @@ import uuid
 from dataclasses import dataclass
 from datetime import datetime
 
+from django.core.exceptions import ValidationError as DjangoValidationError
 from django.db.models import Count, IntegerField, OuterRef, Subquery, Value
 from django.db.models.functions import Coalesce
+from django.utils import timezone
 
+from core.accounts.models import User
 from core.billing.models import AppSubscription, SubscriptionStatus
 from core.organizations.models import (
     BusinessUnit,
@@ -34,6 +37,7 @@ from core.organizations.models import (
 )
 from core.permissions.models import AppCode, Permission
 from core.permissions.registry import is_unit_aware
+from shared.exceptions import not_found
 
 
 def resolve_allowed_units(membership: Membership, app: str) -> frozenset[uuid.UUID] | None:
@@ -595,3 +599,72 @@ def _administers(standing: str, unit_id: uuid.UUID | None, roles: list) -> str |
         return "dealer"
 
     return None
+
+
+# ---------------------------------------------------------------------------
+# What the accept screen is allowed to know (C56).
+#
+# UNAUTHENTICATED, so everything here is a deliberate disclosure to whoever
+# holds the token. The organisation's name has to be shown --- "join an
+# organisation" with no name is not something anybody should type a password
+# into --- and the address is shown so the holder can tell they were sent
+# somebody else's link. Nothing else: not the dealership, not the apps, not
+# the role, because none of it helps the person decide and all of it is
+# somebody's staffing arrangement.
+# ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class InvitationPreview:
+    """The accept screen's whole world before anybody types anything."""
+
+    organization_name: str
+    organization_slug: str
+    email: str
+    expires_at: datetime
+    is_expired: bool
+    is_accepted: bool
+
+    # True when the address already has an account, so the screen asks them to
+    # sign in rather than offering a password field (C56). The service refuses
+    # the other path anyway; this is what stops the screen asking the wrong
+    # question first.
+    requires_sign_in: bool
+
+    # Who did the inviting, as a name or an address. Shown because an
+    # unexpected link is more plausible with a colleague's name on it than
+    # without --- and the holder was meant to receive it.
+    invited_by: str
+
+
+def invitation_preview(token: str) -> InvitationPreview:
+    """
+    Describe an invitation to the person holding its link.
+
+    IT DOES NOT REFUSE AN EXPIRED OR SPENT ONE. The states are reported so the
+    screen can explain them: "ask for a new link" and "sign in instead" are
+    different sentences and both are more use than a dead page. Only an unknown
+    token is a 404, which is the one case where there is nothing to say.
+    """
+    try:
+        invitation = (
+            Invitation.objects.select_related("organization", "invited_by").get(token=token)
+        )
+    except (Invitation.DoesNotExist, DjangoValidationError, ValueError):
+        raise not_found("Invitation") from None
+
+    inviter = invitation.invited_by
+    invited_by = ""
+    if inviter is not None:
+        invited_by = f"{inviter.first_name} {inviter.last_name}".strip() or inviter.email
+
+    return InvitationPreview(
+        organization_name=invitation.organization.name,
+        organization_slug=invitation.organization.slug,
+        email=invitation.email,
+        expires_at=invitation.expires_at,
+        is_expired=invitation.expires_at <= timezone.now(),
+        is_accepted=invitation.accepted_at is not None,
+        requires_sign_in=User.objects.filter(email__iexact=invitation.email).exists(),
+        invited_by=invited_by,
+    )

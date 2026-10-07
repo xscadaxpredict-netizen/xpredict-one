@@ -11,6 +11,7 @@
  * in packages/ui, shared with Dealers. Only the content is here.
  */
 
+import { useState } from "react";
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import { asProblem } from "@xpredict/api-client";
 import { DetailPanel } from "@xpredict/ui";
@@ -21,6 +22,7 @@ import type { OrgUser } from "../api/users";
 import { APP_CATALOG } from "../../navigation";
 import { useResendInvitation, useSetUserStatus } from "../hooks/useUsers";
 import { EditUserDialog } from "./EditUserDialog";
+import { InviteLinkPanel } from "./InviteLinkPanel";
 import { RemoveUserDialog } from "./RemoveUserDialog";
 import { initials } from "./UserTable";
 import styles from "./UserDetailPanel.module.css";
@@ -35,6 +37,13 @@ interface UserDetailPanelProps {
 export function UserDetailPanel({ user, membership, onClose }: UserDetailPanelProps) {
   const { mutate: setStatus, isPending: statusPending, error: statusError } = useSetUserStatus();
   const { mutate: resend, isPending: resendPending, isSuccess: resent } = useResendInvitation();
+
+  /*
+   * The link is not shown until an admin asks for it. It carries the token
+   * that joins the organisation as this person, so it is fetched on a press
+   * rather than sitting in the panel for everybody who clicks a row.
+   */
+  const [showLink, setShowLink] = useState(false);
 
   const isDisabled = user.status === "disabled";
   const fullName = `${user.first_name} ${user.last_name}`;
@@ -60,14 +69,42 @@ export function UserDetailPanel({ user, membership, onClose }: UserDetailPanelPr
           <EditUserDialog user={user} membership={membership} />
 
           {user.status === "invited" && (
-            <button
-              type="button"
-              className={styles.secondaryAction}
-              disabled={resendPending || resent}
-              onClick={() => resend(user.id)}
-            >
-              {resent ? "Invitation sent" : resendPending ? "Sending…" : "Resend invitation"}
-            </button>
+            <>
+              {/*
+                COPY AND RESEND ARE DIFFERENT VERBS (C56), and this is the
+                pair that makes that legible. Copy hands over the SAME link
+                again -- which is what an admin wants nine times out of ten,
+                because there is no email and they are sending it by hand.
+                Resend mints a new token and kills the old one, so it is for
+                "that went to the wrong person" and nothing else.
+
+                Copy is first because it is the common case.
+              */}
+              <button
+                type="button"
+                className={styles.secondaryAction}
+                onClick={() => setShowLink(true)}
+              >
+                {showLink ? "Link shown below" : "Copy link"}
+              </button>
+
+              <button
+                type="button"
+                className={styles.secondaryAction}
+                disabled={resendPending || resent}
+                onClick={() => {
+                  /*
+                   * Hide the old link as the new one is minted. Leaving it on
+                   * screen would show an admin a link that stopped working the
+                   * moment they pressed this.
+                   */
+                  setShowLink(false);
+                  resend(user.id);
+                }}
+              >
+                {resent ? "New link ready" : resendPending ? "Working…" : "Resend"}
+              </button>
+            </>
           )}
 
           <DropdownMenu.Root>
@@ -147,6 +184,24 @@ export function UserDetailPanel({ user, membership, onClose }: UserDetailPanelPr
           {user.role === "owner" ? "Owner" : user.role === "admin" ? "Admin" : "Member"}
         </span>
       </div>
+
+      {showLink && user.status === "invited" && (
+        /*
+          NO `key` HERE, and that is not an oversight. `UsersScreen` already
+          keys this whole panel by person, so selecting a different row
+          remounts everything inside it -- `showLink` resets to false and the
+          link is refetched when asked for again.
+
+          A second key was written here first, on the reasoning that showing
+          one person's link under another person's name is the worst version of
+          this bug because it WORKS. Reverting it proved the test still passed:
+          the outer key was already doing the job, which makes a key here a
+          check that cannot fail. The guard is one level up and has its own
+          test; this comment is what keeps the next person from assuming
+          otherwise.
+        */
+        <InviteLinkPanel userId={user.id} email={user.email} />
+      )}
 
       <dl className={styles.facts}>
         <dt>Scope</dt>

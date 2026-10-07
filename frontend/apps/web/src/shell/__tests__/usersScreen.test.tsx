@@ -80,18 +80,20 @@ describe("the detail panel is rebuilt per person", () => {
     renderRoute({ path: "/acme-motors/admin/users/sanjay", children: adminRoutes });
 
     const panel = await screen.findByRole("complementary", { name: "Sanjay Desai" });
-    fireEvent.click(within(panel).getByRole("button", { name: "Resend invitation" }));
+    // "Resend", not "Resend invitation": there is no email, so the button now
+    // means "replace the link" and Copy is the one that sends it again (C56).
+    fireEvent.click(within(panel).getByRole("button", { name: "Resend" }));
 
     // Sanjay's own button is now spent, which is correct for Sanjay.
     await waitFor(() => {
-      expect(within(panel).getByRole("button", { name: "Invitation sent" })).toBeDisabled();
+      expect(within(panel).getByRole("button", { name: "New link ready" })).toBeDisabled();
     });
 
     fireEvent.click(screen.getByRole("link", { name: "Priya Raghunathan" }));
 
     const next = await screen.findByRole("complementary", { name: "Priya Raghunathan" });
 
-    expect(within(next).getByRole("button", { name: "Resend invitation" })).toBeEnabled();
+    expect(within(next).getByRole("button", { name: "Resend" })).toBeEnabled();
   });
 });
 

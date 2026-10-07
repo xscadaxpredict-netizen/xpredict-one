@@ -15,6 +15,7 @@ from django.urls import include, path
 from core.organizations.api.views import (
     DealerDetailView,
     DealersView,
+    InviteLinkView,
     ProvisioningView,
     ResendInvitationView,
     UserDetailView,
@@ -50,6 +51,13 @@ urlpatterns = [
         "admin/users/<str:user_id>/resend-invitation/",
         ResendInvitationView.as_view(),
         name="user-resend-invitation",
+    ),
+    # BEFORE the <str:action> route too, and for the same reason: a generic
+    # trailing segment placed first swallows every sibling.
+    path(
+        "admin/users/<str:user_id>/invite-link/",
+        InviteLinkView.as_view(),
+        name="user-invite-link",
     ),
     # One route, two actions, because the rule is currently symmetrical --- the
     # view says what would split them. The view also refuses any other verb,

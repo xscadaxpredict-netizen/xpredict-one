@@ -13,6 +13,8 @@ only thing that will tell you is a column going blank.
 
 from __future__ import annotations
 
+from django.contrib.auth.password_validation import validate_password
+from django.core.exceptions import ValidationError as DjangoValidationError
 from rest_framework import serializers
 
 
@@ -159,3 +161,93 @@ class PersonDetailsSerializer(serializers.Serializer):
 
     role = serializers.ChoiceField(choices=["admin", "member"])
     apps = AppGrantInputSerializer(many=True)
+
+
+# ---------------------------------------------------------------------------
+# Invitations: the link, and redeeming it (C56).
+# ---------------------------------------------------------------------------
+
+
+class InviteLinkSerializer(serializers.Serializer):
+    """
+    The link an admin copies and sends by hand.
+
+    THIS IS A CREDENTIAL IN A RESPONSE BODY, which is why it has its own
+    endpoint instead of riding along on the users list. The list is fetched on
+    every visit to the screen; this is fetched when somebody presses Copy, so
+    the token travels when it is asked for and nowhere else --- and there is
+    one place to hang an audit record on the day C38's audit log arrives.
+    """
+
+    link = serializers.CharField(read_only=True)
+    expires_at = serializers.DateTimeField(read_only=True)
+
+
+class InvitationPreviewSerializer(serializers.Serializer):
+    """
+    What the accept screen may show before anybody is authenticated.
+
+    Deliberately thin --- see `selectors.invitation_preview`. The dealership,
+    the apps and the role are all absent: they are the organisation's staffing
+    arrangements, and the holder of a link does not need them to decide whether
+    to accept.
+    """
+
+    organization_name = serializers.CharField(read_only=True)
+    organization_slug = serializers.CharField(read_only=True)
+    email = serializers.CharField(read_only=True)
+    expires_at = serializers.DateTimeField(read_only=True)
+    is_expired = serializers.BooleanField(read_only=True)
+    is_accepted = serializers.BooleanField(read_only=True)
+    requires_sign_in = serializers.BooleanField(read_only=True)
+    invited_by = serializers.CharField(read_only=True)
+
+
+class AcceptInvitationSerializer(serializers.Serializer):
+    """
+    What the accept form sends.
+
+    THE PASSWORD IS OPTIONAL HERE AND THE SERVICE DECIDES. Somebody whose
+    address already has an account signs in and sends nothing (C56); somebody
+    new sends a password. A serializer cannot tell which case it is holding
+    without hitting the database, and putting that query here would mean two
+    places answering one question --- so this checks the shape and
+    `accept_invitation()` checks the rule.
+
+    VALIDATED AGAINST `AUTH_PASSWORD_VALIDATORS`, which until now nothing in
+    this project called. The setting has been in `base.py` since Phase 1 and
+    was never reached by any code path, so the rules it describes were not
+    being applied anywhere --- the same shape as `BLACKLIST_AFTER_ROTATION`
+    without its app. Signup still does not call it; see the note in the
+    session log.
+    """
+
+    password = serializers.CharField(
+        required=False,
+        allow_blank=True,
+        trim_whitespace=False,
+        style={"input_type": "password"},
+    )
+
+    def validate_password(self, value: str) -> str:
+        if value:
+            # DRF's ValidationError, not a domain one: this is field shape, and
+            # it belongs beside the input in the form.
+            try:
+                validate_password(value)
+            except DjangoValidationError as exc:
+                raise serializers.ValidationError(list(exc.messages)) from None
+        return value
+
+
+class AcceptResultSerializer(serializers.Serializer):
+    """
+    Where to go next, and whether an account was made along the way.
+
+    `org_slug` is what the frontend navigates to. NO TOKEN FIELD --- accepting
+    signs the person in through the same httpOnly cookies as login and signup
+    (C12), so there is nothing here for JavaScript to hold.
+    """
+
+    org_slug = serializers.CharField(read_only=True)
+    account_created = serializers.BooleanField(read_only=True)
