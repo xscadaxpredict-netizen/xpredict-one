@@ -15,13 +15,24 @@
  * TWO SECTIONS, BECAUSE THERE ARE TWO THINGS CALLED A ROLE and confusing them
  * is the mistake this page exists to prevent:
  *
- *   Organisation role  — Owner / Admin / Member. Standing in the ORGANISATION:
- *                        may you administer it, and with a dealer attached,
- *                        may you administer that dealer (C31). It is the
+ *   Organisation role  — Owner / Admin / Member. Standing in the ORGANISATION,
+ *                        and ALWAYS organisation-wide: anything above Member
+ *                        must have no dealership attached, which the database
+ *                        enforces with a check constraint (C40). It is the
  *                        column the Users screen shows.
  *
  *   App role           — Sales representative, Service advisor. What you may
  *                        do INSIDE an app. Says nothing about administering.
+ *
+ * THE TWO NEVER TOUCH, and neither is derived from the other (C40). A dealer
+ * admin is a MEMBER holding the DMS System administrator role — not an Admin
+ * with a dealership, which is the C31 model this page used to describe and
+ * which `membership_org_standing_has_no_unit` now rejects outright.
+ *
+ * AND A PERSON WITH NO DEALERSHIP IS UNRESTRICTED, not unscoped-by-accident.
+ * `resolve_allowed_units()` returns None for them, so somebody organisation-
+ * wide in DMS sees every dealership's records (C7) — which is the whole reason
+ * the two org-level DMS roles exist and why one of them is read-only.
  *
  * Somebody who sees "Admin" against a person on Users and then opens this page
  * has to find it here, or they will reasonably decide the page is incomplete.
@@ -58,7 +69,7 @@ const ORG_ROLES = [
   {
     name: "Admin",
     summary:
-      "Manages the organisation: dealers, people and billing. With a dealer attached they administer that dealer instead, and nothing beyond it.",
+      "Manages the whole organisation: dealers, people and billing. Always organisation-wide — somebody who administers a single dealership is a Member holding the DMS System administrator role instead.",
   },
   {
     name: "Member",

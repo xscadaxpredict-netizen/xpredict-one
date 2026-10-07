@@ -4,16 +4,22 @@
  * TWO DIFFERENT THINGS ARE CALLED "ROLE", and confusing them is the mistake
  * this file exists to make hard:
  *
- *   Membership.role  — owner / admin / member. Standing in the ORGANISATION:
- *                      may you administer it, and with a dealership attached,
- *                      may you administer that dealership (C31). Set on the
+ *   Membership.role  — owner / admin / member. Standing in the ORGANISATION,
+ *                      and always organisation-wide: anything above `member`
+ *                      must have no dealership attached (C40). Set on the
  *                      invite and edit forms directly.
  *
- *   AppAccess.role   — THIS. What you may do INSIDE an app: Sales executive,
- *                      Service advisor. Says nothing about administering.
+ *   AppAccess.role   — THIS. What you may do INSIDE an app: Sales
+ *                      representative, Service advisor. Says nothing about
+ *                      administering.
  *
- * A dealer admin is typically `admin` + `Dealer manager`; an ordinary
- * salesperson is `member` + `Sales executive`. Neither implies the other.
+ * THE TWO NEVER TOUCH and neither is derived from the other (C40). A dealer
+ * admin is `member` + the DMS `System administrator` role; an ordinary
+ * salesperson is `member` + `Sales representative`.
+ *
+ * This used to say a dealer admin was `admin` + `Dealer manager` — the C31
+ * model, with two roles that no longer exist. The database now refuses
+ * `admin` with a dealership attached outright.
  *
  * THE LIST COMES FROM THE SERVER, and the frontend must not hardcode it — the
  * same argument as the opaque permission strings in C19. A union type here

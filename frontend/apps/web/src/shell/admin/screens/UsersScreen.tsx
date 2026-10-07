@@ -144,7 +144,7 @@ export function UsersScreen() {
 
           <p className={styles.count} aria-live="polite">
             {filtered?.length === users.length
-              ? `${String(users.length)} people`
+              ? `${String(users.length)} ${users.length === 1 ? "person" : "people"}`
               : `${String(filtered?.length ?? 0)} of ${String(users.length)}`}
           </p>
         </div>
