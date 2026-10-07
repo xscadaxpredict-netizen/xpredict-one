@@ -29,12 +29,13 @@ from django.utils import timezone
 from django.utils.text import slugify
 
 from core.accounts.models import User
-from core.billing.models import AppSubscription
+from core.billing.models import AppSubscription, SubscriptionStatus
 from core.organizations.exceptions import (
     ActivationCodeExpiredError,
     ActivationCodeInvalidError,
     ActivationCodeSpentError,
     AdministrationNotGrantableError,
+    AppNotSubscribedError,
     DealerCodeTakenError,
     DealerNameTakenError,
     DealerScopedAppError,
@@ -480,16 +481,35 @@ def _assert_can_manage(actor: Membership, target_unit_id: uuid.UUID | None) -> N
         raise not_found("User")
 
 
-def _assert_grants_are_legal(unit_id: uuid.UUID | None, grants: list[tuple[str, Role]]) -> None:
+def _assert_grants_are_legal(
+    organization: Organization, unit_id: uuid.UUID | None, grants: list[tuple[str, Role]]
+) -> None:
     """
-    C27 and the role-level rule, together, because both ask whether a grant
-    makes sense at a scope.
+    Every rule about whether a grant makes sense: is it bought, does the scope
+    allow it, and is the role one that exists at that scope.
 
     IN ONE PLACE SO INVITE AND UPDATE CANNOT DISAGREE. They already did once in
     the frontend: the invite dialog gained the C27 rule and the edit dialog
     did not.
     """
+    subscribed = set(
+        AppSubscription.objects.filter(
+            organization=organization, status=SubscriptionStatus.ACTIVE
+        ).values_list("app", flat=True)
+    )
+
     for app, role in grants:
+        if app not in subscribed:
+            # THE OTHER HALF OF C16, and it was missing until the owner found
+            # its mirror image in the UI. A grant and a subscription are two
+            # facts and both are required; `/me` enforced one direction (a
+            # grant left on a lapsed subscription opens nothing) while nothing
+            # stopped the grant being made for an app never bought.
+            #
+            # Administration never reaches here: `_resolve_grants` refuses it
+            # outright, because it is not sold (C44).
+            raise AppNotSubscribedError
+
         if unit_id is not None and app != AppCode.DMS:
             # C27. CRM does no unit filtering and has no column to filter on,
             # so a dealer-scoped person holding it sees every dealership's
@@ -644,7 +664,7 @@ def invite_person(
 
     unit = _resolve_unit(organization, unit_id)
     grants = _resolve_grants(apps)
-    _assert_grants_are_legal(unit_id, grants)
+    _assert_grants_are_legal(organization, unit_id, grants)
     _assert_email_free(organization, email)
 
     invitation = Invitation.objects.create(
@@ -699,7 +719,7 @@ def update_person(
 
     unit = _resolve_unit(organization, unit_id)
     grants = _resolve_grants(apps)
-    _assert_grants_are_legal(unit_id, grants)
+    _assert_grants_are_legal(organization, unit_id, grants)
 
     if isinstance(person, Invitation):
         _update_invitation(person, organization, first_name, last_name, email, unit, role, grants)

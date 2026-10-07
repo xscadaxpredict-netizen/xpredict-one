@@ -33,7 +33,7 @@ import { useState } from "react";
 
 import type { Membership } from "../../api/auth";
 import type { Dealer } from "../api/dealers";
-import { visibleApps } from "../../navigation";
+import { findApp, grantableApps } from "../../navigation";
 import { rolesFor, type Role } from "../api/roles";
 import { dealerScopeRules, isDealerScopable } from "../dealerScope";
 import { useDealers } from "../hooks/useDealers";
@@ -287,9 +287,13 @@ export function PersonAccessFields({
   lockOrgRole = false,
   scopeHint,
 }: PersonAccessFieldsProps) {
-  const apps = visibleApps(membership).filter(
-    (app) => app.enabled && app.definition.key !== "admin",
-  );
+  /*
+   * WHAT THIS ORGANISATION BOUGHT, not what the person filling in the form can
+   * open. `visibleApps()` is the launcher's rule and hides an app you are
+   * subscribed to but cannot open — which meant an admin who had dropped DMS
+   * could no longer grant it to anybody, including back to themselves.
+   */
+  const apps = grantableApps(membership);
 
   const dealerOptions =
     access.dealers.filter(
@@ -419,7 +423,7 @@ export function PersonAccessFields({
                         disabled={!access.selectedApps.includes(appKey)}
                         onChange={() => access.toggleApp(appKey)}
                       />
-                      <span>{appName(apps, appKey)}</span>
+                      <span>{appName(appKey)}</span>
                     </label>
                   ))}
                 </div>
@@ -448,14 +452,14 @@ export function PersonAccessFields({
 
             <div className={styles.choices}>
               {apps.map((app) => (
-                <label key={app.definition.key} className={styles.choice}>
+                <label key={app.key} className={styles.choice}>
                   <input
                     type="checkbox"
-                    checked={access.selectedApps.includes(app.definition.key)}
-                    disabled={rules.isAppLocked(app.definition.key)}
-                    onChange={() => access.toggleApp(app.definition.key)}
+                    checked={access.selectedApps.includes(app.key)}
+                    disabled={rules.isAppLocked(app.key)}
+                    onChange={() => access.toggleApp(app.key)}
                   />
-                  <span>{app.definition.name}</span>
+                  <span>{app.name}</span>
                 </label>
               ))}
             </div>
@@ -463,15 +467,15 @@ export function PersonAccessFields({
             {/* One per app they hold, in the app list's order, so ticking DMS
                 puts its role directly under the tick. */}
             {apps
-              .filter((app) => access.selectedApps.includes(app.definition.key))
+              .filter((app) => access.selectedApps.includes(app.key))
               .map((app) => (
                 <RolePicker
-                  key={app.definition.key}
-                  appName={app.definition.name}
-                  appKey={app.definition.key}
-                  options={access.optionsFor(app.definition.key)}
-                  value={access.roleFor(app.definition.key)}
-                  onChange={(code) => access.setAppRole(app.definition.key, code)}
+                  key={app.key}
+                  appName={app.name}
+                  appKey={app.key}
+                  options={access.optionsFor(app.key)}
+                  value={access.roleFor(app.key)}
+                  onChange={(code) => access.setAppRole(app.key, code)}
                 />
               ))}
           </>
@@ -519,9 +523,14 @@ export function PersonAccessFields({
 }
 
 /** An app's display name, falling back to its key if the catalog lacks it. */
-function appName(
-  apps: ReturnType<typeof visibleApps>,
-  appKey: string,
-): string {
-  return apps.find((app) => app.definition.key === appKey)?.definition.name ?? appKey.toUpperCase();
+/**
+ * An app's display name, from the CATALOG rather than from the grantable list.
+ *
+ * The repair case below shows an app somebody holds illegally, and the
+ * organisation may since have stopped subscribing to it — so it is not in the
+ * grantable list, and looking it up there would label the checkbox "CRM"
+ * instead of "CRM". The catalog knows every app this frontend can draw.
+ */
+function appName(appKey: string): string {
+  return findApp(appKey)?.name ?? appKey.toUpperCase();
 }

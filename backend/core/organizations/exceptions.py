@@ -237,3 +237,24 @@ class AdministrationNotGrantableError(ConflictError):
 
     code = "administration_not_grantable"
     message = "Administration is not an app that can be granted."
+
+
+class AppNotSubscribedError(ConflictError):
+    """
+    An app was granted that this organization does not pay for.
+
+    THE OTHER HALF OF C16, and it was missing. A grant says this person may
+    open the app; `billing.AppSubscription` says the organization bought it.
+    Both are required, and `/me` already refuses to open an app whose
+    subscription has lapsed --- but nothing stopped the grant being created in
+    the first place, so an admin could hand out an app nobody had bought and
+    the only symptom was a launcher tile that never became clickable.
+
+    NOT `AuthorizationError`. The caller may well hold `admin.person.update`;
+    it is the organization's billing state that does not allow this, which is
+    what `ConflictError` is for --- resubmitting the same request after
+    subscribing would succeed.
+    """
+
+    code = "app_not_subscribed"
+    message = "This organisation has not subscribed to that app."

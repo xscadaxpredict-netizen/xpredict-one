@@ -33,7 +33,14 @@ import { UsersScreen } from "../admin/screens/UsersScreen";
 import { fetchMe } from "../api/auth";
 import type * as authApi from "../api/auth";
 import { renderRoute } from "./harness";
-import { dealerAdminMembership, me, ownerMembership, roleCatalogue } from "./factories";
+import {
+  appAccess,
+  dealerAdminMembership,
+  me,
+  membership,
+  ownerMembership,
+  roleCatalogue,
+} from "./factories";
 
 vi.mock("../api/auth", async (importOriginal) => ({
   ...(await importOriginal<typeof authApi>()),
@@ -765,5 +772,70 @@ describe("editing somebody who belongs to one dealer", () => {
     expect(crm).not.toBeChecked();
     // Now that it is gone it cannot come back while the dealer stands.
     expect(crm).toBeDisabled();
+  });
+});
+
+describe("what an administrator may hand out", () => {
+  /*
+   * THE OWNER'S ONE-WAY DOOR, found by the owner on their own organisation.
+   *
+   * They edited themselves, unticked DMS, and DMS vanished from the form —
+   * not only on their own record but on everybody's, because the checkbox list
+   * was built from `visibleApps()`, the LAUNCHER's rule. That rule hides an app
+   * you are subscribed to but cannot open, which is right for a launcher (C22:
+   * listing it tells you what you are not trusted with) and a trap for a grant
+   * form. An organisation paying for DMS could no longer give it to anyone,
+   * with no error and nothing to click.
+   *
+   * C41 explicitly lets an owner "drop what they never open". It never meant
+   * the door opens one way.
+   *
+   * An admin grants on behalf of the ORGANISATION, not out of their own
+   * pocket, so the list is what the organisation subscribes to.
+   */
+  it("offers an app the organisation bought but the editor cannot open", async () => {
+    const strippedOwner = membership({
+      role: "owner",
+      apps: [
+        // Paid for, and this admin has given up their own access to it.
+        appAccess("dms", { accessible: false, modules: [], permissions: [] }),
+        appAccess("admin", {
+          modules: ["users", "dealers", "roles"],
+          permissions: ["admin.person.invite", "admin.person.update", "admin.role.view"],
+        }),
+      ],
+    });
+    mockFetchMe.mockResolvedValue(me({ memberships: [strippedOwner] }));
+
+    const dialog = await openInviteForm();
+
+    expect(within(dialog).getByRole("checkbox", { name: "DMS" })).toBeInTheDocument();
+    expect(within(dialog).getByRole("checkbox", { name: "DMS" })).not.toBeDisabled();
+  });
+
+  it("does not offer an app the organisation has not bought", async () => {
+    /*
+     * The other direction, and the reason this is not simply "offer
+     * everything". C16 keeps `subscribed` and `accessible` as two facts; this
+     * list is the first of them, and the backend refuses a grant for an
+     * unsubscribed app regardless (C19).
+     */
+    const noCrm = membership({
+      role: "owner",
+      apps: [
+        appAccess("dms", { modules: ["sales"], permissions: ["dms.enquiry.view"] }),
+        appAccess("crm", { subscribed: false, accessible: false }),
+        appAccess("admin", {
+          modules: ["users", "dealers", "roles"],
+          permissions: ["admin.person.invite", "admin.role.view"],
+        }),
+      ],
+    });
+    mockFetchMe.mockResolvedValue(me({ memberships: [noCrm] }));
+
+    const dialog = await openInviteForm();
+
+    expect(within(dialog).getByRole("checkbox", { name: "DMS" })).toBeInTheDocument();
+    expect(within(dialog).queryByRole("checkbox", { name: "CRM" })).not.toBeInTheDocument();
   });
 });

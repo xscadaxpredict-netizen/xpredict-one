@@ -28,6 +28,7 @@ from rest_framework.test import APIClient
 
 from conftest import TEST_TENANT_ALIAS
 from core.accounts.models import User
+from core.billing.models import AppSubscription, SubscriptionStatus
 from core.organizations.models import (
     ActivationCode,
     BusinessUnit,
@@ -522,13 +523,111 @@ class TestInviting:
         assert response.status_code in (400, 422)
 
 
+class TestSubscriptionIsRequired:
+    """
+    THE OTHER HALF OF C16, which was missing until the owner hit its mirror
+    image in the UI.
+
+    A grant says this person may open the app; `AppSubscription` says the
+    organisation bought it. `/me` already enforced one direction — a grant left
+    on a lapsed subscription opens nothing — while nothing stopped the grant
+    being made for an app never bought. The only symptom was a launcher tile
+    that never became clickable.
+    """
+
+    def test_an_app_the_organisation_never_bought_is_refused(self, client):
+        result = found()
+        client.force_authenticate(user=result.user)
+
+        # A new organisation subscribes to DMS only (DEFAULT_SUBSCRIBED_APPS).
+        response = client.post(
+            INVITE_URL.format(slug=result.organization.slug),
+            payload(apps=[{"app": "crm", "role": "crm.member"}]),
+            format="json",
+        )
+
+        assert response.status_code == 409
+        assert response.json()["code"] == "app_not_subscribed"
+        assert Invitation.objects.filter(email="new@acme.test").count() == 0
+
+    def test_a_cancelled_subscription_refuses_new_grants(self, client):
+        """
+        The grant is not revoked when billing lapses — C16 is explicit that a
+        stale grant must simply open nothing — but no NEW one may be made.
+        """
+        result = found()
+        AppSubscription.objects.filter(organization=result.organization, app=AppCode.DMS).update(
+            status=SubscriptionStatus.CANCELLED
+        )
+        client.force_authenticate(user=result.user)
+
+        response = client.post(
+            INVITE_URL.format(slug=result.organization.slug), payload(), format="json"
+        )
+
+        assert response.status_code == 409
+        assert response.json()["code"] == "app_not_subscribed"
+
+    def test_editing_somebody_is_held_to_the_same_rule(self, client):
+        """
+        Invite and edit go through one check, so this cannot drift — which is
+        how the C27 rule came to exist in one dialog and not the other.
+        """
+        result = found()
+        person = add_person(result.organization, email="person@acme.test", role_code=None)
+        client.force_authenticate(user=result.user)
+
+        response = client.put(
+            DETAIL_URL.format(slug=result.organization.slug, id=person.id),
+            payload(email="person@acme.test", apps=[{"app": "crm", "role": "crm.member"}]),
+            format="json",
+        )
+
+        assert response.status_code == 409
+        assert response.json()["code"] == "app_not_subscribed"
+
+    def test_re_granting_a_subscribed_app_is_allowed(self, client):
+        """
+        THE OWNER'S CASE, from the backend side. C41 lets them drop an app they
+        never open; nothing about that may stop them taking it back, and the
+        subscription is what says so.
+        """
+        result = found()
+        owner = Membership.objects.get(user=result.user, organization=result.organization)
+        owner.app_access.all().delete()
+        client.force_authenticate(user=result.user)
+
+        response = client.put(
+            DETAIL_URL.format(slug=result.organization.slug, id=owner.id),
+            payload(
+                email="owner@acme.test",
+                apps=[{"app": "dms", "role": "dms.group_operations"}],
+            ),
+            format="json",
+        )
+
+        assert response.status_code == 200
+        assert [a.app for a in owner.app_access.all()] == ["dms"]
+
+
 class TestC27DealerScopedGrants:
     def test_a_dealer_scoped_person_cannot_be_given_crm(self, client):
         """
         C27. CRM does no unit filtering and has no column to filter on, so this
         person would see every dealership's customers.
+
+        THE ORGANISATION HAS TO SUBSCRIBE TO CRM for this test to mean
+        anything. A new one gets DMS only, so without this the request is
+        refused for not being bought and C27 is never reached — the test would
+        pass for the wrong reason, which is how it started failing when the
+        subscription check landed.
         """
         result = found()
+        AppSubscription.objects.create(
+            organization=result.organization,
+            app=AppCode.CRM,
+            status=SubscriptionStatus.ACTIVE,
+        )
         unit = BusinessUnit.objects.create(organization=result.organization, name="Whitefield")
         client.force_authenticate(user=result.user)
 

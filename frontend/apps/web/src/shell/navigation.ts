@@ -189,6 +189,11 @@ export interface LauncherApp {
  * and the topbar dropdown — and a rule copied into two components is a rule
  * that will disagree with itself after somebody edits one of them.
  *
+ * IT ANSWERS "WHAT MAY I OPEN", AND NOTHING ELSE. For "what may I give
+ * somebody", see `grantableApps()` below — the two look similar and are
+ * opposite in the case that matters. Using this one for a grant form is what
+ * made an organisation unable to hand out an app it was paying for.
+ *
  *   org has not subscribed  -> SHOWN, DISABLED. Someone has to know an app
  *                              exists before they can ask to buy it.
  *   subscribed, no access   -> HIDDEN. That is a permission, and listing it
@@ -212,4 +217,40 @@ export function visibleApps(membership: Membership): LauncherApp[] {
   }
 
   return result;
+}
+
+/**
+ * The apps an administrator may GIVE somebody: everything this organisation
+ * subscribes to.
+ *
+ * A DIFFERENT QUESTION FROM `visibleApps()`, and the bug that produced this
+ * function is the reason to keep them apart. Both dialogs used to build their
+ * app checkboxes from the launcher list, which hides an app you are subscribed
+ * to but cannot open — correct for a launcher (C22: listing it tells you what
+ * you are not trusted with) and a trap for a grant form.
+ *
+ * WHAT IT COST, found by the owner: they edited themselves, unticked DMS, and
+ * DMS vanished from the form. Not only for their own record — for everybody's,
+ * because the list was built from the EDITOR's access. An organisation paying
+ * for DMS could no longer grant it to anyone, with no error and nothing to
+ * click. C41 explicitly permits an owner to "drop what they never open"; it
+ * never meant the door opens one way.
+ *
+ * AN ADMIN GRANTS ON BEHALF OF THE ORGANISATION, not out of their own pocket.
+ * A finance admin who has never opened DMS still staffs dealerships with it.
+ *
+ * NOT SECURITY (C19). The backend refuses a grant for an app with no active
+ * subscription — `AppNotSubscribedError`, the other half of C16 — and if the
+ * two ever disagree the backend is right.
+ */
+export function grantableApps(membership: Membership): AppDefinition[] {
+  return APP_CATALOG.filter((definition) => {
+    // Administration is never granted: it comes with the platform and follows
+    // from standing or from a role (C17, C40). It is not sold, so it would
+    // fail the subscription test below anyway — excluded by name so the reason
+    // is the real one.
+    if (definition.key === "admin") return false;
+
+    return membership.apps.find((app) => app.key === definition.key)?.subscribed ?? false;
+  });
 }
