@@ -57,21 +57,23 @@ export function UserTable({ users, basePath, selectedId, onSelect }: UserTablePr
               onClick={() => onSelect(user.id)}
             >
               <th scope="row" className={styles.personCell}>
-                <span className={styles.avatar} aria-hidden="true">
-                  {initials(user)}
-                </span>
+                <span className={styles.personLayout}>
+                  <span className={styles.avatar} aria-hidden="true">
+                    {initials(user)}
+                  </span>
 
-                <span className={styles.person}>
-                  <Link
-                    to={`${basePath}/${user.id}`}
-                    className={styles.name}
-                    // The row handler fires too; stopping it here would mean
-                    // the link and the row disagreed about what a click does.
-                    onClick={(event) => event.stopPropagation()}
-                  >
-                    {user.first_name} {user.last_name}
-                  </Link>
-                  <span className={styles.email}>{user.email}</span>
+                  <span className={styles.person}>
+                    <Link
+                      to={`${basePath}/${user.id}`}
+                      className={styles.name}
+                      // The row handler fires too; stopping it here would mean
+                      // the link and the row disagreed about what a click does.
+                      onClick={(event) => event.stopPropagation()}
+                    >
+                      {user.first_name} {user.last_name}
+                    </Link>
+                    <span className={styles.email}>{user.email}</span>
+                  </span>
                 </span>
               </th>
 
