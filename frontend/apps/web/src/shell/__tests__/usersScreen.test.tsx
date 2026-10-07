@@ -126,18 +126,20 @@ describe("the search filters the list, not the open record", () => {
   });
 });
 
-describe("the list says what a person does, not only their standing", () => {
+describe("the role column is standing, and only standing", () => {
   /*
-   * THE BUG THE OWNER REPORTED, in its second form. The first time, a toggle
-   * granted the Administration app while leaving standing at `member`, and the
-   * list displayed "Member" for somebody who ran a dealership.
+   * IT USED TO CARRY APP ROLES TOO, and this file argued hard that it had to:
+   * C40 makes a dealer admin `member`, so a column showing standing alone
+   * labels the person who runs a dealership "Member" beside a salesperson who
+   * also reads "Member".
    *
-   * C40 brings the same display back by design: a dealer admin IS `member`
-   * now, because standing and app roles are independent axes. So the column
-   * cannot show standing alone — two people reading "Member" where one runs the
-   * dealership and the other sells cars is not a list anybody can use.
+   * THE OWNER ASKED FOR THEM OUT ANYWAY, knowing that, because the detail
+   * panel already shows what somebody does in each app and the list is for
+   * scanning. These tests now pin the decision rather than the argument --- if
+   * app roles reappear in this column, it should be because somebody changed
+   * their mind, not because a component drifted.
    */
-  it("distinguishes a dealer admin from a salesperson at the same dealership", async () => {
+  it("shows the same standing for a dealer admin and a salesperson", async () => {
     mockFetchUsers.mockResolvedValue([
       user({
         id: "boss",
@@ -146,8 +148,6 @@ describe("the list says what a person does, not only their standing", () => {
         unit_id: "unit-2",
         unit_name: "Bangalore — Whitefield",
         role: "member",
-        // Administration is NOT an app entry any more (C53): the server
-        // sends `administers` and the browser writes the words.
         apps: [
           { app: "dms", role_code: "dms.system_admin", role_name: "System administrator" },
         ],
@@ -175,20 +175,24 @@ describe("the list says what a person does, not only their standing", () => {
     const boss = (await screen.findByRole("link", { name: "Vikram Nair" })).closest("tr");
     const seller = screen.getByRole("link", { name: "Sanjay Desai" }).closest("tr");
 
-    // Both are members. That is the point: standing no longer separates them.
     expect(within(boss!).getByText("Member")).toBeInTheDocument();
     expect(within(seller!).getByText("Member")).toBeInTheDocument();
 
-    // What they DO is what the row has to say.
-    expect(within(boss!).getByText(/System administrator/)).toBeInTheDocument();
-    expect(within(seller!).getByText(/Sales representative/)).toBeInTheDocument();
+    // AND NOTHING ELSE IN THAT CELL. What they do lives one click away.
+    expect(within(boss!).queryByText(/System administrator/)).not.toBeInTheDocument();
+    expect(within(boss!).queryByText(/Dealer admin/)).not.toBeInTheDocument();
+    expect(within(seller!).queryByText(/Sales representative/)).not.toBeInTheDocument();
   });
 
-  it("says so when somebody holds no apps at all", async () => {
+  it("shows standing for somebody who holds no apps at all", async () => {
     /*
      * A real case, not a defensive branch: an organisation admin who
-     * administers and opens nothing. An empty cell there reads as data still
-     * loading.
+     * administers and opens nothing.
+     *
+     * The row used to say "No apps" here, because the cell listed app roles
+     * and an empty one read as data still loading. With the cell showing
+     * standing only there is nothing to be empty, and "no apps yet" is the
+     * detail panel's line.
      */
     mockFetchUsers.mockResolvedValue([
       user({ id: "lonely", first_name: "Asha", last_name: "Menon", role: "admin", apps: [] }),
@@ -199,6 +203,6 @@ describe("the list says what a person does, not only their standing", () => {
     const row = (await screen.findByRole("link", { name: "Asha Menon" })).closest("tr");
 
     expect(within(row!).getByText("Admin")).toBeInTheDocument();
-    expect(within(row!).getByText("No apps")).toBeInTheDocument();
+    expect(within(row!).queryByText("No apps")).not.toBeInTheDocument();
   });
 });

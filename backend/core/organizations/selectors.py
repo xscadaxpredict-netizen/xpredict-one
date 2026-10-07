@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import uuid
 from dataclasses import dataclass
+from datetime import datetime
 
 from django.db.models import Count, IntegerField, OuterRef, Subquery, Value
 from django.db.models.functions import Coalesce
@@ -451,6 +452,15 @@ class OrgUserData:
     status: str
     apps: list[AppGrantData]
 
+    created_at: datetime
+    """
+    When this person was added, and the ONLY thing the list is ordered by.
+
+    Not displayed. It exists so a newly invited person lands at the bottom
+    rather than somewhere alphabetical, which is where whoever just invited
+    them will look.
+    """
+
     administers: str | None
     """
     `"organisation"`, `"dealer"`, or None -- the FACT, not the words (C53).
@@ -499,9 +509,19 @@ def org_users(organization: Organization, viewer: Membership) -> list[OrgUserDat
     people = [_membership_row(m) for m in memberships] + [_invitation_row(i) for i in invitations]
 
     # Sorted here rather than in the database, because two queries cannot share
-    # an ORDER BY. By name, with the address as the tie-breaker so the order is
-    # stable for two people called the same thing.
-    return sorted(people, key=lambda p: (p.first_name.lower(), p.last_name.lower(), p.email))
+    # an ORDER BY.
+    #
+    # OLDEST FIRST, so somebody just added appears at the BOTTOM. Alphabetical
+    # was the obvious choice and is wrong for what this screen is used for: you
+    # invite somebody and then look for them, and a name-sorted list drops them
+    # at an unpredictable point in the middle. Arrival order means the person
+    # you just added is always in the same place -- the end.
+    #
+    # `created_at` is the tie-breaker's tie-breaker rather than the whole key on
+    # its own: two rows written in the same transaction can share a timestamp,
+    # so the id keeps the order stable instead of letting it vary between
+    # requests.
+    return sorted(people, key=lambda p: (p.created_at, str(p.id)))
 
 
 def _membership_row(membership: Membership) -> OrgUserData:
@@ -518,6 +538,7 @@ def _membership_row(membership: Membership) -> OrgUserData:
         # table, and `MembershipStatus.INVITED` went with it.
         status=membership.status,
         apps=[_grant(g.app, g.role) for g in grants],
+        created_at=membership.created_at,
         administers=_administers(
             membership.role, membership.unit_id, [g.role for g in grants]
         ),
@@ -537,6 +558,7 @@ def _invitation_row(invitation: Invitation) -> OrgUserData:
         role=invitation.role,
         status="invited",
         apps=[_grant(g.app, g.role) for g in grants],
+        created_at=invitation.created_at,
         administers=_administers(
             invitation.role, invitation.unit_id, [g.role for g in grants]
         ),

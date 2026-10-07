@@ -36,6 +36,7 @@ from core.organizations.models import (
     MembershipRole,
     MembershipStatus,
 )
+from core.organizations.selectors import org_users
 from core.organizations.services import sign_up
 from core.permissions.models import AppAccess, AppCode, Role
 
@@ -172,6 +173,41 @@ class TestTheList:
 
         assert person["unit_name"] == "Whitefield"
         assert person["unit_id"] == str(unit.id)
+
+
+class TestOrdering:
+    def test_the_newest_person_is_last(self):
+        """
+        ARRIVAL ORDER, NOT ALPHABETICAL. You invite somebody and then look for
+        them; a name-sorted list drops them at an unpredictable point in the
+        middle, while arrival order always puts them in the same place.
+
+        Written against the selector rather than the endpoint because the
+        ordering is the selector's job, and a test that went through HTTP
+        would be asserting it two layers away from where it happens.
+        """
+        result = found()
+        owner = Membership.objects.get(user=result.user, organization=result.organization)
+
+        # THE NAMES HAVE TO DISAGREE WITH THE ARRIVAL ORDER or this test passes
+        # under either rule and proves nothing -- which is what the first
+        # version did, because the helpers name everybody the same thing.
+        # "Zoe" arrives second and sorts last; "Aaron" arrives last and sorts
+        # first.
+        second = add_person(result.organization, email="zoe@acme.test")
+        second.user.first_name = "Zoe"
+        second.user.save(update_fields=["first_name"])
+
+        third = add_invitation(result.organization, email="aaron@acme.test", role_code=None)
+        third.first_name = "Aaron"
+        third.save(update_fields=["first_name"])
+
+        people = org_users(result.organization, owner)
+
+        assert [p.id for p in people] == [owner.id, second.id, third.id]
+        # Said twice on purpose: the id order is the rule, and this is the
+        # thing the owner actually asked for.
+        assert people[-1].email == "aaron@acme.test"
 
 
 class TestAdministersIsAFactNotAName:
