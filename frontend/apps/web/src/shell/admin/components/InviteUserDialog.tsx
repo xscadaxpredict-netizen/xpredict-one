@@ -164,7 +164,7 @@ function InviteForm({ membership, initialUnitId, onDone }: InviteFormProps) {
       <div className={styles.header}>
         <Dialog.Title className={styles.title}>Invite user</Dialog.Title>
         <Dialog.Description className={styles.description}>
-          They join {access.callerIsDealerAdmin ? membership.unit_name : membership.org_name} and choose
+          They join {access.callerIsUnitScoped ? membership.unit_name : membership.org_name} and choose
           their own password from the emailed invitation.
         </Dialog.Description>
       </div>

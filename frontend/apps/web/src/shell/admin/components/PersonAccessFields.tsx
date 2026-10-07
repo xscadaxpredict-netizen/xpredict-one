@@ -74,8 +74,35 @@ export interface PersonAccess {
 
   /** Whether the PERSON ends up scoped to a dealership. */
   personIsUnitScoped: boolean;
-  /** Whether the CALLER is a dealer admin, who never sees the scope question. */
-  callerIsDealerAdmin: boolean;
+
+  /**
+   * Whether the CALLER belongs to one dealership, and so never sees the scope
+   * question — everybody they can touch is at that dealership (C23).
+   *
+   * NOT CALLED `callerIsUnitScoped`, which is what it said until the owner
+   * asked what it checked. It checks ONE of the three things that make
+   * somebody a dealer admin: a dealership. Standing and the DMS System
+   * administrator role are the other two (C40), and a salesperson at the same
+   * dealership passes this test while administering nothing.
+   *
+   * THE OLD NAME WAS A LEFTOVER OF C31, where "admin standing plus a
+   * dealership" WAS the definition of a dealer admin. C40 replaced that model
+   * and the database now refuses the combination C31 described — so the name
+   * quietly taught the thing C40 exists to stop people believing.
+   *
+   * The conclusion it stood for is still true, and true for three reasons that
+   * all live elsewhere: the check constraint forces `member` standing on
+   * anyone with a dealership, the route guard means only somebody holding
+   * `admin.person.*` reaches this code, and `dms.system_admin` is the only
+   * role granting it. Chain those and a unit-scoped caller here IS a dealer
+   * admin — but that is a conclusion drawn from three other files, not
+   * something this line checks, so it is no longer what the name claims.
+   *
+   * What the dialogs actually need is this question, not that one: a caller
+   * tied to one dealership has nothing to ask about scope or apps, because
+   * C23 and C27 decide both.
+   */
+  callerIsUnitScoped: boolean;
 
   optionsFor: (appKey: string) => Role[];
   roleFor: (appKey: string) => string;
@@ -110,7 +137,9 @@ export interface PersonAccess {
 }
 
 export function usePersonAccess({ membership, initial }: UsePersonAccessOptions): PersonAccess {
-  const callerIsDealerAdmin = membership.unit_id !== null;
+  // Belongs to one dealership. See `callerIsUnitScoped` on the interface for
+  // why that is not spelled "is a dealer admin".
+  const callerIsUnitScoped = membership.unit_id !== null;
 
   const [scope, setScope] = useState<"org" | "dealer">(initial?.unitId ? "dealer" : "org");
   const [unitId, setUnitId] = useState<string>(initial?.unitId ?? "");
@@ -137,14 +166,14 @@ export function usePersonAccess({ membership, initial }: UsePersonAccessOptions)
    * came back "Fleet viewer": a read-only role across every dealership, for
    * somebody who can only ever see one.
    */
-  const personIsUnitScoped = callerIsDealerAdmin || scopedToDealer;
+  const personIsUnitScoped = callerIsUnitScoped || scopedToDealer;
 
   const { data: roles } = useRoles();
   const { data: dealers, isPending: dealersPending } = useDealers({
     // Most people are organisation-wide, and a request nobody needed is still
     // a request. A dealer admin never opens the picker and would not be
     // entitled to a list of every dealership anyway.
-    enabled: scopedToDealer && !callerIsDealerAdmin,
+    enabled: scopedToDealer && !callerIsUnitScoped,
   });
 
   function optionsFor(appKey: string) {
@@ -172,7 +201,7 @@ export function usePersonAccess({ membership, initial }: UsePersonAccessOptions)
   }
 
   function payload() {
-    if (callerIsDealerAdmin) {
+    if (callerIsUnitScoped) {
       /*
        * Their own dealership and DMS, decided here rather than asked (C23).
        * ALWAYS `member` standing, even when appointing another dealer admin:
@@ -218,7 +247,7 @@ export function usePersonAccess({ membership, initial }: UsePersonAccessOptions)
   function problem() {
     // No "no dealership" entry in the picker — the organisation is a different
     // radio — so an empty one means the branch was chosen and not answered.
-    if (!callerIsDealerAdmin && scopedToDealer && !unitId) {
+    if (!callerIsUnitScoped && scopedToDealer && !unitId) {
       return "Select the dealer this user belongs to.";
     }
 
@@ -249,7 +278,7 @@ export function usePersonAccess({ membership, initial }: UsePersonAccessOptions)
     orgRole,
     setOrgRole,
     personIsUnitScoped,
-    callerIsDealerAdmin,
+    callerIsUnitScoped,
     optionsFor,
     roleFor,
     initialApps: initial?.apps.map((held) => held.app) ?? [],
@@ -293,6 +322,7 @@ export function PersonAccessFields({
    * subscribed to but cannot open — which meant an admin who had dropped DMS
    * could no longer grant it to anybody, including back to themselves.
    */
+  console.log(access);
   const apps = grantableApps(membership);
 
   const dealerOptions =
@@ -323,7 +353,7 @@ export function PersonAccessFields({
    */
   const repairable = access.initialApps.filter((app) => !isDealerScopable(app));
 
-  if (access.callerIsDealerAdmin) {
+  if (access.callerIsUnitScoped) {
     return (
       <>
         <p className={styles.note}>

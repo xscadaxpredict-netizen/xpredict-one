@@ -57,7 +57,7 @@ interface EditUserDialogProps {
 
 export function EditUserDialog({ user, membership }: EditUserDialogProps) {
   const [open, setOpen] = useState(false);
-
+  console.log(membership);
   return (
     <Dialog.Root open={open} onOpenChange={setOpen}>
       <Dialog.Trigger className={styles.trigger}>
@@ -92,7 +92,17 @@ interface EditUserFormProps {
 }
 
 function EditUserForm({ user, membership, onDone }: EditUserFormProps) {
-  const isDealerAdmin = membership.unit_id !== null;
+  /*
+   * `membership` is the CALLER's, and this asks whether they belong to one
+   * dealership — not whether they are a dealer admin, which is three facts and
+   * this is one of them (C40). See `callerIsUnitScoped` in
+   * `PersonAccessFields` for the full reasoning; the short version is that the
+   * old name, `isDealerAdmin`, was C31's definition and C31 is gone.
+   *
+   * Only the description line below reads it. Everything that acts on it lives
+   * in the shared hook, which derives the same thing from the same membership.
+   */
+  const callerIsUnitScoped = membership.unit_id !== null;
   const isInvited = user.status === "invited";
   const isOwner = user.role === "owner";
 
@@ -182,7 +192,7 @@ function EditUserForm({ user, membership, onDone }: EditUserFormProps) {
       <div className={styles.header}>
         <Dialog.Title className={styles.title}>Edit person</Dialog.Title>
         <Dialog.Description className={styles.description}>
-          {isDealerAdmin
+          {callerIsUnitScoped
             ? `Their name. Access is fixed to ${membership.unit_name ?? "this dealer"} and DMS.`
             : "Their name, where they work, and what they can open."}
         </Dialog.Description>

@@ -78,9 +78,22 @@ export function UsersScreen() {
    * would have made this screen and that dialog disagree about who the person
    * is. The id is the one that identifies; the name is a label.
    */
-  const isOrgAdmin = membership.unit_id === null;
+  /*
+   * ORGANISATION-WIDE, which is what `unit_id === null` means — not "is an org
+   * admin", which is what this was called. The mirror image of
+   * `callerIsUnitScoped` in `PersonAccessFields`, and misleading the same way:
+   * being unattached to a dealership is one fact, and administering the
+   * organisation is another (C40).
+   *
+   * It happens to imply the other here, because only somebody holding
+   * `admin.person.*` reaches this screen at all — but that is the route guard's
+   * doing, not this line's, and a name should not claim a conclusion it
+   * borrows from another file.
+   */
+  const callerIsOrgWide = membership.unit_id === null;
 
-  const showsOtherDealersPeople = isOrgAdmin && (users?.some((user) => user.unit_name !== null) ?? false);
+  const showsOtherDealersPeople =
+    callerIsOrgWide && (users?.some((user) => user.unit_name !== null) ?? false);
 
   return (
     <div className={styles.page}>
@@ -97,7 +110,7 @@ export function UsersScreen() {
             they can actually do here is different (C23).
           */}
           <InfoHint label="About the Users screen">
-            {isOrgAdmin ? (
+            {callerIsOrgWide ? (
               <>
                 Everyone in {membership.org_name}. People belong to the organisation; only
                 DMS scopes them to a dealer.
