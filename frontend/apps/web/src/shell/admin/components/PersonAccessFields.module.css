@@ -1,0 +1,114 @@
+/*
+ * The scope / access / role fields, shared by the invite and edit dialogs.
+ *
+ * Copied from `InviteUserDialog.module.css` rather than imported from it: that
+ * file styles a dialog, this styles the fields inside one, and a stylesheet
+ * reaching into another component's is the CSS version of the duplication this
+ * component was extracted to remove. The dialogs keep their own chrome.
+ */
+
+.fieldset {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0;
+  border: none;
+}
+
+.fieldset:disabled .legend,
+.fieldset:disabled .hint {
+  color: var(--color-text-disabled);
+}
+
+.legend {
+  padding: 0;
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: var(--color-text);
+}
+
+.hint {
+  margin: 0;
+  font-size: var(--text-xs);
+  line-height: 1.45;
+  color: var(--color-text-3);
+}
+
+.select {
+  height: var(--control-height);
+  padding: 0 var(--space-3);
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  color: var(--color-text);
+  font: inherit;
+  font-size: var(--text-sm);
+}
+
+.select:disabled {
+  background: var(--color-surface-alt);
+  color: var(--color-text-disabled);
+}
+
+/* Matches TextField's label, so a select labelled by hand reads the same as a
+   text field labelled by the component. */
+.label {
+  margin-top: var(--space-2);
+  font-size: var(--text-sm);
+  font-weight: 500;
+  color: var(--color-text-2);
+}
+
+.choices {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-top: var(--space-1);
+}
+
+.choice {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  /* 44px is the touch-target floor in the tokens; a checkbox label is a
+     target like any other. */
+  min-height: var(--control-height);
+  padding: 0 var(--space-4) 0 var(--space-3);
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  font-size: var(--text-sm);
+  cursor: pointer;
+}
+
+.choice:hover {
+  background: var(--color-surface-alt);
+}
+
+.choice input {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--color-primary);
+  cursor: pointer;
+}
+
+/*
+ * A line about a record that is already wrong, not about what you are doing.
+ * Louder than `.hint` because it is asking for a repair, and quieter than an
+ * error because nothing the person just did caused it.
+ */
+.warning {
+  margin: 0;
+  font-size: var(--text-xs);
+  line-height: 1.45;
+  color: var(--color-attention-700);
+}
+
+/* The dealer-admin branch: a statement, not a question. */
+.note {
+  margin: 0;
+  font-size: var(--text-sm);
+  line-height: 1.5;
+  color: var(--color-text-2);
+}

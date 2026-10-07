@@ -722,13 +722,28 @@ describe("staffing a dealership that has nobody in it", () => {
 });
 
 describe("editing somebody who belongs to one dealer", () => {
-  it("locks an organisation-wide app they do not already hold", async () => {
+  it("removes the organisation-wide apps rather than disabling them", async () => {
+    /*
+     * C27 ENFORCED BY ABSENCE, which is stronger than by a disabled control.
+     *
+     * This test used to tick DMS, pick a dealership from a dropdown, and then
+     * assert the CRM checkbox had gone grey. The edit form now asks scope
+     * FIRST (C30) and the dealership branch offers no app list at all —
+     * somebody at a dealership may hold DMS and Administration and nothing
+     * else, so there is no choice of app left to present. A list where two of
+     * three entries are permanently disabled is a question with one answer.
+     *
+     * The rule is unchanged and better guarded: there is no control to get
+     * wrong.
+     */
     const dialog = await openEditForm("anita", "Anita Fernandes");
 
-    fireEvent.click(within(dialog).getByRole("checkbox", { name: "DMS" }));
+    chooseScope(dialog, "Dealership");
     await chooseDealer(dialog, "Chennai — Guindy", "unit-1");
 
-    expect(within(dialog).getByRole("checkbox", { name: "CRM" })).toBeDisabled();
+    expect(within(dialog).queryByRole("checkbox", { name: "CRM" })).not.toBeInTheDocument();
+    // And DMS is not offered as a choice either — it is implied by the scope.
+    expect(within(dialog).queryByRole("checkbox", { name: "DMS" })).not.toBeInTheDocument();
   });
 
   /*

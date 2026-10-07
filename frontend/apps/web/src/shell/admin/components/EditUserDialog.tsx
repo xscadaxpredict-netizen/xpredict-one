@@ -35,15 +35,10 @@ import { asProblem } from "@xpredict/api-client";
 
 import type { Membership } from "../../api/auth";
 import type { OrgUser } from "../api/users";
-import { visibleApps } from "../../navigation";
 import { Button } from "../../components/Button";
 import { FormBanner } from "../../components/FormBanner";
 import { TextField } from "../../components/TextField";
-import { RolePicker } from "./RolePicker";
-import { dealerScopeRules } from "../dealerScope";
-import { rolesFor } from "../api/roles";
-import { useDealers } from "../hooks/useDealers";
-import { useRoles } from "../hooks/useRoles";
+import { PersonAccessFields, usePersonAccess } from "./PersonAccessFields";
 import { useUpdateUser } from "../hooks/useUsers";
 import styles from "./EditUserDialog.module.css";
 
@@ -110,85 +105,31 @@ function EditUserForm({ user, membership, onDone }: EditUserFormProps) {
    */
   const editableRole: "admin" | "member" = user.role === "owner" ? "admin" : user.role;
 
-  const [selectedApps, setSelectedApps] = useState<string[]>(user.apps.map((app) => app.app));
-  const [unitId, setUnitId] = useState(user.unit_id ?? "");
-  /**
-   * Seeded from what they hold NOW, so opening this to fix a spelling and
-   * saving leaves their roles exactly as they were.
+  /*
+   * SCOPE, APPS AND ROLES COME FROM `usePersonAccess` — the same hook the
+   * invite dialog uses.
    *
-   * Keyed by role CODE, and `user.apps` now carries the code alongside the
-   * name, so the match below is a straight comparison rather than a guess at
-   * display strings.
+   * This form used to ask the same three questions in its own order with its
+   * own controls: apps first, then a dealer DROPDOWN where "Organisation" was
+   * one option among dealerships. C30 settled that scope is asked FIRST and
+   * with a radio, because the dealership is a fact about the person and their
+   * apps follow from it — and C30 itself recorded that this form "keeps the
+   * older layout". It does not any more.
+   *
+   * Seeded from what they hold now, so opening this to fix a spelling and
+   * saving changes nothing else (C25).
    */
-  const [appRoles, setAppRoles] = useState<Record<string, string>>({});
-  const [role, setRole] = useState<"admin" | "member">(editableRole);
+  const access = usePersonAccess({
+    membership,
+    initial: {
+      unitId: user.unit_id,
+      apps: user.apps.map((app) => ({ app: app.app, roleCode: app.role_code })),
+      orgRole: editableRole,
+    },
+  });
+
   const [formError, setFormError] = useState<{ message: string; traceId?: string } | null>(null);
-
-  /*
-   * PRODUCTS only. Administration is excluded because it is granted by the
-   * Organisation role below, not by a tick — it comes with the platform and is
-   * gated by role alone (C17, C31). Two controls for one thing could disagree,
-   * and the way it disagreed was silent: admin access with member standing.
-   */
-  const apps = visibleApps(membership).filter(
-    (app) => app.enabled && app.definition.key !== "admin",
-  );
-  const scope = dealerScopeRules(selectedApps, unitId);
-  const { data: roles } = useRoles();
-  const { data: dealers } = useDealers({ enabled: !isDealerAdmin });
-
-  const scopedToDealer = unitId !== "";
-
-  function optionsFor(appKey: string) {
-    return rolesFor(roles ?? [], appKey, scopedToDealer);
-  }
-
-  /**
-   * What they hold in this app: an explicit choice, else the role they already
-   * have, else the default for the scope.
-   *
-   * THE MIDDLE CASE IS THE IMPORTANT ONE. Moving somebody between dealerships,
-   * or granting them CRM, must not quietly reassign their DMS role — C25's
-   * rule, which survives roles becoming assignable. The match is by display
-   * name because that is what a stored user carries.
-   */
-  function roleFor(appKey: string) {
-    const chosen = appRoles[appKey];
-    if (chosen) return chosen;
-
-    const held = user.apps.find((app) => app.app === appKey);
-    const options = optionsFor(appKey);
-    // BY CODE, not by display name. This used to compare `role.name` to what a
-    // stored user carried, because the server only sent the name — so renaming
-    // a role would have quietly stopped matching and offered a different one.
-    const matching = options.find((role) => role.code === held?.role_code);
-    if (matching) return matching.code;
-
-    /*
-     * Nothing held, so this app is being granted right now. One option is
-     * preselected because there is no decision to make; several stay empty and
-     * the save is refused, rather than quietly assigning whatever heads the
-     * list — which is the most capable role, since that is the order.
-     *
-     * The `matching` case above is why an edit about a spelling never lands
-     * here: a role already held is found and returned first (C25).
-     */
-    return options.length === 1 ? (options[0]?.code ?? "") : "";
-  }
-
-  /*
-   * `roleAdministers` was deleted with C40 — see InviteUserDialog for why.
-   * Nothing derives standing from an app role any more.
-   */
   const { mutateAsync: update, isPending } = useUpdateUser();
-
-  /*
-   * A closed dealership is not offered — but if this person is already scoped
-   * to one, it stays in the list. Otherwise opening this dialog to fix a
-   * spelling would silently move them to "Organisation" on save.
-   */
-  const dealerOptions =
-    dealers?.filter((dealer) => dealer.status === "active" || dealer.id === user.unit_id) ?? [];
 
   const {
     register,
@@ -205,72 +146,33 @@ function EditUserForm({ user, membership, onDone }: EditUserFormProps) {
     },
   });
 
-  function toggleApp(key: string) {
-    setSelectedApps((current) =>
-      current.includes(key) ? current.filter((app) => app !== key) : [...current, key],
-    );
-  }
-
   async function onSubmit(values: EditFields) {
     setFormError(null);
 
-    const unanswered = (isDealerAdmin ? [] : selectedApps)
-      .filter((app) => app !== "admin")
-      .filter((app) => !roleFor(app));
-
-    if (unanswered.length > 0) {
-      setFormError({
-        message: roles
-          ? `Choose a role for ${unanswered.map((app) => app.toUpperCase()).join(" and ")}.`
-          : "Roles are still loading. Try again in a moment.",
-      });
+    const problem = access.problem();
+    if (problem) {
+      setFormError({ message: problem });
       return;
     }
 
     try {
       await update({
         userId: user.id,
-        body: {
-          ...values,
-          /*
-           * A dealer admin sends this person's EXISTING scope, apps and role
-           * rather than anything the form collected — they were never shown
-           * those fields and must not change them. The backend applies the
-           * same rule from their membership; this is the form matching it,
-           * not the form deciding it.
-           */
-          unit_id: isDealerAdmin ? user.unit_id : unitId || null,
-          apps: (isDealerAdmin ? user.apps.map((app) => app.app) : selectedApps)
-            .filter((app) => app !== "admin")
-            .map((app) => ({ app, role: roleFor(app) })),
-          /*
-           * A DEALERSHIP PERSON IS ALWAYS `member` (C40). What they administer
-           * comes from their DMS role, and the two never touch — the database
-           * refuses `admin` with a dealership attached. C34 used to read the DMS
-           * role's `administers` here and write `admin` into standing, which
-           * stored a derived value in a second column that then had to be kept
-           * in step by hand.
-           *
-           * The Organisation role select stays hidden for them,
-           * because "admin at this dealer" and "admin of the organisation" are
-           * the same field and only one of them is theirs to be.
-           *
-           * Somebody organisation-wide still answers it directly: an admin
-           * there spans every app, so no single app's role could carry it.
-           */
-          role: isDealerAdmin || isOwner
-            ? editableRole
-            : scopedToDealer
-              ? ("member" as const)
-              : role,
-        },
+        /*
+         * `access.payload()` already handles the dealer-admin case: it sends
+         * their own dealership and DMS rather than anything the form
+         * collected, because a dealer admin is never shown those fields and
+         * must not change them. The backend applies the same rule from their
+         * membership; this is the form matching it, not deciding it.
+         */
+        body: { ...values, ...access.payload() },
       });
       onDone();
     } catch (error) {
-      const problem = asProblem(error);
+      const asproblem = asProblem(error);
       setFormError({
-        message: problem.detail,
-        traceId: problem.status >= 500 ? problem.trace_id : undefined,
+        message: asproblem.detail,
+        traceId: asproblem.status >= 500 ? asproblem.trace_id : undefined,
       });
     }
   }
@@ -282,7 +184,7 @@ function EditUserForm({ user, membership, onDone }: EditUserFormProps) {
         <Dialog.Description className={styles.description}>
           {isDealerAdmin
             ? `Their name. Access is fixed to ${membership.unit_name ?? "this dealer"} and DMS.`
-            : "Their name, what they can open, and which dealer they belong to."}
+            : "Their name, where they work, and what they can open."}
         </Dialog.Description>
       </div>
 
@@ -323,108 +225,27 @@ function EditUserForm({ user, membership, onDone }: EditUserFormProps) {
               : "Sign-in addresses cannot be changed here. The person changes it themselves, confirming from the new address."}
           </p>
 
-          {!isDealerAdmin && (
-            <>
-              <fieldset className={styles.section}>
-                <legend className={styles.legend}>Apps</legend>
-                <div className={styles.choices}>
-                  {apps.map((app) => (
-                    <label key={app.definition.key} className={styles.checkbox}>
-                      <input
-                        type="checkbox"
-                        checked={selectedApps.includes(app.definition.key)}
-                        // They belong to a dealer and this app is
-                        // organisation-wide (C27). Never locks an app they
-                        // ALREADY hold — see `dealerScopeRules`: a record that
-                        // predates this rule has to be fixable, and the only
-                        // edit that fixes it is removing the app.
-                        disabled={scope.isAppLocked(app.definition.key)}
-                        onChange={() => toggleApp(app.definition.key)}
-                      />
-                      <span>{app.definition.name}</span>
-                    </label>
-                  ))}
-                </div>
-                <p className={styles.hint}>
-                  {scope.appsNote ?? "Removing an app takes their access away immediately."}
-                </p>
-
-                {/* One per app they hold, so a role can be changed here too. */}
-                {apps
-                  .filter((app) => selectedApps.includes(app.definition.key))
-                  .map((app) => (
-                    <RolePicker
-                      key={app.definition.key}
-                      appName={app.definition.name}
-                      appKey={app.definition.key}
-                      options={optionsFor(app.definition.key)}
-                      value={roleFor(app.definition.key)}
-                      onChange={(code) => {
-                        setAppRoles((current) => ({ ...current, [app.definition.key]: code }));
-                      }}
-                    />
-                  ))}
-              </fieldset>
-
-              <fieldset className={styles.section}>
-                <legend className={styles.legend}>Dealer</legend>
-                <select
-                  className={styles.select}
-                  value={unitId}
-                  onChange={(event) => setUnitId(event.target.value)}
-                  aria-label="Dealer"
-                  disabled={!scope.canPickDealer}
-                >
-                  <option value="">Organisation — every dealer</option>
-                  {dealerOptions.map((dealer) => (
-                    <option key={dealer.id} value={dealer.id}>
-                      {dealer.name}
-                    </option>
-                  ))}
-                </select>
-                <p className={styles.hint}>{scope.dealerNote}</p>
-              </fieldset>
-
-              {/*
-                HIDDEN FOR A DEALERSHIP USER (C34). "Admin at this dealer" and
-                "admin of the organisation" are the same field, and for somebody
-                scoped to a dealership only the first is available — so it is
-                carried by their DMS role instead. Leaving this here would be
-                two controls writing one value and free to disagree, which is
-                what the separate dealer-admin tick already was.
-              */}
-              <fieldset
-                className={styles.section}
-                disabled={isOwner}
-                hidden={scopedToDealer}
-              >
-                <legend className={styles.legend}>Organisation role</legend>
-                <select
-                  className={styles.select}
-                  value={isOwner ? "owner" : role}
-                  onChange={(event) => {
-                    setRole(event.target.value as "admin" | "member");
-                  }}
-                  aria-label="Organisation role"
-                >
-                  {/*
-                    Shown but not selectable for the owner, because leaving the
-                    control blank would read as "this person has no role".
-                  */}
-                  {isOwner && <option value="owner">Owner</option>}
-                  <option value="admin">Admin</option>
-                  <option value="member">Member</option>
-                </select>
-                <p className={styles.hint}>
-                  {isOwner
-                    ? "The owner's role cannot be changed here. Transfer ownership to somebody else first."
-                    : unitId
-                      ? "An admin with a dealership set above is a dealer admin: they manage that dealership's people and nothing else."
-                      : "Admins manage dealerships, people and billing. This is also what grants Administration — there is no separate tick for it."}
-                </p>
-              </fieldset>
-            </>
-          )}
+          <PersonAccessFields
+            access={access}
+            membership={membership}
+            /*
+             * Their CURRENT dealership stays in the picker even if it has
+             * closed. Without this, opening the form for somebody at a closed
+             * dealership shows it missing and silently moves them to
+             * "Organisation" on save — an edit about a spelling changing their
+             * scope. An invitation passes nothing, because putting a NEW
+             * person into a closed dealership creates somebody who can see
+             * nothing on their first day.
+             */
+            keepUnitId={user.unit_id}
+            /*
+             * The owner's standing is not editable here. There is exactly one
+             * per organisation (C14), so appointing a new one is a transfer
+             * rather than an edit — and that flow does not exist yet (Q23).
+             */
+            lockOrgRole={isOwner}
+            scopeHint={`Where ${user.first_name || "this person"} works, which decides what they can be given.`}
+          />
         </div>
 
         <div className={styles.actions}>
