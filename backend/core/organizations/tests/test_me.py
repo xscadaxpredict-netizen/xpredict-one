@@ -439,12 +439,3 @@ class TestMembershipsThatShouldNotAppear:
         )
 
         assert me(result.user).memberships == []
-
-    def test_an_invited_membership_is_left_out(self):
-        """An invitation not yet accepted is not a membership you can use."""
-        result = found()
-        Membership.objects.filter(pk=result.membership.pk).update(
-            status=MembershipStatus.INVITED
-        )
-
-        assert me(result.user).memberships == []

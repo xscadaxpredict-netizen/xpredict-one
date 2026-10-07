@@ -18,12 +18,17 @@ from __future__ import annotations
 import uuid
 from dataclasses import dataclass
 
+from django.db.models import Count, IntegerField, OuterRef, Subquery, Value
+from django.db.models.functions import Coalesce
+
 from core.billing.models import AppSubscription, SubscriptionStatus
 from core.organizations.models import (
     BusinessUnit,
+    Invitation,
     Membership,
     MembershipRole,
     MembershipStatus,
+    Organization,
     UnitStatus,
 )
 from core.permissions.models import AppCode, Permission
@@ -357,3 +362,214 @@ def can_manage(membership: Membership, target_unit_id: uuid.UUID | None) -> bool
     if membership.unit_id is None:
         return True
     return target_unit_id == membership.unit_id
+
+
+def dealers_for(organization: Organization) -> list[BusinessUnit]:
+    """
+    Every dealership in this organization, with `user_count` annotated.
+
+    `user_count` IS "how many people would the Users screen show for this
+    dealership", which is memberships plus outstanding invitations -- not
+    memberships alone. Somebody invited yesterday and still deciding is a
+    person this dealership has, and the Users list shows them; a count that
+    disagreed with the list it sits beside would read as a bug in whichever
+    screen the reader happened to trust less.
+
+    DISABLED MEMBERSHIPS COUNT. They are switched off, not gone -- C24 is
+    explicit that removing somebody deletes the membership -- so a dealership
+    with three disabled people has three people, and reopening them changes no
+    count.
+
+    TWO SUBQUERIES RATHER THAN TWO JOINS. Annotating a count across two
+    separate reverse relations multiplies the rows: Django would join
+    memberships and invitations together and report `memberships x
+    invitations` for each. That is the classic annotate-twice bug, and it
+    inflates rather than failing, so nothing looks wrong until somebody counts
+    by hand.
+    """
+    memberships = (
+        Membership.objects.filter(unit=OuterRef("pk"))
+        .order_by()
+        .values("unit")
+        .annotate(total=Count("*"))
+        .values("total")
+    )
+    pending = (
+        Invitation.objects.filter(unit=OuterRef("pk"), accepted_at__isnull=True)
+        .order_by()
+        .values("unit")
+        .annotate(total=Count("*"))
+        .values("total")
+    )
+
+    return list(
+        BusinessUnit.objects.filter(organization=organization).annotate(
+            user_count=Coalesce(Subquery(memberships, output_field=IntegerField()), Value(0))
+            + Coalesce(Subquery(pending, output_field=IntegerField()), Value(0))
+        )
+    )
+
+
+# ---------------------------------------------------------------------------
+# The Administration users list.
+#
+# A UNION OF TWO TABLES, which C51 settled and the schema forces. Somebody who
+# has not accepted yet may have no account at all, and `Membership.user` cannot
+# be null -- so a pending person is an `Invitation` row and nothing else. The
+# screen shows both in one list, so this is where they are stitched together.
+#
+# THE CONSEQUENCE TO REMEMBER: `id` is not one table's primary key. An active
+# person's id is a membership id and a pending one's is an invitation id, so
+# every write endpoint has to know which it was handed. `status` is what tells
+# it, and `find_person()` below is the one place that looks it up.
+# ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class AppGrantData:
+    """One app somebody holds, and the role they hold it with."""
+
+    app: str
+    role_code: str
+    role_name: str
+
+
+@dataclass(frozen=True)
+class OrgUserData:
+    """
+    One row of the Administration users list. Mirrors `OrgUser` in
+    `shell/admin/api/users.ts`.
+    """
+
+    id: uuid.UUID
+    first_name: str
+    last_name: str
+    email: str
+    unit_id: uuid.UUID | None
+    unit_name: str | None
+    role: str
+    status: str
+    apps: list[AppGrantData]
+
+    administers: str | None
+    """
+    `"organisation"`, `"dealer"`, or None -- the FACT, not the words (C53).
+
+    Administration is never an `AppAccess` row (the check constraint refuses
+    it) and has no `Role`, so "Organisation admin" and "Dealer admin" are copy
+    describing a derived state rather than data. The browser picks the wording,
+    the way it already does for every other static label.
+
+    TWO SOURCES, which are the two branches in `_administers()`: standing, or
+    a role that grants `admin.*`. C40 keeps them independent, so a dealer admin
+    reaches this from the second while their standing stays `member`.
+    """
+
+
+def org_users(organization: Organization, viewer: Membership) -> list[OrgUserData]:
+    """
+    The people in this organization that `viewer` is allowed to see.
+
+    SCOPED FROM THE CALLER'S MEMBERSHIP, never from a parameter. A dealer admin
+    sees their own dealership's people and nobody else's; an organization-wide
+    admin sees everybody. The frontend fake keyed this off the organisation
+    slug because it had no token to read, and said so -- doing that for real
+    would be the frontend deciding who may see whom.
+
+    PENDING PEOPLE ARE SCOPED THE SAME WAY. It would be easy to filter the
+    memberships and forget the invitations, and the result is a dealer admin
+    reading another dealership's invited staff -- the same leak, one table
+    over, and invisible until somebody has an outstanding invitation.
+    """
+    memberships = (
+        Membership.objects.filter(organization=organization)
+        .select_related("user", "unit")
+        .prefetch_related("app_access__role__permissions")
+    )
+    invitations = (
+        Invitation.objects.filter(organization=organization, accepted_at__isnull=True)
+        .select_related("unit")
+        .prefetch_related("app_grants__role__permissions")
+    )
+
+    if viewer.unit_id is not None:
+        memberships = memberships.filter(unit_id=viewer.unit_id)
+        invitations = invitations.filter(unit_id=viewer.unit_id)
+
+    people = [_membership_row(m) for m in memberships] + [_invitation_row(i) for i in invitations]
+
+    # Sorted here rather than in the database, because two queries cannot share
+    # an ORDER BY. By name, with the address as the tie-breaker so the order is
+    # stable for two people called the same thing.
+    return sorted(people, key=lambda p: (p.first_name.lower(), p.last_name.lower(), p.email))
+
+
+def _membership_row(membership: Membership) -> OrgUserData:
+    grants = list(membership.app_access.all())
+    return OrgUserData(
+        id=membership.id,
+        first_name=membership.user.first_name,
+        last_name=membership.user.last_name,
+        email=membership.user.email,
+        unit_id=membership.unit_id,
+        unit_name=membership.unit.name if membership.unit_id else None,
+        role=membership.role,
+        # `invited` is not reachable here: C51 put pending people in the other
+        # table, and `MembershipStatus.INVITED` went with it.
+        status=membership.status,
+        apps=[_grant(g.app, g.role) for g in grants],
+        administers=_administers(
+            membership.role, membership.unit_id, [g.role for g in grants]
+        ),
+    )
+
+
+def _invitation_row(invitation: Invitation) -> OrgUserData:
+    grants = list(invitation.app_grants.all())
+    return OrgUserData(
+        # AN INVITATION ID, not a membership id. There is no membership yet.
+        id=invitation.id,
+        first_name=invitation.first_name,
+        last_name=invitation.last_name,
+        email=invitation.email,
+        unit_id=invitation.unit_id,
+        unit_name=invitation.unit.name if invitation.unit_id else None,
+        role=invitation.role,
+        status="invited",
+        apps=[_grant(g.app, g.role) for g in grants],
+        administers=_administers(
+            invitation.role, invitation.unit_id, [g.role for g in grants]
+        ),
+    )
+
+
+def _grant(app: str, role) -> AppGrantData:
+    """
+    BOTH THE CODE AND THE NAME. The list displays the name and the edit form
+    matches on the code; sending only the name made that form compare display
+    strings, which it complained about in a comment and which breaks silently
+    the first time a role is renamed.
+    """
+    return AppGrantData(app=app, role_code=role.code, role_name=role.name)
+
+
+def _administers(standing: str, unit_id: uuid.UUID | None, roles: list) -> str | None:
+    """
+    Whether this person administers, and what.
+
+    ORDER MATTERS. Standing is checked first because an owner or org admin
+    administers the whole organization whatever roles they hold -- and the
+    check constraint guarantees they have no dealership, so the second branch
+    could never fire for them anyway.
+
+    `role.administers` is derived from the permissions the role grants (C44),
+    so this cannot drift from what the role actually confers. Prefetch
+    `role__permissions` before calling it in a loop.
+    """
+    if standing in (MembershipRole.OWNER, MembershipRole.ADMIN):
+        return "organisation"
+
+    if unit_id is not None and any(role.administers for role in roles):
+        return "dealer"
+
+    return None

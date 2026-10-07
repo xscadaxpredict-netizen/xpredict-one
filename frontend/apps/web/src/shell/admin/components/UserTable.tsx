@@ -20,6 +20,7 @@
 
 import { Link } from "react-router-dom";
 
+import { administersLabel } from "../administers";
 import type { OrgUser } from "../api/users";
 import styles from "./UserTable.module.css";
 
@@ -77,7 +78,7 @@ export function UserTable({ users, basePath, selectedId, onSelect }: UserTablePr
 
               <td>
                 <RolePill role={user.role} />
-                <AppRoles apps={user.apps} />
+                <AppRoles user={user} />
               </td>
 
               <td>
@@ -113,19 +114,23 @@ function RolePill({ role }: { role: OrgUser["role"] }) {
   * The names are the backend's, already resolved for display; this never maps
   * a code to a label itself (C19).
   */
-function AppRoles({ apps }: { apps: OrgUser["apps"] }) {
-  if (apps.length === 0) {
+function AppRoles({ user }: { user: OrgUser }) {
+  // Administration is appended rather than carried in `apps`, because it is
+  // not an app anybody holds (C53). The server says which kind; the words are
+  // ours.
+  const parts = [
+    ...user.apps.map((grant) => grant.role_name),
+    administersLabel(user.administers),
+  ].filter((part): part is string => part !== null);
+
+  if (parts.length === 0) {
     // Somebody with standing and no apps is a real case --- an organisation
     // admin who administers and opens nothing. Say so rather than leave a gap
     // that reads like data still loading.
     return <span className={styles.appRolesEmpty}>No apps</span>;
   }
 
-  return (
-    <span className={styles.appRoles}>
-      {apps.map((grant) => grant.role).join(" · ")}
-    </span>
-  );
+  return <span className={styles.appRoles}>{parts.join(" · ")}</span>;
 }
 
 function StatusPill({ status }: { status: OrgUser["status"] }) {

@@ -116,9 +116,9 @@ function EditUserForm({ user, membership, onDone }: EditUserFormProps) {
    * Seeded from what they hold NOW, so opening this to fix a spelling and
    * saving leaves their roles exactly as they were.
    *
-   * Keyed by role CODE, but `user.apps` carries display NAMES — the server
-   * resolves one from the other, the way it resolves `unit_name`. Matching by
-   * name is why this is seeded here rather than read from `user` at submit.
+   * Keyed by role CODE, and `user.apps` now carries the code alongside the
+   * name, so the match below is a straight comparison rather than a guess at
+   * display strings.
    */
   const [appRoles, setAppRoles] = useState<Record<string, string>>({});
   const [role, setRole] = useState<"admin" | "member">(editableRole);
@@ -158,7 +158,10 @@ function EditUserForm({ user, membership, onDone }: EditUserFormProps) {
 
     const held = user.apps.find((app) => app.app === appKey);
     const options = optionsFor(appKey);
-    const matching = options.find((role) => role.name === held?.role);
+    // BY CODE, not by display name. This used to compare `role.name` to what a
+    // stored user carried, because the server only sent the name — so renaming
+    // a role would have quietly stopped matching and offered a different one.
+    const matching = options.find((role) => role.code === held?.role_code);
     if (matching) return matching.code;
 
     /*

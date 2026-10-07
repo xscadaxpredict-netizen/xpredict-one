@@ -91,12 +91,22 @@ export interface DealerDetails {
 export type NewDealer = DealerDetails;
 
 /* ------------------------------------------------------------------------ *
- * TEMPORARY FAKE — delete this whole block when the backend is running.
+ * THREE OF THE FOUR NOW READ DJANGO. `fetchDealers`, `createDealer` and
+ * `updateDealer` are live; `setDealerStatus` is NOT, and that is C52 rather
+ * than work left half done.
  *
- * Structured so deleting it is the entire switch: every function falls
- * through to a real request against the URL the backend will serve.
+ * Closing a dealership has no endpoint because **Q21 has never said what
+ * closing one DOES** — to its people, to its records, or whether reopening is
+ * symmetrical. The backend deliberately refuses to make `status` writable
+ * until it does, so that shipping the obvious flag does not answer Q21 by
+ * accident. Until then the button goes on moving a value in module memory,
+ * and the organisation's real dealerships are unaffected by it.
+ *
+ * The fake data below therefore survives for `setDealerStatus` alone. Deleting
+ * it is a one-line change the moment Q21 is answered and the two endpoints
+ * exist.
  * ------------------------------------------------------------------------ */
-const USE_FAKE_DEALERS = true;
+const USE_FAKE_DEALER_STATUS = true;
 
 function wait(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -163,20 +173,6 @@ let fakeDealers: Dealer[] = [
   },
 ];
 
-function fakeConflict(field: "name" | "code", value: string): ApiError {
-  return new ApiError({
-    type: `https://api.xpredict.one/errors/dealer-${field}-taken`,
-    title: field === "name" ? "Name already in use" : "Code already in use",
-    status: 409,
-    detail:
-      field === "name"
-        ? `${value} already exists in this organisation.`
-        : `The code ${value} is already used by another dealership.`,
-    code: `dealer_${field}_taken`,
-    trace_id: "fake-0000",
-  });
-}
-
 function fakeNotFound(): ApiError {
   return new ApiError({
     type: "https://api.xpredict.one/errors/not-found",
@@ -228,42 +224,10 @@ async function request<T>(url: string, init?: RequestInit): Promise<T> {
 }
 
 export async function fetchDealers(orgSlug: string): Promise<Dealer[]> {
-  if (USE_FAKE_DEALERS) {
-    await wait(500);
-    return fakeDealers;
-  }
-
   return request<Dealer[]>(`/api/v1/orgs/${orgSlug}/admin/dealers/`);
 }
 
 export async function createDealer(orgSlug: string, body: NewDealer): Promise<Dealer> {
-  if (USE_FAKE_DEALERS) {
-    await wait(700);
-
-    if (fakeDealers.some((dealer) => dealer.name.toLowerCase() === body.name.toLowerCase())) {
-      throw fakeConflict("name", body.name);
-    }
-
-    // The code is optional, so only a given one can collide.
-    if (
-      body.code &&
-      fakeDealers.some((dealer) => dealer.code?.toLowerCase() === body.code?.toLowerCase())
-    ) {
-      throw fakeConflict("code", body.code);
-    }
-
-    const created: Dealer = {
-      id: `unit-${String(Date.now())}`,
-      ...body,
-      status: "active",
-      user_count: 0,
-      created_at: new Date().toISOString(),
-    };
-
-    fakeDealers = [...fakeDealers, created];
-    return created;
-  }
-
   return request<Dealer>(`/api/v1/orgs/${orgSlug}/admin/dealers/`, {
     method: "POST",
     body: JSON.stringify(body),
@@ -293,34 +257,6 @@ export async function updateDealer(
   dealerId: string,
   body: DealerDetails,
 ): Promise<Dealer> {
-  if (USE_FAKE_DEALERS) {
-    await wait(700);
-
-    const existing = fakeDealers.find((dealer) => dealer.id === dealerId);
-    if (!existing) throw fakeNotFound();
-
-    // Uniqueness excludes the record being edited, or saving a dealership
-    // without touching its name would collide with itself.
-    const others = fakeDealers.filter((dealer) => dealer.id !== dealerId);
-
-    if (others.some((dealer) => dealer.name.toLowerCase() === body.name.toLowerCase())) {
-      throw fakeConflict("name", body.name);
-    }
-
-    if (
-      body.code &&
-      others.some((dealer) => dealer.code?.toLowerCase() === body.code?.toLowerCase())
-    ) {
-      throw fakeConflict("code", body.code);
-    }
-
-    const updated: Dealer = { ...existing, ...body };
-
-    fakeDealers = fakeDealers.map((dealer) => (dealer.id === dealerId ? updated : dealer));
-
-    return updated;
-  }
-
   return request<Dealer>(`/api/v1/orgs/${orgSlug}/admin/dealers/${dealerId}/`, {
     method: "PUT",
     body: JSON.stringify(body),
@@ -332,7 +268,7 @@ export async function setDealerStatus(
   dealerId: string,
   status: DealerStatus,
 ): Promise<Dealer> {
-  if (USE_FAKE_DEALERS) {
+  if (USE_FAKE_DEALER_STATUS) {
     await wait(500);
     fakeDealers = fakeDealers.map((dealer) =>
       dealer.id === dealerId ? { ...dealer, status } : dealer,

@@ -25,7 +25,7 @@ import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import type * as dealersApi from "../admin/api/dealers";
 import { fetchDealers } from "../admin/api/dealers";
 import type * as rolesApi from "../admin/api/roles";
-import { fakeRoleName, fetchRoles } from "../admin/api/roles";
+import { fetchRoles } from "../admin/api/roles";
 import type * as usersApi from "../admin/api/users";
 import { fetchUsers, inviteUser, updateUser } from "../admin/api/users";
 import { DealersScreen } from "../admin/screens/DealersScreen";
@@ -56,8 +56,8 @@ vi.mock("../admin/api/dealers", async (importOriginal) => ({
 // `fetchRoles` READS DJANGO NOW, so it has to be mocked like the rest. It used
 // to answer from the module's own fake, which is why these tests never
 // mentioned roles while asserting the exact contents of a role picker.
-// `importOriginal` keeps `fakeRoleName`, which `users.ts` still uses and the
-// last test in this file checks directly.
+// `importOriginal` keeps the module's real exports; only the request is
+// replaced.
 vi.mock("../admin/api/roles", async (importOriginal) => ({
   ...(await importOriginal<typeof rolesApi>()),
   fetchRoles: vi.fn(),
@@ -79,7 +79,8 @@ function user(overrides: Partial<usersApi.OrgUser> & { id: string }): usersApi.O
     unit_id: null,
     role: "member",
     status: "active",
-    apps: [{ app: "dms", role: "Sales representative" }],
+    apps: [{ app: "dms", role_code: "dms.sales_representative", role_name: "Sales representative" }],
+    administers: null,
     ...overrides,
   };
 }
@@ -120,8 +121,8 @@ const LEGACY = user({
   unit_id: "unit-1",
   unit_name: "Chennai — Guindy",
   apps: [
-    { app: "dms", role: "Sales representative" },
-    { app: "crm", role: "Marketing" },
+    { app: "dms", role_code: "dms.sales_representative", role_name: "Sales representative" },
+    { app: "crm", role_code: "crm.member", role_name: "CRM user" },
   ],
 });
 
@@ -567,11 +568,10 @@ describe("what a stored user shows", () => {
     const call = mockInviteUser.mock.calls[0];
     if (!call) throw new Error("inviteUser was never called");
 
-    // The code goes out...
+    // THE CODE GOES OUT, not the display name. Resolving it back to
+    // "System administrator" was asserted here against the fake; Django owns
+    // that mapping now and `test_roles_api.py` pins it on the other side.
     expect(call[1].apps).toEqual([{ app: "dms", role: "dms.system_admin" }]);
-    // ...and resolves to a name nobody has to read as an identifier.
-    expect(fakeRoleName("dms.system_admin")).toBe("System administrator");
-    expect(fakeRoleName("dms.technician")).toBe("Technician");
   });
 });
 
@@ -582,7 +582,7 @@ describe("editing somebody's role", () => {
     last_name: "Shankar",
     unit_id: "unit-1",
     unit_name: "Chennai — Guindy",
-    apps: [{ app: "dms", role: "Service advisor" }],
+    apps: [{ app: "dms", role_code: "dms.service_advisor", role_name: "Service advisor" }],
   });
 
   beforeEach(() => {

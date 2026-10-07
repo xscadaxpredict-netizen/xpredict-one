@@ -42,6 +42,7 @@ function user(overrides: Partial<usersApi.OrgUser> & { id: string }): usersApi.O
     role: "member",
     status: "active",
     apps: [],
+    administers: null,
     ...overrides,
   };
 }
@@ -145,10 +146,12 @@ describe("the list says what a person does, not only their standing", () => {
         unit_id: "unit-2",
         unit_name: "Bangalore — Whitefield",
         role: "member",
+        // Administration is NOT an app entry any more (C53): the server
+        // sends `administers` and the browser writes the words.
         apps: [
-          { app: "dms", role: "System administrator" },
-          { app: "admin", role: "Dealer admin" },
+          { app: "dms", role_code: "dms.system_admin", role_name: "System administrator" },
         ],
+        administers: "dealer",
       }),
       user({
         id: "seller",
@@ -157,7 +160,13 @@ describe("the list says what a person does, not only their standing", () => {
         unit_id: "unit-2",
         unit_name: "Bangalore — Whitefield",
         role: "member",
-        apps: [{ app: "dms", role: "Sales representative" }],
+        apps: [
+          {
+            app: "dms",
+            role_code: "dms.sales_representative",
+            role_name: "Sales representative",
+          },
+        ],
       }),
     ]);
 

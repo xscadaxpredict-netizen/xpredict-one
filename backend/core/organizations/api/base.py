@@ -90,6 +90,25 @@ class OrgScopedAPIView(APIView):
     membership check went missing before C49.
     """
 
+    method_permissions: ClassVar[dict[str, list[str]]] = {}
+    """
+    Extra permissions for ONE HTTP method, on top of `required_permissions`.
+
+    For a view whose methods are not equally privileged --- the dealer list,
+    where reading needs `admin.dealer.view` and adding one needs
+    `admin.dealer.create`. `required_permissions` is the floor that every
+    method shares; this adds to it for the method named.
+
+    Keys are upper-case method names ("POST", "DELETE"). A method with no
+    entry needs only the floor.
+
+    CHECKED BEFORE THE HANDLER RUNS, like everything else here, which is the
+    reason it is a declaration and not a line at the top of `post()`. A
+    handler that refuses from inside itself has already started, and the
+    refusal tests in `tests/test_org_scoped_view.py` assert the opposite --
+    that a refused request never reaches a handler body at all.
+    """
+
     def initial(self, request: Request, *args, **kwargs) -> None:
         # super() first: it authenticates, applies permission_classes and
         # enforces throttles. Checking membership before that would mean
@@ -97,7 +116,7 @@ class OrgScopedAPIView(APIView):
         super().initial(request, *args, **kwargs)
         self._membership = self._require_membership(request)
         self._organization = self._membership.organization
-        self._require_permissions()
+        self._require_permissions(request)
 
     @property
     def organization(self) -> Organization:
@@ -122,7 +141,7 @@ class OrgScopedAPIView(APIView):
         """
         return self._membership
 
-    def _require_permissions(self) -> None:
+    def _require_permissions(self, request: Request) -> None:
         if self.required_permissions is None:
             # A 500, deliberately, and it fires on the first request to the
             # endpoint rather than the first request from somebody
@@ -133,7 +152,12 @@ class OrgScopedAPIView(APIView):
                 f"Use [] if membership alone is enough, and say why."
             )
 
-        if not self.required_permissions and not self.required_any_permission:
+        # `request.method` is upper-case and always present by this point;
+        # `or ""` only keeps the lookup total for a hand-built request object.
+        for_this_method = self.method_permissions.get(request.method or "", [])
+        required = [*self.required_permissions, *for_this_method]
+
+        if not required and not self.required_any_permission:
             return
 
         held = permissions_for(self._membership)
@@ -142,7 +166,7 @@ class OrgScopedAPIView(APIView):
         # they are a member of this organization -- and the answer to this
         # particular action is still no, which is the one case
         # `AuthorizationError` is for. Scope failures are the 404s.
-        if not held.issuperset(self.required_permissions):
+        if not held.issuperset(required):
             raise AuthorizationError
 
         if self.required_any_permission and not held.intersection(self.required_any_permission):
