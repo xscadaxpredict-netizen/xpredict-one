@@ -39,7 +39,7 @@
  */
 
 import { asProblem } from "@xpredict/api-client";
-import { ErrorState, TableSkeleton } from "@xpredict/ui";
+import { ErrorState, InfoHint, TableSkeleton } from "@xpredict/ui";
 
 import { useShellContext } from "../../context";
 import { findApp } from "../../navigation";
@@ -85,11 +85,11 @@ export function RolesScreen() {
     <div className={styles.page}>
       <header className={styles.heading}>
         <h1 className={styles.title}>Roles</h1>
-        <p className={styles.subtitle}>
+        <InfoHint label="About the Roles screen">
           Every role in {membership.org_name}, and what it covers. Roles are the same for
           every organisation and cannot be edited here — they are assigned to people on the
           Users screen.
-        </p>
+        </InfoHint>
       </header>
 
       <section className={styles.section}>

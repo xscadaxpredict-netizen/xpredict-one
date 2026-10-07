@@ -19,7 +19,7 @@
 import { useEffect, useState } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { asProblem } from "@xpredict/api-client";
-import { EmptyState, ErrorState, TableSkeleton } from "@xpredict/ui";
+import { EmptyState, ErrorState, InfoHint, TableSkeleton } from "@xpredict/ui";
 
 import { useShellContext } from "../../context";
 import { InviteUserDialog } from "../components/InviteUserDialog";
@@ -87,12 +87,16 @@ export function UsersScreen() {
       <header className={styles.header}>
         <div className={styles.heading}>
           <h1 className={styles.title}>Users</h1>
-          <p className={styles.subtitle}>
-            {/*
-              Says the model out loud, because it is the thing people get
-              wrong: a person belongs to the organisation, and DMS is the only
-              app that narrows them to one dealer.
-            */}
+          {/*
+            BEHIND THE ICON NOW, not under the title. It says the model out
+            loud — a person belongs to the organisation, and DMS is the only
+            app that narrows them to one dealer — which is the thing people get
+            wrong, and also a paragraph nobody needs to reread every visit.
+
+            It still says a DIFFERENT thing to a dealer admin, because what
+            they can actually do here is different (C23).
+          */}
+          <InfoHint label="About the Users screen">
             {isOrgAdmin ? (
               <>
                 Everyone in {membership.org_name}. People belong to the organisation; only
@@ -105,7 +109,7 @@ export function UsersScreen() {
                 organisation admin.
               </>
             )}
-          </p>
+          </InfoHint>
         </div>
 
         <InviteUserDialog membership={membership} openForUnitId={inviteForUnitId} />
