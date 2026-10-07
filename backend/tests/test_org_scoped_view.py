@@ -21,6 +21,8 @@ that prefix is what the tenant middleware matches on.
 
 from __future__ import annotations
 
+from typing import ClassVar
+
 import pytest
 from django.urls import path
 from rest_framework.request import Request
@@ -51,6 +53,11 @@ handler_calls: list[str] = []
 
 
 class SpyView(OrgScopedAPIView):
+    # Membership alone, so these tests exercise the membership check without a
+    # permission check also standing in the way. The permission layer has its
+    # own file.
+    required_permissions: ClassVar[list[str]] = []
+
     def get(self, request: Request, org_slug: str) -> Response:
         handler_calls.append(self.organization.slug)
         return Response(
@@ -72,6 +79,8 @@ class LeakyView(OrgScopedAPIView):
     failure for code that skipped the check, and the alternative -- leaving the
     attribute in place -- is a silent bypass sitting there for somebody to use.
     """
+
+    required_permissions: ClassVar[list[str]] = []
 
     def get(self, request: Request, org_slug: str) -> Response:
         return Response({"slug": request.organization.slug})  # type: ignore[attr-defined]

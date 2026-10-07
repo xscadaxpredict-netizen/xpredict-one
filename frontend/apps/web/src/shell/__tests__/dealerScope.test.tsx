@@ -24,7 +24,8 @@ import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 
 import type * as dealersApi from "../admin/api/dealers";
 import { fetchDealers } from "../admin/api/dealers";
-import { fakeRoleName } from "../admin/api/roles";
+import type * as rolesApi from "../admin/api/roles";
+import { fetchRoles } from "../admin/api/roles";
 import type * as usersApi from "../admin/api/users";
 import { fetchUsers, inviteUser, updateUser } from "../admin/api/users";
 import { DealersScreen } from "../admin/screens/DealersScreen";
@@ -32,7 +33,14 @@ import { UsersScreen } from "../admin/screens/UsersScreen";
 import { fetchMe } from "../api/auth";
 import type * as authApi from "../api/auth";
 import { renderRoute } from "./harness";
-import { dealerAdminMembership, me, ownerMembership } from "./factories";
+import {
+  appAccess,
+  dealerAdminMembership,
+  me,
+  membership,
+  ownerMembership,
+  roleCatalogue,
+} from "./factories";
 
 vi.mock("../api/auth", async (importOriginal) => ({
   ...(await importOriginal<typeof authApi>()),
@@ -52,11 +60,22 @@ vi.mock("../admin/api/dealers", async (importOriginal) => ({
   fetchDealers: vi.fn(),
 }));
 
+// `fetchRoles` READS DJANGO NOW, so it has to be mocked like the rest. It used
+// to answer from the module's own fake, which is why these tests never
+// mentioned roles while asserting the exact contents of a role picker.
+// `importOriginal` keeps the module's real exports; only the request is
+// replaced.
+vi.mock("../admin/api/roles", async (importOriginal) => ({
+  ...(await importOriginal<typeof rolesApi>()),
+  fetchRoles: vi.fn(),
+}));
+
 const mockFetchMe = vi.mocked(fetchMe);
 const mockFetchUsers = vi.mocked(fetchUsers);
 const mockFetchDealers = vi.mocked(fetchDealers);
 const mockInviteUser = vi.mocked(inviteUser);
 const mockUpdateUser = vi.mocked(updateUser);
+const mockFetchRoles = vi.mocked(fetchRoles);
 
 function user(overrides: Partial<usersApi.OrgUser> & { id: string }): usersApi.OrgUser {
   return {
@@ -67,7 +86,8 @@ function user(overrides: Partial<usersApi.OrgUser> & { id: string }): usersApi.O
     unit_id: null,
     role: "member",
     status: "active",
-    apps: [{ app: "dms", role: "Sales representative" }],
+    apps: [{ app: "dms", role_code: "dms.sales_representative", role_name: "Sales representative" }],
+    administers: null,
     ...overrides,
   };
 }
@@ -108,8 +128,8 @@ const LEGACY = user({
   unit_id: "unit-1",
   unit_name: "Chennai — Guindy",
   apps: [
-    { app: "dms", role: "Sales representative" },
-    { app: "crm", role: "Marketing" },
+    { app: "dms", role_code: "dms.sales_representative", role_name: "Sales representative" },
+    { app: "crm", role_code: "crm.member", role_name: "CRM user" },
   ],
 });
 
@@ -128,6 +148,7 @@ beforeEach(() => {
   mockFetchMe.mockResolvedValue(me({ memberships: [ownerMembership()] }));
   mockFetchUsers.mockResolvedValue([ANITA, LEGACY]);
   mockFetchDealers.mockResolvedValue([GUINDY]);
+  mockFetchRoles.mockResolvedValue(roleCatalogue());
 });
 
 async function openInviteForm() {
@@ -554,11 +575,10 @@ describe("what a stored user shows", () => {
     const call = mockInviteUser.mock.calls[0];
     if (!call) throw new Error("inviteUser was never called");
 
-    // The code goes out...
+    // THE CODE GOES OUT, not the display name. Resolving it back to
+    // "System administrator" was asserted here against the fake; Django owns
+    // that mapping now and `test_roles_api.py` pins it on the other side.
     expect(call[1].apps).toEqual([{ app: "dms", role: "dms.system_admin" }]);
-    // ...and resolves to a name nobody has to read as an identifier.
-    expect(fakeRoleName("dms.system_admin")).toBe("System administrator");
-    expect(fakeRoleName("dms.technician")).toBe("Technician");
   });
 });
 
@@ -569,7 +589,7 @@ describe("editing somebody's role", () => {
     last_name: "Shankar",
     unit_id: "unit-1",
     unit_name: "Chennai — Guindy",
-    apps: [{ app: "dms", role: "Service advisor" }],
+    apps: [{ app: "dms", role_code: "dms.service_advisor", role_name: "Service advisor" }],
   });
 
   beforeEach(() => {
@@ -709,13 +729,28 @@ describe("staffing a dealership that has nobody in it", () => {
 });
 
 describe("editing somebody who belongs to one dealer", () => {
-  it("locks an organisation-wide app they do not already hold", async () => {
+  it("removes the organisation-wide apps rather than disabling them", async () => {
+    /*
+     * C27 ENFORCED BY ABSENCE, which is stronger than by a disabled control.
+     *
+     * This test used to tick DMS, pick a dealership from a dropdown, and then
+     * assert the CRM checkbox had gone grey. The edit form now asks scope
+     * FIRST (C30) and the dealership branch offers no app list at all —
+     * somebody at a dealership may hold DMS and Administration and nothing
+     * else, so there is no choice of app left to present. A list where two of
+     * three entries are permanently disabled is a question with one answer.
+     *
+     * The rule is unchanged and better guarded: there is no control to get
+     * wrong.
+     */
     const dialog = await openEditForm("anita", "Anita Fernandes");
 
-    fireEvent.click(within(dialog).getByRole("checkbox", { name: "DMS" }));
+    chooseScope(dialog, "Dealership");
     await chooseDealer(dialog, "Chennai — Guindy", "unit-1");
 
-    expect(within(dialog).getByRole("checkbox", { name: "CRM" })).toBeDisabled();
+    expect(within(dialog).queryByRole("checkbox", { name: "CRM" })).not.toBeInTheDocument();
+    // And DMS is not offered as a choice either — it is implied by the scope.
+    expect(within(dialog).queryByRole("checkbox", { name: "DMS" })).not.toBeInTheDocument();
   });
 
   /*
@@ -737,5 +772,70 @@ describe("editing somebody who belongs to one dealer", () => {
     expect(crm).not.toBeChecked();
     // Now that it is gone it cannot come back while the dealer stands.
     expect(crm).toBeDisabled();
+  });
+});
+
+describe("what an administrator may hand out", () => {
+  /*
+   * THE OWNER'S ONE-WAY DOOR, found by the owner on their own organisation.
+   *
+   * They edited themselves, unticked DMS, and DMS vanished from the form —
+   * not only on their own record but on everybody's, because the checkbox list
+   * was built from `visibleApps()`, the LAUNCHER's rule. That rule hides an app
+   * you are subscribed to but cannot open, which is right for a launcher (C22:
+   * listing it tells you what you are not trusted with) and a trap for a grant
+   * form. An organisation paying for DMS could no longer give it to anyone,
+   * with no error and nothing to click.
+   *
+   * C41 explicitly lets an owner "drop what they never open". It never meant
+   * the door opens one way.
+   *
+   * An admin grants on behalf of the ORGANISATION, not out of their own
+   * pocket, so the list is what the organisation subscribes to.
+   */
+  it("offers an app the organisation bought but the editor cannot open", async () => {
+    const strippedOwner = membership({
+      role: "owner",
+      apps: [
+        // Paid for, and this admin has given up their own access to it.
+        appAccess("dms", { accessible: false, modules: [], permissions: [] }),
+        appAccess("admin", {
+          modules: ["users", "dealers", "roles"],
+          permissions: ["admin.person.invite", "admin.person.update", "admin.role.view"],
+        }),
+      ],
+    });
+    mockFetchMe.mockResolvedValue(me({ memberships: [strippedOwner] }));
+
+    const dialog = await openInviteForm();
+
+    expect(within(dialog).getByRole("checkbox", { name: "DMS" })).toBeInTheDocument();
+    expect(within(dialog).getByRole("checkbox", { name: "DMS" })).not.toBeDisabled();
+  });
+
+  it("does not offer an app the organisation has not bought", async () => {
+    /*
+     * The other direction, and the reason this is not simply "offer
+     * everything". C16 keeps `subscribed` and `accessible` as two facts; this
+     * list is the first of them, and the backend refuses a grant for an
+     * unsubscribed app regardless (C19).
+     */
+    const noCrm = membership({
+      role: "owner",
+      apps: [
+        appAccess("dms", { modules: ["sales"], permissions: ["dms.enquiry.view"] }),
+        appAccess("crm", { subscribed: false, accessible: false }),
+        appAccess("admin", {
+          modules: ["users", "dealers", "roles"],
+          permissions: ["admin.person.invite", "admin.role.view"],
+        }),
+      ],
+    });
+    mockFetchMe.mockResolvedValue(me({ memberships: [noCrm] }));
+
+    const dialog = await openInviteForm();
+
+    expect(within(dialog).getByRole("checkbox", { name: "DMS" })).toBeInTheDocument();
+    expect(within(dialog).queryByRole("checkbox", { name: "CRM" })).not.toBeInTheDocument();
   });
 });

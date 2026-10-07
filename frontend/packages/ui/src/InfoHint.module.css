@@ -1,0 +1,53 @@
+/*
+ * The trigger sits beside a heading, so it is sized to the text rather than to
+ * a touch target: making it 44px square would push the title around. It is
+ * still comfortably tappable because the padding below extends the hit area
+ * past the 16px icon.
+ */
+.trigger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 4px;
+  margin: 0;
+  border: none;
+  border-radius: var(--radius-pill);
+  background: none;
+  color: var(--color-text-3);
+  cursor: pointer;
+  /* The icon is 16px; without this the button inherits the heading's line-height
+     and sits a pixel or two low beside it. */
+  line-height: 0;
+}
+
+.trigger:hover {
+  color: var(--color-text-2);
+  background: var(--color-surface-alt);
+}
+
+/*
+ * `:focus-visible`, not `:focus`. A mouse user clicking this to pin it open
+ * should not be left with a ring they did not ask for, while a keyboard user
+ * must see exactly where they are.
+ */
+.trigger:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+  color: var(--color-text-2);
+}
+
+.content {
+  max-width: 34ch;
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-md);
+  background: var(--color-text);
+  color: var(--color-surface);
+  font-size: var(--text-sm);
+  line-height: 1.45;
+  /* Above the detail panel, which is a fixed sheet on a narrow screen. */
+  z-index: 50;
+}
+
+.arrow {
+  fill: var(--color-text);
+}

@@ -14,3 +14,7 @@
 
 export { TableSkeleton, EmptyState, ErrorState } from "./states";
 export { DetailPanel } from "./DetailPanel";
+// Three callers on arrival — Users, Dealers and Roles all explain themselves
+// the same way — so it starts here rather than in one screen (the rule of two).
+export { InfoHint } from "./InfoHint";
+export type { InfoHintProps } from "./InfoHint";

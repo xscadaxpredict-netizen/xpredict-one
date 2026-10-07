@@ -21,8 +21,6 @@
 
 import { ApiError, csrfHeaders, readBody, type Problem } from "@xpredict/api-client";
 
-import { fakeDealerName } from "./dealers";
-import { fakeRoleName } from "./roles";
 
 /** Active, invited but not yet accepted, or switched off. */
 export type UserStatus = "active" | "invited" | "disabled";
@@ -30,8 +28,16 @@ export type UserStatus = "active" | "invited" | "disabled";
 export interface UserAppRole {
   /** Matches AppKey. A plain string so a new app does not need a frontend release. */
   app: string;
-  /** The role's display name, decided by the backend. See the note above. */
-  role: string;
+  /**
+   * The role's stable code — `dms.manager`. What the edit form matches on.
+   *
+   * IT USED TO BE THE NAME ALONE, and the edit dialog compared display strings
+   * to work out which role somebody already held. That breaks the first time a
+   * role is renamed, silently, by quietly offering them a different one.
+   */
+  role_code: string;
+  /** The role's display name, decided by the backend (C19). Never parsed. */
+  role_name: string;
 }
 
 /**
@@ -70,7 +76,26 @@ export interface OrgUser {
   role: "owner" | "admin" | "member";
 
   status: UserStatus;
+  /**
+   * PRODUCTS ONLY. Administration never appears here — it is not an app you
+   * can be granted (the backend refuses a payload that asks), and whether
+   * somebody administers is `administers` below.
+   */
   apps: UserAppRole[];
+
+  /**
+   * What this person administers, or null: the FACT, not the words (C53).
+   *
+   * The server used to send "Organisation admin" or "Dealer admin" as if they
+   * were role names. They are not — there is no Role row for Administration
+   * and there cannot be one, so those strings are copy describing a derived
+   * state, and copy belongs here where fixing a typo is a frontend change.
+   *
+   * TWO SOURCES ON THE SERVER, and they stay independent (C40): standing
+   * ("organisation"), or holding a role that grants `admin.*` at a dealership
+   * ("dealer"). A dealer admin keeps `member` standing.
+   */
+  administers: "organisation" | "dealer" | null;
 }
 
 /**
@@ -131,194 +156,6 @@ export interface NewInvitation {
   role: "admin" | "member";
 }
 
-/* ------------------------------------------------------------------------ *
- * TEMPORARY FAKE — delete this whole block when the backend is running.
- *
- * Structured so that deleting it is the entire switch: every function below
- * falls through to a real request against the URL the backend will serve.
- *
- * The owner chose a hand-written fake over MSW here. The trade-off, recorded
- * so it is not a surprise later: intercepting the network would mean these
- * components never change when the API lands, whereas this block has to be
- * removed from each function by hand.
- * ------------------------------------------------------------------------ */
-const USE_FAKE_USERS = true;
-
-function wait(ms: number) {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
-const FAKE_USERS: OrgUser[] = [
-  {
-    id: "user-1",
-    first_name: "Rahul",
-    last_name: "Kandaswamy",
-    email: "rahul@acmemotors.in",
-    unit_name: null,
-    unit_id: null,
-    role: "owner",
-    status: "active",
-    apps: [
-      { app: "dms", role: "Group operations" },
-      { app: "crm", role: "CRM user" },
-    ],
-  },
-  {
-    id: "user-2",
-    first_name: "Anita",
-    last_name: "Fernandes",
-    email: "anita.f@acmemotors.in",
-    unit_name: "Chennai — Guindy",
-    unit_id: "unit-1",
-    role: "member",
-    status: "active",
-    apps: [{ app: "dms", role: "Sales representative" }],
-  },
-  {
-    id: "user-3",
-    first_name: "Vikram",
-    last_name: "Nair",
-    email: "vikram.n@acmemotors.in",
-    unit_name: "Bangalore — Whitefield",
-    unit_id: "unit-2",
-    // `member`, NOT `admin` (C40). What makes them a dealer admin is the DMS
-    // System administrator role below; standing is a separate axis and the
-    // database refuses `admin` with a dealership attached.
-    role: "member",
-    status: "active",
-    apps: [
-      { app: "dms", role: "System administrator" },
-      // Administration, narrowed to Users at their own dealer. Derived from
-      // what that DMS role grants, never granted directly — see appsFor().
-      { app: "admin", role: "Dealer admin" },
-    ],
-  },
-  {
-    id: "user-4",
-    first_name: "Priya",
-    last_name: "Raghunathan",
-    email: "priya.r@acmemotors.in",
-    unit_name: null,
-    unit_id: null,
-    role: "member",
-    status: "active",
-    apps: [{ app: "crm", role: "CRM user" }],
-  },
-  {
-    id: "user-5",
-    first_name: "Sanjay",
-    last_name: "Desai",
-    email: "sanjay.d@acmemotors.in",
-    unit_name: "Chennai — Guindy",
-    unit_id: "unit-1",
-    role: "member",
-    status: "invited",
-    apps: [{ app: "dms", role: "Sales representative" }],
-  },
-  {
-    id: "user-6",
-    first_name: "Meera",
-    last_name: "Krishnan",
-    email: "meera.k@acmemotors.in",
-    unit_name: "Coimbatore — Peelamedu",
-    unit_id: "unit-3",
-    role: "member",
-    status: "disabled",
-    apps: [{ app: "dms", role: "Service advisor" }],
-  },
-];
-
-/**
- * Just enough of the dealer list to echo a name back. The real list lives in
- * `dealers.ts` — duplicated here only so the fake can answer without the two
- * fakes importing each other.
- */
-/**
- * Northway, where the signed-in person is a DEALER ADMIN at Bangalore —
- * Whitefield (C23). They see their own dealer's people and nobody else's.
- *
- * THE REAL SCOPING IS SERVER-SIDE, from the caller's membership — not from
- * which organisation they asked about. Keyed by org here only because the
- * fake has no token to read, and a frontend that filtered this itself would
- * be a frontend deciding who may see whom.
- */
-const FAKE_DEALER_USERS: OrgUser[] = [
-  {
-    id: "user-n1",
-    first_name: "Vikram",
-    last_name: "Nair",
-    email: "vikram.n@northwayauto.in",
-    unit_name: "Bangalore — Whitefield",
-    unit_id: "unit-2",
-    // `member`, NOT `admin` (C40). What makes them a dealer admin is the DMS
-    // System administrator role below; standing is a separate axis and the
-    // database refuses `admin` with a dealership attached.
-    role: "member",
-    status: "active",
-    apps: [
-      { app: "dms", role: "System administrator" },
-      // Administration, narrowed to Users at their own dealer. Derived from
-      // what that DMS role grants, never granted directly — see appsFor().
-      { app: "admin", role: "Dealer admin" },
-    ],
-  },
-  {
-    id: "user-n2",
-    first_name: "Deepa",
-    last_name: "Rao",
-    email: "deepa.r@northwayauto.in",
-    unit_name: "Bangalore — Whitefield",
-    unit_id: "unit-2",
-    role: "member",
-    status: "active",
-    apps: [{ app: "dms", role: "Sales representative" }],
-  },
-];
-
-/** Mutated by the fake invite so a new row appears without a page reload. */
-let fakeUsers = [...FAKE_USERS];
-let fakeDealerUsers = [...FAKE_DEALER_USERS];
-
-function isDealerOrg(orgSlug: string): boolean {
-  return orgSlug === "northway-auto";
-}
-
-function fakeOwnerProtected(): ApiError {
-  return new ApiError({
-    type: "https://api.xpredict.one/errors/owner-protected",
-    title: "Cannot remove the owner",
-    status: 422,
-    detail:
-      "The owner cannot be removed. Transfer ownership to somebody else first.",
-    code: "owner_protected",
-    trace_id: "fake-0000",
-  });
-}
-
-function fakeNotFound(): ApiError {
-  return new ApiError({
-    type: "https://api.xpredict.one/errors/not-found",
-    title: "Not found",
-    status: 404,
-    // Cross-scope access answers 404, never 403: a record the caller may not
-    // see has to be indistinguishable from one that never existed.
-    detail: "That user does not exist.",
-    code: "not_found",
-    trace_id: "fake-0000",
-  });
-}
-
-function fakeConflict(email: string): ApiError {
-  return new ApiError({
-    type: "https://api.xpredict.one/errors/email-taken",
-    title: "Email already in use",
-    status: 409,
-    detail: `${email} already belongs to someone in this organisation.`,
-    code: "email_taken",
-    trace_id: "fake-0000",
-  });
-}
-
 /* ---------------------------- real shape -------------------------------- */
 
 async function request<T>(url: string, init?: RequestInit): Promise<T> {
@@ -355,12 +192,7 @@ async function request<T>(url: string, init?: RequestInit): Promise<T> {
 }
 
 export async function fetchUsers(orgSlug: string): Promise<OrgUser[]> {
-  if (USE_FAKE_USERS) {
-    await wait(600);
-    return isDealerOrg(orgSlug) ? fakeDealerUsers : fakeUsers;
-  }
-
-  return request<OrgUser[]>(`/api/v1/orgs/${orgSlug}/admin/users`);
+  return request<OrgUser[]>(`/api/v1/orgs/${orgSlug}/admin/users/`);
 }
 
 export async function updateUser(
@@ -368,54 +200,7 @@ export async function updateUser(
   userId: string,
   body: UserDetails,
 ): Promise<OrgUser> {
-  if (USE_FAKE_USERS) {
-    await wait(700);
-
-    const lists = isDealerOrg(orgSlug) ? fakeDealerUsers : fakeUsers;
-    const existing = lists.find((user) => user.id === userId);
-    if (!existing) throw fakeNotFound();
-
-    // Uniqueness excludes the record being edited, or saving somebody without
-    // touching their address collides with themselves.
-    const others = lists.filter((user) => user.id !== userId);
-    if (others.some((user) => user.email.toLowerCase() === body.email.toLowerCase())) {
-      throw fakeConflict(body.email);
-    }
-
-    const updated: OrgUser = {
-      ...existing,
-      first_name: body.first_name,
-      last_name: body.last_name,
-      // Only an outstanding invitation may change address — see UserDetails.
-      email: existing.status === "invited" ? body.email : existing.email,
-      unit_id: body.unit_id,
-      unit_name: fakeDealerName(body.unit_id),
-      role: existing.role === "owner" ? "owner" : body.role,
-      /*
-       * ROLES ARE NOW ASSIGNED, NOT PRESERVED — which amends C25.
-       *
-       * C25 said a per-app role could not be set "at all yet", because Q12 was
-       * open and a picker would have meant the frontend inventing a vocabulary.
-       * C32 settled the roles, so the form asks and this takes what it is
-       * given. Promoting a salesperson to Dealer manager is an ordinary admin
-       * act and there was nowhere to do it.
-       *
-       * Administration is still derived from `role`, exactly as on invite, so
-       * the two forms cannot disagree about what an admin holds.
-       */
-      apps: appsFor(body.apps, body.role, body.unit_id),
-    };
-
-    if (isDealerOrg(orgSlug)) {
-      fakeDealerUsers = fakeDealerUsers.map((user) => (user.id === userId ? updated : user));
-    } else {
-      fakeUsers = fakeUsers.map((user) => (user.id === userId ? updated : user));
-    }
-
-    return updated;
-  }
-
-  return request<OrgUser>(`/api/v1/orgs/${orgSlug}/admin/users/${userId}`, {
+  return request<OrgUser>(`/api/v1/orgs/${orgSlug}/admin/users/${userId}/`, {
     method: "PUT",
     body: JSON.stringify(body),
   });
@@ -440,138 +225,24 @@ export async function updateUser(
  * there is no account yet and nothing references them.
  */
 export async function removeUser(orgSlug: string, userId: string): Promise<void> {
-  if (USE_FAKE_USERS) {
-    await wait(600);
-
-    const lists = isDealerOrg(orgSlug) ? fakeDealerUsers : fakeUsers;
-    const existing = lists.find((user) => user.id === userId);
-    if (!existing) throw fakeNotFound();
-
-    /*
-     * Checked here as well as hidden in the UI. An organisation with no owner
-     * has nobody who can appoint one (C14), and a request does not have to
-     * come from our menu.
-     */
-    if (existing.role === "owner") throw fakeOwnerProtected();
-
-    if (isDealerOrg(orgSlug)) {
-      fakeDealerUsers = fakeDealerUsers.filter((user) => user.id !== userId);
-    } else {
-      fakeUsers = fakeUsers.filter((user) => user.id !== userId);
-    }
-
-    return;
-  }
-
-  await request<void>(`/api/v1/orgs/${orgSlug}/admin/users/${userId}`, { method: "DELETE" });
+  await request<void>(`/api/v1/orgs/${orgSlug}/admin/users/${userId}/`, { method: "DELETE" });
 }
 
 export async function setUserStatus( orgSlug: string, userId: string, status: Extract<UserStatus, "active" | "disabled">, ): Promise<OrgUser> {
-  if (USE_FAKE_USERS) {
-    await wait(500);
-    fakeUsers = fakeUsers.map((user) => (user.id === userId ? { ...user, status } : user));
-    fakeDealerUsers = fakeDealerUsers.map((user) =>
-      user.id === userId ? { ...user, status } : user,
-    );
-
-    const updated = [...fakeUsers, ...fakeDealerUsers].find((user) => user.id === userId);
-    if (!updated) throw fakeNotFound();
-    return updated;
-  }
   return request<OrgUser>(
-    `/api/v1/orgs/${orgSlug}/admin/users/${userId}/${status === "active" ? "activate" : "deactivate"}`,
+    `/api/v1/orgs/${orgSlug}/admin/users/${userId}/${status === "active" ? "activate" : "deactivate"}/`,
     { method: "POST" },
   );
 }
 
 export async function resendInvitation(orgSlug: string, userId: string): Promise<void> {
-  if (USE_FAKE_USERS) {
-    console.log("resend fake");
-    await wait(500);
-    return;
-  }
-
-  await request<void>(`/api/v1/orgs/${orgSlug}/admin/users/${userId}/resend-invitation`, {
+  await request<void>(`/api/v1/orgs/${orgSlug}/admin/users/${userId}/resend-invitation/`, {
     method: "POST",
   });
 }
 
-/**
- * FAKE BACKEND ONLY: the apps a person ends up holding.
- *
- * Administration is never granted by the form and never stored as an app
- * grant. It is DERIVED, and C40 changed what from: the app appears when the
- * person holds any `admin.*` permission, whatever the source.
- *
- * Two sources, and they are the two branches below:
- *
- *   standing   — `admin` or `owner` on the membership, which also means no
- *                dealership, so they administer the whole organisation.
- *   a role     — DMS System administrator, which grants `admin.person.*`
- *                narrowed to that person's own dealership.
- *
- * IT USED TO READ `role === "admin"` ALONE (C31), when a dealer admin was
- * `admin` plus a dealership. That is now refused by the database, so this
- * function would have reported Administration for nobody at a dealership.
- *
- * Checking a role CODE here is fine in a way it would not be in a component:
- * this file is standing in for the server, and the server owns the vocabulary.
- * Django will read the permission registry rather than compare a string.
- */
-function appsFor(
-  grants: AppGrant[],
-  role: "admin" | "member",
-  unitId: string | null,
-): UserAppRole[] {
-  const products = grants
-    .filter((grant) => grant.app !== "admin")
-    .map((grant) => ({ app: grant.app, role: fakeRoleName(grant.role) }));
-
-  if (role === "admin" && unitId === null) {
-    return [...products, { app: "admin", role: "Organisation admin" }];
-  }
-
-  const administersTheirDealer = grants.some((grant) => grant.role === "dms.system_admin");
-
-  if (administersTheirDealer) {
-    return [...products, { app: "admin", role: "Dealer admin" }];
-  }
-
-  return products;
-}
-
-
-
 export async function inviteUser(orgSlug: string, body: NewInvitation): Promise<OrgUser> {
-  if (USE_FAKE_USERS) {
-    await wait(700);
-
-    const existing = isDealerOrg(orgSlug) ? fakeDealerUsers : fakeUsers;
-    if (existing.some((user) => user.email.toLowerCase() === body.email.toLowerCase())) {
-      throw fakeConflict(body.email);
-    }
-
-    const invited: OrgUser = {
-      id: `user-${String(existing.length + 1)}-${String(Date.now())}`,
-      first_name: body.first_name,
-      last_name: body.last_name,
-      email: body.email,
-      unit_name: fakeDealerName(body.unit_id),
-      unit_id: body.unit_id,
-      role: body.role,
-      status: "invited",
-      apps: appsFor(body.apps, body.role, body.unit_id),
-    };
-
-    if (isDealerOrg(orgSlug)) {
-      fakeDealerUsers = [...fakeDealerUsers, invited];
-    } else {
-      fakeUsers = [...fakeUsers, invited];
-    }
-    return invited;
-  }
-
-  return request<OrgUser>(`/api/v1/orgs/${orgSlug}/admin/invitations`, {
+  return request<OrgUser>(`/api/v1/orgs/${orgSlug}/admin/invitations/`, {
     method: "POST",
     body: JSON.stringify(body),
   });

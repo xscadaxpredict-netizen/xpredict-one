@@ -46,8 +46,17 @@ class MembershipRole(models.TextChoices):
 
 
 class MembershipStatus(models.TextChoices):
+    """
+    TWO STATES, NOT THREE. `INVITED` was here and was removed by C51.
+
+    A person who has not accepted yet may have no account at all, and `user`
+    below is a non-null foreign key --- so there is no row to put them on. They
+    live in `Invitation` until they accept, and accepting is what creates the
+    membership. Keeping both would have meant two columns that can each claim
+    somebody is invited, with nothing forcing them to agree.
+    """
+
     ACTIVE = "active", "Active"
-    INVITED = "invited", "Invited"
     DISABLED = "disabled", "Disabled"
 
 
@@ -218,6 +227,15 @@ class BusinessUnit(BaseModel):
         ordering = ["name"]
         constraints = [
             models.UniqueConstraint(fields=["organization", "code"], name="unit_unique_org_code"),
+            # NAME IS UNIQUE TOO, and case-insensitively, which costs nothing
+            # here: MySQL's `utf8mb4_0900_ai_ci` collation compares that way, so
+            # this refuses "Chennai - Guindy" and "chennai - guindy" as the same
+            # name without a lowercased shadow column. On a case-sensitive
+            # database it would need one.
+            #
+            # Unlike `code` this is NOT nullable, so there is no NULL-is-distinct
+            # subtlety -- every dealership has a name and every name is checked.
+            models.UniqueConstraint(fields=["organization", "name"], name="unit_unique_org_name"),
         ]
 
     def __str__(self) -> str:

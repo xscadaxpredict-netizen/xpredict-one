@@ -17,31 +17,50 @@ Phase 5.
 
 from __future__ import annotations
 
+import secrets
+import uuid
 from dataclasses import dataclass
+from datetime import timedelta
 
 from django.conf import settings
+from django.core.exceptions import ValidationError as DjangoValidationError
 from django.db import transaction
 from django.utils import timezone
 from django.utils.text import slugify
 
 from core.accounts.models import User
-from core.billing.models import AppSubscription
+from core.billing.models import AppSubscription, SubscriptionStatus
 from core.organizations.exceptions import (
     ActivationCodeExpiredError,
     ActivationCodeInvalidError,
     ActivationCodeSpentError,
+    AdministrationNotGrantableError,
+    AppNotSubscribedError,
+    DealerCodeTakenError,
+    DealerNameTakenError,
+    DealerScopedAppError,
     EmailAlreadyRegisteredError,
+    NotAnInvitationError,
     OrganizationNameUnusableError,
+    OwnerProtectedError,
+    PersonEmailTakenError,
+    RoleScopeMismatchError,
+    SignInAddressLockedError,
 )
 from core.organizations.models import (
     ActivationCode,
+    BusinessUnit,
+    Invitation,
+    InvitationAppGrant,
     Membership,
     MembershipRole,
     MembershipStatus,
     Organization,
 )
+from core.organizations.selectors import can_manage
 from core.organizations.tasks import schedule_provisioning
-from core.permissions.models import AppAccess, AppCode, Role
+from core.permissions.models import AppAccess, AppCode, Role, RoleLevel
+from shared.exceptions import AuthorizationError, not_found
 
 # WHAT A NEW ORGANIZATION IS SUBSCRIBED TO. DMS only, because DMS is the
 # product being built (C4 commits to CRM and E-commerce; neither exists). It is
@@ -317,3 +336,546 @@ def _subscribe_and_grant(
         role=Role.objects.get(app=app, code=role_code),
         created_by_user_id=actor_id,
     )
+
+
+# ---------------------------------------------------------------------------
+# Dealerships.
+#
+# ORGANIZATION-LEVEL, ON PURPOSE (C3, C23). The organization creates and edits
+# its dealerships; each dealership then manages its own people. That is why
+# `admin.dealer.*` is held by org standing alone and the DMS System
+# administrator role does not grant it -- a dealer admin running one branch
+# cannot invent another.
+#
+# NO CLOSE OR REOPEN HERE, and that is C52 rather than an omission. What
+# closing a dealership does to its people and its records is Q21 and is
+# unanswered; the endpoints are already named `/close` and `/reopen` on the
+# assumption that it is a transition with rules, and writing them now would
+# settle Q21 by default. `status` is therefore read-only through the API and
+# every dealership created here is active.
+# ---------------------------------------------------------------------------
+
+
+@transaction.atomic
+def create_dealer(
+    *,
+    organization: Organization,
+    name: str,
+    code: str | None = None,
+    contact_person: str = "",
+    email: str = "",
+    phone: str = "",
+    city: str = "",
+    state: str = "",
+    postal_code: str = "",
+) -> BusinessUnit:
+    """
+    Add a dealership to this organization.
+
+    KEYWORD-ONLY, because eight of the nine arguments are strings and a
+    positional call that transposed `city` and `state` would be silently wrong
+    in a way no type checker could see.
+
+    The uniqueness checks below duplicate constraints the database also
+    enforces. That is deliberate: the constraint is what makes the rule true
+    under a race, and this is what makes the refusal say which field was wrong
+    instead of surfacing as a 500 (C9 -- a 5xx body carries no detail, so an
+    IntegrityError reaching the handler tells the caller nothing at all).
+    """
+    _assert_dealer_name_free(organization, name)
+    _assert_dealer_code_free(organization, code)
+
+    return BusinessUnit.objects.create(
+        organization=organization,
+        name=name,
+        # NULL, never "", and the model comment explains why: MySQL treats
+        # every NULL in a unique index as distinct but two empty strings as a
+        # duplicate, so storing "" would let the first dealership without a
+        # code be created and refuse the second.
+        code=code or None,
+        contact_person=contact_person,
+        email=email,
+        phone=phone,
+        city=city,
+        state=state,
+        postal_code=postal_code,
+    )
+
+
+@transaction.atomic
+def update_dealer(*, dealer: BusinessUnit, **fields: str | None) -> BusinessUnit:
+    """
+    Change a dealership's details.
+
+    NOT ITS STATUS, and not its organization. The payload carries neither, so
+    "correct a typo in the address" and "shut the branch" cannot be the same
+    request -- which is the frontend's reasoning for two endpoints and holds
+    just as well here.
+    """
+    name = fields.get("name")
+    if name is not None:
+        _assert_dealer_name_free(dealer.organization, name, excluding=dealer.pk)
+
+    if "code" in fields:
+        _assert_dealer_code_free(dealer.organization, fields["code"], excluding=dealer.pk)
+
+    for field, value in fields.items():
+        setattr(dealer, field, value or None if field == "code" else value)
+
+    dealer.save()
+    return dealer
+
+
+def _assert_dealer_name_free(
+    organization: Organization, name: str, excluding: uuid.UUID | None = None
+) -> None:
+    existing = BusinessUnit.objects.filter(organization=organization, name=name)
+    # EXCLUDE THE ROW BEING EDITED, or saving a dealership without touching its
+    # name collides with itself -- the bug the frontend fake had to fix twice.
+    if excluding is not None:
+        existing = existing.exclude(pk=excluding)
+
+    if existing.exists():
+        raise DealerNameTakenError
+
+
+def _assert_dealer_code_free(
+    organization: Organization, code: str | None, excluding: uuid.UUID | None = None
+) -> None:
+    # The code is optional, so only a GIVEN one can collide. Clearing it is
+    # always allowed, however many other dealerships also have none.
+    if not code:
+        return
+
+    existing = BusinessUnit.objects.filter(organization=organization, code=code)
+    if excluding is not None:
+        existing = existing.exclude(pk=excluding)
+
+    if existing.exists():
+        raise DealerCodeTakenError
+
+
+# ---------------------------------------------------------------------------
+# People.
+#
+# EVERY FUNCTION HERE TAKES THE ACTOR'S MEMBERSHIP, not only the target. Who
+# may manage whom is the whole of two-level administration (C3, C23), and a
+# service that took only a target would be correct exactly as long as every
+# caller remembered to check first --- which is the shape C49 removed one
+# layer up.
+#
+# SCOPE FAILURES RAISE `NotFoundError`, NOT `AuthorizationError`. A person
+# outside the caller's dealership has to be indistinguishable from one who does
+# not exist, or a dealer admin can map another dealership's staff by probing
+# ids and noting which answer 403.
+# ---------------------------------------------------------------------------
+
+# Long enough that guessing one is hopeless, short enough to survive an email
+# client wrapping the line. The same reasoning as C47's activation codes.
+INVITATION_TOKEN_BYTES = 32
+INVITATION_LIFETIME = timedelta(days=14)
+
+
+def _assert_can_manage(actor: Membership, target_unit_id: uuid.UUID | None) -> None:
+    if not can_manage(actor, target_unit_id):
+        raise not_found("User")
+
+
+def _assert_grants_are_legal(
+    organization: Organization, unit_id: uuid.UUID | None, grants: list[tuple[str, Role]]
+) -> None:
+    """
+    Every rule about whether a grant makes sense: is it bought, does the scope
+    allow it, and is the role one that exists at that scope.
+
+    IN ONE PLACE SO INVITE AND UPDATE CANNOT DISAGREE. They already did once in
+    the frontend: the invite dialog gained the C27 rule and the edit dialog
+    did not.
+    """
+    subscribed = set(
+        AppSubscription.objects.filter(
+            organization=organization, status=SubscriptionStatus.ACTIVE
+        ).values_list("app", flat=True)
+    )
+
+    for app, role in grants:
+        if app not in subscribed:
+            # THE OTHER HALF OF C16, and it was missing until the owner found
+            # its mirror image in the UI. A grant and a subscription are two
+            # facts and both are required; `/me` enforced one direction (a
+            # grant left on a lapsed subscription opens nothing) while nothing
+            # stopped the grant being made for an app never bought.
+            #
+            # Administration never reaches here: `_resolve_grants` refuses it
+            # outright, because it is not sold (C44).
+            raise AppNotSubscribedError
+
+        if unit_id is not None and app != AppCode.DMS:
+            # C27. CRM does no unit filtering and has no column to filter on,
+            # so a dealer-scoped person holding it sees every dealership's
+            # customers.
+            raise DealerScopedAppError
+
+        wanted = RoleLevel.UNIT if unit_id is not None else RoleLevel.ORG
+        if role.level != wanted:
+            raise RoleScopeMismatchError
+
+
+def _assert_email_free(
+    organization: Organization, email: str, excluding_invitation: uuid.UUID | None = None
+) -> None:
+    """
+    Nobody else in THIS organization uses this address.
+
+    BOTH TABLES, because C51 split people across them: an address already
+    invited is as taken as one already a member, and checking only memberships
+    lets two invitations go to the same person.
+
+    Per organization, not globally. One person may belong to several
+    organizations on one account (C1, C27), so a global check would refuse an
+    invitation to somebody who already works somewhere else on the platform.
+    """
+    if Membership.objects.filter(organization=organization, user__email__iexact=email).exists():
+        raise PersonEmailTakenError
+
+    pending = Invitation.objects.filter(
+        organization=organization, email__iexact=email, accepted_at__isnull=True
+    )
+    if excluding_invitation is not None:
+        pending = pending.exclude(pk=excluding_invitation)
+
+    if pending.exists():
+        raise PersonEmailTakenError
+
+
+def _resolve_unit(organization: Organization, unit_id: uuid.UUID | None) -> BusinessUnit | None:
+    if unit_id is None:
+        return None
+    try:
+        return BusinessUnit.objects.get(id=unit_id, organization=organization)
+    except (BusinessUnit.DoesNotExist, DjangoValidationError, ValueError):
+        # Another organization's dealership is not bad input to report back, it
+        # is a dealership this caller cannot see.
+        raise not_found("Dealer") from None
+
+
+def _resolve_grants(apps: list[dict]) -> list[tuple[str, Role]]:
+    """
+    Turn `[{"app": "dms", "role": "dms.manager"}]` into rows.
+
+    ADMINISTRATION IS REFUSED OUTRIGHT, not filtered out. It is never an
+    `AppAccess` row --- the check constraint says so --- because it comes from
+    standing or from a role granting `admin.*` (C40). A payload asking for it
+    is a caller working from the wrong model, and dropping it quietly would
+    leave them believing it had been granted.
+    """
+    grants: list[tuple[str, Role]] = []
+    for entry in apps:
+        app = entry["app"]
+        if app == AppCode.ADMIN:
+            raise AdministrationNotGrantableError
+        try:
+            grants.append((app, Role.objects.get(code=entry["role"], app=app)))
+        except Role.DoesNotExist:
+            raise RoleScopeMismatchError from None
+    return grants
+
+
+def find_person(organization: Organization, person_id: uuid.UUID) -> Membership | Invitation:
+    """
+    One row of the users list, from whichever table it came from.
+
+    THE PRICE OF C51's UNION, paid in one place. An active person's id is a
+    membership id and a pending one's is an invitation id, so a lookup has to
+    try both --- and doing that at each call site is how an endpoint ends up
+    silently handling only half the list.
+
+    FILTERED BY ORGANIZATION, which is the isolation. 404 for an id belonging
+    to another customer, and the same 404 for an id that is not a UUID at all:
+    a 400 there would confirm that well-formed ids are the thing being looked
+    up.
+    """
+    try:
+        return Membership.objects.select_related("user", "unit").get(
+            id=person_id, organization=organization
+        )
+    except (Membership.DoesNotExist, DjangoValidationError, ValueError):
+        pass
+
+    try:
+        return Invitation.objects.select_related("unit").get(
+            id=person_id, organization=organization, accepted_at__isnull=True
+        )
+    except (Invitation.DoesNotExist, DjangoValidationError, ValueError):
+        raise not_found("User") from None
+
+
+@transaction.atomic
+def invite_person(
+    *,
+    actor: Membership,
+    organization: Organization,
+    email: str,
+    first_name: str,
+    last_name: str,
+    unit_id: uuid.UUID | None,
+    role: str,
+    apps: list[dict],
+) -> Invitation:
+    """
+    Invite somebody into this organization.
+
+    CREATES AN INVITATION, NOT A MEMBERSHIP (C51). There is no account yet and
+    there may never be one; accepting creates the membership, in its own
+    transaction.
+
+    A DEALER ADMIN CANNOT APPOINT AN ORGANIZATION ADMIN. `_assert_can_manage`
+    covers the dealership; the standing check covers the ladder. An `admin`
+    invitation is organization-wide by definition --- the check constraint
+    refuses `admin` with a unit attached --- so a dealer admin issuing one
+    would be promoting a stranger above themselves.
+    """
+    if role == MembershipRole.OWNER:
+        # Not a permission failure. An owner is founded with the organization
+        # and never invited into it (C41), so there is no standing that allows
+        # this at all.
+        raise OwnerProtectedError
+
+    # THESE TWO COME BEFORE THE SCOPE CHECK, and the order is the difference
+    # between a 403 and a 404.
+    #
+    # A create has no existing record to hide, so "you may not appoint
+    # administrators" and "organization-wide people are not yours to create"
+    # are capability answers -- 403 -- and they disclose nothing: `admin` and
+    # `None` are not ids that might or might not exist.
+    #
+    # A SPECIFIC `unit_id` IS DIFFERENT and stays a 404 below. Answering 403
+    # for a real dealership the caller may not use, while `_resolve_unit()`
+    # answers 404 for one that does not exist, would let a dealer admin
+    # enumerate the organization's dealerships by watching which status comes
+    # back. Both have to be the same refusal.
+    if actor.unit_id is not None:
+        if role == MembershipRole.ADMIN:
+            raise AuthorizationError
+        if unit_id is None:
+            raise AuthorizationError
+
+    _assert_can_manage(actor, unit_id)
+
+    unit = _resolve_unit(organization, unit_id)
+    grants = _resolve_grants(apps)
+    _assert_grants_are_legal(organization, unit_id, grants)
+    _assert_email_free(organization, email)
+
+    invitation = Invitation.objects.create(
+        organization=organization,
+        unit=unit,
+        email=email,
+        first_name=first_name,
+        last_name=last_name,
+        role=role,
+        token=secrets.token_urlsafe(INVITATION_TOKEN_BYTES),
+        expires_at=timezone.now() + INVITATION_LIFETIME,
+        invited_by=actor.user,
+    )
+
+    for app, granted_role in grants:
+        InvitationAppGrant.objects.create(invitation=invitation, app=app, role=granted_role)
+
+    return invitation
+
+
+@transaction.atomic
+def update_person(
+    *,
+    actor: Membership,
+    organization: Organization,
+    person_id: uuid.UUID,
+    first_name: str,
+    last_name: str,
+    email: str,
+    unit_id: uuid.UUID | None,
+    role: str,
+    apps: list[dict],
+) -> Membership | Invitation:
+    """
+    Change somebody's membership --- not their account.
+
+    `first_name` and `last_name` belong to the PERSON and change everywhere;
+    the scope, the apps and the standing belong to this organization's
+    relationship with them (C25).
+
+    MOVING SOMEBODY BETWEEN DEALERSHIPS IS CHECKED AT BOTH ENDS. A dealer admin
+    must not move one of their people out, nor pull somebody in from another
+    dealership --- checking only the target permits the first and checking only
+    the source permits the second.
+    """
+    person = find_person(organization, person_id)
+    _assert_can_manage(actor, person.unit_id)
+    _assert_can_manage(actor, unit_id)
+
+    if role == MembershipRole.ADMIN and actor.unit_id is not None:
+        raise AuthorizationError
+
+    unit = _resolve_unit(organization, unit_id)
+    grants = _resolve_grants(apps)
+    _assert_grants_are_legal(organization, unit_id, grants)
+
+    if isinstance(person, Invitation):
+        _update_invitation(person, organization, first_name, last_name, email, unit, role, grants)
+    else:
+        _update_membership(person, first_name, last_name, email, unit, role, grants)
+
+    return person
+
+
+def _update_membership(
+    membership: Membership,
+    first_name: str,
+    last_name: str,
+    email: str,
+    unit: BusinessUnit | None,
+    role: str,
+    grants: list[tuple[str, Role]],
+) -> None:
+    if email.lower() != membership.user.email.lower():
+        # C25: an accepted address is how they sign in, so changing it from an
+        # admin screen is an account takeover with extra steps.
+        raise SignInAddressLockedError
+
+    membership.user.first_name = first_name
+    membership.user.last_name = last_name
+    membership.user.save(update_fields=["first_name", "last_name"])
+
+    # THE OWNER'S STANDING SURVIVES WHATEVER IS SENT. The form never offers
+    # "owner" and there is exactly one per organization (C14), so taking the
+    # submitted value here would quietly demote them --- and the owner marker
+    # would then disagree with the role, which the check constraint refuses.
+    if membership.role != MembershipRole.OWNER:
+        membership.role = role
+
+    membership.unit = unit
+    membership.save(update_fields=["role", "unit"])
+
+    # DELETE THEN CREATE, inside the caller's transaction. Updating in place
+    # would mean working out which grants went away, and a missed one leaves
+    # somebody holding an app the form says they lost --- the stale-grant shape
+    # C16 already had to catch once in billing.
+    membership.app_access.all().delete()
+    for app, granted_role in grants:
+        AppAccess.objects.create(membership=membership, app=app, role=granted_role)
+
+
+def _update_invitation(
+    invitation: Invitation,
+    organization: Organization,
+    first_name: str,
+    last_name: str,
+    email: str,
+    unit: BusinessUnit | None,
+    role: str,
+    grants: list[tuple[str, Role]],
+) -> None:
+    # THE ONE CASE WHERE AN ADDRESS MAY CHANGE (C25). Nobody signs in with it
+    # yet, so correcting a typo before somebody accepts is an ordinary edit
+    # rather than a takeover.
+    if email.lower() != invitation.email.lower():
+        _assert_email_free(organization, email, excluding_invitation=invitation.pk)
+        invitation.email = email
+
+    invitation.first_name = first_name
+    invitation.last_name = last_name
+    invitation.unit = unit
+    invitation.role = role
+    invitation.save()
+
+    invitation.app_grants.all().delete()
+    for app, granted_role in grants:
+        InvitationAppGrant.objects.create(invitation=invitation, app=app, role=granted_role)
+
+
+@transaction.atomic
+def remove_person(*, actor: Membership, organization: Organization, person_id: uuid.UUID) -> None:
+    """
+    Take somebody out of this organization.
+
+    NOT "delete the user" (C24). Their account lives in the control database
+    and may belong to other organizations; what goes is the MEMBERSHIP. Their
+    name therefore stays on what they did --- an enquiry raised by A. Fernandes
+    still says so after she leaves, because it references a person who still
+    exists.
+
+    For somebody who never accepted, this is simply cancelling the invitation:
+    there is no account yet and nothing references them.
+    """
+    person = find_person(organization, person_id)
+    _assert_can_manage(actor, person.unit_id)
+
+    if isinstance(person, Membership) and person.role == MembershipRole.OWNER:
+        # Checked here as well as hidden in the UI: an organization with no
+        # owner has nobody who could appoint one (C14), and a request does not
+        # have to come from our menu.
+        raise OwnerProtectedError
+
+    person.delete()
+
+
+@transaction.atomic
+def set_person_status(
+    *, actor: Membership, organization: Organization, person_id: uuid.UUID, status: str
+) -> Membership:
+    """
+    Switch somebody off, or back on.
+
+    MEMBERS ONLY. There is nothing to disable about an invitation --- it has
+    been sent or it has not --- so this refuses rather than inventing a third
+    state for a row that cannot hold one. C51 is what makes that clean: pending
+    people are not memberships, so there is no `status` on them to misuse.
+
+    Q17 settled what disabling costs somebody: simplejwt loads the user row on
+    every request and refuses an inactive one, so it takes effect on their NEXT
+    REQUEST rather than when their token expires.
+    """
+    person = find_person(organization, person_id)
+    _assert_can_manage(actor, person.unit_id)
+
+    if isinstance(person, Invitation):
+        raise NotAnInvitationError
+
+    if person.role == MembershipRole.OWNER:
+        # An organization whose owner is switched off has nobody who could
+        # switch them back on.
+        raise OwnerProtectedError
+
+    person.status = status
+    person.save(update_fields=["status"])
+    return person
+
+
+@transaction.atomic
+def resend_invitation(
+    *, actor: Membership, organization: Organization, person_id: uuid.UUID
+) -> Invitation:
+    """
+    Send somebody's invitation again, with a fresh token and a new expiry.
+
+    A NEW TOKEN, not the old one sent twice. The old one stops working, so an
+    invitation forwarded to the wrong person cannot still be accepted after an
+    admin has resent it to the right one.
+
+    IT SENDS NO EMAIL. The delivery half of the invitation flow does not exist
+    --- Phase 2 still owes invite-to-accept end to end --- so this refreshes
+    the row and nothing leaves the building. That is deliberately not faked:
+    the half this does is the half that has to be right, and a mocked send
+    would make the gap invisible.
+    """
+    person = find_person(organization, person_id)
+    _assert_can_manage(actor, person.unit_id)
+
+    if not isinstance(person, Invitation):
+        raise NotAnInvitationError
+
+    person.token = secrets.token_urlsafe(INVITATION_TOKEN_BYTES)
+    person.expires_at = timezone.now() + INVITATION_LIFETIME
+    person.save(update_fields=["token", "expires_at"])
+    return person

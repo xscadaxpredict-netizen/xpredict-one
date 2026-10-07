@@ -16,6 +16,7 @@ import { asProblem } from "@xpredict/api-client";
 import { DetailPanel } from "@xpredict/ui";
 
 import type { Membership } from "../../api/auth";
+import { administersLabel } from "../administers";
 import type { OrgUser } from "../api/users";
 import { APP_CATALOG } from "../../navigation";
 import { useResendInvitation, useSetUserStatus } from "../hooks/useUsers";
@@ -167,16 +168,30 @@ export function UserDetailPanel({ user, membership, onClose }: UserDetailPanelPr
 
         <dt>Apps</dt>
         <dd>
-          {user.apps.length === 0 ? (
+          {user.apps.length === 0 && user.administers === null ? (
             <span className={styles.note}>No apps yet. They cannot open anything.</span>
           ) : (
             <ul className={styles.appList}>
               {user.apps.map((entry) => (
                 <li key={entry.app} className={styles.appEntry}>
                   <span className={styles.appName}>{appName(entry.app)}</span>
-                  <span className={styles.appRole}>{entry.role}</span>
+                  <span className={styles.appRole}>{entry.role_name}</span>
                 </li>
               ))}
+              {/*
+                Administration last, and not from `apps` — it is never granted
+                as an app (C53). An org admin with no products holds nothing in
+                `apps` and still administers, which is why the empty case above
+                checks both.
+              */}
+              {user.administers !== null && (
+                <li key="admin" className={styles.appEntry}>
+                  <span className={styles.appName}>Administration</span>
+                  <span className={styles.appRole}>
+                    {administersLabel(user.administers)}
+                  </span>
+                </li>
+              )}
             </ul>
           )}
         </dd>

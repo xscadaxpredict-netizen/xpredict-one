@@ -19,7 +19,7 @@
 import { useEffect, useState } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { asProblem } from "@xpredict/api-client";
-import { EmptyState, ErrorState, TableSkeleton } from "@xpredict/ui";
+import { EmptyState, ErrorState, InfoHint, TableSkeleton } from "@xpredict/ui";
 
 import { useShellContext } from "../../context";
 import { InviteUserDialog } from "../components/InviteUserDialog";
@@ -78,22 +78,39 @@ export function UsersScreen() {
    * would have made this screen and that dialog disagree about who the person
    * is. The id is the one that identifies; the name is a label.
    */
-  const isOrgAdmin = membership.unit_id === null;
+  /*
+   * ORGANISATION-WIDE, which is what `unit_id === null` means — not "is an org
+   * admin", which is what this was called. The mirror image of
+   * `callerIsUnitScoped` in `PersonAccessFields`, and misleading the same way:
+   * being unattached to a dealership is one fact, and administering the
+   * organisation is another (C40).
+   *
+   * It happens to imply the other here, because only somebody holding
+   * `admin.person.*` reaches this screen at all — but that is the route guard's
+   * doing, not this line's, and a name should not claim a conclusion it
+   * borrows from another file.
+   */
+  const callerIsOrgWide = membership.unit_id === null;
 
-  const showsOtherDealersPeople = isOrgAdmin && (users?.some((user) => user.unit_name !== null) ?? false);
+  const showsOtherDealersPeople =
+    callerIsOrgWide && (users?.some((user) => user.unit_name !== null) ?? false);
 
   return (
     <div className={styles.page}>
       <header className={styles.header}>
         <div className={styles.heading}>
           <h1 className={styles.title}>Users</h1>
-          <p className={styles.subtitle}>
-            {/*
-              Says the model out loud, because it is the thing people get
-              wrong: a person belongs to the organisation, and DMS is the only
-              app that narrows them to one dealer.
-            */}
-            {isOrgAdmin ? (
+          {/*
+            BEHIND THE ICON NOW, not under the title. It says the model out
+            loud — a person belongs to the organisation, and DMS is the only
+            app that narrows them to one dealer — which is the thing people get
+            wrong, and also a paragraph nobody needs to reread every visit.
+
+            It still says a DIFFERENT thing to a dealer admin, because what
+            they can actually do here is different (C23).
+          */}
+          <InfoHint label="About the Users screen">
+            {callerIsOrgWide ? (
               <>
                 Everyone in {membership.org_name}. People belong to the organisation; only
                 DMS scopes them to a dealer.
@@ -105,7 +122,7 @@ export function UsersScreen() {
                 organisation admin.
               </>
             )}
-          </p>
+          </InfoHint>
         </div>
 
         <InviteUserDialog membership={membership} openForUnitId={inviteForUnitId} />
@@ -144,7 +161,7 @@ export function UsersScreen() {
 
           <p className={styles.count} aria-live="polite">
             {filtered?.length === users.length
-              ? `${String(users.length)} people`
+              ? `${String(users.length)} ${users.length === 1 ? "person" : "people"}`
               : `${String(filtered?.length ?? 0)} of ${String(users.length)}`}
           </p>
         </div>

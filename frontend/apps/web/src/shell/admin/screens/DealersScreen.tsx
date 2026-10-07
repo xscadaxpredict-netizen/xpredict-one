@@ -19,7 +19,7 @@
 
 import { useNavigate, useParams } from "react-router-dom";
 import { asProblem } from "@xpredict/api-client";
-import { EmptyState, ErrorState, TableSkeleton } from "@xpredict/ui";
+import { EmptyState, ErrorState, InfoHint, TableSkeleton } from "@xpredict/ui";
 
 import { useShellContext } from "../../context";
 import { CreateDealerDialog } from "../components/CreateDealerDialog";
@@ -49,20 +49,20 @@ export function DealersScreen() {
       <header className={styles.header}>
         <div className={styles.heading}>
           <h1 className={styles.title}>Dealers</h1>
-          <p className={styles.subtitle}>
-            {/*
-              The model, said once on the screen where it matters most. Anyone
-              who has not met C5 will assume a dealership partitions the whole
-              product, and then wonder why CRM is not filtered.
+          {/*
+            The model, available on the screen where it matters most. Anyone
+            who has not met C5 will assume a dealership partitions the whole
+            product, and then wonder why CRM is not filtered.
 
-              It no longer adds "CRM and the rest are organisation-wide" — true,
-              but it invited the reader to picture a dealer-scoped person over in
-              CRM seeing everything, which C27 now refuses outright. The full
-              rule is stated on the detail panel, where there is room for it.
-            */}
+            It does not add "CRM and the rest are organisation-wide" — true, but
+            it invited the reader to picture a dealer-scoped person over in CRM
+            seeing everything, which C27 now refuses outright. The full rule is
+            stated on the detail panel, where there is room for it.
+          */}
+          <InfoHint label="About the Dealers screen">
             Dealerships in {membership.org_name}. They divide DMS, the only app split by
             dealer. Each dealership manages its own people.
-          </p>
+          </InfoHint>
         </div>
 
         <CreateDealerDialog />
