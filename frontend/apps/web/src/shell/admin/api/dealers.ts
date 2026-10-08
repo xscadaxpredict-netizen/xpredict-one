@@ -16,7 +16,7 @@
  * That is why this screen is in Administration and not in DMS.
  */
 
-import { ApiError, csrfHeaders, readBody, type Problem } from "@xpredict/api-client";
+import { ApiError, request } from "@xpredict/api-client";
 
 export type DealerStatus = "active" | "disabled";
 
@@ -187,41 +187,6 @@ function fakeNotFound(): ApiError {
 }
 
 /* ---------------------------- real shape -------------------------------- */
-
-async function request<T>(url: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(url, {
-    ...init,
-    // Required for httpOnly cookie auth (C12). Omit it and the cookie is not
-    // sent, and every call comes back 401.
-    credentials: "include",
-    // X-CSRFToken on anything that changes state. Django refuses an unsafe
-    // request without it -- which is what made logout answer 403 and leave
-    // somebody signed in, the moment the fake stopped intercepting it.
-    headers: {
-      "Content-Type": "application/json",
-      ...csrfHeaders(init?.method),
-      ...init?.headers,
-    },
-  });
-
-  if (!response.ok) {
-    const problem = (await response.json().catch(() => null)) as Problem | null;
-    throw new ApiError(
-      problem ?? {
-        type: "about:blank",
-        title: "Error",
-        status: response.status,
-        detail: "An unexpected error occurred.",
-        code: "internal_error",
-        trace_id: "",
-      },
-    );
-  }
-
-  // readBody, not response.json(): a 204 has no body and json() throws on
-  // one, which reported a successful logout as a failure.
-  return readBody<T>(response);
-}
 
 export async function fetchDealers(orgSlug: string): Promise<Dealer[]> {
   return request<Dealer[]>(`/api/v1/orgs/${orgSlug}/admin/dealers/`);

@@ -15,7 +15,7 @@
  * there is nothing to delete later.
  */
 
-import { ApiError, csrfHeaders, readBody, type Problem } from "@xpredict/api-client";
+import { request } from "@xpredict/api-client";
 
 /**
  * What the accept screen may know before anybody signs in.
@@ -52,37 +52,6 @@ export interface AcceptResult {
   account_created: boolean;
 }
 
-async function request<T>(url: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(url, {
-    ...init,
-    // Still `include`, even though nobody may be signed in: somebody accepting
-    // a second organisation IS signed in, and the service refuses an accept by
-    // the wrong account — which it can only do if the cookie arrives.
-    credentials: "include",
-    headers: {
-      "Content-Type": "application/json",
-      ...csrfHeaders(init?.method),
-      ...init?.headers,
-    },
-  });
-
-  if (!response.ok) {
-    const problem = (await response.json().catch(() => null)) as Problem | null;
-    throw new ApiError(
-      problem ?? {
-        type: "about:blank",
-        title: "Error",
-        status: response.status,
-        detail: "An unexpected error occurred.",
-        code: "internal_error",
-        trace_id: "",
-      },
-    );
-  }
-
-  return readBody<T>(response);
-}
-
 /**
  * What is this link for?
  *
@@ -92,7 +61,11 @@ async function request<T>(url: string, init?: RequestInit): Promise<T> {
  * an unknown token is a 404.
  */
 export async function fetchInvitation(token: string): Promise<InvitationPreview> {
-  return request<InvitationPreview>(`/api/v1/invitations/${encodeURIComponent(token)}/`);
+  return request<InvitationPreview>(`/api/v1/invitations/${encodeURIComponent(token)}/`, {
+    // Reached by somebody with no session at all, which is the whole point of
+    // it (C56). There is nothing to refresh.
+    public: true,
+  });
 }
 
 /**
@@ -113,5 +86,6 @@ export async function acceptInvitation(
   return request<AcceptResult>(`/api/v1/invitations/${encodeURIComponent(token)}/accept/`, {
     method: "POST",
     body: JSON.stringify(body),
+    public: true,
   });
 }
