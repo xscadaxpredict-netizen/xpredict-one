@@ -44,8 +44,19 @@
   color: var(--color-surface);
   font-size: var(--text-sm);
   line-height: 1.45;
-  /* Above the detail panel, which is a fixed sheet on a narrow screen. */
-  z-index: 50;
+  /*
+   * ABOVE A DIALOG, not merely above the page.
+   *
+   * The ladder this app uses: 40 detail panel, 50 menus and popovers, 60
+   * dialog overlay, 61 dialog content. At 50 this hint was correct beside a
+   * heading and INVISIBLE inside a dialog -- it rendered, in the DOM, behind
+   * the dialog that had opened it, which looks exactly like a button that does
+   * nothing.
+   *
+   * 70 is safe for the screen cases too: a dialog is modal, so a hint on the
+   * page behind one cannot be opened while it is up.
+   */
+  z-index: 70;
 }
 
 .arrow {
