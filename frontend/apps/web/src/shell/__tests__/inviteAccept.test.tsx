@@ -18,7 +18,7 @@ import { fireEvent, screen, waitFor } from "@testing-library/react";
 import { ApiError } from "@xpredict/api-client";
 
 import type * as authApi from "../api/auth";
-import { fetchMe } from "../api/auth";
+import { fetchMe, login } from "../api/auth";
 import type * as invitationsApi from "../api/invitations";
 import { acceptInvitation, fetchInvitation, type InvitationPreview } from "../api/invitations";
 import { renderRoute } from "./harness";
@@ -27,6 +27,7 @@ import { me, membership } from "./factories";
 vi.mock("../api/auth", async (importOriginal) => ({
   ...(await importOriginal<typeof authApi>()),
   fetchMe: vi.fn(),
+  login: vi.fn(),
   logout: vi.fn(),
 }));
 
@@ -39,6 +40,7 @@ vi.mock("../api/invitations", async (importOriginal) => ({
 const mockFetchMe = vi.mocked(fetchMe);
 const mockFetchInvitation = vi.mocked(fetchInvitation);
 const mockAccept = vi.mocked(acceptInvitation);
+const mockLogin = vi.mocked(login);
 
 const TOKEN = "a-real-looking-token";
 const PATH = `/invite/${TOKEN}`;
@@ -425,6 +427,127 @@ describe("somebody who is already signed in", () => {
 
     expect(screen.queryByRole("button", { name: /Join/ })).not.toBeInTheDocument();
     expect(screen.queryByLabelText("Choose a password")).not.toBeInTheDocument();
+  });
+});
+
+describe("somebody who was removed and then re-invited", () => {
+  /*
+   * THE SEQUENCE NOBODY WOULD THINK TO CLICK THROUGH, and it was reported from
+   * a real account: join, be removed, be invited again.
+   *
+   * Removing takes the MEMBERSHIP and leaves the account (C24), so she signs in
+   * with zero memberships — which until C56 could only mean "you were removed".
+   * It now also means "invited, not yet joined", and the two places that read
+   * it the old way sent her nowhere and told her her access had been removed
+   * while the invitation sat waiting.
+   *
+   * The backend was never the problem: signing in answers 200 and accepting
+   * while signed in answers 201. Only the navigation was broken, which is why
+   * these tests are about where she ENDS UP.
+   */
+  it("is carried back to the invitation after signing in, with no memberships", async () => {
+    mockFetchInvitation.mockResolvedValue(preview({ requires_sign_in: true }));
+
+    // Signed out, then signed in as somebody who belongs to nothing yet.
+    mockFetchMe
+      .mockRejectedValueOnce(
+        new ApiError({
+          type: "about:blank",
+          title: "Unauthorized",
+          status: 401,
+          detail: "Not signed in.",
+          code: "not_authenticated",
+          trace_id: "test",
+        }),
+      )
+      .mockResolvedValue(me({ email: "priya@acme.test", memberships: [] }));
+    mockLogin.mockResolvedValue(undefined);
+
+    const { router } = renderRoute({ path: PATH });
+
+    fireEvent.click(await screen.findByRole("link", { name: "Sign in to accept" }));
+
+    /*
+     * WAIT FOR THE SIGN-IN FORM, not for the router's pathname. The router
+     * updates its location before React has rendered the new screen, so a test
+     * that waits on the path and then queries immediately can run against an
+     * empty document mid-transition.
+     *
+     * "Password" is the anchor because only this screen has one: the accept
+     * form labels its fields "Choose a password" and "Type it again".
+     */
+    const password = await screen.findByLabelText("Password");
+
+    fireEvent.change(screen.getByLabelText("Email"), {
+      target: { value: "priya@acme.test" },
+    });
+    fireEvent.change(password, {
+      target: { value: "correct horse battery staple" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Sign in" }));
+
+    // BACK TO THE INVITATION, not left on the form.
+    await waitFor(() => {
+      expect(router.state.location.pathname).toBe(PATH);
+    });
+    expect(await screen.findByRole("button", { name: /Join Acme Motors/ })).toBeInTheDocument();
+  });
+
+  it("is not told its access was removed while an invitation is waiting", async () => {
+    /*
+     * The sentence that made this look broken: a correct password answered
+     * with "your access has been removed". It is not even true — she has an
+     * invitation open.
+     *
+     * WATCHED WITH A MutationObserver, NOT ASSERTED AT THE END, and that is
+     * the whole reason this test is worth anything. The redirect unmounts the
+     * sign-in screen, so by the time the navigation has settled the message is
+     * gone from the DOM whether or not it was ever shown — written the obvious
+     * way, this passed with the fix reverted. The observer records every state
+     * the document passed through, and without the fix it catches the message
+     * appearing for a frame before the redirect.
+     */
+    mockFetchInvitation.mockResolvedValue(preview({ requires_sign_in: true }));
+    mockFetchMe
+      .mockRejectedValueOnce(
+        new ApiError({
+          type: "about:blank",
+          title: "Unauthorized",
+          status: 401,
+          detail: "Not signed in.",
+          code: "not_authenticated",
+          trace_id: "test",
+        }),
+      )
+      .mockResolvedValue(me({ email: "priya@acme.test", memberships: [] }));
+    mockLogin.mockResolvedValue(undefined);
+
+    const { router } = renderRoute({ path: PATH });
+
+    let everShown = false;
+    const observer = new MutationObserver(() => {
+      if (document.body.textContent?.includes("access has been removed")) {
+        everShown = true;
+      }
+    });
+    observer.observe(document.body, { childList: true, subtree: true, characterData: true });
+
+    fireEvent.click(await screen.findByRole("link", { name: "Sign in to accept" }));
+
+    const password = await screen.findByLabelText("Password");
+
+    fireEvent.change(screen.getByLabelText("Email"), { target: { value: "priya@acme.test" } });
+    fireEvent.change(password, { target: { value: "correct horse battery staple" } });
+    fireEvent.click(screen.getByRole("button", { name: "Sign in" }));
+
+    await waitFor(() => {
+      expect(router.state.location.pathname).toBe(PATH);
+    });
+    // A beat after the redirect, in case the message lands late rather than early.
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    observer.disconnect();
+
+    expect(everShown).toBe(false);
   });
 });
 

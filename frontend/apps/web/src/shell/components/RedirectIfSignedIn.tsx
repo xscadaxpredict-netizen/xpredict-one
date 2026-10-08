@@ -10,6 +10,18 @@
  * back to `/login`, and the two bounce forever. Someone with no organisation
  * stays on the form, where the sign-in flow already has a message for them.
  *
+ * WITH ONE EXCEPTION, ADDED 2026-10-08: an invitation. Zero memberships used
+ * to mean "you were removed" and now also means "invited, not yet joined"
+ * (C56), and that person DOES have somewhere to be — the link they arrived
+ * from. Somebody removed from their only organisation and then re-invited hit
+ * this exactly: signing in worked, the invitation was waiting, and the screen
+ * told them their access had been removed while discarding the link.
+ *
+ * The exception is narrow on purpose. `/invite/:token` is the only route that
+ * renders anything useful without a membership; honouring an arbitrary return
+ * path would send them into `AppShell` and its "no access" screen instead,
+ * which is a different dead end rather than a fix.
+ *
  * IT IS ALSO THE ONLY THING THAT DECIDES WHERE YOU LAND. The login screen used
  * to navigate as well, and the two raced: this one sent people to their
  * organisation root while that one sent them to the page they had been blocked
@@ -20,10 +32,12 @@ import type { ReactElement } from "react";
 import { Navigate, useLocation } from "react-router-dom";
 
 import { useMe } from "../hooks/useAuth";
+import { returnPath, worksWithoutMembership } from "../returnPath";
 
 export function RedirectIfSignedIn({ children }: { children: ReactElement }) {
   const { data: me, isPending } = useMe();
   const location = useLocation();
+  const from = returnPath(location.state);
 
   /*
    * Render the form while the answer is outstanding rather than showing a
@@ -39,29 +53,17 @@ export function RedirectIfSignedIn({ children }: { children: ReactElement }) {
    * No organisation picker (C13): the first membership. And the launcher
    * rather than an app (C15), because which apps exist is the server's answer.
    */
-  if (first) return <Navigate to={returnTo(location.state, `/${first.org_slug}`)} replace />;
+  if (first) return <Navigate to={from ?? `/${first.org_slug}`} replace />;
+
+  /*
+   * Signed in, belongs to nothing, and came from somewhere that does not need
+   * a membership — an invitation. Checked AFTER `first` so this changes
+   * nothing for anybody who has an organisation.
+   */
+  if (me && from && worksWithoutMembership(from)) {
+    return <Navigate to={from} replace />;
+  }
 
   return children;
 }
 
-/**
- * Where to go after signing in.
- *
- * Only ever an in-app path. `state` is reachable from the address bar — anyone
- * can push history state — so a value from it is untrusted input. Accepting an
- * absolute URL here would turn the login screen into an open redirect: a link
- * that signs someone in and lands them on a copy of this app that keeps what
- * they type next.
- *
- * "//evil.example" is the case that catches people out: it has no scheme, so a
- * naive "must start with /" check passes it, and the browser reads it as a
- * protocol-relative URL to another host.
- */
-function returnTo(state: unknown, fallback: string): string {
-  const from = (state as { from?: unknown } | null)?.from;
-
-  if (typeof from !== "string") return fallback;
-  if (!from.startsWith("/") || from.startsWith("//")) return fallback;
-
-  return from;
-}
