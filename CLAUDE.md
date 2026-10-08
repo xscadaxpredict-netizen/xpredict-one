@@ -79,9 +79,12 @@ Keep this section current — it is the first thing a new developer reads.
 
 **Frontend — built, merged, and running on Django.** Sign-in, the app launcher, the
 shell and Administration (Users, Dealers, Roles) all work in a browser against the
-real backend. **The `USE_FAKE_*` blocks are deleted, not switched off**, with ONE
-exception: `USE_FAKE_DEALER_STATUS` in `admin/api/dealers.ts`, because closing a
-dealership has no endpoint and will not get one until **Q21** is answered (C52).
+real backend. **ONE FAKE IS STILL SWITCHED ON**: `USE_FAKE_DEALER_STATUS` in
+`admin/api/dealers.ts`, because closing a dealership has no endpoint and will not get
+one until **Q21** is answered (C52). Administration's three fakes were deleted
+outright (PR #20); `USE_FAKE_AUTH` and `USE_FAKE_SIGNUP` still EXIST as `false`
+constants with their blocks intact, which this file claimed for several sessions were
+gone.
 
 **Backend — it runs on a database now.** Django 5.2.17 on **MySQL 8.0** (C39), split
 settings, the fail-closed `TenantRouter`, `shared/base_models.py`, Celery wiring and 10
@@ -192,13 +195,45 @@ nothing for an unknown slug, because refusing there leaked which organisations
 exist. The base view decides WHO. It is also the first link of the Phase 3
 authorization chain, so the rest hangs off it.
 
-**THE INVITATION FLOW IS HALF BUILT AND HONEST ABOUT IT.** `invite_person()` creates
-the invitation and its app grants; `resend_invitation()` mints a fresh token and
-invalidates the old one. **Neither sends an email** — deliberately, rather than mocked,
-because the half that exists is the half that has to be right. So an invitation can be
-created and **nobody can accept one**: no person invited through the UI can join yet.
-That is the next piece of work, and it needs an accept screen and
-`accept_invitation()` under `select_for_update`.
+**PEOPLE CAN JOIN NOW — the invitation flow is complete (C56, PR #22).** And
+**there is no email**: `GET /orgs/<slug>/admin/users/<id>/invite-link/` hands the
+link to an admin, who sends it however they already talk to the person. **Show and
+Resend are different verbs** — Show reveals the same link as often as you like,
+Resend mints a new token and kills the old one. Nothing reaches the clipboard until
+the copy icon is pressed.
+
+**THE TOKEN IN THAT LINK IS THE CREDENTIAL and nothing else guards it.** True of
+every "set your password" link ever sent; the difference is that a chat message is
+backed up, searchable and forwardable in ways a mailbox is not.
+
+**`/api/v1/invitations/<token>/` IS NOT UNDER `/orgs/<slug>/`, AND CANNOT BE.**
+Everything under that prefix inherits `OrgScopedAPIView`, which verifies an active
+membership before the handler runs (C49) — and the holder of a link is precisely
+somebody without one. The token names the organisation, which also keeps a
+customer's slug out of a URL pasted into chat.
+
+**`accept_invitation()` RUNS UNDER `select_for_update`**, so a link clicked twice
+cannot produce two memberships — without it the unique constraint on
+`(user, organization)` turns the second click into a 500. Every rule is re-checked
+at accept time, because an invitation can sit for a fortnight and the app can be
+unsubscribed in that time (C55).
+
+**`FRONTEND_BASE_URL` MUST BE SET or no invitation can be handed out at all.**
+`invitation_link()` raises on an empty value rather than building a relative URL —
+a link that is quietly wrong is noticed only by the person who cannot use it. Dev
+takes it from the Vite origin; production has to be told.
+
+**ZERO MEMBERSHIPS MEANS TWO THINGS NOW** (C58): "you were removed" and "invited,
+not yet joined". Somebody removed from their only organisation and then re-invited
+signs in with none, so `RedirectIfSignedIn` and `LoginScreen` both have to know —
+they used to send that person nowhere and tell them their access had been removed.
+
+**PASSWORDS GO THROUGH ONE VALIDATOR** (C57): `validate_password_strength` in
+`core/accounts/api/serializers.py`, shared by signup and by accepting.
+`AUTH_PASSWORD_VALIDATORS` had been configured since Phase 1 and **nothing had ever
+called it** — signup would take `12345678`. A refused password's reason is in the
+response's `errors` list, never in `detail`, which is generic for every validation
+failure; a form that renders `detail` alone says nothing useful.
 
 **Blocked on:** nothing. **Redis is still missing**, which leaves the Celery broker
 round-trip unverified — and now also means the throttle counter and cache are
@@ -211,8 +246,8 @@ user row on every request and refuses an inactive one, so **disabling somebody t
 effect on their next request**, not after a token expires. The 15-minute access
 lifetime is how long a STOLEN token survives a logout.
 
-**Gates, all green:** `npm run test -w web` (112), `npm run typecheck -w web`,
-`npm run lint`, and in `backend/`: `pytest` (285), `ruff check .`, and
+**Gates, all green:** `npm run test -w web` (146), `npm run typecheck -w web`,
+`npm run lint`, and in `backend/`: `pytest` (324), `ruff check .`, and
 `.venv/Scripts/lint-imports.exe` — **not** `python -m importlinter.cli`, which exits 0
 without running. Run them before pushing.
 
