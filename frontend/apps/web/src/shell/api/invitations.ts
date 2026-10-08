@@ -15,7 +15,7 @@
  * there is nothing to delete later.
  */
 
-import { ApiError, csrfHeaders, readBody, type Problem } from "@xpredict/api-client";
+import { request } from "@xpredict/api-client";
 
 /**
  * What the accept screen may know before anybody signs in.
@@ -50,37 +50,6 @@ export interface AcceptResult {
   org_slug: string;
   /** False when they already had an account and signed in to accept. */
   account_created: boolean;
-}
-
-async function request<T>(url: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(url, {
-    ...init,
-    // Still `include`, even though nobody may be signed in: somebody accepting
-    // a second organisation IS signed in, and the service refuses an accept by
-    // the wrong account — which it can only do if the cookie arrives.
-    credentials: "include",
-    headers: {
-      "Content-Type": "application/json",
-      ...csrfHeaders(init?.method),
-      ...init?.headers,
-    },
-  });
-
-  if (!response.ok) {
-    const problem = (await response.json().catch(() => null)) as Problem | null;
-    throw new ApiError(
-      problem ?? {
-        type: "about:blank",
-        title: "Error",
-        status: response.status,
-        detail: "An unexpected error occurred.",
-        code: "internal_error",
-        trace_id: "",
-      },
-    );
-  }
-
-  return readBody<T>(response);
 }
 
 /**

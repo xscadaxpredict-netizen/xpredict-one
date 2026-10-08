@@ -19,8 +19,7 @@
  * the backend settles on.
  */
 
-import { ApiError, csrfHeaders, readBody, type Problem } from "@xpredict/api-client";
-
+import { request } from "@xpredict/api-client";
 
 /** Active, invited but not yet accepted, or switched off. */
 export type UserStatus = "active" | "invited" | "disabled";
@@ -157,39 +156,6 @@ export interface NewInvitation {
 }
 
 /* ---------------------------- real shape -------------------------------- */
-
-async function request<T>(url: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(url, {
-    ...init,
-    credentials: "include",
-    // X-CSRFToken on anything that changes state. Django refuses an unsafe
-    // request without it -- which is what made logout answer 403 and leave
-    // somebody signed in, the moment the fake stopped intercepting it.
-    headers: {
-      "Content-Type": "application/json",
-      ...csrfHeaders(init?.method),
-      ...init?.headers,
-    },
-  });
-
-  if (!response.ok) {
-    const problem = (await response.json().catch(() => null)) as Problem | null;
-    throw new ApiError(
-      problem ?? {
-        type: "about:blank",
-        title: "Error",
-        status: response.status,
-        detail: "An unexpected error occurred.",
-        code: "internal_error",
-        trace_id: "",
-      },
-    );
-  }
-
-  // readBody, not response.json(): a 204 has no body and json() throws on
-  // one, which reported a successful logout as a failure.
-  return readBody<T>(response);
-}
 
 export async function fetchUsers(orgSlug: string): Promise<OrgUser[]> {
   return request<OrgUser[]>(`/api/v1/orgs/${orgSlug}/admin/users/`);

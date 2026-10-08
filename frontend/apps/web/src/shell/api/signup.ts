@@ -9,7 +9,7 @@
  * a moment to exist.
  */
 
-import { ApiError, csrfHeaders, readBody, type Problem } from "@xpredict/api-client";
+import { ApiError, request } from "@xpredict/api-client";
 
 import { fakeSignIn } from "./auth";
 
@@ -65,39 +65,6 @@ function problem(status: number, code: string, detail: string): ApiError {
     code,
     trace_id: "fake-0000",
   });
-}
-
-async function request<T>(url: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(url, {
-    ...init,
-    credentials: "include",
-    // X-CSRFToken on anything that changes state. Django refuses an unsafe
-    // request without it -- which is what made logout answer 403 and leave
-    // somebody signed in, the moment the fake stopped intercepting it.
-    headers: {
-      "Content-Type": "application/json",
-      ...csrfHeaders(init?.method),
-      ...init?.headers,
-    },
-  });
-
-  if (!response.ok) {
-    const body = (await response.json().catch(() => null)) as Problem | null;
-    throw new ApiError(
-      body ?? {
-        type: "about:blank",
-        title: "Error",
-        status: response.status,
-        detail: "An unexpected error occurred.",
-        code: "internal_error",
-        trace_id: "",
-      },
-    );
-  }
-
-  // readBody, not response.json(): a 204 has no body and json() throws on
-  // one, which reported a successful logout as a failure.
-  return readBody<T>(response);
 }
 
 /**
