@@ -1017,6 +1017,7 @@ def accept_invitation(
             .select_related("organization", "unit")
             .get(token=token)
         )
+
     except (Invitation.DoesNotExist, DjangoValidationError, ValueError):
         # A token nobody holds is not bad input to report back on; it is an
         # invitation that does not exist for this caller. Same answer as a

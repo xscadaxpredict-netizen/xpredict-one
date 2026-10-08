@@ -13,9 +13,9 @@ only thing that will tell you is a column going blank.
 
 from __future__ import annotations
 
-from django.contrib.auth.password_validation import validate_password
-from django.core.exceptions import ValidationError as DjangoValidationError
 from rest_framework import serializers
+
+from core.accounts.api.serializers import validate_password_strength
 
 
 class DealerSerializer(serializers.Serializer):
@@ -214,12 +214,11 @@ class AcceptInvitationSerializer(serializers.Serializer):
     places answering one question --- so this checks the shape and
     `accept_invitation()` checks the rule.
 
-    VALIDATED AGAINST `AUTH_PASSWORD_VALIDATORS`, which until now nothing in
-    this project called. The setting has been in `base.py` since Phase 1 and
-    was never reached by any code path, so the rules it describes were not
-    being applied anywhere --- the same shape as `BLACKLIST_AFTER_ROTATION`
-    without its app. Signup still does not call it; see the note in the
-    session log.
+    VALIDATED AGAINST `AUTH_PASSWORD_VALIDATORS`, through the same helper
+    signup uses. This was the first code path in the project to call them at
+    all --- the setting had been in `base.py` since Phase 1 and nothing reached
+    it --- which briefly meant an invited colleague was held to rules the owner
+    who invited them was not. Signup calls it too now.
     """
 
     password = serializers.CharField(
@@ -230,14 +229,12 @@ class AcceptInvitationSerializer(serializers.Serializer):
     )
 
     def validate_password(self, value: str) -> str:
-        if value:
-            # DRF's ValidationError, not a domain one: this is field shape, and
-            # it belongs beside the input in the form.
-            try:
-                validate_password(value)
-            except DjangoValidationError as exc:
-                raise serializers.ValidationError(list(exc.messages)) from None
-        return value
+        # ONLY WHEN THERE IS ONE. An empty password is not a weak password: it
+        # is somebody who already has an account and signed in to accept, and
+        # `accept_invitation()` is what decides whether that is allowed.
+        if not value:
+            return value
+        return validate_password_strength(value)
 
 
 class AcceptResultSerializer(serializers.Serializer):

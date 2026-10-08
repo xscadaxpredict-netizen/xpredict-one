@@ -29,8 +29,10 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm } from "react-hook-form";
 import { Link, Navigate, useLocation, useNavigate, useParams } from "react-router-dom";
 import { z } from "zod";
-import { asProblem } from "@xpredict/api-client";
+import { asProblem, hasFieldErrors } from "@xpredict/api-client";
 
+import { messagesByField } from "../fieldErrors";
+import { PASSWORD_HINT, passwordField } from "../passwordRules";
 import { AuthLayout } from "../components/AuthLayout";
 import { Button } from "../components/Button";
 import { FormBanner } from "../components/FormBanner";
@@ -47,7 +49,7 @@ import styles from "./InviteAcceptScreen.module.css";
  */
 const acceptFormSchema = z
   .object({
-    password: z.string().min(8, "Password must be at least 8 characters."),
+    password: passwordField("Password must be at least 8 characters."),
     confirm: z.string().min(1, "Type your password again."),
   })
   .refine((values) => values.password === values.confirm, {
@@ -91,6 +93,7 @@ export function InviteAcceptScreen() {
   const {
     register,
     handleSubmit,
+    setError,
     formState: { errors },
   } = useForm<AcceptFormFields>({
     resolver: zodResolver(acceptFormSchema),
@@ -111,6 +114,41 @@ export function InviteAcceptScreen() {
       void navigate(`/${result.org_slug}`, { replace: true });
     } catch (caught) {
       const problem = asProblem(caught);
+
+      /*
+       * THE REASON IS IN `errors`, NOT IN `detail`.
+       *
+       * `config/exception_handler.py` gives every validation failure the same
+       * generic detail and puts the specifics in `errors` — so this screen
+       * showed "The submitted data is not valid." while the response was
+       * carrying "This password is too common. This password is entirely
+       * numeric." A refused password read as though the form itself were
+       * broken, which is how it was reported.
+       *
+       * Only `password` can be placed: `confirm` exists in this form and not
+       * on the server, and nothing else here is a field. Anything the server
+       * names that this form does not have goes to the banner rather than
+       * being attached to a field that does not exist and rendering nowhere —
+       * the silent failure `SignupScreen` already learned about.
+       */
+      if (hasFieldErrors(problem)) {
+        const byField = messagesByField(problem.errors);
+        const passwordMessage = byField.get("password");
+
+        if (passwordMessage) {
+          setError("password", { message: passwordMessage });
+          byField.delete("password");
+        }
+
+        const unplaceable = [...byField.values()];
+        if (unplaceable.length > 0) {
+          setFormError({ message: unplaceable.join(" ") });
+        } else if (!passwordMessage) {
+          setFormError({ message: problem.detail });
+        }
+        return;
+      }
+
       setFormError({
         message: problem.detail,
         traceId: problem.status >= 500 ? problem.trace_id : undefined,
@@ -257,6 +295,7 @@ export function InviteAcceptScreen() {
           type="password"
           autoComplete="new-password"
           autoFocus
+          hint={PASSWORD_HINT}
           error={errors.password?.message}
           {...register("password")}
         />

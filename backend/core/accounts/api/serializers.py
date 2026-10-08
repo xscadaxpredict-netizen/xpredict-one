@@ -7,6 +7,8 @@ the request looks like a login attempt, not whether it is a valid one.
 
 from __future__ import annotations
 
+from django.contrib.auth.password_validation import validate_password
+from django.core.exceptions import ValidationError as DjangoValidationError
 from rest_framework import serializers
 
 
@@ -54,10 +56,55 @@ class SignupSerializer(serializers.Serializer):
     first_name = serializers.CharField(max_length=150, allow_blank=True, default="")
     last_name = serializers.CharField(max_length=150, allow_blank=True, default="")
     email = serializers.EmailField()
-    # No length cap and no complexity rules here: whatever Django's configured
-    # validators say is the rule, and duplicating them in a serializer makes
-    # two places that disagree the first time AUTH_PASSWORD_VALIDATORS changes.
+    # No length cap and no complexity rules written out here: whatever
+    # AUTH_PASSWORD_VALIDATORS says is the rule, and duplicating it in a
+    # serializer makes two places that disagree the first time it changes.
     password = serializers.CharField(trim_whitespace=False, style={"input_type": "password"})
+
+    def validate_password(self, value: str) -> str:
+        """
+        THIS CALL DID NOT EXIST UNTIL 2026-10-08, and the comment above claimed
+        it did.
+
+        `AUTH_PASSWORD_VALIDATORS` has been configured since Phase 1 and no code
+        path ever reached it, so the rules it describes applied to nobody:
+        signup accepted `12345678` for a founder's account. It is the same shape
+        as `BLACKLIST_AFTER_ROTATION` without its app and `CSRF_TRUSTED_ORIGINS`
+        unset --- a setting that reads as configured and does nothing.
+
+        It surfaced from the other end: accepting an invitation validates
+        passwords, so an invited colleague was held to rules the owner who
+        invited them was not.
+        """
+        return validate_password_strength(value)
+
+
+def validate_password_strength(value: str) -> str:
+    """
+    Run Django's configured password validators, as a DRF field validator.
+
+    IN ONE PLACE SO SIGNUP AND ACCEPTING AN INVITATION CANNOT DISAGREE. They
+    are the only two ways anybody ever sets a password here, and they already
+    diverged once --- accepting enforced these rules from the day it was
+    written and signup never had.
+
+    It lives in `core.accounts` because that is the app that owns `User`;
+    `core.organizations` imports it for the accept form, the same direction its
+    services already import `User`.
+
+    DRF's `ValidationError`, not a domain one. These messages belong beside an
+    input, and `config.exception_handler` flattens them into the response's
+    `errors` list for the form to place --- which is the half the accept screen
+    was missing when a refused password read as "the given data is invalid".
+    """
+    try:
+        validate_password(value)
+    except DjangoValidationError as exc:
+        # `exc.messages`, not `str(exc)`: there can be SEVERAL reasons at once
+        # ("too common" and "entirely numeric" for 12345678) and the form shows
+        # all of them rather than whichever came first.
+        raise serializers.ValidationError(list(exc.messages)) from None
+    return value
 
 
 class SignupResultSerializer(serializers.Serializer):

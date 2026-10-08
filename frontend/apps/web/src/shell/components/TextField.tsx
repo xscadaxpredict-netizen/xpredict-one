@@ -26,6 +26,15 @@ interface TextFieldProps extends InputHTMLAttributes<HTMLInputElement> {
   error?: string;
   /** Rendered to the right of the label — "Forgot password?" and the like. */
   action?: ReactNode;
+  /**
+   * A rule the server will enforce, said BEFORE the round trip.
+   *
+   * Added for the password rules, which are Django's and cannot all be checked
+   * in the browser — "is this a common password" needs the list. Somebody
+   * typing 12345678 should learn it will be refused while they are typing it,
+   * not after a request that comes back saying so.
+   */
+  hint?: ReactNode;
 }
 
 /*
@@ -37,13 +46,22 @@ interface TextFieldProps extends InputHTMLAttributes<HTMLInputElement> {
  */
 
 export const TextField = forwardRef<HTMLInputElement, TextFieldProps>(function TextField(
-  { label, error, action, id, required, ...inputProps },
+  { label, error, action, hint, id, required, ...inputProps },
   ref,
 ) {
   // React Hook Form hands us a ref, so forwardRef is required: without it the
   // library cannot focus this input when validation fails.
   const inputId = id ?? "field-" + label.toLowerCase().replace(/\s+/g, "-");
   const errorId = inputId + "-error";
+  const hintId = inputId + "-hint";
+
+  /*
+   * THE ERROR WINS WHEN BOTH EXIST. Pointing `aria-describedby` at both reads
+   * the rule out and then the failure, which is the rule twice over for
+   * somebody listening; once a field is wrong, what is wrong with it is the
+   * only part worth announcing.
+   */
+  const describedBy = error ? errorId : hint ? hintId : undefined;
 
   return (
     <div className={styles.field}>
@@ -70,8 +88,16 @@ export const TextField = forwardRef<HTMLInputElement, TextFieldProps>(function T
         required={required}
         className={error ? styles.input + " " + styles.inputInvalid : styles.input}
         aria-invalid={error ? true : undefined}
-        aria-describedby={error ? errorId : undefined}
+        aria-describedby={describedBy}
       />
+
+      {/* Hidden once the field is wrong, so the rule is not sitting under the
+          message explaining that the rule was broken. */}
+      {hint && !error && (
+        <p id={hintId} className={styles.hint}>
+          {hint}
+        </p>
+      )}
 
       {error && (
         <p id={errorId} className={styles.error}>

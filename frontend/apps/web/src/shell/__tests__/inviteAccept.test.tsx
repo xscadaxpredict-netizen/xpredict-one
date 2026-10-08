@@ -166,6 +166,95 @@ describe("somebody with no account yet", () => {
     expect(email).toHaveAttribute("readonly");
   });
 
+  it("shows WHY a password was refused, not just that something was", async () => {
+    /*
+     * THE BUG THIS TEST EXISTS FOR, reported as "it says the given data is
+     * invalid, why?".
+     *
+     * `config/exception_handler.py` gives every validation failure the same
+     * generic `detail` and puts the real reasons in `errors`. This screen
+     * rendered `detail` alone, so a refused password looked like a broken
+     * form -- while the response was carrying two perfectly good sentences
+     * explaining it.
+     */
+    signedOut();
+    mockFetchInvitation.mockResolvedValue(preview());
+    mockAccept.mockRejectedValue(
+      new ApiError({
+        type: "about:blank",
+        title: "Unprocessable entity",
+        status: 422,
+        detail: "The submitted data is not valid.",
+        code: "validation_failed",
+        trace_id: "test",
+        errors: [
+          { field: "password", code: "invalid", detail: "This password is too common." },
+          {
+            field: "password",
+            code: "invalid",
+            detail: "This password is entirely numeric.",
+          },
+        ],
+      }),
+    );
+
+    renderRoute({ path: PATH });
+
+    fireEvent.change(await screen.findByLabelText("Choose a password"), {
+      target: { value: "correct horse battery staple" },
+    });
+    fireEvent.change(screen.getByLabelText("Type it again"), {
+      target: { value: "correct horse battery staple" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /Join VRK|Join Acme Motors/ }));
+
+    /*
+     * BOTH REASONS, AGAINST THE FIELD. One at a time would mean fixing the
+     * digits and only then being told it is also too common.
+     */
+    const message = await screen.findByText(
+      "This password is too common. This password is entirely numeric.",
+    );
+    expect(message).toBeInTheDocument();
+
+    // On the input, not in the banner: it is that field that is wrong.
+    expect(screen.getByLabelText("Choose a password")).toHaveAttribute("aria-invalid", "true");
+    expect(screen.queryByText("The submitted data is not valid.")).not.toBeInTheDocument();
+  });
+
+  it("states the password rules before anybody presses anything", async () => {
+    /*
+     * "Too common" cannot be checked in the browser, so without saying so up
+     * front the only way to learn the rule is to break it.
+     */
+    signedOut();
+    mockFetchInvitation.mockResolvedValue(preview());
+
+    renderRoute({ path: PATH });
+
+    expect(
+      await screen.findByText("At least 8 characters. Not a common password, and not all numbers."),
+    ).toBeInTheDocument();
+  });
+
+  it("refuses an all-digit password without asking the server", async () => {
+    signedOut();
+    mockFetchInvitation.mockResolvedValue(preview());
+
+    renderRoute({ path: PATH });
+
+    fireEvent.change(await screen.findByLabelText("Choose a password"), {
+      target: { value: "12345678" },
+    });
+    fireEvent.change(screen.getByLabelText("Type it again"), { target: { value: "12345678" } });
+    fireEvent.click(screen.getByRole("button", { name: /Join Acme Motors/ }));
+
+    expect(
+      await screen.findByText("Use something other than only numbers."),
+    ).toBeInTheDocument();
+    expect(mockAccept).not.toHaveBeenCalled();
+  });
+
   it("puts the server's refusal on screen rather than failing silently", async () => {
     signedOut();
     mockFetchInvitation.mockResolvedValue(preview());
