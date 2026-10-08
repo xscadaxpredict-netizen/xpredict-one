@@ -188,7 +188,12 @@ function InviteForm({ membership, initialUnitId, onDone }: InviteFormProps) {
           </Dialog.Description>
         </div>
 
-        <InviteLinkPanel userId={invited.id} email={invited.email} />
+        {/*
+          `version` is 0 and `isFresh` false: this link has just been created,
+          so there is no earlier one to say has stopped working. Resend lives
+          on the person's record, not here.
+        */}
+        <InviteLinkPanel userId={invited.id} email={invited.email} version={0} isFresh={false} />
 
         <div className={styles.actions}>
           <Button type="button" onClick={onDone}>

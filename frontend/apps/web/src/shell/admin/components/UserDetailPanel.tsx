@@ -45,6 +45,10 @@ export function UserDetailPanel({ user, membership, onClose }: UserDetailPanelPr
    */
   const [showLink, setShowLink] = useState(false);
 
+  // Bumped by Resend so the link panel refetches. It also tells the panel to
+  // say "New link ready" rather than repeating the first-time instruction.
+  const [linkVersion, setLinkVersion] = useState(0);
+
   const isDisabled = user.status === "disabled";
   const fullName = `${user.first_name} ${user.last_name}`;
 
@@ -71,38 +75,48 @@ export function UserDetailPanel({ user, membership, onClose }: UserDetailPanelPr
           {user.status === "invited" && (
             <>
               {/*
-                COPY AND RESEND ARE DIFFERENT VERBS (C56), and this is the
-                pair that makes that legible. Copy hands over the SAME link
-                again -- which is what an admin wants nine times out of ten,
-                because there is no email and they are sending it by hand.
-                Resend mints a new token and kills the old one, so it is for
-                "that went to the wrong person" and nothing else.
+                SHOW AND RESEND ARE DIFFERENT VERBS (C56). Show reveals the
+                SAME link as often as you like -- the common case, because
+                there is no email and the admin sends it by hand. Resend mints
+                a new token and kills the old one, so it is for "that went to
+                the wrong person" and nothing else.
 
-                Copy is first because it is the common case.
+                NEITHER LABEL CHANGES INTO A DEAD BUTTON. "New link ready" used
+                to replace Resend and stay disabled, which read as a broken
+                control and wrapped onto two lines in a 360px panel. The
+                acknowledgement belongs with the link it describes, so that is
+                where it went.
               */}
               <button
                 type="button"
                 className={styles.secondaryAction}
-                onClick={() => setShowLink(true)}
+                onClick={() => setShowLink((shown) => !shown)}
+                aria-expanded={showLink}
               >
-                {showLink ? "Link shown below" : "Copy link"}
+                {showLink ? "Hide link" : "Show link"}
               </button>
 
               <button
                 type="button"
                 className={styles.secondaryAction}
-                disabled={resendPending || resent}
+                disabled={resendPending}
                 onClick={() => {
                   /*
-                   * Hide the old link as the new one is minted. Leaving it on
-                   * screen would show an admin a link that stopped working the
-                   * moment they pressed this.
+                   * Reveal the new link rather than hiding the old one. The
+                   * token has changed, so showing the replacement IS the
+                   * acknowledgement -- and `linkVersion` is what makes the
+                   * panel refetch instead of displaying a link that stopped
+                   * working the instant this was pressed.
                    */
-                  setShowLink(false);
-                  resend(user.id);
+                  resend(user.id, {
+                    onSuccess: () => {
+                      setLinkVersion((version) => version + 1);
+                      setShowLink(true);
+                    },
+                  });
                 }}
               >
-                {resent ? "New link ready" : resendPending ? "Working…" : "Resend"}
+                {resendPending ? "Working…" : "Resend"}
               </button>
             </>
           )}
@@ -200,7 +214,12 @@ export function UserDetailPanel({ user, membership, onClose }: UserDetailPanelPr
           test; this comment is what keeps the next person from assuming
           otherwise.
         */
-        <InviteLinkPanel userId={user.id} email={user.email} />
+        <InviteLinkPanel
+          userId={user.id}
+          email={user.email}
+          version={linkVersion}
+          isFresh={resent}
+        />
       )}
 
       <dl className={styles.facts}>

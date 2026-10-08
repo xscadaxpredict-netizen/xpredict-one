@@ -7,7 +7,7 @@
  */
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { fireEvent, screen, waitFor, within } from "@testing-library/react";
+import { fireEvent, screen, within } from "@testing-library/react";
 
 import type * as usersApi from "../admin/api/users";
 import { fetchUsers } from "../admin/api/users";
@@ -27,6 +27,14 @@ vi.mock("../admin/api/users", async (importOriginal) => ({
   ...(await importOriginal<typeof usersApi>()),
   fetchUsers: vi.fn(),
   resendInvitation: vi.fn().mockResolvedValue(undefined),
+  // Resend refreshes the shown link (C56), so this screen now reaches the
+  // link endpoint too.
+  fetchInviteLink: vi.fn().mockImplementation((_org: string, userId: string) =>
+    Promise.resolve({
+      link: `http://localhost:5173/invite/token-for-${userId}`,
+      expires_at: "2026-10-21T00:00:00Z",
+    }),
+  ),
 }));
 
 const mockFetchMe = vi.mocked(fetchMe);
@@ -80,20 +88,26 @@ describe("the detail panel is rebuilt per person", () => {
     renderRoute({ path: "/acme-motors/admin/users/sanjay", children: adminRoutes });
 
     const panel = await screen.findByRole("complementary", { name: "Sanjay Desai" });
-    // "Resend", not "Resend invitation": there is no email, so the button now
-    // means "replace the link" and Copy is the one that sends it again (C56).
+    // "Resend", not "Resend invitation": there is no email, so the button
+    // means "replace the link" and Show is the one that reveals it (C56).
     fireEvent.click(within(panel).getByRole("button", { name: "Resend" }));
 
-    // Sanjay's own button is now spent, which is correct for Sanjay.
-    await waitFor(() => {
-      expect(within(panel).getByRole("button", { name: "New link ready" })).toBeDisabled();
-    });
+    /*
+     * Sanjay's panel now shows his new link and the acknowledgement. THAT is
+     * what must not travel: the button itself no longer latches into a
+     * disabled "New link ready", so the state worth checking is the link and
+     * the message beside it.
+     */
+    await screen.findByText(/New link ready/);
+    expect(screen.getByLabelText("Invitation link")).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("link", { name: "Priya Raghunathan" }));
 
     const next = await screen.findByRole("complementary", { name: "Priya Raghunathan" });
 
     expect(within(next).getByRole("button", { name: "Resend" })).toBeEnabled();
+    expect(screen.queryByText(/New link ready/)).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Invitation link")).not.toBeInTheDocument();
   });
 });
 

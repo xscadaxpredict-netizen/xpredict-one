@@ -1,19 +1,19 @@
 /**
  * The invitation link, ready to copy and send by hand (C56).
  *
- * THERE IS NO EMAIL, so this is the delivery mechanism: the admin copies the
- * link and sends it over whatever they already use to talk to the person.
+ * THERE IS NO EMAIL, so this is the delivery mechanism: the admin reads the
+ * link, copies it, and sends it over whatever they already use.
  *
- * IT ALWAYS SHOWS THE LINK, not just a Copy button. `navigator.clipboard` is
- * unavailable outside a secure context and can be refused by permissions
- * policy, and a Copy button that silently fails would leave the admin
- * believing they had the link while pasting whatever was there before. A
- * visible, selectable field cannot fail that way.
+ * IT DOES NOT COPY ANYTHING BY ITSELF. An earlier version wrote to the
+ * clipboard the moment it opened, which is a surprise in both directions —
+ * somebody who only wanted to LOOK at the link has had their clipboard
+ * replaced, and somebody who wanted to copy it has no idea whether it
+ * happened. Showing and copying are two actions and the admin does both.
  *
- * IT FETCHES ON MOUNT, which is why the callers render it only when the link
- * is actually wanted: the link carries the token that joins the organisation as
- * that person, so it travels when somebody asks for it rather than on every
- * visit to the users screen.
+ * THE LINK IS ALWAYS VISIBLE, not hidden behind a button. `navigator.clipboard`
+ * is unavailable outside a secure context and can be refused by permissions
+ * policy, so a copy button that silently fails would leave an admin pasting
+ * whatever was there before. A selectable field cannot fail that way.
  */
 
 import { useEffect, useRef, useState } from "react";
@@ -27,9 +27,17 @@ interface InviteLinkPanelProps {
   userId: string;
   /** Shown so the admin can see at a glance who the link is for. */
   email: string;
+  /**
+   * Bumped by the panel above when Resend mints a new token. Changing it
+   * refetches, so the link on screen is the one that works — the old one
+   * stopped working the instant Resend was pressed.
+   */
+  version: number;
+  /** True once Resend has run, which turns the heading into a confirmation. */
+  isFresh: boolean;
 }
 
-export function InviteLinkPanel({ userId, email }: InviteLinkPanelProps) {
+export function InviteLinkPanel({ userId, email, version, isFresh }: InviteLinkPanelProps) {
   const { mutateAsync: load } = useInviteLink();
 
   const [link, setLink] = useState<string | null>(null);
@@ -38,41 +46,31 @@ export function InviteLinkPanel({ userId, email }: InviteLinkPanelProps) {
 
   // React runs effects twice in development (StrictMode). This is a read, so
   // twice is harmless, but a ref keeps the request count honest.
-  const asked = useRef(false);
+  const asked = useRef("");
 
   useEffect(() => {
-    if (asked.current) return;
-    asked.current = true;
+    const request = `${userId}:${version}`;
+    if (asked.current === request) return;
+    asked.current = request;
+
+    setCopied(false);
 
     void (async () => {
       try {
-        const result = await load(userId);
-        setLink(result.link);
-        /*
-         * Copy straight away, because the admin asked for the link in order to
-         * send it. The failure is swallowed ON PURPOSE: the link is on screen
-         * either way, and an error about the clipboard would be reporting a
-         * problem that does not stop them.
-         */
-        try {
-          await navigator.clipboard.writeText(result.link);
-          setCopied(true);
-        } catch {
-          setCopied(false);
-        }
+        setLink(await load(userId).then((result) => result.link));
       } catch (caught) {
         setError(asProblem(caught).detail);
       }
     })();
-  }, [load, userId]);
+  }, [load, userId, version]);
 
-  async function copyAgain() {
+  async function copy() {
     if (!link) return;
     try {
       await navigator.clipboard.writeText(link);
       setCopied(true);
     } catch {
-      setError("Could not reach the clipboard. Select the link above and copy it.");
+      setError("Could not reach the clipboard. Select the link and copy it by hand.");
     }
   }
 
@@ -86,8 +84,22 @@ export function InviteLinkPanel({ userId, email }: InviteLinkPanelProps) {
 
   return (
     <div className={styles.panel}>
-      <p className={styles.label}>
-        Send this link to <strong>{email}</strong>. They choose their own password.
+      {/*
+        `role="status"` so the confirmation after Resend is announced rather
+        than only seen. It is the acknowledgement that the old link is dead —
+        the one thing that is easy to miss, because the new link looks exactly
+        like the old one.
+      */}
+      <p className={styles.label} role="status">
+        {isFresh ? (
+          <>
+            <strong>New link ready.</strong> The previous one no longer works.
+          </>
+        ) : (
+          <>
+            Send this link to <strong>{email}</strong>. They choose their own password.
+          </>
+        )}
       </p>
 
       <div className={styles.row}>
@@ -108,9 +120,11 @@ export function InviteLinkPanel({ userId, email }: InviteLinkPanelProps) {
           type="button"
           className={styles.copy}
           disabled={!link}
-          onClick={() => void copyAgain()}
+          onClick={() => void copy()}
+          aria-label={copied ? "Copied" : "Copy link"}
+          title={copied ? "Copied" : "Copy link"}
         >
-          {copied ? "Copied" : "Copy"}
+          {copied ? <TickIcon /> : <CopyIcon />}
         </button>
       </div>
 
@@ -124,5 +138,35 @@ export function InviteLinkPanel({ userId, email }: InviteLinkPanelProps) {
         working once they accept, and Resend replaces it.
       </p>
     </div>
+  );
+}
+
+function CopyIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true" focusable="false">
+      <rect x="4.75" y="4.75" width="7.5" height="7.5" rx="1.5" fill="none" stroke="currentColor" strokeWidth="1.4" />
+      <path
+        d="M9.25 4.25v-1a1.5 1.5 0 0 0-1.5-1.5h-4.5a1.5 1.5 0 0 0-1.5 1.5v4.5a1.5 1.5 0 0 0 1.5 1.5h1"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.4"
+        strokeLinecap="round"
+      />
+    </svg>
+  );
+}
+
+function TickIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true" focusable="false">
+      <path
+        d="M2.75 7.5 5.5 10.25l5.75-6"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
   );
 }

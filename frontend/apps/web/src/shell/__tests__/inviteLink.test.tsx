@@ -40,6 +40,15 @@ const mockFetchMe = vi.mocked(fetchMe);
 const mockFetchUsers = vi.mocked(fetchUsers);
 const mockFetchLink = vi.mocked(fetchInviteLink);
 
+/*
+ * Held in a variable rather than read back off `navigator.clipboard`, so the
+ * assertions do not detach a method from its object -- which is what
+ * `@typescript-eslint/unbound-method` objects to, and it is right to: a
+ * clipboard method pulled off its owner is exactly the kind of call that works
+ * in a test and throws in a browser.
+ */
+let writeText = vi.fn();
+
 function user(overrides: Partial<usersApi.OrgUser> & { id: string }): usersApi.OrgUser {
   return {
     first_name: "First",
@@ -78,13 +87,12 @@ beforeEach(() => {
   );
 
   /*
-   * jsdom has no clipboard. The component treats a failed write as a
-   * non-event — the link is on screen either way — so this stub is only here
-   * to keep the happy path honest rather than to be asserted on.
+   * jsdom has no clipboard. Showing the link does not touch it at all now —
+   * copying is a separate press on the icon beside the field — so this stub
+   * exists to be ASSERTED ON rather than merely tolerated.
    */
-  Object.assign(navigator, {
-    clipboard: { writeText: vi.fn().mockResolvedValue(undefined) },
-  });
+  writeText = vi.fn().mockResolvedValue(undefined);
+  Object.assign(navigator, { clipboard: { writeText } });
 });
 
 describe("the link is fetched when it is asked for", () => {
@@ -101,11 +109,11 @@ describe("the link is fetched when it is asked for", () => {
     expect(mockFetchLink).not.toHaveBeenCalled();
   });
 
-  it("fetches and shows it when Copy link is pressed", async () => {
+  it("fetches and shows it when Show link is pressed", async () => {
     renderRoute({ path: "/acme-motors/admin/users/sanjay", children: adminRoutes });
 
     const panel = await screen.findByRole("complementary", { name: "Sanjay Desai" });
-    fireEvent.click(within(panel).getByRole("button", { name: "Copy link" }));
+    fireEvent.click(within(panel).getByRole("button", { name: "Show link" }));
 
     await waitFor(() => {
       expect(screen.getByLabelText("Invitation link")).toHaveValue(
@@ -124,11 +132,45 @@ describe("the link is fetched when it is asked for", () => {
     renderRoute({ path: "/acme-motors/admin/users/sanjay", children: adminRoutes });
 
     const panel = await screen.findByRole("complementary", { name: "Sanjay Desai" });
-    fireEvent.click(within(panel).getByRole("button", { name: "Copy link" }));
+    fireEvent.click(within(panel).getByRole("button", { name: "Show link" }));
 
     expect(
       await screen.findByText(/Anyone who opens this link can join as sanjay@acmemotors.in/),
     ).toBeInTheDocument();
+  });
+
+  it("does not touch the clipboard just because the link was shown", async () => {
+    /*
+     * IT USED TO COPY ON OPEN, and that is a surprise in both directions:
+     * somebody who only wanted to look at the link has had their clipboard
+     * replaced, and somebody who wanted to copy it has no idea whether it
+     * happened. Showing and copying are two actions.
+     */
+    renderRoute({ path: "/acme-motors/admin/users/sanjay", children: adminRoutes });
+
+    const panel = await screen.findByRole("complementary", { name: "Sanjay Desai" });
+    fireEvent.click(within(panel).getByRole("button", { name: "Show link" }));
+    await screen.findByLabelText("Invitation link");
+
+    expect(writeText).not.toHaveBeenCalled();
+  });
+
+  it("copies only when the copy icon is pressed, and says it did", async () => {
+    renderRoute({ path: "/acme-motors/admin/users/sanjay", children: adminRoutes });
+
+    const panel = await screen.findByRole("complementary", { name: "Sanjay Desai" });
+    fireEvent.click(within(panel).getByRole("button", { name: "Show link" }));
+    await screen.findByLabelText("Invitation link");
+
+    fireEvent.click(screen.getByRole("button", { name: "Copy link" }));
+
+    await waitFor(() => {
+      expect(writeText).toHaveBeenCalledWith(
+        "http://localhost:5173/invite/token-for-sanjay",
+      );
+    });
+    // The tick is the only confirmation there is, so it has to arrive.
+    expect(await screen.findByRole("button", { name: "Copied" })).toBeInTheDocument();
   });
 
   it("leaves the link selectable, so a dead clipboard is not a dead end", async () => {
@@ -140,7 +182,7 @@ describe("the link is fetched when it is asked for", () => {
     renderRoute({ path: "/acme-motors/admin/users/sanjay", children: adminRoutes });
 
     const panel = await screen.findByRole("complementary", { name: "Sanjay Desai" });
-    fireEvent.click(within(panel).getByRole("button", { name: "Copy link" }));
+    fireEvent.click(within(panel).getByRole("button", { name: "Show link" }));
 
     const field = await screen.findByLabelText("Invitation link");
     expect(field).toHaveAttribute("readonly");
@@ -159,7 +201,7 @@ describe("one person's link never appears under another person's name", () => {
     renderRoute({ path: "/acme-motors/admin/users/sanjay", children: adminRoutes });
 
     const panel = await screen.findByRole("complementary", { name: "Sanjay Desai" });
-    fireEvent.click(within(panel).getByRole("button", { name: "Copy link" }));
+    fireEvent.click(within(panel).getByRole("button", { name: "Show link" }));
 
     await waitFor(() => {
       expect(screen.getByLabelText("Invitation link")).toHaveValue(
@@ -177,7 +219,7 @@ describe("one person's link never appears under another person's name", () => {
      */
     expect(screen.queryByLabelText("Invitation link")).not.toBeInTheDocument();
 
-    fireEvent.click(within(next).getByRole("button", { name: "Copy link" }));
+    fireEvent.click(within(next).getByRole("button", { name: "Show link" }));
 
     await waitFor(() => {
       expect(screen.getByLabelText("Invitation link")).toHaveValue(
@@ -188,31 +230,64 @@ describe("one person's link never appears under another person's name", () => {
 });
 
 describe("Copy and Resend are different verbs", () => {
+  it("hides the link again when Show is pressed a second time", async () => {
+    renderRoute({ path: "/acme-motors/admin/users/sanjay", children: adminRoutes });
+
+    const panel = await screen.findByRole("complementary", { name: "Sanjay Desai" });
+    fireEvent.click(within(panel).getByRole("button", { name: "Show link" }));
+    await screen.findByLabelText("Invitation link");
+
+    fireEvent.click(within(panel).getByRole("button", { name: "Hide link" }));
+
+    expect(screen.queryByLabelText("Invitation link")).not.toBeInTheDocument();
+  });
+
   it("offers neither to somebody who has already accepted", async () => {
     renderRoute({ path: "/acme-motors/admin/users/anita", children: adminRoutes });
 
     const panel = await screen.findByRole("complementary", { name: "Anita Fernandes" });
 
-    expect(within(panel).queryByRole("button", { name: "Copy link" })).not.toBeInTheDocument();
+    expect(within(panel).queryByRole("button", { name: "Show link" })).not.toBeInTheDocument();
     expect(within(panel).queryByRole("button", { name: "Resend" })).not.toBeInTheDocument();
   });
 
-  it("hides a shown link when Resend replaces it", async () => {
+  it("refetches the link when Resend replaces it, and says the old one is dead", async () => {
     /*
      * Resend mints a new token, so the link on screen stopped working the
-     * moment it was pressed. Leaving it visible would hand an admin a dead
-     * link that looks exactly like a live one.
+     * moment it was pressed. It is REFETCHED rather than hidden: the
+     * replacement is what the admin needs next, and showing it is the
+     * acknowledgement. Leaving the old one up would hand them a dead link that
+     * looks exactly like a live one.
      */
     renderRoute({ path: "/acme-motors/admin/users/sanjay", children: adminRoutes });
 
     const panel = await screen.findByRole("complementary", { name: "Sanjay Desai" });
-    fireEvent.click(within(panel).getByRole("button", { name: "Copy link" }));
+    fireEvent.click(within(panel).getByRole("button", { name: "Show link" }));
     await screen.findByLabelText("Invitation link");
+    expect(mockFetchLink).toHaveBeenCalledTimes(1);
 
     fireEvent.click(within(panel).getByRole("button", { name: "Resend" }));
 
+    expect(await screen.findByText(/New link ready/)).toBeInTheDocument();
     await waitFor(() => {
-      expect(screen.queryByLabelText("Invitation link")).not.toBeInTheDocument();
+      expect(mockFetchLink).toHaveBeenCalledTimes(2);
     });
+    expect(screen.getByLabelText("Invitation link")).toBeInTheDocument();
+  });
+
+  it("leaves Resend usable rather than turning it into a dead button", async () => {
+    /*
+     * It used to become a disabled "New link ready" and stay that way, which
+     * reads as a broken control — and the label was wide enough to wrap onto
+     * two lines in a 360px panel. The acknowledgement belongs with the link it
+     * describes; the button stays a button.
+     */
+    renderRoute({ path: "/acme-motors/admin/users/sanjay", children: adminRoutes });
+
+    const panel = await screen.findByRole("complementary", { name: "Sanjay Desai" });
+    fireEvent.click(within(panel).getByRole("button", { name: "Resend" }));
+
+    await screen.findByText(/New link ready/);
+    expect(within(panel).getByRole("button", { name: "Resend" })).toBeEnabled();
   });
 });
