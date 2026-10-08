@@ -34,6 +34,8 @@ import { z } from "zod";
 import { asProblem } from "@xpredict/api-client";
 
 import type { Membership } from "../../api/auth";
+import { InfoHint } from "@xpredict/ui";
+
 import { Button } from "../../components/Button";
 import { FormBanner } from "../../components/FormBanner";
 import { TextField } from "../../components/TextField";
@@ -78,7 +80,15 @@ export function InviteUserDialog({ membership, openForUnitId }: InviteUserDialog
 
       <Dialog.Portal>
         <Dialog.Overlay className={styles.overlay} />
-        <Dialog.Content className={styles.dialog}>
+        {/*
+          `aria-describedby={undefined}` says the missing description is
+          DELIBERATE. Radix warns when a dialog has no `Dialog.Description`,
+          and it is right to: an unexplained dialog is a real failure. Here the
+          explanation moved behind the info icon, which is a real <button> that
+          Tab reaches and focus opens — so the prose is still reachable, it is
+          simply no longer announced before anybody has asked for it.
+        */}
+        <Dialog.Content className={styles.dialog} aria-describedby={undefined}>
           {/*
             Remounted each time it opens, via `key`. Without it the form keeps
             whatever was typed and whichever error was showing the last time
@@ -181,19 +191,24 @@ function InviteForm({ membership, initialUnitId, onDone }: InviteFormProps) {
     return (
       <>
         <div className={styles.header}>
-          <Dialog.Title className={styles.title}>Invitation created</Dialog.Title>
-          <Dialog.Description className={styles.description}>
-            Nothing has been sent yet — Xpredict One does not email invitations. Send this link
-            to {invited.email} yourself.
-          </Dialog.Description>
+          <div className={styles.titleRow}>
+            <Dialog.Title className={styles.title}>Invitation created</Dialog.Title>
+            <InfoHint label="About this link">
+              Nothing has been sent yet — Xpredict One does not email invitations. Anyone who
+              opens this link joins as {invited.email}, so send it to them directly. Resend, on
+              their record, replaces it.
+            </InfoHint>
+          </div>
         </div>
 
-        {/*
-          `version` is 0 and `isFresh` false: this link has just been created,
-          so there is no earlier one to say has stopped working. Resend lives
-          on the person's record, not here.
-        */}
-        <InviteLinkPanel userId={invited.id} email={invited.email} version={0} isFresh={false} />
+        <div className={styles.body}>
+          {/*
+            `version` is 0 and `isFresh` false: this link has just been created,
+            so there is no earlier one to say has stopped working. Resend lives
+            on the person's record, not here.
+          */}
+          <InviteLinkPanel userId={invited.id} email={invited.email} version={0} isFresh={false} />
+        </div>
 
         <div className={styles.actions}>
           <Button type="button" onClick={onDone}>
@@ -207,17 +222,32 @@ function InviteForm({ membership, initialUnitId, onDone }: InviteFormProps) {
   return (
     <>
       <div className={styles.header}>
-        <Dialog.Title className={styles.title}>Invite user</Dialog.Title>
-        <Dialog.Description className={styles.description}>
-          They join {access.callerIsUnitScoped ? membership.unit_name : membership.org_name} and
-          choose their own password. You will get a link to send them.
-        </Dialog.Description>
+        <div className={styles.titleRow}>
+          <Dialog.Title className={styles.title}>Invite user</Dialog.Title>
+          {/*
+            FOLDED BEHIND THE ICON, the way the three Administration screens
+            already fold theirs. It explains a model somebody meets once; it is
+            not an instruction for completing the form, which is what makes
+            hiding it safe. It also buys back the height this dialog badly
+            needs -- its content is 719px in a 515px box (C54).
+          */}
+          <InfoHint label="About inviting somebody">
+            They join{" "}
+            {access.callerIsUnitScoped ? membership.unit_name : membership.org_name} and choose
+            their own password. Nothing is emailed: you get a link to send them yourself, and it
+            stops working once they accept. Their apps, role and dealership can all be changed
+            afterwards.
+          </InfoHint>
+        </div>
       </div>
 
-      {formError && <FormBanner traceId={formError.traceId}>{formError.message}</FormBanner>}
-
       <form className={styles.form} onSubmit={(e) => void handleSubmit(onSubmit)(e)} noValidate>
-        <div className={styles.nameRow}>
+        {/* Scrolls; the header above and the actions below do not, so the
+            title stays visible and the submit button never leaves the screen. */}
+        <div className={styles.body}>
+          {formError && <FormBanner traceId={formError.traceId}>{formError.message}</FormBanner>}
+
+          <div className={styles.nameRow}>
           <TextField label="First name" autoFocus error={errors.first_name?.message} {...register("first_name")} />
           <TextField label="Last name" error={errors.last_name?.message} {...register("last_name")} />
         </div>
@@ -235,6 +265,8 @@ function InviteForm({ membership, initialUnitId, onDone }: InviteFormProps) {
           membership={membership}
           scopeHint={`Whether this person works across ${membership.org_name} or for a single dealer.`}
         />
+
+        </div>
 
         <div className={styles.actions}>
           <Dialog.Close asChild>
