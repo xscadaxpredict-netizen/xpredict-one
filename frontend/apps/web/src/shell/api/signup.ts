@@ -90,6 +90,8 @@ export async function validateActivationCode(code: string): Promise<void> {
   }
 
   await request<void>("/api/v1/auth/activation-code/validate/", {
+    // Nobody is signed in yet: this is step one of founding an organisation.
+    public: true,
     method: "POST",
     body: JSON.stringify({ code }),
   });
@@ -119,6 +121,7 @@ export async function createOrganisation(
   }
 
   return request<SignupResult>("/api/v1/auth/signup/", {
+    public: true,
     method: "POST",
     body: JSON.stringify({ activation_code: code, ...details }),
   });

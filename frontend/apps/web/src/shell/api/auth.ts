@@ -397,6 +397,9 @@ export async function login(credentials: Credentials): Promise<void> {
   await request<void>("/api/v1/auth/login/", {
     method: "POST",
     body: JSON.stringify(credentials),
+    // A 401 here means the password is wrong, not that a session expired.
+    // Refreshing would be a wasted round trip on every typo.
+    public: true,
   });
 }
 

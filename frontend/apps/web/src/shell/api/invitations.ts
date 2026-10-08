@@ -61,7 +61,11 @@ export interface AcceptResult {
  * an unknown token is a 404.
  */
 export async function fetchInvitation(token: string): Promise<InvitationPreview> {
-  return request<InvitationPreview>(`/api/v1/invitations/${encodeURIComponent(token)}/`);
+  return request<InvitationPreview>(`/api/v1/invitations/${encodeURIComponent(token)}/`, {
+    // Reached by somebody with no session at all, which is the whole point of
+    // it (C56). There is nothing to refresh.
+    public: true,
+  });
 }
 
 /**
@@ -82,5 +86,6 @@ export async function acceptInvitation(
   return request<AcceptResult>(`/api/v1/invitations/${encodeURIComponent(token)}/accept/`, {
     method: "POST",
     body: JSON.stringify(body),
+    public: true,
   });
 }
