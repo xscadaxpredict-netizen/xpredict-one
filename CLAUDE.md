@@ -235,6 +235,32 @@ called it** — signup would take `12345678`. A refused password's reason is in 
 response's `errors` list, never in `detail`, which is generic for every validation
 failure; a form that renders `detail` alone says nothing useful.
 
+**THE SESSION REFRESHES ITSELF, FROM ONE PLACE** (C59).
+`packages/api-client/src/request.ts` is the only code that fetches: a 401 refreshes
+once and replays once, and a failed refresh lets the 401 through so the shell can
+send somebody to sign in. **The refresh is SINGLE-FLIGHT and that is load-bearing** —
+rotation plus blacklisting means three concurrent refreshes sign the person out, so
+one shared promise serves every caller. Endpoints where 401 is a real answer — login,
+the two signup steps, both invitation endpoints — pass `public: true`; the default
+refreshes, so forgetting it costs one wasted request rather than breaking recovery.
+
+**THERE IS ONE `request()` AND SIX MODULES USE IT.** There were six copies until
+PR #24. A seventh API module imports it; it does not paste one.
+
+**A REFRESH VERIFIES THE ACCOUNT, NOT JUST THE TOKEN** (C60). `RefreshToken()` checks
+a signature, an expiry and a denylist and **never loads the user**, so a deleted or
+deactivated person refreshed happily for seven days while every other request answered
+401 — a session that could not die, and 41,269 requests from one stale browser tab.
+`rotate_tokens()` loads the account now and refuses. It also closes the gap under Q17:
+disabling somebody took effect on their next request, but their refresh token carried
+on working.
+
+**A HINT INSIDE A DIALOG MUST BEAT Z-INDEX 61** (C61). The ladder is 40 detail panel,
+50 menus and popovers, 60 dialog overlay, 61 dialog content, 70 `InfoHint`. **jsdom
+applies no CSS Modules, so no test in `apps/web` can catch a stacking mistake** —
+every `z-index` reads 0 there. It was found by clicking, and if it bites again the fix
+is to move the ladder into design tokens.
+
 **Blocked on:** nothing. **Redis is still missing**, which leaves the Celery broker
 round-trip unverified — and now also means the throttle counter and cache are
 per-process in development. **An unreachable cache is not a missing rate limit, it
@@ -246,8 +272,8 @@ user row on every request and refuses an inactive one, so **disabling somebody t
 effect on their next request**, not after a token expires. The 15-minute access
 lifetime is how long a STOLEN token survives a logout.
 
-**Gates, all green:** `npm run test -w web` (146), `npm run typecheck -w web`,
-`npm run lint`, and in `backend/`: `pytest` (324), `ruff check .`, and
+**Gates, all green:** `npm run test -w web` (160), `npm run typecheck -w web`,
+`npm run lint`, and in `backend/`: `pytest` (327), `ruff check .`, and
 `.venv/Scripts/lint-imports.exe` — **not** `python -m importlinter.cli`, which exits 0
 without running. Run them before pushing.
 
