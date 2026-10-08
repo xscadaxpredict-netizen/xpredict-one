@@ -1,0 +1,41 @@
+.form { display: flex; flex-direction: column; gap: var(--space-4); }
+
+/* The explanatory line above every state. This screen is read by somebody who
+   has never seen the product, so the prose carries more weight here than
+   anywhere else in the shell and gets room rather than being squeezed in. */
+.note {
+  margin: 0 0 var(--space-4);
+  font-size: var(--text-sm);
+  line-height: 1.55;
+  color: var(--color-text-2);
+}
+
+/* A link that has to read as the primary action — "Sign in to accept", "Go to
+   sign in". It copies `.primary` from Button.module.css rather than reusing
+   the component: these NAVIGATE, and a button that navigates loses
+   middle-click, Ctrl-click and the status bar showing where it goes. The
+   tokens are shared, so the two cannot drift apart on colour. */
+.action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: var(--control-height);
+  padding: 0 var(--space-5);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--color-primary);
+  background: var(--color-primary);
+  color: var(--color-primary-text);
+  font-size: var(--text-base);
+  font-weight: 500;
+  text-decoration: none;
+}
+
+.action:hover {
+  background: var(--color-primary-hover);
+  border-color: var(--color-primary-hover);
+}
+
+.action:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+}

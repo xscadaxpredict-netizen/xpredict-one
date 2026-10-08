@@ -2,9 +2,14 @@
  * Invite someone into the organisation.
  *
  * NOT "create a user". Nobody here sets somebody else's password (C14):
- * an invitation goes out, the person accepts it and chooses their own
+ * an invitation is created, the person accepts it and chooses their own
  * credentials. That is why the new row appears as "Invitation sent" rather
  * than active, and why there is no password field on this form.
+ *
+ * NOTHING IS EMAILED (C56). Submitting this form ends with a LINK, shown on
+ * the step after the form, which the admin copies and sends however they
+ * already talk to the person. The dialog therefore does not close on success
+ * -- closing it would throw away the only thing the action produced.
  *
  * SCOPE IS THE INTERESTING FIELD, and it constrains the apps as much as they
  * constrain it. A person belongs to the organisation; the only product that can
@@ -32,6 +37,7 @@ import type { Membership } from "../../api/auth";
 import { Button } from "../../components/Button";
 import { FormBanner } from "../../components/FormBanner";
 import { TextField } from "../../components/TextField";
+import { InviteLinkPanel } from "./InviteLinkPanel";
 import { PersonAccessFields, usePersonAccess } from "./PersonAccessFields";
 import { useInviteUser } from "../hooks/useUsers";
 import styles from "./InviteUserDialog.module.css";
@@ -118,6 +124,14 @@ function InviteForm({ membership, initialUnitId, onDone }: InviteFormProps) {
   const [formError, setFormError] = useState<{ message: string; traceId?: string } | null>(
     null,
   );
+
+  /*
+   * Set once the invitation exists. It switches this dialog from a form into
+   * the handover step -- the admin's job is not finished when the row is
+   * created, it is finished when they have the link.
+   */
+  const [invited, setInvited] = useState<{ id: string; email: string } | null>(null);
+
   const { mutateAsync: invite, isPending } = useInviteUser();
 
   const {
@@ -146,8 +160,12 @@ function InviteForm({ membership, initialUnitId, onDone }: InviteFormProps) {
     }
 
     try {
-      await invite({ ...values, ...access.payload() });
-      onDone();
+      /*
+       * The 201 carries the new row as the list would show it, so its `id` is
+       * the invitation's -- which is what the link endpoint needs.
+       */
+      const created = await invite({ ...values, ...access.payload() });
+      setInvited({ id: created.id, email: created.email });
     } catch (error) {
       const asproblem = asProblem(error);
       setFormError({
@@ -159,13 +177,40 @@ function InviteForm({ membership, initialUnitId, onDone }: InviteFormProps) {
     }
   }
 
+  if (invited) {
+    return (
+      <>
+        <div className={styles.header}>
+          <Dialog.Title className={styles.title}>Invitation created</Dialog.Title>
+          <Dialog.Description className={styles.description}>
+            Nothing has been sent yet — Xpredict One does not email invitations. Send this link
+            to {invited.email} yourself.
+          </Dialog.Description>
+        </div>
+
+        {/*
+          `version` is 0 and `isFresh` false: this link has just been created,
+          so there is no earlier one to say has stopped working. Resend lives
+          on the person's record, not here.
+        */}
+        <InviteLinkPanel userId={invited.id} email={invited.email} version={0} isFresh={false} />
+
+        <div className={styles.actions}>
+          <Button type="button" onClick={onDone}>
+            Done
+          </Button>
+        </div>
+      </>
+    );
+  }
+
   return (
     <>
       <div className={styles.header}>
         <Dialog.Title className={styles.title}>Invite user</Dialog.Title>
         <Dialog.Description className={styles.description}>
-          They join {access.callerIsUnitScoped ? membership.unit_name : membership.org_name} and choose
-          their own password from the emailed invitation.
+          They join {access.callerIsUnitScoped ? membership.unit_name : membership.org_name} and
+          choose their own password. You will get a link to send them.
         </Dialog.Description>
       </div>
 
@@ -199,7 +244,7 @@ function InviteForm({ membership, initialUnitId, onDone }: InviteFormProps) {
           </Dialog.Close>
 
           <Button type="submit" isLoading={isPending}>
-            {isPending ? "Sending…" : "Send invitation"}
+            {isPending ? "Creating…" : "Create invitation"}
           </Button>
         </div>
       </form>

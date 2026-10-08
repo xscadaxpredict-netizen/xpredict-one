@@ -23,6 +23,7 @@ from dataclasses import dataclass
 from datetime import timedelta
 
 from django.conf import settings
+from django.core.exceptions import ImproperlyConfigured
 from django.core.exceptions import ValidationError as DjangoValidationError
 from django.db import transaction
 from django.utils import timezone
@@ -40,6 +41,10 @@ from core.organizations.exceptions import (
     DealerNameTakenError,
     DealerScopedAppError,
     EmailAlreadyRegisteredError,
+    InvitationAlreadyAcceptedError,
+    InvitationExpiredError,
+    InvitationNeedsSignInError,
+    InvitationWrongAccountError,
     NotAnInvitationError,
     OrganizationNameUnusableError,
     OwnerProtectedError,
@@ -60,7 +65,7 @@ from core.organizations.models import (
 from core.organizations.selectors import can_manage
 from core.organizations.tasks import schedule_provisioning
 from core.permissions.models import AppAccess, AppCode, Role, RoleLevel
-from shared.exceptions import AuthorizationError, not_found
+from shared.exceptions import AuthorizationError, FieldError, InvalidInputError, not_found
 
 # WHAT A NEW ORGANIZATION IS SUBSCRIBED TO. DMS only, because DMS is the
 # product being built (C4 commits to CRM and E-commerce; neither exists). It is
@@ -853,6 +858,45 @@ def set_person_status(
 
 
 @transaction.atomic
+def _pending_invitation(
+    *, actor: Membership, organization: Organization, person_id: uuid.UUID
+) -> Invitation:
+    """
+    The outstanding invitation behind a row in the users list, or a refusal.
+
+    THREE REFUSALS AND THEY ARE DIFFERENT (C56). An id from another
+    dealership is 404 via `_assert_can_manage`, because a person the caller
+    may not see must look like one who does not exist. An id belonging to
+    somebody who has already accepted is 409, because the row is real and the
+    screen is stale.
+
+    Shared by resend and the link, so the two cannot disagree about who may
+    act on whose invitation --- the kind of drift C54 found between two forms
+    asking one question.
+    """
+    person = find_person(organization, person_id)
+    _assert_can_manage(actor, person.unit_id)
+
+    if not isinstance(person, Invitation):
+        raise NotAnInvitationError
+
+    return person
+
+
+def invitation_for_link(
+    *, actor: Membership, organization: Organization, person_id: uuid.UUID
+) -> Invitation:
+    """
+    Fetch a pending invitation so its link can be shown again (C56).
+
+    A READ, deliberately separate from `resend_invitation()`. Copying the
+    link must not change the token --- an admin who presses Copy twice has
+    sent one link to one person, and re-minting on read would invalidate the
+    message they sent thirty seconds ago.
+    """
+    return _pending_invitation(actor=actor, organization=organization, person_id=person_id)
+
+
 def resend_invitation(
     *, actor: Membership, organization: Organization, person_id: uuid.UUID
 ) -> Invitation:
@@ -869,13 +913,200 @@ def resend_invitation(
     the half this does is the half that has to be right, and a mocked send
     would make the gap invisible.
     """
-    person = find_person(organization, person_id)
-    _assert_can_manage(actor, person.unit_id)
-
-    if not isinstance(person, Invitation):
-        raise NotAnInvitationError
+    person = _pending_invitation(actor=actor, organization=organization, person_id=person_id)
 
     person.token = secrets.token_urlsafe(INVITATION_TOKEN_BYTES)
     person.expires_at = timezone.now() + INVITATION_LIFETIME
     person.save(update_fields=["token", "expires_at"])
     return person
+
+
+# ---------------------------------------------------------------------------
+# Accepting an invitation (C56).
+#
+# THERE IS NO EMAIL. The link is handed to the admin and delivered by hand ---
+# pasted into a chat, read out, whatever the organisation already uses --- so
+# the token in it IS the credential and nothing else guards the door. That is
+# true of every "set your password" link ever sent; the only difference here is
+# the channel, which is why `invitation_link()` is the one place the URL is
+# built and why resending INVALIDATES rather than repeats (C56).
+#
+# NOT ORG-SCOPED, and it cannot be. Everything under /orgs/<slug>/ inherits
+# `OrgScopedAPIView`, which verifies an active membership before the handler
+# runs (C49) --- and the person holding this link is precisely somebody with no
+# membership yet. So these two live at /api/v1/invitations/<token>/ and the
+# token is the only thing that names the organisation.
+# ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class AcceptResult:
+    """
+    What accepting created.
+
+    `account_created` is False when the person already had an account and
+    signed in to accept, which is the C1 case: one login spanning several
+    organisations.
+    """
+
+    user: User
+    organization: Organization
+    membership: Membership
+    account_created: bool
+
+
+def invitation_link(invitation: Invitation) -> str:
+    """
+    The URL to hand to whoever is being invited.
+
+    ONE PLACE, because the token is a credential and a second place that
+    assembles this URL is a second place that can leak it into a log or build
+    it against the wrong host. `FRONTEND_BASE_URL` is read from settings and
+    must be set: a relative link pasted into a chat message is not a link at
+    all, and defaulting to localhost in production would hand every new
+    employee an address that only works on the server.
+    """
+    base = getattr(settings, "FRONTEND_BASE_URL", "") or ""
+    if not base:
+        # Loud, immediately, rather than returning something broken. This
+        # project has lost hours three times to a setting that looked
+        # configured and did nothing (BLACKLIST_AFTER_ROTATION, an ESLint
+        # extglob, CSRF_TRUSTED_ORIGINS), and an invitation link is noticed
+        # only by the person who cannot use it.
+        raise ImproperlyConfigured(
+            "FRONTEND_BASE_URL is not set, so no invitation link can be built. "
+            "Set it to the origin the SPA is served from."
+        )
+    return f"{base.rstrip('/')}/invite/{invitation.token}"
+
+
+@transaction.atomic
+def accept_invitation(
+    *,
+    token: str,
+    password: str | None = None,
+    user: User | None = None,
+) -> AcceptResult:
+    """
+    Redeem an invitation: create the account if there is not one, then join.
+
+    `select_for_update` IS THE POINT OF THIS FUNCTION. A link clicked twice ---
+    an impatient double click, a browser prefetching, a chat app unfurling a
+    preview --- must not produce two memberships, and the unique constraint on
+    (user, organization) would turn the second into an IntegrityError and a
+    500. The row is locked before anything is read, so the second caller waits
+    and then finds `accepted_at` set.
+
+    TWO WAYS IN, and they are not interchangeable (C56):
+
+    - No account for this address: `password` creates one.
+    - An account exists: the caller must BE that account, already signed in.
+      Setting a password here would be a password reset triggered by a link,
+      which is the account takeover Q23 refuses from the admin side.
+
+    EVERY RULE IS RE-CHECKED, not trusted from invite time. An invitation can
+    sit for a fortnight, and in that time the app can be unsubscribed or the
+    address can be given a membership another way. So `_assert_email_free` and
+    `_assert_grants_are_legal` both run again, and both refuse rather than
+    quietly dropping what they cannot honour --- somebody who joins with less
+    access than they were promised has nothing to tell them so.
+    """
+    try:
+        invitation = (
+            Invitation.objects.select_for_update()
+            .select_related("organization", "unit")
+            .get(token=token)
+        )
+
+    except (Invitation.DoesNotExist, DjangoValidationError, ValueError):
+        # A token nobody holds is not bad input to report back on; it is an
+        # invitation that does not exist for this caller. Same answer as a
+        # token that was never minted at all.
+        raise not_found("Invitation") from None
+
+    if invitation.accepted_at is not None:
+        raise InvitationAlreadyAcceptedError
+
+    if invitation.expires_at <= timezone.now():
+        raise InvitationExpiredError
+
+    organization = invitation.organization
+    email = User.objects.normalize_email(invitation.email).lower()
+
+    # Somebody may have been added to this organisation by another route while
+    # the invitation was outstanding. 409, with the invitation left unspent, so
+    # an admin can see both rows and cancel one.
+    _assert_email_free(organization, email, excluding_invitation=invitation.id)
+
+    grants = [
+        (grant.app, grant.role)
+        for grant in invitation.app_grants.select_related("role").all()
+    ]
+    _assert_grants_are_legal(organization, invitation.unit_id, grants)
+
+    existing = User.objects.filter(email__iexact=email).first()
+
+    if existing is not None:
+        if user is None or not user.is_authenticated:
+            raise InvitationNeedsSignInError
+        if user.pk != existing.pk:
+            raise InvitationWrongAccountError
+        account = existing
+        account_created = False
+    else:
+        if user is not None and user.is_authenticated:
+            # Signed in as somebody who is not the invited address, and the
+            # invited address has no account at all. Accepting would attach
+            # this organisation to the wrong person.
+            raise InvitationWrongAccountError
+        if not password:
+            # The serializer asks for it too, but this function has to be
+            # callable from a shell and a test, so the rule lives here as well.
+            raise InvalidInputError(
+                field_errors=[
+                    FieldError(
+                        field="password",
+                        code="required",
+                        detail="Choose a password to finish setting up your account.",
+                    )
+                ]
+            )
+        account = User.objects.create_user(
+            email=email,
+            password=password,
+            first_name=invitation.first_name,
+            last_name=invitation.last_name,
+        )
+        account_created = True
+
+    membership = Membership.objects.create(
+        user=account,
+        organization=organization,
+        role=invitation.role,
+        status=MembershipStatus.ACTIVE,
+        unit=invitation.unit,
+        # NOT the owner. An owner is founded with the organisation and never
+        # invited into it (C41) --- `invite_person` refuses the role outright,
+        # so `owner_marker` stays NULL here and the one-owner constraint is
+        # untouched.
+        owner_marker=None,
+        created_by_user_id=invitation.invited_by_id,
+    )
+
+    for app, role in grants:
+        AppAccess.objects.create(
+            membership=membership,
+            app=app,
+            role=role,
+            created_by_user_id=invitation.invited_by_id,
+        )
+
+    invitation.accepted_at = timezone.now()
+    invitation.save(update_fields=["accepted_at", "updated_at"])
+
+    return AcceptResult(
+        user=account,
+        organization=organization,
+        membership=membership,
+        account_created=account_created,
+    )

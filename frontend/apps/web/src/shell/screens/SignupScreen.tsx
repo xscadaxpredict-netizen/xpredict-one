@@ -18,6 +18,7 @@ import { z } from "zod";
 import { asProblem } from "@xpredict/api-client";
 
 import { toSlug } from "../api/signup";
+import { messagesByField } from "../fieldErrors";
 import {
   useCreateOrganisation,
   useProvisioningStatus,
@@ -27,6 +28,7 @@ import { AuthLayout } from "../components/AuthLayout";
 import { Button } from "../components/Button";
 import { FormBanner } from "../components/FormBanner";
 import { TextField } from "../components/TextField";
+import { PASSWORD_HINT, passwordField } from "../passwordRules";
 import {
   MAX_PROVISIONING_ATTEMPTS,
   provisioningState,
@@ -169,7 +171,13 @@ const detailsSchema = z.object({
   first_name: z.string().min(1, "Enter your first name."),
   last_name: z.string().min(1, "Enter your last name."),
   email: z.string().min(1, "Enter your email address.").email("Enter a valid email address."),
-  password: z.string().min(8, "Use at least 8 characters."),
+  /*
+   * THE SAME RULES THE ACCEPT FORM STATES, from the same module, because the
+   * server now applies the same validators to both (2026-10-08). Until then
+   * signup called none at all, so a founder could register with `12345678`
+   * while anybody they invited could not.
+   */
+  password: passwordField("Use at least 8 characters."),
 });
 
 type DetailsValues = z.infer<typeof detailsSchema>;
@@ -224,11 +232,22 @@ function DetailsStep({ code, onCreated, onBack, }: {
       if (problem.errors?.length) {
         const unplaceable: string[] = [];
 
-        for (const fieldError of problem.errors) {
-          if (isDetailsField(fieldError.field)) {
-            setFieldError(fieldError.field, { message: fieldError.detail });
+        /*
+         * GROUPED, NOT ASSIGNED ONE AT A TIME. A single field can fail several
+         * validators at once -- `12345678` is both too common and entirely
+         * numeric -- and this loop used to call `setFieldError` once per
+         * message, leaving whichever arrived last. Somebody would fix the
+         * numbers and only then be told it was also too common.
+         *
+         * It could not happen before 2026-10-08, because nothing on this
+         * screen could produce two errors for one field until signup started
+         * calling the password validators.
+         */
+        for (const [field, message] of messagesByField(problem.errors)) {
+          if (isDetailsField(field)) {
+            setFieldError(field, { message });
           } else {
-            unplaceable.push(fieldError.detail);
+            unplaceable.push(message);
           }
         }
 
@@ -300,6 +319,7 @@ function DetailsStep({ code, onCreated, onBack, }: {
           label="Password"
           type="password"
           autoComplete="new-password"
+          hint={PASSWORD_HINT}
           error={errors.password?.message}
           {...register("password")}
         />

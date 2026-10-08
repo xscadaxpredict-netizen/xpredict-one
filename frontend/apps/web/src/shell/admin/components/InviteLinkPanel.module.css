@@ -1,0 +1,87 @@
+.panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface-alt);
+}
+
+.label {
+  margin: 0;
+  font-size: var(--text-xs);
+  color: var(--color-text-2);
+}
+
+.row {
+  display: flex;
+  gap: var(--space-2);
+  /* The field shrinks and the button does not: a long token must not push
+     Copy off the edge of a detail panel that is only 360px wide. */
+  align-items: stretch;
+}
+
+/* Mono, because an admin reading this back to somebody over the phone — which
+   will happen — needs 0/O and 1/l to be distinguishable. */
+.link {
+  flex: 1;
+  min-width: 0;
+  height: var(--control-height);
+  padding: 0 var(--space-2);
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  color: var(--color-text);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+}
+
+/* An icon, not a word. It sits against the field it acts on, where "Copy"
+   spelled out would be as wide as the link is readable — and the tick that
+   replaces it is the only feedback that the copy happened, since nothing is
+   copied until this is pressed. */
+.copy {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--control-height);
+  height: var(--control-height);
+  padding: 0;
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  color: var(--color-text-2);
+  cursor: pointer;
+}
+
+.copy:hover:not(:disabled) {
+  background: var(--color-surface-alt);
+  color: var(--color-text);
+}
+
+.copy:disabled { cursor: not-allowed; opacity: 0.65; }
+
+.copy:focus-visible { outline: 2px solid var(--color-primary); outline-offset: 2px; }
+
+/* The acknowledgement after Resend. Readable rather than loud: the token has
+   changed and the old link is dead, which is worth saying once and not worth
+   an alarm. */
+.label strong { color: var(--color-text); font-weight: 600; }
+
+/* Not a red banner. It is a true statement about what the link does, not a
+   warning that something has gone wrong, and styling it as an alarm would
+   train admins to dismiss it. */
+.warning {
+  margin: 0;
+  font-size: var(--text-xs);
+  line-height: 1.5;
+  color: var(--color-text-3);
+}
+
+.error {
+  margin: 0;
+  font-size: var(--text-xs);
+  color: var(--color-danger);
+}

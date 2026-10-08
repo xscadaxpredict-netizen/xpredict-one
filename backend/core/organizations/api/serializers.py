@@ -15,6 +15,8 @@ from __future__ import annotations
 
 from rest_framework import serializers
 
+from core.accounts.api.serializers import validate_password_strength
+
 
 class DealerSerializer(serializers.Serializer):
     """
@@ -159,3 +161,90 @@ class PersonDetailsSerializer(serializers.Serializer):
 
     role = serializers.ChoiceField(choices=["admin", "member"])
     apps = AppGrantInputSerializer(many=True)
+
+
+# ---------------------------------------------------------------------------
+# Invitations: the link, and redeeming it (C56).
+# ---------------------------------------------------------------------------
+
+
+class InviteLinkSerializer(serializers.Serializer):
+    """
+    The link an admin copies and sends by hand.
+
+    THIS IS A CREDENTIAL IN A RESPONSE BODY, which is why it has its own
+    endpoint instead of riding along on the users list. The list is fetched on
+    every visit to the screen; this is fetched when somebody presses Copy, so
+    the token travels when it is asked for and nowhere else --- and there is
+    one place to hang an audit record on the day C38's audit log arrives.
+    """
+
+    link = serializers.CharField(read_only=True)
+    expires_at = serializers.DateTimeField(read_only=True)
+
+
+class InvitationPreviewSerializer(serializers.Serializer):
+    """
+    What the accept screen may show before anybody is authenticated.
+
+    Deliberately thin --- see `selectors.invitation_preview`. The dealership,
+    the apps and the role are all absent: they are the organisation's staffing
+    arrangements, and the holder of a link does not need them to decide whether
+    to accept.
+    """
+
+    organization_name = serializers.CharField(read_only=True)
+    organization_slug = serializers.CharField(read_only=True)
+    email = serializers.CharField(read_only=True)
+    expires_at = serializers.DateTimeField(read_only=True)
+    is_expired = serializers.BooleanField(read_only=True)
+    is_accepted = serializers.BooleanField(read_only=True)
+    requires_sign_in = serializers.BooleanField(read_only=True)
+    invited_by = serializers.CharField(read_only=True)
+
+
+class AcceptInvitationSerializer(serializers.Serializer):
+    """
+    What the accept form sends.
+
+    THE PASSWORD IS OPTIONAL HERE AND THE SERVICE DECIDES. Somebody whose
+    address already has an account signs in and sends nothing (C56); somebody
+    new sends a password. A serializer cannot tell which case it is holding
+    without hitting the database, and putting that query here would mean two
+    places answering one question --- so this checks the shape and
+    `accept_invitation()` checks the rule.
+
+    VALIDATED AGAINST `AUTH_PASSWORD_VALIDATORS`, through the same helper
+    signup uses. This was the first code path in the project to call them at
+    all --- the setting had been in `base.py` since Phase 1 and nothing reached
+    it --- which briefly meant an invited colleague was held to rules the owner
+    who invited them was not. Signup calls it too now.
+    """
+
+    password = serializers.CharField(
+        required=False,
+        allow_blank=True,
+        trim_whitespace=False,
+        style={"input_type": "password"},
+    )
+
+    def validate_password(self, value: str) -> str:
+        # ONLY WHEN THERE IS ONE. An empty password is not a weak password: it
+        # is somebody who already has an account and signed in to accept, and
+        # `accept_invitation()` is what decides whether that is allowed.
+        if not value:
+            return value
+        return validate_password_strength(value)
+
+
+class AcceptResultSerializer(serializers.Serializer):
+    """
+    Where to go next, and whether an account was made along the way.
+
+    `org_slug` is what the frontend navigates to. NO TOKEN FIELD --- accepting
+    signs the person in through the same httpOnly cookies as login and signup
+    (C12), so there is nothing here for JavaScript to hold.
+    """
+
+    org_slug = serializers.CharField(read_only=True)
+    account_created = serializers.BooleanField(read_only=True)

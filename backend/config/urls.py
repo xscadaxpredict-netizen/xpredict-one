@@ -15,6 +15,12 @@ urlpatterns = [
     # login either. It is also deliberately outside AUTH_COOKIE_REFRESH_PATH:
     # the refresh cookie is scoped to /api/v1/auth/ and must not be sent here.
     path("api/v1/me/", MeView.as_view(), name="me"),
+    # Accepting an invitation, which is NOT org-scoped and cannot be: the
+    # person holding the link has no membership yet, so OrgScopedAPIView would
+    # refuse them before the handler ran (C49, C56). The token names the
+    # organization, so the slug is not needed -- and leaving it out keeps the
+    # customer's name out of a URL that gets pasted into chat messages.
+    path("api/v1/invitations/", include("core.organizations.api.invitation_urls")),
     # Everything organization-scoped. The slug is read by
     # config.middleware.TenantMiddleware before any view runs, which binds that
     # organization's database for the request and refuses the request if the

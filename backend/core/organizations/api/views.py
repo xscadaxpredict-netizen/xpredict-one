@@ -23,6 +23,7 @@ from core.organizations.api.base import OrgScopedAPIView
 from core.organizations.api.serializers import (
     DealerDetailsSerializer,
     DealerSerializer,
+    InviteLinkSerializer,
     OrgUserSerializer,
     PersonDetailsSerializer,
 )
@@ -30,6 +31,8 @@ from core.organizations.models import BusinessUnit, MembershipStatus
 from core.organizations.selectors import dealers_for, org_users
 from core.organizations.services import (
     create_dealer,
+    invitation_for_link,
+    invitation_link,
     invite_person,
     remove_person,
     resend_invitation,
@@ -303,3 +306,38 @@ class ResendInvitationView(OrgScopedAPIView):
         # 204: there is nothing useful to say back, and the row has not changed
         # in any way the list displays.
         return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+class InviteLinkView(OrgScopedAPIView):
+    """
+    The invitation link, for an admin to copy and send however they like (C56).
+
+    READABLE FOR AS LONG AS THE INVITATION IS PENDING, which the owner chose
+    over revealing it once. Show-once sounds safer and sets a trap: the dialog
+    is closed by accident, the admin presses Resend to get the link back, and
+    the link they already sent stops working --- which reads as a broken
+    invitation to the person holding it. So Copy and Resend became two
+    different verbs: Copy sends the same link again, Resend kills it and mints
+    another.
+
+    `admin.person.invite`, NOT `admin.person.view`. Reading the list tells you
+    somebody was invited; this hands over the credential that joins the
+    organisation as them, and the permission that creates an invitation is the
+    one that should be able to re-read it. A dealer admin holds it and
+    `can_manage` still decides WHOSE --- somebody else's dealership answers
+    404, like everywhere else.
+    """
+
+    required_permissions: ClassVar[list[str]] = ["admin.person.invite"]
+
+    def get(self, request: Request, org_slug: str, user_id: str) -> Response:
+        invitation = invitation_for_link(
+            actor=self.membership,
+            organization=self.organization,
+            person_id=user_id,
+        )
+        return Response(
+            InviteLinkSerializer(
+                {"link": invitation_link(invitation), "expires_at": invitation.expires_at}
+            ).data
+        )

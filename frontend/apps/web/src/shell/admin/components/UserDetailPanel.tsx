@@ -11,6 +11,7 @@
  * in packages/ui, shared with Dealers. Only the content is here.
  */
 
+import { useState } from "react";
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import { asProblem } from "@xpredict/api-client";
 import { DetailPanel } from "@xpredict/ui";
@@ -21,6 +22,7 @@ import type { OrgUser } from "../api/users";
 import { APP_CATALOG } from "../../navigation";
 import { useResendInvitation, useSetUserStatus } from "../hooks/useUsers";
 import { EditUserDialog } from "./EditUserDialog";
+import { InviteLinkPanel } from "./InviteLinkPanel";
 import { RemoveUserDialog } from "./RemoveUserDialog";
 import { initials } from "./UserTable";
 import styles from "./UserDetailPanel.module.css";
@@ -35,6 +37,17 @@ interface UserDetailPanelProps {
 export function UserDetailPanel({ user, membership, onClose }: UserDetailPanelProps) {
   const { mutate: setStatus, isPending: statusPending, error: statusError } = useSetUserStatus();
   const { mutate: resend, isPending: resendPending, isSuccess: resent } = useResendInvitation();
+
+  /*
+   * The link is not shown until an admin asks for it. It carries the token
+   * that joins the organisation as this person, so it is fetched on a press
+   * rather than sitting in the panel for everybody who clicks a row.
+   */
+  const [showLink, setShowLink] = useState(false);
+
+  // Bumped by Resend so the link panel refetches. It also tells the panel to
+  // say "New link ready" rather than repeating the first-time instruction.
+  const [linkVersion, setLinkVersion] = useState(0);
 
   const isDisabled = user.status === "disabled";
   const fullName = `${user.first_name} ${user.last_name}`;
@@ -60,14 +73,52 @@ export function UserDetailPanel({ user, membership, onClose }: UserDetailPanelPr
           <EditUserDialog user={user} membership={membership} />
 
           {user.status === "invited" && (
-            <button
-              type="button"
-              className={styles.secondaryAction}
-              disabled={resendPending || resent}
-              onClick={() => resend(user.id)}
-            >
-              {resent ? "Invitation sent" : resendPending ? "Sending…" : "Resend invitation"}
-            </button>
+            <>
+              {/*
+                SHOW AND RESEND ARE DIFFERENT VERBS (C56). Show reveals the
+                SAME link as often as you like -- the common case, because
+                there is no email and the admin sends it by hand. Resend mints
+                a new token and kills the old one, so it is for "that went to
+                the wrong person" and nothing else.
+
+                NEITHER LABEL CHANGES INTO A DEAD BUTTON. "New link ready" used
+                to replace Resend and stay disabled, which read as a broken
+                control and wrapped onto two lines in a 360px panel. The
+                acknowledgement belongs with the link it describes, so that is
+                where it went.
+              */}
+              <button
+                type="button"
+                className={styles.secondaryAction}
+                onClick={() => setShowLink((shown) => !shown)}
+                aria-expanded={showLink}
+              >
+                {showLink ? "Hide link" : "Show link"}
+              </button>
+
+              <button
+                type="button"
+                className={styles.secondaryAction}
+                disabled={resendPending}
+                onClick={() => {
+                  /*
+                   * Reveal the new link rather than hiding the old one. The
+                   * token has changed, so showing the replacement IS the
+                   * acknowledgement -- and `linkVersion` is what makes the
+                   * panel refetch instead of displaying a link that stopped
+                   * working the instant this was pressed.
+                   */
+                  resend(user.id, {
+                    onSuccess: () => {
+                      setLinkVersion((version) => version + 1);
+                      setShowLink(true);
+                    },
+                  });
+                }}
+              >
+                {resendPending ? "Working…" : "Resend"}
+              </button>
+            </>
           )}
 
           <DropdownMenu.Root>
@@ -147,6 +198,29 @@ export function UserDetailPanel({ user, membership, onClose }: UserDetailPanelPr
           {user.role === "owner" ? "Owner" : user.role === "admin" ? "Admin" : "Member"}
         </span>
       </div>
+
+      {showLink && user.status === "invited" && (
+        /*
+          NO `key` HERE, and that is not an oversight. `UsersScreen` already
+          keys this whole panel by person, so selecting a different row
+          remounts everything inside it -- `showLink` resets to false and the
+          link is refetched when asked for again.
+
+          A second key was written here first, on the reasoning that showing
+          one person's link under another person's name is the worst version of
+          this bug because it WORKS. Reverting it proved the test still passed:
+          the outer key was already doing the job, which makes a key here a
+          check that cannot fail. The guard is one level up and has its own
+          test; this comment is what keeps the next person from assuming
+          otherwise.
+        */
+        <InviteLinkPanel
+          userId={user.id}
+          email={user.email}
+          version={linkVersion}
+          isFresh={resent}
+        />
+      )}
 
       <dl className={styles.facts}>
         <dt>Scope</dt>

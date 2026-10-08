@@ -247,3 +247,23 @@ export async function inviteUser(orgSlug: string, body: NewInvitation): Promise<
     body: JSON.stringify(body),
   });
 }
+
+/**
+ * The invitation link for somebody who has not accepted yet (C56).
+ *
+ * ITS OWN REQUEST, not a field on the list. The link contains the token, and
+ * the token is the credential that joins the organisation as that person — so
+ * it travels when an admin presses Copy and not on every visit to the screen.
+ *
+ * COPY AND RESEND ARE DIFFERENT VERBS. This is a read and leaves the token
+ * alone, so pressing Copy twice sends the same link; `resendInvitation` mints a
+ * new one and kills the old, which is the only reason to press it.
+ */
+export async function fetchInviteLink(
+  orgSlug: string,
+  userId: string,
+): Promise<{ link: string; expires_at: string }> {
+  return request<{ link: string; expires_at: string }>(
+    `/api/v1/orgs/${orgSlug}/admin/users/${userId}/invite-link/`,
+  );
+}

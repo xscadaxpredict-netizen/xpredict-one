@@ -19,7 +19,10 @@ import { useForm } from "react-hook-form";
 import { z } from "zod";
 import { asProblem } from "@xpredict/api-client";
 
+import { useLocation } from "react-router-dom";
+
 import { useLogin } from "../hooks/useAuth";
+import { returnPath, worksWithoutMembership } from "../returnPath";
 import { AuthLayout } from "../components/AuthLayout";
 import { Button } from "../components/Button";
 import { FormBanner } from "../components/FormBanner";
@@ -35,6 +38,9 @@ type LoginFormFields = z.infer<typeof loginFormSchema>;
 
 export function LoginScreen() {
   const { mutateAsync: signIn, isPending, } = useLogin();
+  // The same return path `RedirectIfSignedIn` is about to act on, read through
+  // the same validator so the two cannot disagree about what counts as one.
+  const returnTo = returnPath(useLocation().state);
   const [formError, setFormError] = useState<{ message: string; traceId?: string } | null>(null);
   const {register, handleSubmit, formState: { errors }, } = useForm<LoginFormFields>({
     resolver: zodResolver(loginFormSchema), 
@@ -61,7 +67,21 @@ export function LoginScreen() {
        */
       const me = await signIn(values);
 
-      if (me.memberships.length === 0) {
+      /*
+       * UNLESS AN INVITATION IS WAITING. Zero memberships stopped meaning only
+       * "you were removed" when invitations became acceptable (C56) — somebody
+       * removed from their only organisation and re-invited signs in with none,
+       * and the guard above is about to send them back to the invitation.
+       *
+       * Saying it anyway would put a false sentence on screen for the instant
+       * before the redirect, and it is the sentence that made this look broken
+       * when it was reported: correct password, "your access has been
+       * removed", invitation sitting unopened.
+       */
+      const headingToInvitation =
+        returnTo !== null && worksWithoutMembership(returnTo);
+
+      if (me.memberships.length === 0 && !headingToInvitation) {
         setFormError({
           message: "Your access has been removed. Contact your administrator.",
         });
