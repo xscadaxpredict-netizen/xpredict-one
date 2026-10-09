@@ -35,6 +35,26 @@ export interface Dealer {
    */
   code: string | null;
 
+  /**
+   * GSTIN: the dealership's GST registration number. MANDATORY on every write.
+   *
+   * Fifteen characters, and the last one is a check digit — so a typo is
+   * caught rather than stored, by `gstin.ts` here and by the serializer at the
+   * other end. Empty only on a dealership created before the field existed:
+   * the column is NOT NULL with an empty default, so those rows read as "".
+   */
+  gstin: string;
+
+  /**
+   * PAN: characters 3 to 12 of the GSTIN *are* the PAN, so this is derived and
+   * then editable — a GSTIN issued against a predecessor entity's PAN is a
+   * real situation, and the derivation is a convenience rather than a law.
+   *
+   * The backend fills it in when a write leaves it out, so this is never blank
+   * for a dealership saved with a GSTIN.
+   */
+  pan: string;
+
   /*
    * NO PARENT DEALERSHIP. Dealers are a FLAT LIST, not a tree (C29).
    *
@@ -80,6 +100,14 @@ export interface DealerDetails {
   name: string;
   /** Empty string is sent as null: the field is optional. */
   code: string | null;
+  /** Mandatory, validated including its check digit at both ends. */
+  gstin: string;
+  /**
+   * Sent as the person left it. Blank means "use the one in the GSTIN" and the
+   * backend derives it — which is also how an overridden PAN gets back to its
+   * default, by being cleared.
+   */
+  pan: string;
   contact_person: string;
   email: string;
   phone: string;
@@ -112,11 +140,20 @@ function wait(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+/*
+ * THE GSTINs BELOW ARE REAL ENOUGH TO VALIDATE. The form now checks the check
+ * digit, so an invented number would be refused by the very screen this fake
+ * feeds — a fake that cannot be saved through the real form teaches the wrong
+ * thing. Each one's state code matches its city and the check digit was
+ * computed for it; the PAN is characters 3-12, as the derivation produces.
+ */
 let fakeDealers: Dealer[] = [
   {
     id: "unit-1",
     name: "Chennai — Guindy",
     code: "CHN-GUI",
+    gstin: "33AAACH7409R1Z8",
+    pan: "AAACH7409R",
     contact_person: "Anita Fernandes",
     email: "guindy@acmemotors.in",
     phone: "+91 44 2345 6789",
@@ -131,6 +168,8 @@ let fakeDealers: Dealer[] = [
     id: "unit-2",
     name: "Bangalore — Whitefield",
     code: "BLR-WHF",
+    gstin: "29AAGCB7383J1Z4",
+    pan: "AAGCB7383J",
     contact_person: "Vikram Nair",
     email: "whitefield@acmemotors.in",
     phone: "+91 80 4123 7788",
@@ -147,6 +186,8 @@ let fakeDealers: Dealer[] = [
     id: "unit-3",
     name: "Coimbatore — Peelamedu",
     code: "CBE-PLM",
+    gstin: "33AAPFU0939F1Z2",
+    pan: "AAPFU0939F",
     contact_person: "Meera Krishnan",
     email: "peelamedu@acmemotors.in",
     phone: "+91 422 665 4321",
@@ -161,6 +202,9 @@ let fakeDealers: Dealer[] = [
     id: "unit-4",
     name: "Madurai — Ring Road",
     code: null,
+    // Predates the field, like the organisation's real dealerships do.
+    gstin: "",
+    pan: "",
     contact_person: "Sanjay Desai",
     email: "madurai@acmemotors.in",
     phone: "+91 452 234 9900",

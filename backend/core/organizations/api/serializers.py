@@ -16,6 +16,7 @@ from __future__ import annotations
 from rest_framework import serializers
 
 from core.accounts.api.serializers import validate_password_strength
+from core.organizations.identifiers import is_valid_gstin, is_valid_pan
 
 
 class DealerSerializer(serializers.Serializer):
@@ -27,6 +28,9 @@ class DealerSerializer(serializers.Serializer):
     id = serializers.UUIDField(read_only=True)
     name = serializers.CharField(read_only=True)
     code = serializers.CharField(read_only=True, allow_null=True)
+
+    gstin = serializers.CharField(read_only=True)
+    pan = serializers.CharField(read_only=True)
 
     contact_person = serializers.CharField(read_only=True)
     email = serializers.CharField(read_only=True)
@@ -66,6 +70,21 @@ class DealerDetailsSerializer(serializers.Serializer):
         max_length=40, required=False, allow_null=True, allow_blank=True, default=None
     )
 
+    # MANDATORY, unlike every other field here except the name. The owner's
+    # rule: a dealership is a GST-registered place of business, so the number
+    # exists before the dealership is worth recording.
+    #
+    # `trim_whitespace` is default-on and wanted -- a GSTIN copied off a PDF
+    # arrives with a space on one end often enough to matter.
+    gstin = serializers.CharField(max_length=15)
+
+    # OPTIONAL ON THE WIRE, FILLED IN BY THE SERVICE. A write that omits it
+    # gets the PAN inside its own GSTIN (`create_dealer`), so the browser is
+    # not the only thing that knows the rule -- a shell caller or a future
+    # import script derives it too. Sending one overrides the derivation, which
+    # is the point: the field is editable.
+    pan = serializers.CharField(max_length=10, required=False, allow_blank=True, default="")
+
     contact_person = serializers.CharField(max_length=150, required=False, allow_blank=True)
     # NOT `EmailField`. This is where official correspondence goes and it is
     # optional; an EmailField refuses "" even with `allow_blank` unset, which
@@ -76,6 +95,42 @@ class DealerDetailsSerializer(serializers.Serializer):
     city = serializers.CharField(max_length=100, required=False, allow_blank=True)
     state = serializers.CharField(max_length=100, required=False, allow_blank=True)
     postal_code = serializers.CharField(max_length=20, required=False, allow_blank=True)
+
+    # UPPERCASED BEFORE VALIDATION, not after. Both identifiers are
+    # conventionally uppercase and the portal prints them that way, but people
+    # type lowercase -- and refusing `27aapfu0939f1zv` for its case while the
+    # check digit is perfectly correct is a refusal nobody can act on. It also
+    # keeps two spellings of one number from being stored as two values.
+    def validate_gstin(self, value: str) -> str:
+        gstin = value.upper()
+
+        if not is_valid_gstin(gstin):
+            # ONE MESSAGE FOR BOTH FAILURES, deliberately. Saying "the check
+            # digit is wrong" to somebody holding a certificate invites them to
+            # conclude our software is broken; saying the number is not valid
+            # sends them back to the certificate, which is where the answer is.
+            raise serializers.ValidationError(
+                "That is not a valid GSTIN. Check it against the registration certificate."
+            )
+
+        return gstin
+
+    def validate_pan(self, value: str) -> str:
+        # Blank is allowed through: `create_dealer` derives it from the GSTIN.
+        # Validating "" here would make the optional field mandatory by
+        # accident, which is exactly how the password validators came to be
+        # configured and never called (C57).
+        if not value:
+            return ""
+
+        pan = value.upper()
+
+        if not is_valid_pan(pan):
+            raise serializers.ValidationError(
+                "A PAN is five letters, four digits and one letter — AAPFU0939F."
+            )
+
+        return pan
 
 
 class AppGrantSerializer(serializers.Serializer):

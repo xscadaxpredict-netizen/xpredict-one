@@ -214,6 +214,27 @@ class BusinessUnit(BaseModel):
     # created and refuse the second.
     code = models.CharField(max_length=40, null=True, blank=True)  # noqa: DJ001
 
+    # GSTIN AND PAN. India-specific, and deliberately so: unlike the phone and
+    # postcode fields below, these two identifiers do not exist outside one
+    # market, so a strict format cannot refuse a legitimate foreign value.
+    # Validated in `api/serializers.py` -- shape, including GSTIN's check digit.
+    #
+    # `blank=True` DESCRIBES THE COLUMN, NOT THE RULE. The API requires a GSTIN
+    # on every write, but dealerships created before this field existed hold ""
+    # and must stay readable -- a `blank=False` here would be a promise the
+    # stored data already breaks. Any dealership saved from now on gains one,
+    # because the serializer refuses a write without it.
+    gstin = models.CharField(max_length=15, blank=True)
+
+    # DERIVED FROM THE GSTIN, THEN EDITABLE. Characters 3-12 of a GSTIN *are*
+    # the holder's PAN, so storing it separately is a denormalisation -- taken
+    # deliberately, because the owner wants it correctable: a dealership whose
+    # GSTIN was issued against a predecessor entity's PAN is a real situation,
+    # and the derivation is a convenience rather than a law. `create_dealer`
+    # fills it in when a write leaves it out, so the default is always right
+    # and nobody has to retype ten characters they already typed.
+    pan = models.CharField(max_length=10, blank=True)
+
     contact_person = models.CharField(max_length=150, blank=True)
     email = models.EmailField(blank=True)
     phone = models.CharField(max_length=32, blank=True)

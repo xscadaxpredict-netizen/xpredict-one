@@ -15,7 +15,7 @@
  * announces it, and Zod produces what the person reads.
  */
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import * as Dialog from "@radix-ui/react-dialog";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm } from "react-hook-form";
@@ -23,6 +23,7 @@ import { z } from "zod";
 import { asProblem } from "@xpredict/api-client";
 
 import type { Dealer, DealerDetails } from "../api/dealers";
+import { extractPan, isValidGstin, isValidPan, normaliseIdentifier } from "../gstin";
 import { Button } from "../../components/Button";
 import { FormBanner } from "../../components/FormBanner";
 import { TextField } from "../../components/TextField";
@@ -52,6 +53,55 @@ const dealerSchema = z.object({
     .trim()
     .max(16, "Keep the code under 16 characters.")
     .regex(/^[A-Za-z0-9-]*$/, "Use letters, numbers and hyphens only."),
+
+  /*
+   * STRICT, UNLIKE PHONE AND POSTCODE ABOVE, and for a reason that does not
+   * contradict them: a GSTIN exists in one jurisdiction and has one format, so
+   * a tight check cannot refuse somebody's legitimate foreign value. It can
+   * only catch a typo — and the check digit catches every single-character slip
+   * and every adjacent transposition, which is what somebody copying fifteen
+   * characters off a certificate actually does wrong.
+   *
+   * `transform` runs before the refinements, so a correct number typed in
+   * lowercase or pasted with a trailing space is accepted rather than refused
+   * for its presentation.
+   */
+  gstin: z
+    .string()
+    .transform(normaliseIdentifier)
+    .pipe(
+      z
+        .string()
+        .min(1, "Enter this dealership’s GSTIN.")
+        .refine(
+          (value) => value.length === 15,
+          "A GSTIN is 15 characters — 33AAPFU0939F1Z2.",
+        )
+        // ONE MESSAGE FOR A WRONG CHECK DIGIT AND A WRONG SHAPE. Telling
+        // somebody holding a certificate that our arithmetic disagrees with it
+        // invites them to conclude the software is broken; telling them the
+        // number is not valid sends them back to the certificate, which is
+        // where the answer is.
+        .refine(isValidGstin, "That GSTIN is not valid. Check it against the certificate."),
+    ),
+
+  /*
+   * DERIVED FROM THE GSTIN AND THEN EDITABLE, which is why it is validated but
+   * not cross-checked against the GSTIN it usually comes from. Blank is
+   * allowed and means "use the one in the GSTIN" — the backend derives it, so
+   * clearing an override is how it returns to its default.
+   */
+  pan: z
+    .string()
+    .transform(normaliseIdentifier)
+    .pipe(
+      z
+        .string()
+        .refine(
+          (value) => value === "" || isValidPan(value),
+          "A PAN is five letters, four digits and one letter — AAPFU0939F.",
+        ),
+    ),
 
   contact_person: z
     .string()
@@ -92,6 +142,8 @@ export function dealerToFields(dealer: Dealer): DealerFields {
   return {
     name: dealer.name,
     code: dealer.code ?? "",
+    gstin: dealer.gstin,
+    pan: dealer.pan,
     contact_person: dealer.contact_person,
     email: dealer.email,
     phone: dealer.phone,
@@ -104,6 +156,8 @@ export function dealerToFields(dealer: Dealer): DealerFields {
 export const EMPTY_DEALER_FIELDS: DealerFields = {
   name: "",
   code: "",
+  gstin: "",
+  pan: "",
   contact_person: "",
   email: "",
   phone: "",
@@ -133,13 +187,51 @@ export function DealerForm({
   const {
     register,
     handleSubmit,
-    formState: { errors },
+    watch,
+    setValue,
+    formState: { errors, dirtyFields },
   } = useForm<DealerFields>({
     resolver: zodResolver(dealerSchema),
     mode: "onSubmit",
     reValidateMode: "onChange",
     defaultValues,
   });
+
+  /*
+   * THE PAN FILLS ITSELF IN FROM THE GSTIN, UNTIL SOMEBODY EDITS IT.
+   *
+   * Characters 3-12 of a GSTIN are the holder's PAN, so asking for both is
+   * asking the same question twice. `watch` re-renders this component whenever
+   * the GSTIN field changes, and the effect below writes the derived PAN into
+   * the other field.
+   *
+   * `dirtyFields.pan` IS THE WHOLE TRICK. React Hook Form marks a field dirty
+   * once its value differs from the default it was given — so it tells us
+   * whether this person has touched the PAN by hand. Until they have, the
+   * field follows the GSTIN; the moment they type in it, we stop overwriting
+   * what they wrote. Without that check, correcting the PAN would be
+   * impossible: every keystroke in it would be undone by the next render.
+   *
+   * `shouldDirty: false` keeps our own write from counting as the person
+   * editing it, which would latch the derivation off after the first GSTIN
+   * character and leave the PAN stuck on a half-typed value.
+   */
+  const gstin = watch("gstin");
+  const panWasEdited = dirtyFields.pan ?? false;
+  const derivedPan = extractPan(normaliseIdentifier(gstin ?? ""));
+
+  // A ref, not state: we only need to know whether the value we last wrote is
+  // still the one in the field, and storing that in state would re-render.
+  const lastDerived = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (panWasEdited || derivedPan === "" || derivedPan === lastDerived.current) {
+      return;
+    }
+
+    lastDerived.current = derivedPan;
+    setValue("pan", derivedPan, { shouldDirty: false, shouldValidate: false });
+  }, [derivedPan, panWasEdited, setValue]);
 
   async function submit(values: DealerFields) {
     setFormError(null);
@@ -191,6 +283,40 @@ export function DealerForm({
           </div>
 
           <p className={styles.hint}>The code is optional but must be unique.</p>
+
+          <div className={styles.pair}>
+            <TextField
+              label="GSTIN"
+              required
+              placeholder="33AAPFU0939F1Z2"
+              /* Uppercase as they type. The value is normalised on validation
+                 either way, so this is only so the field looks like the number
+                 on the certificate while it is being typed. */
+              style={{ textTransform: "uppercase" }}
+              maxLength={15}
+              error={errors.gstin?.message}
+              {...register("gstin")}
+            />
+
+            <TextField
+              label="PAN"
+              placeholder="AAPFU0939F"
+              style={{ textTransform: "uppercase" }}
+              maxLength={10}
+              /*
+                SAID BEFORE THEY WONDER. A field that fills itself in looks
+                broken if nobody says it is going to — and a field somebody
+                assumes is locked does not get corrected when it is wrong.
+              */
+              hint={
+                panWasEdited
+                  ? "Edited by hand. Clear it to go back to the one in the GSTIN."
+                  : "Taken from the GSTIN. Edit it if this dealership's PAN differs."
+              }
+              error={errors.pan?.message}
+              {...register("pan")}
+            />
+          </div>
         </fieldset>
 
         <fieldset className={styles.section}>

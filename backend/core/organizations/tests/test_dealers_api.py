@@ -41,6 +41,14 @@ pytestmark = [
 LIST_URL = "/api/v1/orgs/{slug}/admin/dealers/"
 DETAIL_URL = "/api/v1/orgs/{slug}/admin/dealers/{id}/"
 
+# REAL GSTINs, because the check digit means an invented one would be refused
+# and every create test would 400 for the wrong reason. Both are published
+# sample numbers; the PAN each one carries is characters 3-12.
+GSTIN = "27AAPFU0939F1ZV"
+GSTIN_PAN = "AAPFU0939F"
+OTHER_GSTIN = "29AAGCB7383J1Z4"
+OTHER_GSTIN_PAN = "AAGCB7383J"
+
 
 @pytest.fixture
 def client() -> APIClient:
@@ -74,6 +82,10 @@ def details(**overrides) -> dict:
     return {
         "name": "Chennai - Guindy",
         "code": "CHN-GUI",
+        # MANDATORY, so it belongs in the baseline payload rather than in the
+        # tests that happen to care. Without it every create here would 400 and
+        # the failure would read as whatever that test was actually about.
+        "gstin": GSTIN,
         "contact_person": "Anita Fernandes",
         "email": "guindy@acme.test",
         "phone": "+91 44 2345 6789",
@@ -107,6 +119,8 @@ class TestListing:
             "id",
             "name",
             "code",
+            "gstin",
+            "pan",
             "contact_person",
             "email",
             "phone",
@@ -310,6 +324,257 @@ class TestCreating:
         )
 
         assert response.status_code == 201
+
+
+class TestGstinAndPan:
+    """
+    The two statutory identifiers. GSTIN is MANDATORY; PAN is derived from it
+    and then editable.
+
+    WHY THE CHECK DIGIT IS TESTED AND NOT JUST THE PATTERN. A GSTIN with a
+    plausible shape and a wrong last character is exactly what a typo produces,
+    and it is the case a format-only check waves through -- after which the
+    wrong number is on an invoice and it is somebody else's tax problem. The
+    refusal below uses a number that passes the pattern and fails the
+    arithmetic, so deleting the checksum makes that test fail rather than
+    making it pass more easily.
+
+    WHY THERE IS NO UNIQUENESS TEST -- or rather, why there is one proving the
+    opposite. There is deliberately no constraint: one registration covers
+    several branches in the same state as additional places of business, so two
+    dealerships sharing a GSTIN is real data. Adding a unique constraint later
+    therefore has to argue with a test rather than with nobody.
+    """
+
+    def test_creating_derives_the_pan_from_the_gstin(self, client):
+        result = found()
+        client.force_authenticate(user=result.user)
+
+        response = client.post(
+            LIST_URL.format(slug=result.organization.slug),
+            details(gstin=GSTIN),
+            format="json",
+        )
+
+        assert response.status_code == 201
+        assert response.json()["gstin"] == GSTIN
+        assert response.json()["pan"] == GSTIN_PAN
+        assert BusinessUnit.objects.get(gstin=GSTIN).pan == GSTIN_PAN
+
+    def test_a_dealership_cannot_be_created_without_a_gstin(self, client):
+        result = found()
+        client.force_authenticate(user=result.user)
+
+        payload = details()
+        del payload["gstin"]
+
+        response = client.post(
+            LIST_URL.format(slug=result.organization.slug), payload, format="json"
+        )
+
+        assert response.status_code == 422
+        assert not BusinessUnit.objects.filter(name="Chennai - Guindy").exists()
+
+    def test_a_blank_gstin_is_refused_too(self, client):
+        """
+        SEPARATE FROM THE MISSING CASE. `required=True` refuses an absent key;
+        it is `allow_blank` defaulting to False that refuses "". A form that
+        submits every field always sends the key, so this is the one a person
+        actually hits.
+        """
+        result = found()
+        client.force_authenticate(user=result.user)
+
+        response = client.post(
+            LIST_URL.format(slug=result.organization.slug),
+            details(gstin=""),
+            format="json",
+        )
+
+        assert response.status_code == 422
+
+    def test_a_gstin_with_a_bad_check_digit_is_refused(self, client):
+        """
+        The number below is a real GSTIN with its last character changed:
+        correct shape, wrong arithmetic. Nothing but the checksum catches it.
+        """
+        result = found()
+        client.force_authenticate(user=result.user)
+
+        response = client.post(
+            LIST_URL.format(slug=result.organization.slug),
+            details(gstin="27AAPFU0939F1ZX"),
+            format="json",
+        )
+
+        assert response.status_code == 422
+        assert not BusinessUnit.objects.filter(name="Chennai - Guindy").exists()
+
+    def test_a_malformed_gstin_is_refused(self, client):
+        result = found()
+        client.force_authenticate(user=result.user)
+
+        response = client.post(
+            LIST_URL.format(slug=result.organization.slug),
+            details(gstin="NOT-A-GSTIN"),
+            format="json",
+        )
+
+        assert response.status_code == 422
+
+    def test_a_lowercase_gstin_is_accepted_and_stored_uppercase(self, client):
+        """
+        Refusing a correct number for its case is a refusal nobody can act on,
+        and storing two spellings makes one number look like two.
+        """
+        result = found()
+        client.force_authenticate(user=result.user)
+
+        response = client.post(
+            LIST_URL.format(slug=result.organization.slug),
+            details(gstin=GSTIN.lower()),
+            format="json",
+        )
+
+        assert response.status_code == 201
+        assert response.json()["gstin"] == GSTIN
+        assert response.json()["pan"] == GSTIN_PAN
+
+    def test_a_gstin_with_surrounding_whitespace_is_accepted(self, client):
+        """One copied off a PDF arrives with a space on the end."""
+        result = found()
+        client.force_authenticate(user=result.user)
+
+        response = client.post(
+            LIST_URL.format(slug=result.organization.slug),
+            details(gstin="  " + GSTIN + " "),
+            format="json",
+        )
+
+        assert response.status_code == 201
+        assert response.json()["gstin"] == GSTIN
+
+    def test_an_explicit_pan_overrides_the_derivation(self, client):
+        """
+        THE WHOLE POINT OF THE FIELD BEING EDITABLE. A GSTIN issued against a
+        predecessor entity's PAN is a real situation, so the derived value has
+        to be correctable -- which means a sent PAN is deliberately NOT checked
+        against the one inside the GSTIN.
+        """
+        result = found()
+        client.force_authenticate(user=result.user)
+
+        response = client.post(
+            LIST_URL.format(slug=result.organization.slug),
+            details(gstin=GSTIN, pan="ZZZPK1234Q"),
+            format="json",
+        )
+
+        assert response.status_code == 201
+        assert response.json()["gstin"] == GSTIN
+        assert response.json()["pan"] == "ZZZPK1234Q"
+
+    def test_a_malformed_pan_is_refused(self, client):
+        result = found()
+        client.force_authenticate(user=result.user)
+
+        response = client.post(
+            LIST_URL.format(slug=result.organization.slug),
+            details(pan="12345"),
+            format="json",
+        )
+
+        assert response.status_code == 422
+
+    def test_two_dealerships_may_share_one_gstin(self, client):
+        """
+        NO UNIQUENESS CONSTRAINT, ON PURPOSE. One registration covers several
+        branches in the same state as additional places of business.
+        """
+        result = found()
+        client.force_authenticate(user=result.user)
+        url = LIST_URL.format(slug=result.organization.slug)
+
+        first = client.post(url, details(name="Guindy", code="GUI"), format="json")
+        second = client.post(url, details(name="Whitefield", code="WHF"), format="json")
+
+        assert first.status_code == 201
+        assert second.status_code == 201
+        assert BusinessUnit.objects.filter(gstin=GSTIN).count() == 2
+
+    def test_changing_the_gstin_rederives_the_pan(self, client):
+        result = found()
+        unit = BusinessUnit.objects.create(
+            organization=result.organization, name="Guindy", gstin=GSTIN, pan=GSTIN_PAN
+        )
+        client.force_authenticate(user=result.user)
+
+        response = client.put(
+            DETAIL_URL.format(slug=result.organization.slug, id=unit.id),
+            details(name="Guindy", gstin=OTHER_GSTIN),
+            format="json",
+        )
+
+        assert response.status_code == 200
+        unit.refresh_from_db()
+        assert unit.gstin == OTHER_GSTIN
+        assert unit.pan == OTHER_GSTIN_PAN
+
+    def test_clearing_the_pan_restores_the_derived_one(self, client):
+        """
+        A FIELD THAT CANNOT RETURN TO ITS DEFAULT IS A ONE-WAY DOOR, which is
+        what C55 was about. Clearing an overridden PAN means "give me the one
+        in the GSTIN back", not "store nothing" -- otherwise recovering the
+        default means retyping ten characters.
+        """
+        result = found()
+        unit = BusinessUnit.objects.create(
+            organization=result.organization, name="Guindy", gstin=GSTIN, pan="ZZZPK1234Q"
+        )
+        client.force_authenticate(user=result.user)
+
+        response = client.put(
+            DETAIL_URL.format(slug=result.organization.slug, id=unit.id),
+            details(name="Guindy", gstin=GSTIN, pan=""),
+            format="json",
+        )
+
+        assert response.status_code == 200
+        unit.refresh_from_db()
+        assert unit.pan == GSTIN_PAN
+
+    def test_the_list_carries_both_identifiers(self, client):
+        result = found()
+        BusinessUnit.objects.create(
+            organization=result.organization, name="Guindy", gstin=GSTIN, pan=GSTIN_PAN
+        )
+        client.force_authenticate(user=result.user)
+
+        response = client.get(LIST_URL.format(slug=result.organization.slug))
+
+        assert response.status_code == 200
+        row = next(r for r in response.json() if r["name"] == "Guindy")
+        assert row["gstin"] == GSTIN
+        assert row["pan"] == GSTIN_PAN
+
+    def test_a_dealership_that_predates_the_field_still_reads(self, client):
+        """
+        THE FOUR EXISTING DEALERSHIPS. Both columns are NOT NULL with an empty
+        default, so a row written before the migration holds "" -- and the list
+        must render it rather than 500. Requiring a field on write while the
+        read path assumes it is always present is how a mandatory field breaks a
+        screen nobody changed.
+        """
+        result = found()
+        BusinessUnit.objects.create(organization=result.organization, name="Legacy")
+        client.force_authenticate(user=result.user)
+
+        response = client.get(LIST_URL.format(slug=result.organization.slug))
+
+        assert response.status_code == 200
+        row = next(r for r in response.json() if r["name"] == "Legacy")
+        assert row["gstin"] == ""
+        assert row["pan"] == ""
 
 
 class TestEditing:

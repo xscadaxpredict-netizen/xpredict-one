@@ -52,6 +52,7 @@ from core.organizations.exceptions import (
     RoleScopeMismatchError,
     SignInAddressLockedError,
 )
+from core.organizations.identifiers import extract_pan
 from core.organizations.models import (
     ActivationCode,
     BusinessUnit,
@@ -367,6 +368,8 @@ def create_dealer(
     organization: Organization,
     name: str,
     code: str | None = None,
+    gstin: str = "",
+    pan: str = "",
     contact_person: str = "",
     email: str = "",
     phone: str = "",
@@ -377,7 +380,7 @@ def create_dealer(
     """
     Add a dealership to this organization.
 
-    KEYWORD-ONLY, because eight of the nine arguments are strings and a
+    KEYWORD-ONLY, because ten of the eleven arguments are strings and a
     positional call that transposed `city` and `state` would be silently wrong
     in a way no type checker could see.
 
@@ -386,6 +389,12 @@ def create_dealer(
     under a race, and this is what makes the refusal say which field was wrong
     instead of surfacing as a 500 (C9 -- a 5xx body carries no detail, so an
     IntegrityError reaching the handler tells the caller nothing at all).
+
+    NO UNIQUENESS CHECK ON THE GSTIN, and that is a decision rather than an
+    omission: one registration legitimately covers several branches in the same
+    state as additional places of business, so refusing a duplicate would
+    refuse real data. The PAN is shared across every branch of one company in
+    any case.
     """
     _assert_dealer_name_free(organization, name)
     _assert_dealer_code_free(organization, code)
@@ -398,6 +407,12 @@ def create_dealer(
         # duplicate, so storing "" would let the first dealership without a
         # code be created and refuse the second.
         code=code or None,
+        gstin=gstin,
+        # DERIVED HERE, not in the browser. Characters 3-12 of a GSTIN are the
+        # holder's PAN, so a caller who sends one is overriding a default
+        # rather than supplying a fact we did not have -- and the default has
+        # to exist somewhere both a form and a shell session reach.
+        pan=pan or extract_pan(gstin),
         contact_person=contact_person,
         email=email,
         phone=phone,
@@ -423,6 +438,15 @@ def update_dealer(*, dealer: BusinessUnit, **fields: str | None) -> BusinessUnit
 
     if "code" in fields:
         _assert_dealer_code_free(dealer.organization, fields["code"], excluding=dealer.pk)
+
+    # THE SAME DERIVATION AS CREATE, for the same reason. Clearing the PAN on
+    # an edit means "give me the one in the GSTIN back", not "store nothing" --
+    # otherwise the only way to recover the default is to retype it, and a
+    # field that cannot return to its default is a one-way door of the kind
+    # C55 was about.
+    if not fields.get("pan"):
+        gstin = fields.get("gstin", dealer.gstin) or ""
+        fields["pan"] = extract_pan(gstin)
 
     for field, value in fields.items():
         setattr(dealer, field, value or None if field == "code" else value)
