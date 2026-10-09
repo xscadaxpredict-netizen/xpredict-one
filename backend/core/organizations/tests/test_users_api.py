@@ -38,7 +38,7 @@ from core.organizations.models import (
     MembershipStatus,
 )
 from core.organizations.selectors import org_users
-from core.organizations.services import sign_up
+from core.organizations.services import INVITATION_LIFETIME, sign_up
 from core.permissions.models import AppAccess, AppCode, Role
 
 pytestmark = [
@@ -933,6 +933,57 @@ class TestResendingAnInvitation:
 
         assert response.status_code == 409
         assert response.json()["code"] == "not_an_invitation"
+
+
+class TestTheInvitationWindow:
+    """
+    SEVEN DAYS (C62, answering Q40), AND THE NUMBER IS WHAT IS PINNED.
+
+    It was 14 while the token was still going to be emailed. C56 put the link
+    in a chat message instead -- backed up, searchable, forwardable -- so how
+    long a leaked one keeps working is the whole of the exposure.
+
+    NOTHING PINNED THIS BEFORE. Both callers derive their `expires_at` from
+    `INVITATION_LIFETIME`, and the invitation fixtures elsewhere in this file
+    pick their own expiry, so the constant could have been edited to any value
+    and all 327 tests would still have passed. A test written against the
+    constant would be the same cannot-fail check -- so this asserts the number.
+    """
+
+    def test_the_lifetime_is_seven_days(self):
+        assert INVITATION_LIFETIME == timezone.timedelta(days=7)
+
+    def test_inviting_sets_the_expiry_seven_days_out(self, client):
+        result = found()
+        client.force_authenticate(user=result.user)
+
+        client.post(INVITE_URL.format(slug=result.organization.slug), payload(), format="json")
+
+        invitation = Invitation.objects.get(email="new@acme.test")
+        expected = timezone.now() + timezone.timedelta(days=7)
+        assert abs((invitation.expires_at - expected).total_seconds()) < 60
+
+    def test_resending_restarts_the_window_from_now(self, client):
+        """
+        FROM NOW, NOT FROM THE ORIGINAL EXPIRY. Resend exists so somebody who
+        missed the window gets a fresh one; extending the old date would hand
+        a person invited eight days ago a link already dead on arrival.
+        """
+        result = found()
+        invitation = add_invitation(result.organization, email="pending@acme.test")
+        invitation.expires_at = timezone.now() + timezone.timedelta(hours=1)
+        invitation.save(update_fields=["expires_at"])
+        client.force_authenticate(user=result.user)
+
+        response = client.post(
+            f"/api/v1/orgs/{result.organization.slug}/admin/users/{invitation.id}"
+            f"/resend-invitation/"
+        )
+
+        assert response.status_code == 204
+        invitation.refresh_from_db()
+        expected = timezone.now() + timezone.timedelta(days=7)
+        assert abs((invitation.expires_at - expected).total_seconds()) < 60
 
 
 class TestCapabilityRefusals:

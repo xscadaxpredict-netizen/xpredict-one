@@ -478,7 +478,19 @@ def _assert_dealer_code_free(
 # Long enough that guessing one is hopeless, short enough to survive an email
 # client wrapping the line. The same reasoning as C47's activation codes.
 INVITATION_TOKEN_BYTES = 32
-INVITATION_LIFETIME = timedelta(days=14)
+
+# SEVEN DAYS, AND THE NUMBER FOLLOWS FROM WHERE THE LINK LIVES (C62, Q40).
+# It was 14 while the plan still said the token would be emailed; C56 moved it
+# into a chat message, which is backed up, searchable and forwardable in ways a
+# mailbox is not --- so the window in which a leaked link still works is the
+# whole of the exposure. `resend_invitation` mints a new token for anybody who
+# misses it, so shortening this costs a click, not an admin's afternoon.
+#
+# PINNED BY A TEST, because nothing pinned it before: the lifetime is a
+# decision rather than an implementation detail, and the two callers below
+# derive from it. A test written against this constant could not fail when the
+# constant changed, so the test asserts the number.
+INVITATION_LIFETIME = timedelta(days=7)
 
 
 def _assert_can_manage(actor: Membership, target_unit_id: uuid.UUID | None) -> None:
@@ -1005,7 +1017,7 @@ def accept_invitation(
       which is the account takeover Q23 refuses from the admin side.
 
     EVERY RULE IS RE-CHECKED, not trusted from invite time. An invitation can
-    sit for a fortnight, and in that time the app can be unsubscribed or the
+    sit for a week, and in that time the app can be unsubscribed or the
     address can be given a membership another way. So `_assert_email_free` and
     `_assert_grants_are_legal` both run again, and both refuse rather than
     quietly dropping what they cannot honour --- somebody who joins with less
