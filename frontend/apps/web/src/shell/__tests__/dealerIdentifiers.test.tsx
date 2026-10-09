@@ -113,12 +113,14 @@ function fillTheRest(dialog: HTMLElement) {
   type(/Postal \/ ZIP/, "625010");
 }
 
+// `getByLabelText` already narrows to HTMLInputElement here, so an assertion
+// would be a cast that changes nothing -- which the lint rule says, correctly.
 function gstinField(dialog: HTMLElement) {
-  return within(dialog).getByLabelText(/GSTIN/) as HTMLInputElement;
+  return within(dialog).getByLabelText<HTMLInputElement>(/GSTIN/);
 }
 
 function panField(dialog: HTMLElement) {
-  return within(dialog).getByLabelText(/^PAN/) as HTMLInputElement;
+  return within(dialog).getByLabelText<HTMLInputElement>(/^PAN/);
 }
 
 describe("the GSTIN check digit", () => {

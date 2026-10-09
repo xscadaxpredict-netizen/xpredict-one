@@ -33,6 +33,9 @@ export function membership(overrides: Partial<Membership> = {}): Membership {
     // Ready by default, because almost every test is about something else.
     // The not-ready case is the exception and says so where it is used.
     is_ready: true,
+    // Same reasoning (C63): an open dealership is the ordinary case, and the
+    // tests about a closed one set it where it matters.
+    unit_closed: false,
     apps: [],
     ...overrides,
   };

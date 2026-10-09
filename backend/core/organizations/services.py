@@ -37,6 +37,8 @@ from core.organizations.exceptions import (
     ActivationCodeSpentError,
     AdministrationNotGrantableError,
     AppNotSubscribedError,
+    DealerAlreadyClosedError,
+    DealerAlreadyOpenError,
     DealerCodeTakenError,
     DealerNameTakenError,
     DealerScopedAppError,
@@ -62,6 +64,7 @@ from core.organizations.models import (
     MembershipRole,
     MembershipStatus,
     Organization,
+    UnitStatus,
 )
 from core.organizations.selectors import can_manage
 from core.organizations.tasks import schedule_provisioning
@@ -452,6 +455,64 @@ def update_dealer(*, dealer: BusinessUnit, **fields: str | None) -> BusinessUnit
         setattr(dealer, field, value or None if field == "code" else value)
 
     dealer.save()
+    return dealer
+
+
+@transaction.atomic
+def close_dealer(*, dealer: BusinessUnit) -> BusinessUnit:
+    """
+    Shut a dealership (C63, answering Q21).
+
+    NOTHING IS WRITTEN TO ITS PEOPLE, AND THAT IS THE WHOLE DESIGN. One column
+    changes on one row; every membership, invitation, grant and record stays
+    exactly as it was.
+
+    The obvious alternative -- walk the memberships and set each to `disabled`
+    -- fails on the way back. Reopening would have to switch them on again, and
+    by then nothing distinguishes somebody switched off BECAUSE the branch
+    closed from somebody an admin deactivated individually last month. The
+    second person would quietly return to work. Deriving the refusal instead
+    (`OrgScopedAPIView` refuses a membership whose unit is closed) means
+    reopening restores precisely what was there, because nothing was disturbed.
+
+    SO THIS IS NOT "DEACTIVATE EVERYONE" WITH A TIDIER NAME. It is a statement
+    about the branch, and the consequences for its people are read from it.
+
+    THE RECORDS STAY, AND STAY VISIBLE (C63). A closed dealership's enquiries,
+    quotations and job cards are history the organisation still reports on, so
+    organisation-level people keep reading them; what stops is writing, and the
+    first DMS model is where that rule has to be honoured. There is no delete,
+    ever -- a dealership with history cannot be removed without taking the
+    history with it.
+    """
+    if dealer.status == UnitStatus.DISABLED:
+        raise DealerAlreadyClosedError
+
+    dealer.status = UnitStatus.DISABLED
+    dealer.save(update_fields=["status"])
+    return dealer
+
+
+@transaction.atomic
+def reopen_dealer(*, dealer: BusinessUnit) -> BusinessUnit:
+    """
+    Open a dealership again.
+
+    SYMMETRICAL, because `close_dealer` touched nothing else (C63). There are
+    no grants to reinstate and no people to switch back on: the moment the
+    status changes, every membership scoped here resolves the way it did
+    before, including the ones an admin had deactivated separately, which stay
+    deactivated.
+
+    That symmetry is the test worth keeping. A future change that makes closing
+    write to anything else has to make reopening undo it, and the pair of tests
+    in `test_dealers_api.py` is what will say so.
+    """
+    if dealer.status == UnitStatus.ACTIVE:
+        raise DealerAlreadyOpenError
+
+    dealer.status = UnitStatus.ACTIVE
+    dealer.save(update_fields=["status"])
     return dealer
 
 

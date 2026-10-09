@@ -30,11 +30,13 @@ from core.organizations.api.serializers import (
 from core.organizations.models import BusinessUnit, MembershipStatus
 from core.organizations.selectors import dealers_for, org_users
 from core.organizations.services import (
+    close_dealer,
     create_dealer,
     invitation_for_link,
     invitation_link,
     invite_person,
     remove_person,
+    reopen_dealer,
     resend_invitation,
     set_person_status,
     update_dealer,
@@ -149,6 +151,71 @@ class DealerDetailView(OrgScopedAPIView):
         existed. A malformed UUID is the same 404 for the same reason -- a 400
         would confirm that a well-formed id is the thing being looked up.
         """
+        try:
+            return BusinessUnit.objects.get(id=dealer_id, organization=self.organization)
+        except (BusinessUnit.DoesNotExist, ValidationError, ValueError):
+            raise not_found("Dealer") from None
+
+
+class DealerStatusView(OrgScopedAPIView):
+    """
+    Close a dealership, or open it again (C63, answering Q21).
+
+    THE TWO ENDPOINTS C52 DECLINED TO BUILD. They were held back for nine
+    sessions because Q21 had not said what closing DOES -- and shipping the
+    obvious status flag would have answered it by accident, which is a worse
+    outcome than the frontend keeping a fake. The answer is now recorded: its
+    people lose access entirely, its records persist and stay readable to
+    organisation-level people, reopening restores exactly what was there, and
+    there is no delete, ever.
+
+    A SEPARATE PERMISSION FROM EDITING, and it already existed:
+    `admin.dealer.set_status` has been in the catalogue since PR #13, seeded,
+    granted, and used by nothing. Shutting a branch is not the same act as
+    correcting its address, and the catalogue said so before there was anywhere
+    to enforce it.
+
+    ORG-LEVEL ONLY, which needs no check here. Only org standing grants
+    `admin.dealer.*` (C3, C23) -- the DMS System administrator role grants the
+    `users` module and nothing else -- so a dealer admin is refused by the
+    permission layer, and cannot close their own branch to lock out a
+    colleague.
+
+    DEALERSHIP DETAILS STAY EDITABLE WHILE CLOSED (C63). Closing is about
+    access and operations, not about freezing the record: a typo in a closed
+    branch's name should not need reopening to fix. `DealerDetailView` is
+    therefore unchanged, deliberately.
+    """
+
+    required_permissions: ClassVar[list[str]] = ["admin.dealer.set_status"]
+
+    # The whole vocabulary this route accepts, in the shape `UserStatusView`
+    # established: a bare `else` would turn a typo in a URL into "close", and
+    # closing a branch by misspelling a word is not a mistake worth allowing.
+    _ACTIONS: ClassVar[dict[str, object]] = {
+        "close": close_dealer,
+        "reopen": reopen_dealer,
+    }
+
+    def post(self, request: Request, org_slug: str, dealer_id: str, action: str) -> Response:
+        if action not in self._ACTIONS:
+            # 404, like any other URL that does not exist. The route is generic
+            # enough to match it; the view is what makes it not exist.
+            raise not_found("Dealer")
+
+        dealer = self._get_dealer(dealer_id)
+        self._ACTIONS[action](dealer=dealer)
+
+        # Re-read through the selector so the response carries `user_count`,
+        # which is annotated rather than stored -- the same reason the create
+        # endpoint does it. The count is also what the screen shows beside the
+        # status it has just changed, so answering without it would blank a
+        # column on exactly the row somebody is looking at.
+        updated = next(d for d in dealers_for(self.organization) if d.pk == dealer.pk)
+        return Response(DealerSerializer(updated).data)
+
+    def _get_dealer(self, dealer_id: str) -> BusinessUnit:
+        """The same filter-by-organization isolation as `DealerDetailView`."""
         try:
             return BusinessUnit.objects.get(id=dealer_id, organization=self.organization)
         except (BusinessUnit.DoesNotExist, ValidationError, ValueError):

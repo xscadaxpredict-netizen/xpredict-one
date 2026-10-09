@@ -27,7 +27,8 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.request import Request
 from rest_framework.views import APIView
 
-from core.organizations.models import Membership, MembershipStatus, Organization
+from core.organizations.exceptions import UnitClosedError
+from core.organizations.models import Membership, MembershipStatus, Organization, UnitStatus
 from core.organizations.selectors import permissions_for
 from shared.exceptions import AuthorizationError, not_found
 
@@ -212,5 +213,35 @@ class OrgScopedAPIView(APIView):
             # 404, never 403. 403 confirms the organization exists and that
             # somebody else works there.
             raise not_found("Organization")
+
+        # A CLOSED DEALERSHIP REFUSES ITS OWN PEOPLE, EVERYWHERE AT ONCE (C63).
+        #
+        # Here rather than in each endpoint, for the reason this whole class
+        # exists: a rule applied per view is a rule somebody forgets on the one
+        # view that mattered, and the failure is silent. Every endpoint under
+        # `/orgs/<slug>/` runs this, so closing a branch shuts every door in the
+        # product in one statement -- including doors added later by somebody
+        # who has never read C63.
+        #
+        # ORGANISATION-LEVEL PEOPLE ARE UNAFFECTED, and the `unit_id is None`
+        # test is the whole of it: they are not scoped to any dealership, so
+        # closing one does not touch them. That is what lets them go on reading
+        # the closed branch's records, which is the other half of C63.
+        #
+        # NOT STORED ANYWHERE. This is computed from the dealership's status on
+        # every request, which is why reopening restores exactly what was there
+        # -- see `close_dealer` for why the alternative does not.
+        #
+        # AND IT IS NOT REDUNDANT WITH THE PERMISSION LAYER, which was the first
+        # thing a revert suggested. `permissions_for()` goes through
+        # `_membership_data()`, so a closed dealership already empties it and
+        # most endpoints answer 403 `not_permitted` without this line. Two
+        # things it does that that cannot: an endpoint declaring
+        # `required_permissions = []` -- membership alone is enough, like the
+        # provisioning poll -- is not covered by permissions at all, and the
+        # refusal here carries `unit_closed`, which is a reason the shell can
+        # act on rather than a generic no.
+        if membership.unit_id is not None and membership.unit.status == UnitStatus.DISABLED:
+            raise UnitClosedError
 
         return membership

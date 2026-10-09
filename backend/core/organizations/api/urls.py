@@ -14,6 +14,7 @@ from django.urls import include, path
 
 from core.organizations.api.views import (
     DealerDetailView,
+    DealerStatusView,
     DealersView,
     InviteLinkView,
     ProvisioningView,
@@ -78,5 +79,21 @@ urlpatterns = [
     # simply would not match, and Django's own 404 is an HTML page rather than
     # the problem+json every other refusal returns.
     path("admin/dealers/<str:dealer_id>/", DealerDetailView.as_view(), name="dealer-detail"),
+    # CLOSE AND REOPEN (C63, answering Q21). One route, two actions, as the
+    # user-status route does -- the rule is symmetrical today and the view says
+    # what would split them.
+    #
+    # The extra segment is what keeps this from colliding with the detail route
+    # above; there is no generic `<str:action>` sibling here to be swallowed by,
+    # which is the trap the users routes had to be ordered around.
+    #
+    # AND IT ENDS IN A SLASH. `APPEND_SLASH` turns a slashless POST into a
+    # raise, so a frontend calling `/close` without one would 500 on the button
+    # while every read on the screen worked perfectly.
+    path(
+        "admin/dealers/<str:dealer_id>/<str:action>/",
+        DealerStatusView.as_view(),
+        name="dealer-status",
+    ),
     path("admin/", include("core.permissions.api.urls")),
 ]

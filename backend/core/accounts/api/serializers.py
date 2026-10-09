@@ -162,6 +162,11 @@ class MembershipSerializer(serializers.Serializer):
     # Whether this organization's own database exists yet (C50, C1). The
     # launcher refuses to open an app while this is false.
     is_ready = serializers.BooleanField(read_only=True)
+    # Whether this person's dealership has been closed (C63). Always false for
+    # somebody organisation-wide. When true every app below is inaccessible,
+    # and this is what lets the shell say WHY rather than showing an empty
+    # launcher -- the failure C58 was written to remove, one cause along.
+    unit_closed = serializers.BooleanField(read_only=True)
     apps = AppAccessSerializer(many=True, read_only=True)
 
 

@@ -109,6 +109,21 @@ class MembershipData:
     """
     is_ready: bool
 
+    """
+    WHETHER THIS PERSON'S DEALERSHIP HAS BEEN CLOSED (C63).
+
+    Always False for somebody organisation-wide -- they have no dealership to
+    close, and closing one does not touch them.
+
+    THE MEMBERSHIP IS STILL RETURNED, which is the point of having this field
+    at all. Dropping it would be easier and would produce the screen C58 was
+    written to remove: zero memberships, and a sign-in page saying access was
+    removed when the person is perfectly entitled and their branch simply shut.
+    Every app comes back inaccessible, so there is nothing to open -- and this
+    says why, so the shell can tell them instead of showing an empty launcher.
+    """
+    unit_closed: bool
+
 
 @dataclass(frozen=True)
 class MeData:
@@ -197,6 +212,9 @@ def _membership_data(
         for permission in access.role.permissions.all():
             held.setdefault(permission.app, set()).add(permission)
 
+    # `unit` is select_related in `me()`, so this costs no query.
+    unit_closed = membership.unit_id is not None and membership.unit.status == UnitStatus.DISABLED
+
     return MembershipData(
         org_id=membership.organization_id,
         org_name=membership.organization.name,
@@ -206,8 +224,9 @@ def _membership_data(
         unit_name=membership.unit.name if membership.unit_id else None,
         # `organization` is select_related in `me()`, so this costs no query.
         is_ready=membership.organization.is_ready,
+        unit_closed=unit_closed,
         apps=[
-            _app_data(app, membership, held, granted_apps, active_subscriptions)
+            _app_data(app, membership, held, granted_apps, active_subscriptions, unit_closed)
             for app in AppCode
         ],
     )
@@ -219,8 +238,29 @@ def _app_data(
     held: dict[str, set[Permission]],
     granted_apps: set[str],
     active_subscriptions: set[tuple[uuid.UUID, str]],
+    unit_closed: bool = False,
 ) -> AppAccessData:
     permissions = held.get(app, set())
+
+    if unit_closed:
+        # A CLOSED DEALERSHIP OPENS NOTHING (C63) -- including Administration,
+        # which a dealer admin would otherwise still reach. Every org-scoped
+        # endpoint refuses them anyway (`OrgScopedAPIView`), so a tile that
+        # looked clickable would lead straight to a 403; this is the launcher
+        # agreeing with the backend rather than discovering it on the way in.
+        #
+        # `subscribed` is still reported honestly: the organisation's billing
+        # is not this person's business but it is not a secret either, and
+        # saying False would describe the organisation wrongly.
+        return AppAccessData(
+            key=app,
+            subscribed=app == AppCode.ADMIN
+            or (membership.organization_id, app) in active_subscriptions,
+            accessible=False,
+            summary=None,
+            modules=[],
+            permissions=[],
+        )
 
     if app == AppCode.ADMIN:
         # Administration is never bought and never granted a row: it comes with

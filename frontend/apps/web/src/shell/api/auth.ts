@@ -124,6 +124,20 @@ export interface Membership {
    * there.
    */
   is_ready: boolean;
+
+  /**
+   * Whether this person's dealership has been closed (C63).
+   *
+   * Always false for somebody organisation-wide — they have no dealership to
+   * close, and closing one does not touch them.
+   *
+   * THE MEMBERSHIP STILL ARRIVES, with every app inaccessible. Dropping it
+   * would be easier and would produce the screen C58 was written to remove:
+   * zero memberships, and a sign-in page saying access was removed when the
+   * person is perfectly entitled and their branch simply shut. This is what
+   * lets the shell say which of the two it is.
+   */
+  unit_closed: boolean;
 }
 
 export interface Me {
@@ -224,6 +238,7 @@ const FAKE_ME: Me = {
       org_name: "Acme Motors",
       org_slug: "acme-motors",
       is_ready: true,
+      unit_closed: false,
       role: "owner",
       unit_id: null,
       unit_name: null,
@@ -318,6 +333,10 @@ const FAKE_ME: Me = {
        * topbar to see it.
        */
       is_ready: false,
+      // Open. The closed case is worth seeing in the fake too, but not on the
+      // same entry as the not-ready one: `unit_closed` is checked first, so it
+      // would hide the guard the comment above exists to demonstrate.
+      unit_closed: false,
       /*
        * `member`, NOT `admin` (C40). This said `admin` with a dealership
        * attached, which was right under C31 and is now a row the database

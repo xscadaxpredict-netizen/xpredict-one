@@ -9,7 +9,7 @@ imports DRF. Named after the business situation rather than the HTTP shape:
 
 from __future__ import annotations
 
-from shared.exceptions import ConflictError, InvalidInputError
+from shared.exceptions import AuthorizationError, ConflictError, InvalidInputError
 
 
 class ActivationCodeInvalidError(InvalidInputError):
@@ -129,6 +129,56 @@ class DealerCodeTakenError(ConflictError):
 
     code = "dealer_code_taken"
     message = "Another dealership already uses that code."
+
+
+class DealerAlreadyClosedError(ConflictError):
+    """
+    This dealership is already closed.
+
+    A STATE REFUSAL, SO 409 -- not 404 (the caller can see it) and not 403
+    (they are allowed to close dealerships). The three are deliberately not
+    interchangeable: scope is 404, capability is 403, state is 409.
+
+    It also makes closing NOT idempotent on purpose. Two admins acting on the
+    same branch within a minute of each other should find out, because the
+    second one is usually acting on a stale screen and about to be surprised
+    by something else too.
+    """
+
+    code = "dealer_already_closed"
+    message = "That dealership is already closed."
+
+
+class DealerAlreadyOpenError(ConflictError):
+    """The mirror of `DealerAlreadyClosedError`, for reopening."""
+
+    code = "dealer_already_open"
+    message = "That dealership is already open."
+
+
+class UnitClosedError(AuthorizationError):
+    """
+    The caller works at a dealership that has been closed (C63).
+
+    403 AND NOT 404, which is the opposite of every other scope refusal here --
+    and the difference is who is asking. A 404 hides a record from somebody who
+    should not know it exists; this person works here, knows the branch exists,
+    and watched it close. Hiding the organisation from them would produce the
+    exact screen C58 was written to remove: a correct password, and a message
+    saying their access was removed when it was not.
+
+    NOT 401 EITHER. 401 means "authenticate and try again", which sends them to
+    the sign-in page to retype a password that is perfectly good -- so they
+    would loop. 403 leaves them signed in, where the shell can say what
+    actually happened.
+
+    NOTHING WAS WRITTEN TO THEIR MEMBERSHIP to make this true. It is computed
+    from the dealership's status on every request, which is what makes
+    reopening restore exactly what was there before.
+    """
+
+    code = "unit_closed"
+    message = "Your dealership has been closed. Contact your administrator."
 
 
 class OwnerProtectedError(ConflictError):

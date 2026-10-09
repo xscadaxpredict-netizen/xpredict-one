@@ -40,6 +40,10 @@ pytestmark = [
 
 LIST_URL = "/api/v1/orgs/{slug}/admin/dealers/"
 DETAIL_URL = "/api/v1/orgs/{slug}/admin/dealers/{id}/"
+# NOT A DEALER URL, and that is the point: the lock-out is enforced in
+# `OrgScopedAPIView`, so proving it on an endpoint a dealer admin is normally
+# entitled to use is what shows it is not a quirk of the dealer views.
+USERS_URL = "/api/v1/orgs/{slug}/admin/users/"
 
 # REAL GSTINs, because the check digit means an invented one would be refused
 # and every create test would 400 for the wrong reason. Both are published
@@ -76,6 +80,24 @@ def add_dealer_admin(organization, unit, email="dealeradmin@acme.test"):
         role=Role.objects.get(app=AppCode.DMS, code="dms.system_admin"),
     )
     return user
+
+
+def add_person(organization, *, unit, email, standing=MembershipStatus.ACTIVE):
+    """A dealer-scoped member with no administration rights."""
+    user = User.objects.create_user(email=email, password="x")
+    membership = Membership.objects.create(
+        user=user,
+        organization=organization,
+        unit=unit,
+        role=MembershipRole.MEMBER,
+        status=standing,
+    )
+    AppAccess.objects.create(
+        membership=membership,
+        app=AppCode.DMS,
+        role=Role.objects.get(app=AppCode.DMS, code="dms.sales_representative"),
+    )
+    return membership
 
 
 def details(**overrides) -> dict:
@@ -700,13 +722,13 @@ class TestWhoMayManageDealerships:
         assert unit.name == "Whitefield"
 
 
-class TestStatusIsNotWritable:
+class TestStatusIsNotWritableThroughTheEditPayload:
     def test_closing_a_dealership_is_not_possible_through_the_payload(self, client):
         """
-        C52: close and reopen do not exist until Q21 says what they do. The
-        payload must therefore ignore `status` rather than accept it --- an
-        endpoint that quietly wrote the column would answer Q21 by default,
-        which is exactly what C52 declined to do.
+        STILL TRUE AFTER C63, and for the original reason rather than C52's.
+        Closing has its own endpoint with its own rule now; what must not
+        happen is "correct a typo in the address" and "shut the branch"
+        becoming the same request.
 
         This fails the day somebody adds `status` to `DealerDetailsSerializer`,
         which is the intent: it should be a decision, not a field.
@@ -725,7 +747,22 @@ class TestStatusIsNotWritable:
         unit.refresh_from_db()
         assert unit.status == UnitStatus.ACTIVE
 
-    def test_there_is_no_close_endpoint(self, client):
+
+class TestClosingAndReopening:
+    """
+    C63, answering Q21 after nine sessions.
+
+    THE TEST THAT MATTERS IS `test_reopening_does_not_resurrect...`. Everything
+    else here would also pass if closing walked the memberships and switched
+    each one off -- that implementation is the obvious one and it is wrong,
+    because reopening then cannot tell somebody disabled BY the closure from
+    somebody an admin disabled individually last month, and brings the second
+    person back to work. Deriving the refusal instead means reopening restores
+    precisely what was there, and that test is the only thing standing between
+    this design and the other one.
+    """
+
+    def test_an_owner_can_close_a_dealership(self, client):
         result = found()
         unit = BusinessUnit.objects.create(organization=result.organization, name="Whitefield")
         client.force_authenticate(user=result.user)
@@ -734,4 +771,287 @@ class TestStatusIsNotWritable:
             f"/api/v1/orgs/{result.organization.slug}/admin/dealers/{unit.id}/close/"
         )
 
+        assert response.status_code == 200
+        assert response.json()["status"] == UnitStatus.DISABLED
+        unit.refresh_from_db()
+        assert unit.status == UnitStatus.DISABLED
+
+    def test_and_reopen_it(self, client):
+        result = found()
+        unit = BusinessUnit.objects.create(
+            organization=result.organization, name="Whitefield", status=UnitStatus.DISABLED
+        )
+        client.force_authenticate(user=result.user)
+
+        response = client.post(
+            f"/api/v1/orgs/{result.organization.slug}/admin/dealers/{unit.id}/reopen/"
+        )
+
+        assert response.status_code == 200
+        assert response.json()["status"] == UnitStatus.ACTIVE
+        unit.refresh_from_db()
+        assert unit.status == UnitStatus.ACTIVE
+
+    def test_closing_writes_nothing_to_its_people(self, client):
+        """
+        ONE COLUMN ON ONE ROW. Every membership stays exactly as it was --
+        which is what makes reopening symmetrical, and what the next test
+        proves matters.
+        """
+        result = found()
+        unit = BusinessUnit.objects.create(organization=result.organization, name="Whitefield")
+        person = add_person(result.organization, unit=unit, email="sales@acme.test")
+        client.force_authenticate(user=result.user)
+
+        client.post(f"/api/v1/orgs/{result.organization.slug}/admin/dealers/{unit.id}/close/")
+
+        person.refresh_from_db()
+        assert person.status == MembershipStatus.ACTIVE
+        assert person.unit_id == unit.id
+
+    def test_reopening_does_not_resurrect_somebody_disabled_separately(self, client):
+        """
+        THE ONE THAT PINS THE DESIGN.
+
+        Two people at a branch: one working, one an admin switched off last
+        month. Close the branch, reopen it. The first must be back; the second
+        must still be off -- and the implementation that walks memberships on
+        close cannot tell them apart on the way back, so it returns both.
+        """
+        result = found()
+        unit = BusinessUnit.objects.create(organization=result.organization, name="Whitefield")
+        working = add_person(result.organization, unit=unit, email="working@acme.test")
+        switched_off = add_person(
+            result.organization,
+            unit=unit,
+            email="off@acme.test",
+            standing=MembershipStatus.DISABLED,
+        )
+        client.force_authenticate(user=result.user)
+        base = f"/api/v1/orgs/{result.organization.slug}/admin/dealers/{unit.id}"
+
+        client.post(f"{base}/close/")
+        client.post(f"{base}/reopen/")
+
+        working.refresh_from_db()
+        switched_off.refresh_from_db()
+        assert working.status == MembershipStatus.ACTIVE
+        assert switched_off.status == MembershipStatus.DISABLED
+
+    def test_closing_a_closed_dealership_is_a_conflict(self, client):
+        result = found()
+        unit = BusinessUnit.objects.create(
+            organization=result.organization, name="Whitefield", status=UnitStatus.DISABLED
+        )
+        client.force_authenticate(user=result.user)
+
+        response = client.post(
+            f"/api/v1/orgs/{result.organization.slug}/admin/dealers/{unit.id}/close/"
+        )
+
+        assert response.status_code == 409
+        assert response.json()["code"] == "dealer_already_closed"
+
+    def test_reopening_an_open_dealership_is_a_conflict(self, client):
+        result = found()
+        unit = BusinessUnit.objects.create(organization=result.organization, name="Whitefield")
+        client.force_authenticate(user=result.user)
+
+        response = client.post(
+            f"/api/v1/orgs/{result.organization.slug}/admin/dealers/{unit.id}/reopen/"
+        )
+
+        assert response.status_code == 409
+        assert response.json()["code"] == "dealer_already_open"
+
+    def test_an_unrecognised_action_is_a_404(self, client):
+        """
+        A bare `else` would make every typo in this URL mean "close", and
+        closing a branch by misspelling a word is not a mistake worth allowing.
+        """
+        result = found()
+        unit = BusinessUnit.objects.create(organization=result.organization, name="Whitefield")
+        client.force_authenticate(user=result.user)
+
+        response = client.post(
+            f"/api/v1/orgs/{result.organization.slug}/admin/dealers/{unit.id}/clsoe/"
+        )
+
         assert response.status_code == 404
+        unit.refresh_from_db()
+        assert unit.status == UnitStatus.ACTIVE
+
+    def test_another_organizations_dealership_cannot_be_closed(self, client):
+        mine = found()
+        theirs = found(name="Northway", email="owner@northway.test", code="CODE-N")
+        unit = BusinessUnit.objects.create(organization=theirs.organization, name="Theirs")
+        client.force_authenticate(user=mine.user)
+
+        response = client.post(
+            f"/api/v1/orgs/{mine.organization.slug}/admin/dealers/{unit.id}/close/"
+        )
+
+        assert response.status_code == 404
+        unit.refresh_from_db()
+        assert unit.status == UnitStatus.ACTIVE
+
+    def test_a_dealer_admin_cannot_close_their_own_dealership(self, client):
+        """
+        403, NOT 404 -- they may be here, and the answer to this action is
+        still no. Being able to shut your own branch is being able to lock out
+        a colleague, and dealerships are managed by the ORGANISATION (C3, C23).
+        """
+        result = found()
+        unit = BusinessUnit.objects.create(organization=result.organization, name="Whitefield")
+        admin = add_dealer_admin(result.organization, unit)
+        client.force_authenticate(user=admin)
+
+        response = client.post(
+            f"/api/v1/orgs/{result.organization.slug}/admin/dealers/{unit.id}/close/"
+        )
+
+        assert response.status_code == 403
+        unit.refresh_from_db()
+        assert unit.status == UnitStatus.ACTIVE
+
+    def test_details_stay_editable_while_closed(self, client):
+        """
+        C63: closing is about access and operations, not about freezing the
+        record. A typo in a closed branch's name should not need reopening to
+        fix, and its GSTIN can still be added.
+        """
+        result = found()
+        unit = BusinessUnit.objects.create(
+            organization=result.organization, name="Whitefield", status=UnitStatus.DISABLED
+        )
+        client.force_authenticate(user=result.user)
+
+        response = client.put(
+            DETAIL_URL.format(slug=result.organization.slug, id=unit.id),
+            details(name="Whitefield Corrected"),
+            format="json",
+        )
+
+        assert response.status_code == 200
+        unit.refresh_from_db()
+        assert unit.name == "Whitefield Corrected"
+        # And it is still closed: editing details is not a way to reopen.
+        assert unit.status == UnitStatus.DISABLED
+
+
+class TestAClosedDealershipsPeopleAreLockedOut:
+    """
+    C63: "none of its users should access the software".
+
+    ENFORCED IN `OrgScopedAPIView`, so it covers every endpoint under
+    `/orgs/<slug>/` at once -- including ones written later by somebody who has
+    never read C63. A rule applied per endpoint is a rule somebody forgets on
+    the one endpoint that mattered.
+    """
+
+    def test_a_dealer_admin_is_refused_once_their_dealership_closes(self, client):
+        result = found()
+        unit = BusinessUnit.objects.create(organization=result.organization, name="Whitefield")
+        admin = add_dealer_admin(result.organization, unit)
+        client.force_authenticate(user=admin)
+        url = LIST_URL.format(slug=result.organization.slug)
+
+        # Before: they can reach the product (they are refused the dealer list
+        # for a capability reason, which is a different refusal entirely).
+        assert client.get(url).status_code == 403
+
+        unit.status = UnitStatus.DISABLED
+        unit.save(update_fields=["status"])
+
+        response = client.get(url)
+
+        assert response.status_code == 403
+        assert response.json()["code"] == "unit_closed"
+
+    def test_the_refusal_is_403_and_not_404(self, client):
+        """
+        THE OPPOSITE OF EVERY OTHER SCOPE REFUSAL HERE, and the difference is
+        who is asking. 404 hides a record from somebody who should not know it
+        exists; this person works here and watched the branch close. A 404
+        would produce the screen C58 removed -- correct password, and a message
+        saying their access was removed when it was not.
+        """
+        result = found()
+        unit = BusinessUnit.objects.create(
+            organization=result.organization, name="Whitefield", status=UnitStatus.DISABLED
+        )
+        person = add_person(result.organization, unit=unit, email="sales@acme.test")
+        client.force_authenticate(user=person.user)
+
+        response = client.get(LIST_URL.format(slug=result.organization.slug))
+
+        assert response.status_code == 403
+        assert response.json()["code"] == "unit_closed"
+
+    def test_organisation_level_people_are_untouched(self, client):
+        """
+        THE OTHER HALF OF C63. Org-level people keep reading a closed
+        dealership's records -- that is the whole reason closing is not
+        deleting -- and `unit_id is None` is the entire test for it.
+        """
+        result = found()
+        BusinessUnit.objects.create(
+            organization=result.organization, name="Whitefield", status=UnitStatus.DISABLED
+        )
+        client.force_authenticate(user=result.user)
+
+        response = client.get(LIST_URL.format(slug=result.organization.slug))
+
+        assert response.status_code == 200
+        assert [d["name"] for d in response.json()] == ["Whitefield"]
+
+    def test_an_endpoint_needing_no_permission_refuses_them_too(self, client):
+        """
+        THE ONLY TEST HERE THAT ISOLATES THE BASE-VIEW GUARD, and it exists
+        because a revert showed the others do not.
+
+        `permissions_for()` runs through `_membership_data()`, so a closed
+        dealership already empties it and most endpoints answer 403
+        `not_permitted` whether or not `OrgScopedAPIView` checks anything. The
+        provisioning poll declares `required_permissions = []` -- membership
+        alone is enough -- so the permission layer has nothing to say about it,
+        and only the guard refuses.
+
+        Remove the guard and this is the one that fails.
+        """
+        result = found()
+        unit = BusinessUnit.objects.create(
+            organization=result.organization, name="Whitefield", status=UnitStatus.DISABLED
+        )
+        person = add_person(result.organization, unit=unit, email="sales@acme.test")
+        client.force_authenticate(user=person.user)
+
+        response = client.get(f"/api/v1/orgs/{result.organization.slug}/provisioning/")
+
+        assert response.status_code == 403
+        assert response.json()["code"] == "unit_closed"
+
+    def test_access_comes_back_when_the_dealership_reopens(self, client):
+        """
+        Nothing is restored, because nothing was taken away -- the refusal is
+        computed from the dealership's status on every request.
+
+        PASSES THROUGH EITHER MECHANISM, which a revert confirmed: with the
+        guard removed the permission layer refuses this too. It is here as a
+        behaviour test of the round trip, not as the guard's own test -- that
+        is the one above.
+        """
+        result = found()
+        unit = BusinessUnit.objects.create(
+            organization=result.organization, name="Whitefield", status=UnitStatus.DISABLED
+        )
+        admin = add_dealer_admin(result.organization, unit)
+        client.force_authenticate(user=admin)
+        url = USERS_URL.format(slug=result.organization.slug)
+
+        assert client.get(url).status_code == 403
+
+        unit.status = UnitStatus.ACTIVE
+        unit.save(update_fields=["status"])
+
+        assert client.get(url).status_code == 200

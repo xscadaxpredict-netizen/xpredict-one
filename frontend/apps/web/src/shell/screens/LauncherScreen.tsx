@@ -43,7 +43,34 @@ export function LauncherScreen() {
         </p>
       </div>
 
-      {!membership.is_ready ? (
+      {membership.unit_closed ? (
+        /*
+         * THEIR DEALERSHIP HAS BEEN CLOSED (C63, answering Q21).
+         *
+         * FIRST, BEFORE THE READINESS CHECK, because it is the more specific
+         * answer: an organisation whose workspace is fine and whose branch has
+         * shut should say so, not say it is still being set up.
+         *
+         * AND BEFORE THE TILES, not instead of enabling them. Every app comes
+         * back inaccessible, so `visibleApps` would render whatever the
+         * organisation is subscribed to as DISABLED tiles — correct by C16 and
+         * useless here, because a greyed-out tile invites clicking and explains
+         * nothing. The person did not lose access to DMS; their branch closed.
+         *
+         * THIS IS THE SCREEN C58 BUILT THE OTHER HALF OF. Somebody removed from
+         * their only organisation signs in with zero memberships and is told
+         * so. This person has a membership and cannot use it, and before C63
+         * there was nothing to tell them apart — the membership would simply
+         * have been dropped, and they would have been shown a sentence saying
+         * their access was removed, which is not what happened.
+         */
+        <p className={styles.empty} aria-live="polite">
+          <strong>{membership.unit_name}</strong> has been closed, so you cannot open
+          anything in <strong>{membership.org_name}</strong> at the moment. Nothing has
+          been deleted and your access returns if the dealership reopens — contact an
+          administrator of {membership.org_name} if you think this is a mistake.
+        </p>
+      ) : !membership.is_ready ? (
         /*
          * THE WORKSPACE IS NOT THERE YET (C50). Each organisation gets its own
          * database, created by a task after signup commits — so for a few
