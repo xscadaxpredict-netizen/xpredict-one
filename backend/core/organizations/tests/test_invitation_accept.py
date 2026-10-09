@@ -483,7 +483,7 @@ class TestALinkIsOneUse:
 class TestTheWorldMayHaveMovedOn:
     def test_an_app_the_organisation_no_longer_pays_for_refuses_the_accept(self, client):
         """
-        An invitation can sit for a fortnight, so the rules are re-checked
+        An invitation can sit for a week, so the rules are re-checked
         rather than trusted from invite time (C55: a grant needs a live
         subscription).
 
