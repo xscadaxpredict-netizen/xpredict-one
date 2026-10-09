@@ -204,6 +204,90 @@ describe("the PAN fills itself in from the GSTIN", () => {
     });
   });
 
+  it("clears the PAN when the GSTIN is cleared", async () => {
+    /*
+     * REPORTED BY THE OWNER. The PAN belongs to the GSTIN it came from, so a
+     * GSTIN that is no longer there must not leave its PAN sitting in the
+     * field -- the next person to look at the form sees an answered field
+     * under an empty one and has no way to know the two disagree.
+     */
+    const dialog = await openAddDealer();
+
+    fireEvent.change(gstinField(dialog), { target: { value: GSTIN } });
+    await waitFor(() => {
+      expect(panField(dialog).value).toBe(GSTIN_PAN);
+    });
+
+    fireEvent.change(gstinField(dialog), { target: { value: "" } });
+
+    await waitFor(() => {
+      expect(panField(dialog).value).toBe("");
+    });
+  });
+
+  it("clears the PAN while the GSTIN is being retyped", async () => {
+    /*
+     * ALSO REPORTED, and the same fault seen from the other side: somebody
+     * replacing a GSTIN deletes it first, and every intermediate value is
+     * invalid. The PAN must not hold the old one during that.
+     */
+    const dialog = await openAddDealer();
+
+    fireEvent.change(gstinField(dialog), { target: { value: GSTIN } });
+    await waitFor(() => {
+      expect(panField(dialog).value).toBe(GSTIN_PAN);
+    });
+
+    fireEvent.change(gstinField(dialog), { target: { value: "29AAGCB" } });
+
+    await waitFor(() => {
+      expect(panField(dialog).value).toBe("");
+    });
+  });
+
+  it("follows a GSTIN retyped character by character, not replaced at once", async () => {
+    /*
+     * HOW A PERSON ACTUALLY EDITS A FIELD, which is what the first version of
+     * "follows a corrected GSTIN" above did not do -- it fired one change
+     * event carrying the whole new value, and a wholesale replacement is not
+     * how anybody types.
+     */
+    const dialog = await openAddDealer();
+
+    fireEvent.change(gstinField(dialog), { target: { value: GSTIN } });
+    await waitFor(() => {
+      expect(panField(dialog).value).toBe(GSTIN_PAN);
+    });
+
+    fireEvent.change(gstinField(dialog), { target: { value: "" } });
+    for (let i = 1; i <= OTHER_GSTIN.length; i += 1) {
+      fireEvent.change(gstinField(dialog), { target: { value: OTHER_GSTIN.slice(0, i) } });
+    }
+
+    await waitFor(() => {
+      expect(panField(dialog).value).toBe(OTHER_GSTIN_PAN);
+    });
+  });
+
+  it("clears the PAN when the GSTIN becomes invalid", async () => {
+    /*
+     * A changed check digit is still fifteen characters, so the field looks
+     * complete. The PAN it derived from is no longer supported by it.
+     */
+    const dialog = await openAddDealer();
+
+    fireEvent.change(gstinField(dialog), { target: { value: GSTIN } });
+    await waitFor(() => {
+      expect(panField(dialog).value).toBe(GSTIN_PAN);
+    });
+
+    fireEvent.change(gstinField(dialog), { target: { value: "33AAPFU0939F1ZX" } });
+
+    await waitFor(() => {
+      expect(panField(dialog).value).toBe("");
+    });
+  });
+
   it("stops following it once somebody edits the PAN by hand", async () => {
     /*
      * WITHOUT THIS THE FIELD CANNOT BE CORRECTED AT ALL -- every keystroke in
@@ -237,6 +321,64 @@ describe("the PAN fills itself in from the GSTIN", () => {
 
     await waitFor(() => {
       expect(dialog).toHaveTextContent(/Edited by hand/i);
+    });
+  });
+});
+
+describe("a dealership whose PAN was deliberately overridden", () => {
+  /*
+   * THE CASE THE FIX COULD HAVE BROKEN, and the reason `panOverridden` is
+   * seeded from the incoming values rather than starting false.
+   *
+   * The PAN follows the GSTIN whenever it is not overridden — so an edit
+   * dialog opening with a stored PAN that is NOT its GSTIN's would have had it
+   * silently corrected on mount, and thrown the override away on the next
+   * save. A GSTIN issued against a predecessor entity's PAN is the whole
+   * reason the field is editable, so this is not a hypothetical.
+   */
+  async function openEdit(overrides: Partial<dealersApi.Dealer>) {
+    mockFetchDealers.mockResolvedValue([dealer({ id: "unit-1", ...overrides })]);
+    renderRoute({ path: "/acme-motors/admin/dealers/unit-1", children: dealerRoutes });
+    const panel = await screen.findByRole("complementary", { name: /Guindy/ });
+    fireEvent.click(within(panel).getByRole("button", { name: "Edit" }));
+    return screen.findByRole("dialog");
+  }
+
+  it("keeps the stored PAN rather than re-deriving over it", async () => {
+    const dialog = await openEdit({ gstin: GSTIN, pan: "ZZZPK1234Q" });
+
+    expect(panField(dialog).value).toBe("ZZZPK1234Q");
+    // And it stays put: the effect has had every chance to run by now.
+    await waitFor(() => {
+      expect(gstinField(dialog).value).toBe(GSTIN);
+    });
+    expect(panField(dialog).value).toBe("ZZZPK1234Q");
+  });
+
+  it("says it was edited by hand", async () => {
+    const dialog = await openEdit({ gstin: GSTIN, pan: "ZZZPK1234Q" });
+
+    expect(dialog).toHaveTextContent(/Edited by hand/i);
+  });
+
+  it("does not claim an ordinary derived PAN was edited by hand", async () => {
+    const dialog = await openEdit({ gstin: GSTIN, pan: GSTIN_PAN });
+
+    expect(dialog).toHaveTextContent(/Taken from the GSTIN/i);
+  });
+
+  it("follows the GSTIN again once the override is cleared and left empty", async () => {
+    /*
+     * WHAT THE HINT PROMISES. Checked on blur rather than on change, so
+     * clearing the box in order to retype does not refill it under the cursor.
+     */
+    const dialog = await openEdit({ gstin: GSTIN, pan: "ZZZPK1234Q" });
+
+    fireEvent.change(panField(dialog), { target: { value: "" } });
+    fireEvent.blur(panField(dialog));
+
+    await waitFor(() => {
+      expect(panField(dialog).value).toBe(GSTIN_PAN);
     });
   });
 });

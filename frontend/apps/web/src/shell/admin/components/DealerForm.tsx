@@ -15,7 +15,7 @@
  * announces it, and Zod produces what the person reads.
  */
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import * as Dialog from "@radix-ui/react-dialog";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm } from "react-hook-form";
@@ -189,7 +189,7 @@ export function DealerForm({
     handleSubmit,
     watch,
     setValue,
-    formState: { errors, dirtyFields },
+    formState: { errors },
   } = useForm<DealerFields>({
     resolver: zodResolver(dealerSchema),
     mode: "onSubmit",
@@ -198,40 +198,63 @@ export function DealerForm({
   });
 
   /*
-   * THE PAN FILLS ITSELF IN FROM THE GSTIN, UNTIL SOMEBODY EDITS IT.
+   * THE PAN MIRRORS THE GSTIN, UNTIL SOMEBODY TYPES IN THE PAN BOX.
    *
    * Characters 3-12 of a GSTIN are the holder's PAN, so asking for both is
-   * asking the same question twice. `watch` re-renders this component whenever
-   * the GSTIN field changes, and the effect below writes the derived PAN into
-   * the other field.
+   * asking the same question twice. The PAN field therefore shows whatever the
+   * GSTIN implies — including NOTHING, when the GSTIN is empty or not yet
+   * valid. A PAN left behind by a GSTIN that is no longer there is an answered
+   * field under an empty one, and nothing on screen says the two disagree.
    *
-   * `dirtyFields.pan` IS THE WHOLE TRICK. React Hook Form marks a field dirty
-   * once its value differs from the default it was given — so it tells us
-   * whether this person has touched the PAN by hand. Until they have, the
-   * field follows the GSTIN; the moment they type in it, we stop overwriting
-   * what they wrote. Without that check, correcting the PAN would be
-   * impossible: every keystroke in it would be undone by the next render.
+   * `panOverridden` IS TRACKED EXPLICITLY, and the first version of this got it
+   * wrong in a way worth recording. It used React Hook Form's
+   * `dirtyFields.pan`, which sounds like "the person edited this" and actually
+   * means "this value differs from the default it was given". Writing the
+   * derived PAN makes it differ from the default — so after the first
+   * derivation the library eventually marked the field dirty on its own, the
+   * code concluded the person had taken it over, and the PAN never followed the
+   * GSTIN again. Both of the owner's reports were that one flag:
    *
-   * `shouldDirty: false` keeps our own write from counting as the person
-   * editing it, which would latch the derivation off after the first GSTIN
-   * character and leave the PAN stuck on a half-typed value.
+   *   - change the GSTIN and the PAN does not change
+   *   - clear the GSTIN and the PAN stays behind (also the empty-derivation
+   *     branch below, which used to return early rather than clear)
+   *
+   * The signal now comes from the only place that actually knows: the PAN
+   * input's own `onChange`. A person typing there is a person taking it over.
+   *
+   * HANDING IT BACK is leaving the box empty and moving on — which is what the
+   * hint promises and what the backend already does with a blank PAN. It is
+   * checked on BLUR rather than on change, so clearing the field in order to
+   * retype does not refill it under the cursor mid-edit.
    */
   const gstin = watch("gstin");
-  const panWasEdited = dirtyFields.pan ?? false;
+  const pan = watch("pan");
   const derivedPan = extractPan(normaliseIdentifier(gstin ?? ""));
 
-  // A ref, not state: we only need to know whether the value we last wrote is
-  // still the one in the field, and storing that in state would re-render.
-  const lastDerived = useRef<string | null>(null);
+  /*
+   * STARTS TRUE FOR A DEALERSHIP WHOSE STORED PAN IS NOT ITS GSTIN'S. Opening
+   * the edit dialog must not quietly re-derive over a deliberate override —
+   * the "GSTIN issued against a predecessor entity's PAN" case is the whole
+   * reason the field is editable, and silently correcting it on open would
+   * throw it away on the next save.
+   */
+  const [panOverridden, setPanOverridden] = useState(
+    () =>
+      defaultValues.pan !== "" &&
+      defaultValues.pan !== extractPan(normaliseIdentifier(defaultValues.gstin)),
+  );
 
   useEffect(() => {
-    if (panWasEdited || derivedPan === "" || derivedPan === lastDerived.current) {
+    if (panOverridden || (pan ?? "") === derivedPan) {
       return;
     }
 
-    lastDerived.current = derivedPan;
     setValue("pan", derivedPan, { shouldDirty: false, shouldValidate: false });
-  }, [derivedPan, panWasEdited, setValue]);
+  }, [derivedPan, pan, panOverridden, setValue]);
+
+  // `register` hands back its own `onChange`/`onBlur`; both are called after
+  // ours so the library still sees every event it needs.
+  const panField = register("pan");
 
   async function submit(values: DealerFields) {
     setFormError(null);
@@ -309,12 +332,29 @@ export function DealerForm({
                 assumes is locked does not get corrected when it is wrong.
               */
               hint={
-                panWasEdited
+                panOverridden
                   ? "Edited by hand. Clear it to go back to the one in the GSTIN."
                   : "Taken from the GSTIN. Edit it if this dealership's PAN differs."
               }
               error={errors.pan?.message}
-              {...register("pan")}
+              {...panField}
+              onChange={(event) => {
+                // Typing here is the person taking the field over. This is the
+                // only signal that means that and nothing else.
+                setPanOverridden(true);
+                // `void`: React Hook Form's handlers return a promise nobody
+                // awaits, and returning it from a JSX attribute is the misuse
+                // `no-misused-promises` exists to catch.
+                void panField.onChange(event);
+              }}
+              onBlur={(event) => {
+                // Left empty: hand it back to the GSTIN, which is what the hint
+                // above promises and what the backend does with a blank PAN.
+                if (event.target.value.trim() === "") {
+                  setPanOverridden(false);
+                }
+                void panField.onBlur(event);
+              }}
             />
           </div>
         </fieldset>
