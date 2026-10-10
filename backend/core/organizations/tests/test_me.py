@@ -30,6 +30,7 @@ from core.organizations.models import (
     MembershipRole,
     MembershipStatus,
     Organization,
+    UnitStatus,
 )
 from core.organizations.selectors import me, resolve_allowed_units
 from core.organizations.services import sign_up
@@ -424,6 +425,111 @@ class TestOrganizationIsolation:
         assert app_of(payload, "acme-motors", AppCode.DMS).accessible is True
         assert app_of(payload, "northway-auto-group", AppCode.DMS).accessible is False
         assert app_of(payload, "northway-auto-group", AppCode.ADMIN).accessible is False
+
+
+class TestAClosedDealership:
+    """
+    C63. The membership is STILL RETURNED, with everything shut.
+
+    THE TEMPTING IMPLEMENTATION IS TO DROP IT, and it produces exactly the
+    screen C58 was written to remove: zero memberships, and a sign-in page
+    telling somebody their access was removed when they are perfectly
+    entitled and their branch simply closed. So it comes back marked, with
+    every app inaccessible -- there is nothing to open, and the shell can say
+    why.
+    """
+
+    def test_the_membership_is_still_returned(self):
+        result = found()
+        unit = BusinessUnit.objects.create(
+            organization=result.organization, name="Whitefield", status=UnitStatus.DISABLED
+        )
+        user, _ = add_dealer_admin(result.organization, unit)
+
+        memberships = me(user).memberships
+
+        assert len(memberships) == 1
+        assert memberships[0].unit_name == "Whitefield"
+
+    def test_it_is_marked_closed(self):
+        result = found()
+        unit = BusinessUnit.objects.create(
+            organization=result.organization, name="Whitefield", status=UnitStatus.DISABLED
+        )
+        user, _ = add_dealer_admin(result.organization, unit)
+
+        assert me(user).memberships[0].unit_closed is True
+
+    def test_nothing_is_accessible_including_administration(self):
+        """
+        ADMINISTRATION IS THE ONE THAT WOULD SLIP THROUGH. A dealer admin
+        reaches it by holding `admin.person.*` through the DMS System
+        administrator role (C40), not through a subscription -- so a rule
+        written in terms of subscriptions would leave their Administration
+        tile clickable, and it would lead straight to a 403.
+        """
+        result = found()
+        unit = BusinessUnit.objects.create(
+            organization=result.organization, name="Whitefield", status=UnitStatus.DISABLED
+        )
+        user, _ = add_dealer_admin(result.organization, unit)
+
+        membership = me(user).memberships[0]
+
+        assert [app.key for app in membership.apps if app.accessible] == []
+        assert app_of(me(user), result.organization.slug, AppCode.ADMIN).accessible is False
+        assert app_of(me(user), result.organization.slug, AppCode.DMS).accessible is False
+
+    def test_it_reports_no_modules_or_permissions(self):
+        """
+        An app they cannot open says nothing about itself (C22) -- the same
+        rule as a lapsed subscription one line over. Returning the modules
+        would tell the browser what they would have been able to do.
+        """
+        result = found()
+        unit = BusinessUnit.objects.create(
+            organization=result.organization, name="Whitefield", status=UnitStatus.DISABLED
+        )
+        user, _ = add_dealer_admin(result.organization, unit)
+
+        for app in me(user).memberships[0].apps:
+            assert app.modules == []
+            assert app.permissions == []
+
+    def test_an_organisation_wide_person_is_never_marked_closed(self):
+        """
+        `unit_closed` is about a dealership, and they have none. The owner of
+        an organisation whose every branch is shut still runs the place.
+        """
+        result = found()
+        BusinessUnit.objects.create(
+            organization=result.organization, name="Whitefield", status=UnitStatus.DISABLED
+        )
+
+        membership = me(result.user).memberships[0]
+
+        assert membership.unit_closed is False
+        assert app_of(me(result.user), result.organization.slug, AppCode.ADMIN).accessible is True
+
+    def test_reopening_restores_everything(self):
+        """
+        Nothing to restore: the flag is computed per request, so the moment
+        the dealership is open again the payload is what it always was.
+        """
+        result = found()
+        unit = BusinessUnit.objects.create(
+            organization=result.organization, name="Whitefield", status=UnitStatus.DISABLED
+        )
+        user, _ = add_dealer_admin(result.organization, unit)
+
+        assert me(user).memberships[0].unit_closed is True
+
+        unit.status = UnitStatus.ACTIVE
+        unit.save(update_fields=["status"])
+
+        membership = me(user).memberships[0]
+        assert membership.unit_closed is False
+        assert app_of(me(user), result.organization.slug, AppCode.ADMIN).accessible is True
 
 
 class TestMembershipsThatShouldNotAppear:

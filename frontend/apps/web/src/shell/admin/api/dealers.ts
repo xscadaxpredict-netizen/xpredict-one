@@ -16,7 +16,7 @@
  * That is why this screen is in Administration and not in DMS.
  */
 
-import { ApiError, request } from "@xpredict/api-client";
+import { request } from "@xpredict/api-client";
 
 export type DealerStatus = "active" | "disabled";
 
@@ -34,6 +34,26 @@ export interface Dealer {
    * invoice goes to the wrong branch.
    */
   code: string | null;
+
+  /**
+   * GSTIN: the dealership's GST registration number. MANDATORY on every write.
+   *
+   * Fifteen characters, and the last one is a check digit — so a typo is
+   * caught rather than stored, by `gstin.ts` here and by the serializer at the
+   * other end. Empty only on a dealership created before the field existed:
+   * the column is NOT NULL with an empty default, so those rows read as "".
+   */
+  gstin: string;
+
+  /**
+   * PAN: characters 3 to 12 of the GSTIN *are* the PAN, so this is derived and
+   * then editable — a GSTIN issued against a predecessor entity's PAN is a
+   * real situation, and the derivation is a convenience rather than a law.
+   *
+   * The backend fills it in when a write leaves it out, so this is never blank
+   * for a dealership saved with a GSTIN.
+   */
+  pan: string;
 
   /*
    * NO PARENT DEALERSHIP. Dealers are a FLAT LIST, not a tree (C29).
@@ -80,6 +100,14 @@ export interface DealerDetails {
   name: string;
   /** Empty string is sent as null: the field is optional. */
   code: string | null;
+  /** Mandatory, validated including its check digit at both ends. */
+  gstin: string;
+  /**
+   * Sent as the person left it. Blank means "use the one in the GSTIN" and the
+   * backend derives it — which is also how an overridden PAN gets back to its
+   * default, by being cleared.
+   */
+  pan: string;
   contact_person: string;
   email: string;
   phone: string;
@@ -90,104 +118,6 @@ export interface DealerDetails {
 
 export type NewDealer = DealerDetails;
 
-/* ------------------------------------------------------------------------ *
- * THREE OF THE FOUR NOW READ DJANGO. `fetchDealers`, `createDealer` and
- * `updateDealer` are live; `setDealerStatus` is NOT, and that is C52 rather
- * than work left half done.
- *
- * Closing a dealership has no endpoint because **Q21 has never said what
- * closing one DOES** — to its people, to its records, or whether reopening is
- * symmetrical. The backend deliberately refuses to make `status` writable
- * until it does, so that shipping the obvious flag does not answer Q21 by
- * accident. Until then the button goes on moving a value in module memory,
- * and the organisation's real dealerships are unaffected by it.
- *
- * The fake data below therefore survives for `setDealerStatus` alone. Deleting
- * it is a one-line change the moment Q21 is answered and the two endpoints
- * exist.
- * ------------------------------------------------------------------------ */
-const USE_FAKE_DEALER_STATUS = true;
-
-function wait(ms: number) {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
-let fakeDealers: Dealer[] = [
-  {
-    id: "unit-1",
-    name: "Chennai — Guindy",
-    code: "CHN-GUI",
-    contact_person: "Anita Fernandes",
-    email: "guindy@acmemotors.in",
-    phone: "+91 44 2345 6789",
-    city: "Chennai",
-    state: "Tamil Nadu",
-    postal_code: "600032",
-    status: "active",
-    user_count: 2,
-    created_at: "2024-03-12T09:00:00Z",
-  },
-  {
-    id: "unit-2",
-    name: "Bangalore — Whitefield",
-    code: "BLR-WHF",
-    contact_person: "Vikram Nair",
-    email: "whitefield@acmemotors.in",
-    phone: "+91 80 4123 7788",
-    city: "Bengaluru",
-    state: "Karnataka",
-    postal_code: "560066",
-    status: "active",
-    user_count: 1,
-    created_at: "2024-07-01T09:00:00Z",
-  },
-  {
-    // A branch under Chennai, so the tree is visible in the fake rather than
-    // only in the type.
-    id: "unit-3",
-    name: "Coimbatore — Peelamedu",
-    code: "CBE-PLM",
-    contact_person: "Meera Krishnan",
-    email: "peelamedu@acmemotors.in",
-    phone: "+91 422 665 4321",
-    city: "Coimbatore",
-    state: "Tamil Nadu",
-    postal_code: "641004",
-    status: "active",
-    user_count: 1,
-    created_at: "2025-01-20T09:00:00Z",
-  },
-  {
-    id: "unit-4",
-    name: "Madurai — Ring Road",
-    code: null,
-    contact_person: "Sanjay Desai",
-    email: "madurai@acmemotors.in",
-    phone: "+91 452 234 9900",
-    city: "Madurai",
-    state: "Tamil Nadu",
-    postal_code: "625010",
-    status: "disabled",
-    user_count: 0,
-    created_at: "2023-11-05T09:00:00Z",
-  },
-];
-
-function fakeNotFound(): ApiError {
-  return new ApiError({
-    type: "https://api.xpredict.one/errors/not-found",
-    title: "Not found",
-    status: 404,
-    // Cross-scope access answers 404, never 403: a record the caller may not
-    // see has to be indistinguishable from one that never existed.
-    detail: "That dealer does not exist.",
-    code: "not_found",
-    trace_id: "fake-0000",
-  });
-}
-
-/* ---------------------------- real shape -------------------------------- */
-
 export async function fetchDealers(orgSlug: string): Promise<Dealer[]> {
   return request<Dealer[]>(`/api/v1/orgs/${orgSlug}/admin/dealers/`);
 }
@@ -197,24 +127,6 @@ export async function createDealer(orgSlug: string, body: NewDealer): Promise<De
     method: "POST",
     body: JSON.stringify(body),
   });
-}
-
-/**
- * FAKE BACKEND ONLY: resolve a dealership's display name from its id.
- *
- * The real server does this with a join, which is why `unit_name` arrives on a
- * user at all — an id is not a label. The users fake used to carry its own
- * hardcoded map of the four seeded dealerships, so anybody scoped to a
- * dealership CREATED IN THIS SESSION came back with `unit_name: null` and the
- * detail panel said "Organisation — not limited to any one dealer". The id was
- * stored correctly the whole time; only the label was missing, which makes it
- * look exactly like a scoping bug and is a genuinely expensive afternoon.
- *
- * Goes when the backend lands, with the rest of the fakes.
- */
-export function fakeDealerName(unitId: string | null | undefined): string | null {
-  if (!unitId) return null;
-  return fakeDealers.find((dealer) => dealer.id === unitId)?.name ?? null;
 }
 
 export async function updateDealer(
@@ -228,22 +140,25 @@ export async function updateDealer(
   });
 }
 
+/**
+ * Close a dealership, or open it again (C63, answering Q21).
+ *
+ * THE LAST FAKE IN THE PRODUCT WAS HERE, and it is gone. From session 5 until
+ * now these two buttons moved a value in module memory and no real dealership
+ * was affected — deliberately, because C52 would not let the obvious status
+ * flag ship and answer Q21 by accident. Q21 is answered, so the endpoints
+ * exist and this calls them.
+ *
+ * WHAT CLOSING DOES, since the button says none of it: its people lose access
+ * to everything, its records persist and stay readable to organisation-level
+ * people, and reopening restores exactly what was there — nothing is written
+ * to its memberships, so there is nothing to put back. There is no delete.
+ */
 export async function setDealerStatus(
   orgSlug: string,
   dealerId: string,
   status: DealerStatus,
 ): Promise<Dealer> {
-  if (USE_FAKE_DEALER_STATUS) {
-    await wait(500);
-    fakeDealers = fakeDealers.map((dealer) =>
-      dealer.id === dealerId ? { ...dealer, status } : dealer,
-    );
-
-    const updated = fakeDealers.find((dealer) => dealer.id === dealerId);
-    if (!updated) throw fakeNotFound();
-    return updated;
-  }
-
   /*
    * Two endpoints rather than one PATCH with a status field. The backend has
    * a rule per transition, and one endpoint per user action is what lets it

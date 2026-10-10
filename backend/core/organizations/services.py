@@ -37,6 +37,8 @@ from core.organizations.exceptions import (
     ActivationCodeSpentError,
     AdministrationNotGrantableError,
     AppNotSubscribedError,
+    DealerAlreadyClosedError,
+    DealerAlreadyOpenError,
     DealerCodeTakenError,
     DealerNameTakenError,
     DealerScopedAppError,
@@ -52,6 +54,7 @@ from core.organizations.exceptions import (
     RoleScopeMismatchError,
     SignInAddressLockedError,
 )
+from core.organizations.identifiers import extract_pan
 from core.organizations.models import (
     ActivationCode,
     BusinessUnit,
@@ -61,6 +64,7 @@ from core.organizations.models import (
     MembershipRole,
     MembershipStatus,
     Organization,
+    UnitStatus,
 )
 from core.organizations.selectors import can_manage
 from core.organizations.tasks import schedule_provisioning
@@ -367,6 +371,8 @@ def create_dealer(
     organization: Organization,
     name: str,
     code: str | None = None,
+    gstin: str = "",
+    pan: str = "",
     contact_person: str = "",
     email: str = "",
     phone: str = "",
@@ -377,7 +383,7 @@ def create_dealer(
     """
     Add a dealership to this organization.
 
-    KEYWORD-ONLY, because eight of the nine arguments are strings and a
+    KEYWORD-ONLY, because ten of the eleven arguments are strings and a
     positional call that transposed `city` and `state` would be silently wrong
     in a way no type checker could see.
 
@@ -386,6 +392,12 @@ def create_dealer(
     under a race, and this is what makes the refusal say which field was wrong
     instead of surfacing as a 500 (C9 -- a 5xx body carries no detail, so an
     IntegrityError reaching the handler tells the caller nothing at all).
+
+    NO UNIQUENESS CHECK ON THE GSTIN, and that is a decision rather than an
+    omission: one registration legitimately covers several branches in the same
+    state as additional places of business, so refusing a duplicate would
+    refuse real data. The PAN is shared across every branch of one company in
+    any case.
     """
     _assert_dealer_name_free(organization, name)
     _assert_dealer_code_free(organization, code)
@@ -398,6 +410,12 @@ def create_dealer(
         # duplicate, so storing "" would let the first dealership without a
         # code be created and refuse the second.
         code=code or None,
+        gstin=gstin,
+        # DERIVED HERE, not in the browser. Characters 3-12 of a GSTIN are the
+        # holder's PAN, so a caller who sends one is overriding a default
+        # rather than supplying a fact we did not have -- and the default has
+        # to exist somewhere both a form and a shell session reach.
+        pan=pan or extract_pan(gstin),
         contact_person=contact_person,
         email=email,
         phone=phone,
@@ -424,10 +442,77 @@ def update_dealer(*, dealer: BusinessUnit, **fields: str | None) -> BusinessUnit
     if "code" in fields:
         _assert_dealer_code_free(dealer.organization, fields["code"], excluding=dealer.pk)
 
+    # THE SAME DERIVATION AS CREATE, for the same reason. Clearing the PAN on
+    # an edit means "give me the one in the GSTIN back", not "store nothing" --
+    # otherwise the only way to recover the default is to retype it, and a
+    # field that cannot return to its default is a one-way door of the kind
+    # C55 was about.
+    if not fields.get("pan"):
+        gstin = fields.get("gstin", dealer.gstin) or ""
+        fields["pan"] = extract_pan(gstin)
+
     for field, value in fields.items():
         setattr(dealer, field, value or None if field == "code" else value)
 
     dealer.save()
+    return dealer
+
+
+@transaction.atomic
+def close_dealer(*, dealer: BusinessUnit) -> BusinessUnit:
+    """
+    Shut a dealership (C63, answering Q21).
+
+    NOTHING IS WRITTEN TO ITS PEOPLE, AND THAT IS THE WHOLE DESIGN. One column
+    changes on one row; every membership, invitation, grant and record stays
+    exactly as it was.
+
+    The obvious alternative -- walk the memberships and set each to `disabled`
+    -- fails on the way back. Reopening would have to switch them on again, and
+    by then nothing distinguishes somebody switched off BECAUSE the branch
+    closed from somebody an admin deactivated individually last month. The
+    second person would quietly return to work. Deriving the refusal instead
+    (`OrgScopedAPIView` refuses a membership whose unit is closed) means
+    reopening restores precisely what was there, because nothing was disturbed.
+
+    SO THIS IS NOT "DEACTIVATE EVERYONE" WITH A TIDIER NAME. It is a statement
+    about the branch, and the consequences for its people are read from it.
+
+    THE RECORDS STAY, AND STAY VISIBLE (C63). A closed dealership's enquiries,
+    quotations and job cards are history the organisation still reports on, so
+    organisation-level people keep reading them; what stops is writing, and the
+    first DMS model is where that rule has to be honoured. There is no delete,
+    ever -- a dealership with history cannot be removed without taking the
+    history with it.
+    """
+    if dealer.status == UnitStatus.DISABLED:
+        raise DealerAlreadyClosedError
+
+    dealer.status = UnitStatus.DISABLED
+    dealer.save(update_fields=["status"])
+    return dealer
+
+
+@transaction.atomic
+def reopen_dealer(*, dealer: BusinessUnit) -> BusinessUnit:
+    """
+    Open a dealership again.
+
+    SYMMETRICAL, because `close_dealer` touched nothing else (C63). There are
+    no grants to reinstate and no people to switch back on: the moment the
+    status changes, every membership scoped here resolves the way it did
+    before, including the ones an admin had deactivated separately, which stay
+    deactivated.
+
+    That symmetry is the test worth keeping. A future change that makes closing
+    write to anything else has to make reopening undo it, and the pair of tests
+    in `test_dealers_api.py` is what will say so.
+    """
+    if dealer.status == UnitStatus.ACTIVE:
+        raise DealerAlreadyOpenError
+
+    dealer.status = UnitStatus.ACTIVE
+    dealer.save(update_fields=["status"])
     return dealer
 
 
