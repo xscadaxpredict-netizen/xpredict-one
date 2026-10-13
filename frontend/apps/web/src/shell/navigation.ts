@@ -115,57 +115,54 @@ export const APP_CATALOG: AppDefinition[] = [
       {
         label: "Sales",
         items: [
-          { label: "Dashboard", path: "sales/dashboard", icon: "grid", module: null },
-          { label: "Enquiries", path: "sales/enquiries", icon: "tag", module: null },
-          { label: "Confirmed orders", path: "sales/orders", icon: "card", module: null },
-          { label: "Quotations", path: "sales/quotations", icon: "history", module: null },
+          { label: "Dashboard", path: "sales/dashboard", icon: "grid", module: "sales" },
+          { label: "Enquiries", path: "sales/enquiries", icon: "tag", module: "sales" },
+          { label: "Confirmed orders", path: "sales/orders", icon: "card", module: "sales" },
+          { label: "Quotations", path: "sales/quotations", icon: "history", module: "sales" },
         ],
       },
       {
         label: "Configuration",
         items: [
-          { label: "Load Master Data", path: "settings", icon: "wrench", module: null },
+          { label: "Load Master Data", path: "settings", icon: "wrench", module: "tools" },
         ],
       },
       {
         label: "Site Services",
         items: [
-          { label: "Dashboard", path: "site-services/dashboard", icon: "grid", module: null },
-          { label: "AMC", path: "site-services/amc", icon: "tag", module: null },
-          { label: "Scheduled Services", path: "site-services/scheduling", icon: "history", module: null },
-          { label: "Service Reports", path: "site-services/reports", icon: "card", module: null },
-          { label: "Water Reports", path: "site-services/water", icon: "wrench", module: null },
-          { label: "Complaint Box", path: "site-services/complaints", icon: "headset", module: null },
+          { label: "Dashboard", path: "site-services/dashboard", icon: "grid", module: "service" },
+          { label: "AMC", path: "site-services/amc", icon: "tag", module: "service" },
+          { label: "Scheduled Services", path: "site-services/scheduling", icon: "history", module: "service" },
+          { label: "Service Reports", path: "site-services/reports", icon: "card", module: "service" },
+          { label: "Water Reports", path: "site-services/water", icon: "wrench", module: "service" },
+          { label: "Complaint Box", path: "site-services/complaints", icon: "headset", module: "service" },
         ],
       },
 
       {
         label: "Installation & Tech Support",
         items: [
-          { label: "User Manuals", path: "tech-support/manuals", icon: "headset", module: null },
-          { label: "Machine Videos", path: "tech-support/videos", icon: "headset", module: null },
-          { label: "Request for Call", path: "tech-support/calls", icon: "headset", module: null },
-          { label: "Timer Calculation", path: "tech-support/timer-calculation", icon: "wrench", module: null },
+          { label: "User Manuals", path: "tech-support/manuals", icon: "headset", module: "tech-support" },
+          { label: "Machine Videos", path: "tech-support/videos", icon: "headset", module: "tech-support" },
+          { label: "Request for Call", path: "tech-support/calls", icon: "headset", module: "tech-support" },
+          { label: "Timer Calculation", path: "tech-support/timer-calculation", icon: "wrench", module: "tech-support" },
         ],
       },
 
-      // TEMPORARY: `module: null` for E-Commerce and Tools, because the permission
-      // catalogue has no codes for them yet and a real key would hide them from
-      // everyone. Restore "ecommerce" / "tools" when those codes are added.
       {
         label: "E-Commerce",
         items: [
-          { label: "Dashboard", path: "ecommerce/dashboard", icon: "grid", module: null },
-          { label: "Store Catalog", path: "ecommerce/catalog", icon: "store", module: null },
-          { label: "My Orders", path: "ecommerce/orders", icon: "card", module: null },
+          { label: "Dashboard", path: "ecommerce/dashboard", icon: "grid", module: "ecommerce" },
+          { label: "Store Catalog", path: "ecommerce/catalog", icon: "store", module: "ecommerce" },
+          { label: "My Orders", path: "ecommerce/orders", icon: "card", module: "ecommerce" },
         ],
       },
       {
         label: "Tools",
         items: [
-          { label: "Marketing Kit", path: "tools/marketing", icon: "tag", module: null },
-          { label: "Capacity Calculator", path: "tools/calculator", icon: "history", module: null },
-          { label: "Feasibility", path: "tools/feasibility", icon: "wrench", module: null },
+          { label: "Marketing Kit", path: "tools/marketing", icon: "tag", module: "tools" },
+          { label: "Capacity Calculator", path: "tools/calculator", icon: "history", module: "tools" },
+          { label: "Feasibility", path: "tools/feasibility", icon: "wrench", module: "tools" },
         ],
       },
       /*

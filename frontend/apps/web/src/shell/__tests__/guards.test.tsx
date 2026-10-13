@@ -215,7 +215,7 @@ describe("module privilege", () => {
 
     await screen.findByRole("heading", { name: "Sales" });
 
-    expect(screen.getByRole("link", { name: "Sales" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Enquiries" })).toBeInTheDocument();
     expect(screen.queryByRole("link", { name: "Service" })).not.toBeInTheDocument();
     expect(screen.queryByRole("link", { name: "Tech support" })).not.toBeInTheDocument();
   });
