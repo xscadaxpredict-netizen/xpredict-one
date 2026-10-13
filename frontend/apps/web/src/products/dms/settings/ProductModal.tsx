@@ -80,14 +80,12 @@ export function ProductModal({ open, onClose, product }: Props) {
     if (product) {
       updateProduct.mutate({ productId: product.id, body: payload }, {
         onSuccess: () => {
-          alert("Product updated successfully!");
           onClose();
         }
       });
     } else {
       createProduct.mutate(payload, {
         onSuccess: () => {
-          alert("Product added successfully!");
           onClose();
         }
       });

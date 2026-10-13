@@ -147,10 +147,8 @@ export function ServiceReportsScreen() {
         formData.append("client_approval_status", "PENDING");
         formData.append("approval_remarks", "");
         await updateReportMutation.mutateAsync({ reportId: editingReport.id, payload: formData });
-        showAlert("Success", "Service Report Updated!");
       } else {
         await createReportMutation.mutateAsync(formData);
-        showAlert("Success", "Service Report Logged!");
       }
       setIsModalOpen(false);
     } catch (e: any) {

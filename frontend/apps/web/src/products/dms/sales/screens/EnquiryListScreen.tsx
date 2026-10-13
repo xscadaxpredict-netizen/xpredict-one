@@ -78,7 +78,6 @@ export function EnquiryListScreen() {
   const handleCreateEnquiry = (body: NewEnquiry) => {
     createEnquiry.mutate(body, {
       onSuccess: () => {
-        showAlert("Success", "Enquiry saved successfully!");
         setIsNewEnquiryOpen(false);
       },
     });
@@ -90,7 +89,6 @@ export function EnquiryListScreen() {
       { enquiryId: editingOrder.id, body },
       {
         onSuccess: () => {
-          showAlert("Success", "Enquiry updated successfully!");
           setEditingOrder(null);
         },
       },
@@ -113,7 +111,6 @@ export function EnquiryListScreen() {
       { enquiryId: followupEnquiryId, body },
       {
         onSuccess: () => {
-          showAlert("Success", "Follow-up saved successfully!");
           setFollowupEnquiryId(null);
         },
       },
@@ -126,7 +123,6 @@ export function EnquiryListScreen() {
       { enquiryId: editingFollowup.enquiryId, followupId: editingFollowup.followup.id, body },
       {
         onSuccess: () => {
-          showAlert("Success", "Follow-up updated successfully!");
           setEditingFollowup(null);
         },
       },

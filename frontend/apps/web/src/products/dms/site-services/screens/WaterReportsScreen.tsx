@@ -171,10 +171,8 @@ export function WaterReportsScreen() {
 
       if (editingReport) {
         await updateReportMutation.mutateAsync({ reportId: editingReport.id, formData });
-        showAlert("Success", "Water Report Updated!");
       } else {
         await createReportMutation.mutateAsync(formData);
-        showAlert("Success", "Water Report Logged!");
       }
       setIsModalOpen(false);
     } catch (e: any) {

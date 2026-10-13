@@ -45,14 +45,12 @@ export function BankAccountModal({ open, onClose, bank }: Props) {
     if (bank) {
       updateBank.mutate({ bankId: bank.id, body: formData }, {
         onSuccess: () => {
-          alert("Bank account updated successfully!");
           onClose();
         }
       });
     } else {
       createBank.mutate(formData, {
         onSuccess: () => {
-          alert("Bank account added successfully!");
           onClose();
         }
       });

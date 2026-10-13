@@ -193,7 +193,6 @@ export function QuoteBuilderDialog({
       },
       {
         onSuccess: () => {
-          showAlert("Success", "Quotation saved successfully!");
           onClose();
         },
         onError: (err: any) => showAlert("Error", "Failed to save: " + JSON.stringify(err?.response?.data || err?.message || err)),
@@ -394,8 +393,9 @@ export function QuoteBuilderDialog({
                           type="number"
                           min="1"
                           className={styles.input}
-                          value={item.quantity}
-                          onChange={(e) => handleItemChange(item.id, "quantity", parseInt(e.target.value) || 0)}
+                          value={item.quantity === 0 ? "" : item.quantity}
+                          placeholder="1"
+                          onChange={(e) => handleItemChange(item.id, "quantity", e.target.value === "" ? 0 : parseInt(e.target.value) || 0)}
                         />
                       </td>
                       <td>
@@ -404,8 +404,9 @@ export function QuoteBuilderDialog({
                           type="number"
                           min="0"
                           className={styles.input}
-                          value={item.base_price}
-                          onChange={(e) => handleItemChange(item.id, "base_price", parseFloat(e.target.value) || 0)}
+                          value={item.base_price === 0 ? "" : item.base_price}
+                          placeholder="0"
+                          onChange={(e) => handleItemChange(item.id, "base_price", e.target.value === "" ? 0 : parseFloat(e.target.value) || 0)}
                         />
                       </td>
                       <td>
@@ -414,8 +415,9 @@ export function QuoteBuilderDialog({
                           type="number"
                           min="0"
                           className={styles.input}
-                          value={item.margin}
-                          onChange={(e) => handleItemChange(item.id, "margin", parseFloat(e.target.value) || 0)}
+                          value={item.margin === 0 ? "" : item.margin}
+                          placeholder="0"
+                          onChange={(e) => handleItemChange(item.id, "margin", e.target.value === "" ? 0 : parseFloat(e.target.value) || 0)}
                         />
                       </td>
                       <td>
@@ -425,8 +427,9 @@ export function QuoteBuilderDialog({
                           min="0"
                           max="100"
                           className={styles.input}
-                          value={item.gst_rate}
-                          onChange={(e) => handleItemChange(item.id, "gst_rate", parseFloat(e.target.value) || 0)}
+                          value={item.gst_rate === 0 ? "" : item.gst_rate}
+                          placeholder="0"
+                          onChange={(e) => handleItemChange(item.id, "gst_rate", e.target.value === "" ? 0 : parseFloat(e.target.value) || 0)}
                         />
                       </td>
                       <td style={{ textAlign: "right", fontWeight: 600 }}>

@@ -187,10 +187,8 @@ export function ComplaintsScreen() {
 
       if (editingReport) {
         await updateComplaintMutation.mutateAsync({ complaintId: editingReport.id, payload: formData });
-        showAlert("Success", "Complaint Updated!");
       } else {
         await createComplaintMutation.mutateAsync(formData);
-        showAlert("Success", "Complaint Logged!");
       }
       setIsModalOpen(false);
     } catch (e: any) {

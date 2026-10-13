@@ -56,7 +56,6 @@ export function useTechSupport(orgSlug: string) {
       });
     },
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["calls", orgSlug] }),
-    onError: (err) => alert("Failed to submit request: " + ((err as any)?.message || err)),
   });
 
   const updateCallMutation = useMutation({
@@ -65,13 +64,11 @@ export function useTechSupport(orgSlug: string) {
       body: JSON.stringify(updates),
     }),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["calls", orgSlug] }),
-    onError: (err) => alert("Failed to update: " + err),
   });
 
   const deleteCallMutation = useMutation({
     mutationFn: (id: string) => request(`${basePath}/calls/${id}/`, { method: "DELETE" }),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["calls", orgSlug] }),
-    onError: (err) => alert("Failed to delete: " + err),
   });
 
   return {

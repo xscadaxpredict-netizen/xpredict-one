@@ -120,7 +120,6 @@ export function SchedulingScreen() {
             status: "SCHEDULED",
           },
         });
-        showAlert("Success", "Schedule updated successfully!");
       } else {
         await createScheduleMutation.mutateAsync({
           site_id: scheduleForm.siteId,
@@ -130,7 +129,6 @@ export function SchedulingScreen() {
           notes: scheduleForm.notes,
           status: "SCHEDULED",
         });
-        showAlert("Success", "Schedule created successfully!");
       }
       setIsScheduleModalOpen(false);
     } catch (e: any) {

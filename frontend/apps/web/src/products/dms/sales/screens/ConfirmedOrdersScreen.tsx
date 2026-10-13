@@ -82,7 +82,6 @@ export function ConfirmedOrdersScreen() {
       { enquiryId: followupOrderId, body },
       {
         onSuccess: () => {
-          showAlert("Success", "Follow-up saved successfully!");
           setFollowupOrderId(null);
         },
       },
@@ -95,7 +94,6 @@ export function ConfirmedOrdersScreen() {
       { enquiryId: editingOrder.id, body },
       {
         onSuccess: () => {
-          showAlert("Success", "Order details updated successfully!");
           setEditingOrder(null);
         },
       },

@@ -5,6 +5,7 @@ import { useSites } from "../hooks/useSiteServices";
 import { useConfirmAmcQuote, useAddFollowup, useUpdateFollowup, useDeleteFollowup } from "../../sales/hooks/useEnquiries";
 import type { NewFollowup, Followup } from "../../sales/api/types";
 import { QuoteBuilderDialog } from "../../sales/components/QuoteBuilderDialog";
+import { QuotationPreviewDialog } from "../../sales/components/QuotationPreviewDialog";
 import { FollowupDialog } from "../../sales/components/FollowupDialog";
 import { AmcRow } from "../components/AmcRow";
 import styles from "./AMCScreen.module.css";
@@ -23,6 +24,10 @@ export function AMCScreen() {
   const [isQuoteModalOpen, setIsQuoteModalOpen] = useState(false);
   const [editingEnquiryId, setEditingEnquiryId] = useState("");
   const [editingQuoteId, setEditingQuoteId] = useState("");
+  const [viewingQuote, setViewingQuote] = useState<{
+    enquiry: any;
+    quote: import("../../sales/api/types").Quotation;
+  } | null>(null);
 
   // Follow-up State
   const [isFollowupModalOpen, setIsFollowupModalOpen] = useState(false);
@@ -61,7 +66,6 @@ export function AMCScreen() {
           queryClient.invalidateQueries({ queryKey: ["site-services"] });
           setIsFollowupModalOpen(false);
           setFollowupEnquiryId("");
-          showAlert("Success", "Follow-up added successfully!");
         },
       }
     );
@@ -75,7 +79,6 @@ export function AMCScreen() {
         onSuccess: () => {
           queryClient.invalidateQueries({ queryKey: ["site-services"] });
           setEditingFollowup(null);
-          showAlert("Success", "Follow-up updated successfully!");
         },
       }
     );
@@ -88,7 +91,6 @@ export function AMCScreen() {
       {
         onSuccess: () => {
           queryClient.invalidateQueries({ queryKey: ["site-services"] });
-          showAlert("Success", "Follow-up deleted successfully!");
         },
       }
     );
@@ -98,7 +100,7 @@ export function AMCScreen() {
     if (!(await showConfirm("Confirm Quote", "Are you sure you want to confirm this AMC quote? This will set it as the Active AMC for this site."))) return;
     try {
       await confirmQuoteMutation.mutateAsync({ enquiryId, quoteId });
-      showAlert("Success", "AMC Quote confirmed! Site Service Profile updated.");
+      queryClient.invalidateQueries({ queryKey: ["site-services"] });
       setIsQuoteModalOpen(false);
     } catch (e: any) {
       showAlert("Error", `Failed to confirm quote: ${e.message}`);
@@ -174,6 +176,7 @@ export function AMCScreen() {
                     isExpanded={expandedRowId === site.id}
                     onToggle={() => setExpandedRowId(expandedRowId === site.id ? null : site.id)}
                     onNewQuote={() => handleOpenQuoteModal(site.enquiry_id)}
+                    onViewQuote={(q) => setViewingQuote({ enquiry: site, quote: q })}
                     onEditQuote={(quoteId) => handleOpenQuoteModal(site.enquiry_id, quoteId)}
                     onConfirmQuote={(quoteId) => handleConfirmQuote(site.enquiry_id, quoteId)}
                     onDeleteQuote={(quoteId) => handleDeleteQuote(site.enquiry_id, quoteId)}
@@ -187,6 +190,20 @@ export function AMCScreen() {
           </tbody>
         </table>
       </div>
+
+      {viewingQuote && (
+        <QuotationPreviewDialog
+          open={Boolean(viewingQuote)}
+          onClose={() => setViewingQuote(null)}
+          enquiry={viewingQuote.enquiry}
+          quote={viewingQuote.quote}
+          onEdit={() => {
+            const current = viewingQuote;
+            setViewingQuote(null);
+            handleOpenQuoteModal(current.enquiry.enquiry_id, current.quote.id);
+          }}
+        />
+      )}
 
       {isQuoteModalOpen && (
         <QuoteBuilderDialog

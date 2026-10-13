@@ -22,6 +22,12 @@ import {
   unconfirmOrder,
   deleteEnquiry,
   updateEnquiry,
+  createBank,
+  updateBank,
+  deleteBank,
+  createProductPreset,
+  updateProductPreset,
+  deleteProductPreset,
 } from "../api/enquiries";
 import { salesKeys } from "../api/keys";
 import type { NewEnquiry, NewFollowup, NewQuotation, BankAccount, ProductPreset } from "../api/types";
@@ -168,42 +174,45 @@ export function useUpdateEnquiry() {
 
 export function useCreateBank() {
   return useOrgMutation({
-    mutationFn: (orgSlug, body: Partial<BankAccount>) => import("../api/enquiries").then(m => m.createBank(orgSlug, body)),
+    mutationFn: (orgSlug, body: Partial<BankAccount>) => createBank(orgSlug, body),
     invalidates: [salesKeys.banks()],
   });
 }
 
 export function useUpdateBank() {
   return useOrgMutation({
-    mutationFn: (orgSlug, variables: { bankId: string; body: Partial<BankAccount> }) => import("../api/enquiries").then(m => m.updateBank(orgSlug, variables.bankId, variables.body)),
+    mutationFn: (orgSlug, variables: { bankId: string; body: Partial<BankAccount> }) =>
+      updateBank(orgSlug, variables.bankId, variables.body),
     invalidates: [salesKeys.banks()],
   });
 }
 
 export function useDeleteBank() {
   return useOrgMutation({
-    mutationFn: (orgSlug, bankId: string) => import("../api/enquiries").then(m => m.deleteBank(orgSlug, bankId)),
+    mutationFn: (orgSlug, bankId: string) => deleteBank(orgSlug, bankId),
     invalidates: [salesKeys.banks()],
   });
 }
 
 export function useCreateProductPreset() {
   return useOrgMutation({
-    mutationFn: (orgSlug, body: Partial<ProductPreset> | FormData) => import("../api/enquiries").then(m => m.createProductPreset(orgSlug, body)),
+    mutationFn: (orgSlug, body: Partial<ProductPreset> | FormData) =>
+      createProductPreset(orgSlug, body),
     invalidates: [salesKeys.products()],
   });
 }
 
 export function useUpdateProductPreset() {
   return useOrgMutation({
-    mutationFn: (orgSlug, variables: { productId: string; body: Partial<ProductPreset> | FormData }) => import("../api/enquiries").then(m => m.updateProductPreset(orgSlug, variables.productId, variables.body)),
+    mutationFn: (orgSlug, variables: { productId: string; body: Partial<ProductPreset> | FormData }) =>
+      updateProductPreset(orgSlug, variables.productId, variables.body),
     invalidates: [salesKeys.products()],
   });
 }
 
 export function useDeleteProductPreset() {
   return useOrgMutation({
-    mutationFn: (orgSlug, productId: string) => import("../api/enquiries").then(m => m.deleteProductPreset(orgSlug, productId)),
+    mutationFn: (orgSlug, productId: string) => deleteProductPreset(orgSlug, productId),
     invalidates: [salesKeys.products()],
   });
 }

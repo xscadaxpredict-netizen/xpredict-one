@@ -11,6 +11,7 @@ interface Props {
   isExpanded: boolean;
   onToggle: () => void;
   onNewQuote: () => void;
+  onViewQuote: (quote: Quotation) => void;
   onEditQuote: (quoteId: string) => void;
   onConfirmQuote: (quoteId: string) => void;
   onDeleteQuote: (quoteId: string) => void;
@@ -27,6 +28,7 @@ export function AmcRow({
   isExpanded,
   onToggle,
   onNewQuote,
+  onViewQuote,
   onEditQuote,
   onConfirmQuote,
   onDeleteQuote,
@@ -60,7 +62,7 @@ export function AmcRow({
                   type="button"
                   className={`${styles.iconBtn} ${styles.iconBtnPrimary}`}
                   title="View Quote"
-                  onClick={(e) => { e.stopPropagation(); onEditQuote(latestQuote.id); }}
+                  onClick={(e) => { e.stopPropagation(); onViewQuote(latestQuote); }}
                 >
                   <EyeIcon size={14} />
                 </button>
@@ -302,7 +304,7 @@ export function AmcRow({
                             <button
                               type="button"
                               className={`${styles.iconBtn} ${styles.iconBtnPrimary}`}
-                              onClick={() => onEditQuote(q.id)}
+                              onClick={() => onViewQuote(q)}
                               title="View Quote"
                             >
                               <EyeIcon size={14} />

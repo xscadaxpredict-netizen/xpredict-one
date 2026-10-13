@@ -75,7 +75,6 @@ export function StoreCatalogScreen() {
         site_id: selectedSiteId,
         items: cartItems.map(i => ({ product_id: i.id, quantity: i.quantity }))
       });
-      showAlert("Success", `Order placed successfully!`);
       setCart({});
       setIsConfirmingOrder(false);
     } catch (e: any) {
