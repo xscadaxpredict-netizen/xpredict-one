@@ -98,7 +98,7 @@ export function NewEnquiryDialog({
                 required
                 type="text"
                 className={styles.input}
-                placeholder="e.g. Acme Corp"
+                placeholder="Enter customer / company name"
                 value={form.customer_name}
                 onChange={(e) => update("customer_name", e.target.value)}
               />

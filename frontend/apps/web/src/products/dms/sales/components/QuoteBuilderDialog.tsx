@@ -8,6 +8,7 @@ import { useEffect, useRef, useState } from "react";
 import type { QuotationItem, QuoteType, AmcType } from "../api/types";
 import { useBanks, useProductPresets, useEnquiries, useSaveQuotation } from "../hooks/useEnquiries";
 import { useDialog } from "../../shared/hooks/useDialog";
+import { useShellContext } from "../../../../shell/context";
 import styles from "./QuoteBuilderDialog.module.css";
 
 interface QuoteBuilderDialogProps {
@@ -40,6 +41,7 @@ export function QuoteBuilderDialog({
   const { data: products } = useProductPresets();
   const saveQuote = useSaveQuotation();
   const { showAlert, DialogComponent } = useDialog();
+  const { membership } = useShellContext();
 
   const [selectedEnquiryId, setSelectedEnquiryId] = useState(enquiryId || "");
   const currentEnquiry = enquiries?.find((e) => e.id === selectedEnquiryId);
@@ -88,8 +90,8 @@ export function QuoteBuilderDialog({
         // Defaults for new quote
         setTitle("Quotation for " + (currentEnquiry?.customer_name || ""));
         setQuoteNo(`QT-${new Date().getFullYear()}-${Math.floor(Math.random() * 10000)}`);
-        setFromName("Acme Corp");
-        setFromAddress("123 Industrial Area, Phase 1");
+        setFromName(membership?.org_name || "");
+        setFromAddress("");
         setToName(currentEnquiry?.customer_name || "");
         setToAddress(currentEnquiry?.address || "");
         setItems([{ ...EMPTY_ITEM, id: window.crypto.randomUUID() }]);
@@ -97,7 +99,7 @@ export function QuoteBuilderDialog({
         setTerms("1. 100% Advance Payment\n2. Validity: 30 days");
       }
     }
-  }, [open, existingQuote, currentEnquiry, banks]);
+  }, [open, existingQuote, currentEnquiry, banks, membership]);
 
   useEffect(() => {
     const dialog = dialogRef.current;
