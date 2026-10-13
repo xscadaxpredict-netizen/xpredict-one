@@ -231,7 +231,17 @@ class TestProvisioning:
 
         provision_tenant(str(organization.pk))
 
-        assert tables_in(register_tenant_connection(organization)) == set()
+        tables = tables_in(register_tenant_connection(organization))
+        assert "django_migrations" in tables
+        assert "dms_sales_enquiry" in tables
+        for forbidden in (
+            "accounts_user",
+            "organizations_organization",
+            "permissions_role",
+            "billing_appsubscription",
+            "django_admin_log",
+        ):
+            assert forbidden not in tables, forbidden
 
     def test_running_it_twice_is_safe(self):
         """
