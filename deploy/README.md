@@ -188,11 +188,11 @@ the MySQL password both have committed, public defaults that work silently.
 ## 10. Migrate and collect static
 
 ```bash
-cd /srv/xpredict/backend && sudo -u xpredict ./.venv/bin/python manage.py migrate
+cd /srv/xpredict/backend && sudo -u xpredict ./.venv/bin/python manage.py migrate --settings=config.settings.prod
 ```
 
 ```bash
-cd /srv/xpredict/backend && sudo -u xpredict ./.venv/bin/python manage.py collectstatic --noinput
+cd /srv/xpredict/backend && sudo -u xpredict ./.venv/bin/python manage.py collectstatic --noinput --settings=config.settings.prod
 ```
 
 **`Applying … OK` does not mean tables were created.** Django prints it whether
@@ -208,7 +208,7 @@ you have an empty database that reports success.
 Then confirm the catalogue seeded (C44 — permissions are rows):
 
 ```bash
-cd /srv/xpredict/backend && sudo -u xpredict ./.venv/bin/python manage.py shell -c "from core.permissions.models import Permission, Role; print(Permission.objects.count(), 'permissions,', Role.objects.count(), 'roles')"
+cd /srv/xpredict/backend && sudo -u xpredict ./.venv/bin/python manage.py shell --settings=config.settings.prod -c "from core.permissions.models import Permission, Role; print(Permission.objects.count(), 'permissions,', Role.objects.count(), 'roles')"
 ```
 
 Expect **48 permissions, 9 roles**.
@@ -346,7 +346,7 @@ Mint an activation code — signup is gated by one, single-use, and one code
 founds one organisation (C14):
 
 ```bash
-cd /srv/xpredict/backend && sudo -u xpredict ./.venv/bin/python manage.py mint_activation_codes --label "First production organisation"
+cd /srv/xpredict/backend && sudo -u xpredict ./.venv/bin/python manage.py mint_activation_codes --settings=config.settings.prod --label "First production organisation"
 ```
 
 Then, in a browser on your domain: sign up, and watch the workspace finish
@@ -369,7 +369,7 @@ cd /srv/xpredict && sudo -u xpredict git pull --ff-only
 ```
 
 ```bash
-cd /srv/xpredict/backend && sudo -u xpredict ./.venv/bin/pip install -r requirements.lock.txt && sudo -u xpredict ./.venv/bin/python manage.py migrate && sudo -u xpredict ./.venv/bin/python manage.py collectstatic --noinput
+cd /srv/xpredict/backend && sudo -u xpredict ./.venv/bin/pip install -r requirements.lock.txt && sudo -u xpredict ./.venv/bin/python manage.py migrate --settings=config.settings.prod && sudo -u xpredict ./.venv/bin/python manage.py collectstatic --noinput --settings=config.settings.prod
 ```
 
 ```bash
@@ -380,6 +380,14 @@ sudo systemctl reload xpredict-gunicorn && sudo systemctl restart xpredict-celer
 `restart` on Celery because a worker cannot reload its own code.
 
 Rebuild and re-upload the frontend (step 11) when it changed.
+
+> **EVERY `manage.py` COMMAND ON THIS SERVER NEEDS `--settings=config.settings.prod`.**
+> Without it you get **dev settings on the production box**: `manage.py` runs
+> `os.environ.setdefault("DJANGO_SETTINGS_MODULE", "config.settings.dev")` before
+> any settings module is imported, and `.env` is only read from inside `base.py`
+> — by which time the choice has been made. Putting the variable in `.env` looks
+> like it works and does nothing. Gunicorn and Celery are unaffected: systemd
+> sets a real environment variable before the process starts.
 
 > **`migrate` only touches the control database.** When a tenant app gains its
 > first migration, every provisioned tenant database needs it too — and the
