@@ -255,6 +255,34 @@ Both `active (running)`. If Gunicorn exited immediately, read the reason —
 sudo journalctl -u xpredict-gunicorn -n 40 --no-pager
 ```
 
+First prove the services really loaded `prod.py`. Silence means `dev`, and dev
+on a production box is quiet rather than broken — which is the worst kind:
+
+```bash
+sudo -u xpredict /srv/xpredict/backend/.venv/bin/python -c "
+import os, django
+os.environ['DJANGO_SETTINGS_MODULE'] = 'config.settings.prod'
+django.setup()
+from django.conf import settings
+print('settings :', settings.SETTINGS_MODULE)
+print('debug    :', settings.DEBUG)
+print('hosts    :', settings.ALLOWED_HOSTS)
+print('csrf     :', settings.CSRF_TRUSTED_ORIGINS)
+print('eager    :', settings.CELERY_TASK_ALWAYS_EAGER)
+"
+```
+
+Expect `config.settings.prod`, `False`, your domain in both lists, and
+`eager: False`. If this printed at all, the four required variables are set —
+`prod.py` would have refused to import otherwise.
+
+And confirm systemd is passing it too, rather than relying on the file being
+right:
+
+```bash
+systemctl show xpredict-gunicorn -p Environment && systemctl show xpredict-celery -p Environment
+```
+
 **Now prove the broker round trip**, because nothing has ever exercised it:
 
 ```bash
