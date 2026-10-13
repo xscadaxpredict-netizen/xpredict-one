@@ -1,0 +1,52 @@
+[Unit]
+Description=Xpredict One - Celery worker (tenant provisioning)
+Documentation=https://github.com/xscadaxpredict-netizen/xpredict-one
+After=network.target mysql.service redis-server.service
+Wants=mysql.service redis-server.service
+
+[Service]
+Type=simple
+User=xpredict
+Group=xpredict
+WorkingDirectory=/srv/xpredict/backend
+
+Environment=DJANGO_SETTINGS_MODULE=config.settings.prod
+Environment=PYTHONUNBUFFERED=1
+
+# WHAT THIS WORKER ACTUALLY DOES, so the concurrency below is arguable rather
+# than copied: it provisions tenant databases (C1). Signup fires one task on
+# `transaction.on_commit`; the task runs `CREATE DATABASE` and then `migrate`
+# against the new database. That is seconds of work, a few times a day at
+# most, and it is why two processes is not stingy.
+#
+# `--concurrency=2` also matters on a 2 GiB box: each process is a full Django
+# import, ~150 MB. Four would be 600 MB of worker for a queue that is usually
+# empty.
+ExecStart=/srv/xpredict/backend/.venv/bin/celery \
+    --app config worker \
+    --loglevel INFO \
+    --concurrency 2 \
+    --hostname provisioning@%%h
+
+# SIGTERM then wait: a worker killed mid-provision leaves a half-migrated
+# database behind, which `manage.py reprovision_tenant --force` exists to
+# repair (C50) but which nobody wants to do by hand. 60s is far longer than a
+# provision takes.
+KillSignal=SIGTERM
+TimeoutStopSec=60
+
+Restart=always
+RestartSec=10
+
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/srv/xpredict/backend/media
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+
+[Install]
+WantedBy=multi-user.target

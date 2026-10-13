@@ -1,0 +1,95 @@
+# MySQL 8.0 tuning for Xpredict One on a 2 GiB box.
+#
+#   sudo cp deploy/mysql-xpredict.cnf /etc/mysql/mysql.conf.d/zz-xpredict.cnf
+#   sudo systemctl restart mysql
+#
+# `zz-` so it loads last and wins over the packaged defaults.
+#
+# THE WHOLE POINT OF THIS FILE is that MySQL's out-of-the-box appetite assumes
+# it owns the machine. Here it shares 2 GiB with three Gunicorn workers, two
+# Celery processes, Redis and Nginx, and MySQL is the one whose death takes
+# every tenant's data offline until it restarts.
+
+[mysqld]
+
+# --- Memory -----------------------------------------------------------------
+
+# The single most important number. The default is 128 MB; left alone on a
+# server this is too small and every query goes to disk, while raised to the
+# usual "70% of RAM" it is far too large and the OOM killer picks MySQL.
+#
+# 512 MB leaves room for everything else and still holds the whole control
+# database plus the working set of several tenant databases in memory.
+innodb_buffer_pool_size = 512M
+
+# One instance. The default splits the pool into 8 when it is large enough,
+# which costs overhead and buys nothing at this size.
+innodb_buffer_pool_instances = 1
+
+# Per-connection buffers. These are allocated PER CONNECTION, so the defaults
+# multiply by max_connections into real memory. Modest values here because no
+# query in this application sorts or joins anything large yet.
+sort_buffer_size = 1M
+join_buffer_size = 1M
+read_buffer_size = 256K
+read_rnd_buffer_size = 512K
+
+# --- Connections ------------------------------------------------------------
+
+# CONN_MAX_AGE IS 0 IN `base.py`, deliberately: database-per-tenant means a
+# persistent connection would be held per tenant per worker, so connections
+# would multiply by the number of organisations rather than staying constant
+# (Q27, still open -- there is no PgBouncer equivalent for MySQL in use here).
+#
+# Connections are therefore short-lived, and 100 is generous for 3 Gunicorn
+# workers plus 2 Celery processes. Raising this is not the fix if it is ever
+# exhausted -- something holding connections open is.
+max_connections = 100
+
+# A client that vanished should not hold a connection for 8 hours.
+wait_timeout = 300
+interactive_timeout = 300
+
+# --- Database-per-tenant ----------------------------------------------------
+#
+# THIS IS THE SECTION THAT IS UNUSUAL, and it is unusual because of C1. Every
+# organisation gets its own database with its own tables, so table and file
+# handles grow with the customer count rather than staying fixed.
+#
+# Q1 (expected tenant count) has never been answered, so these are sized for
+# "tens, not thousands". A few hundred organisations on this box would need
+# them raised and would need the box resized anyway.
+table_open_cache = 2000
+open_files_limit = 8192
+
+# --- Durability -------------------------------------------------------------
+
+# Flush on every commit. The default, stated here because the tempting
+# "performance" change is to set it to 2, which trades up to a second of
+# committed transactions for speed. For a system where a lost commit can mean
+# a paid-for organisation with no database row, that trade is not available.
+innodb_flush_log_at_trx_commit = 1
+
+# --- Correctness ------------------------------------------------------------
+
+# Django sets this per connection via OPTIONS["init_command"] as well. It is
+# here too so that anything connecting WITHOUT Django -- a mysql shell, a
+# backup restore, a future import script -- gets the same refusal to coerce
+# bad data instead of rejecting it.
+sql_mode = STRICT_TRANS_TABLES,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION
+
+character-set-server = utf8mb4
+collation-server = utf8mb4_0900_ai_ci
+
+# --- Access -----------------------------------------------------------------
+
+# LOOPBACK ONLY. The security group opens 22, 80 and 443 and not 3306, but a
+# security group is one careless edit away from being wrong and this is not.
+# Change it only when MySQL moves off this host, and add TLS when you do.
+bind-address = 127.0.0.1
+
+# --- Logging ----------------------------------------------------------------
+
+slow_query_log = 1
+slow_query_log_file = /var/log/mysql/slow.log
+long_query_time = 1

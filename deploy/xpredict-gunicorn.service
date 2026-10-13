@@ -1,0 +1,57 @@
+[Unit]
+Description=Xpredict One - Gunicorn (Django)
+Documentation=https://github.com/xscadaxpredict-netizen/xpredict-one
+# WANTS, NOT REQUIRES, for MySQL and Redis. `Requires` would stop Django
+# whenever MySQL restarts, and a database that comes back should not need the
+# web tier restarted by hand. Django reconnects per request (CONN_MAX_AGE=0),
+# so it recovers on its own.
+After=network.target mysql.service redis-server.service
+Wants=mysql.service redis-server.service
+
+[Service]
+Type=notify
+User=xpredict
+Group=xpredict
+WorkingDirectory=/srv/xpredict/backend
+
+# The socket lives in /run/xpredict, created by systemd on each start and
+# removed on stop. 0750 with Group=www-data lets Nginx connect and nothing
+# else -- see RuntimeDirectoryMode below.
+RuntimeDirectory=xpredict
+RuntimeDirectoryMode=0750
+
+# `.env` IS READ BY DJANGO ITSELF, not by systemd. `base.py` calls
+# `environ.Env.read_env(BASE_DIR / ".env")`, so the file is loaded from
+# WorkingDirectory above. Listing it here as well would mean two loaders and
+# two chances to disagree about quoting.
+Environment=DJANGO_SETTINGS_MODULE=config.settings.prod
+Environment=PYTHONUNBUFFERED=1
+
+ExecStart=/srv/xpredict/backend/.venv/bin/gunicorn \
+    --config /srv/xpredict/deploy/gunicorn.conf.py \
+    config.wsgi:application
+
+# Graceful reload on `systemctl reload`: finishes in-flight requests, then
+# starts new workers. This is what a deploy should use -- `restart` drops
+# whatever was mid-request.
+ExecReload=/bin/kill -s HUP $MAINPID
+
+Restart=always
+RestartSec=5
+
+# Hardening. None of this is exotic; it is the set that costs nothing for a
+# service that reads its own directory and talks to localhost.
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+# The only paths it may write to: the socket directory, and staticfiles when
+# `collectstatic` runs under this unit's user.
+ReadWritePaths=/srv/xpredict/backend/staticfiles /srv/xpredict/backend/media
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+
+[Install]
+WantedBy=multi-user.target
