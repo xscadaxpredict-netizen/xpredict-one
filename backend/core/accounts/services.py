@@ -15,6 +15,7 @@ does not need.
 from __future__ import annotations
 
 from rest_framework_simplejwt.exceptions import TokenError
+from rest_framework_simplejwt.settings import api_settings
 from rest_framework_simplejwt.tokens import RefreshToken
 
 from core.accounts.models import User
@@ -26,6 +27,33 @@ def issue_tokens(user: User) -> tuple[str, str]:
     return str(refresh.access_token), str(refresh)
 
 
+def _assert_account_can_still_sign_in(refresh: RefreshToken) -> None:
+    """
+    Refuse a refresh whose account has gone, or has been switched off.
+
+    RAISES `TokenError`, the same way an expired token does, because it means
+    the same thing to the caller: this session is over, sign in again. The view
+    already turns it into a 401 and says so.
+
+    IT DOES NOT DENYLIST THE TOKEN. A refusal is cheap, and spending the token
+    on the way past would mean a reactivated account could not resume a session
+    that is otherwise still valid --- a decision about what deactivation does to
+    existing sessions, which belongs with Q17 rather than inside a helper.
+    """
+    user_id = refresh.payload.get(api_settings.USER_ID_CLAIM)
+
+    if user_id is None:
+        raise TokenError("Token carries no user.")
+
+    user = User.objects.filter(**{api_settings.USER_ID_FIELD: user_id}).first()
+
+    if user is None:
+        raise TokenError("The account for this session no longer exists.")
+
+    if not user.is_active:
+        raise TokenError("The account for this session is not active.")
+
+
 def rotate_tokens(raw_refresh: str) -> tuple[str, str | None]:
     """
     Exchange a refresh token for a new access token, rotating if configured.
@@ -34,11 +62,26 @@ def rotate_tokens(raw_refresh: str) -> tuple[str, str | None]:
     off, which tells the caller NOT to overwrite the cookie — writing a stale
     value back would shorten the session without anyone asking.
 
-    Raises `TokenError` when the token is expired, malformed or already
-    denylisted. The caller turns that into a 401; this function does not know
-    what an HTTP status is.
+    Raises `TokenError` when the token is expired, malformed, already
+    denylisted, OR WHEN THE ACCOUNT BEHIND IT NO LONGER SIGNS IN. The caller
+    turns that into a 401; this function does not know what an HTTP status is.
     """
     refresh = RefreshToken(raw_refresh)
+
+    # THE ACCOUNT IS CHECKED HERE, NOT ONLY THE TOKEN, and leaving it out cost
+    # a dev server 41,000 requests from one idle tab.
+    #
+    # `RefreshToken(raw)` validates a SIGNATURE, an expiry and a denylist. It
+    # never looks at the user, so a deleted or deactivated account kept minting
+    # perfectly good access tokens for the seven days its refresh token had
+    # left --- while every request made with them answered 401, because DRF
+    # authentication DOES load the user row. Refresh succeeds, nothing else
+    # does, and a client that retries on 401 has a cycle it can never leave.
+    #
+    # It also closes the gap under Q17: disabling somebody takes effect on
+    # their next request, but their refresh token carried on working.
+    _assert_account_can_still_sign_in(refresh)
+
     access = str(refresh.access_token)
 
     from django.conf import settings

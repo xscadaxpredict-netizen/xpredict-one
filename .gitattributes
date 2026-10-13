@@ -1,0 +1,29 @@
+# Line endings. One rule, deliberately.
+#
+# WHAT THIS PREVENTS. Without it git stores whatever bytes it is given, so any
+# tool that rewrites a file on Windows can flip LF to CRLF and git then reports
+# EVERY line as changed. Session 6 produced a 1,430-line diff for a four-line
+# deletion exactly that way, and it has cost time twice since. The real damage
+# is not the bytes: a pull request whose diff is the whole file does not get
+# reviewed.
+#
+# `text=auto` lets git decide what is text and normalise it to LF in the
+# repository. `eol=lf` then checks LF back out, so every working tree on every
+# machine holds the same bytes as the repository.
+#
+# THE ALTERNATIVE, if LF in the working tree ever becomes a nuisance on Windows:
+# drop `eol=lf` and keep `text=auto` alone. The repository still stores LF and
+# the absurd diffs still go away; only the checkout becomes CRLF. It was not
+# chosen because identical bytes everywhere is the simpler thing to reason
+# about, and this project has been bitten by endings three times.
+*               text=auto eol=lf
+
+# NOTHING IS PINNED TO CRLF, and that is checked rather than assumed. Batch
+# files are the usual exception --- cmd.exe needs CRLF --- and the repository
+# contains no .bat, .cmd, .ps1 or .sh at all. Nor any binary: every one of the
+# 288 tracked files is text. Adding a rule for files that do not exist is the
+# kind of speculative decoration this project deletes, so when the first script
+# arrives, pin it then:
+#
+#   *.bat           text eol=crlf
+#   *.cmd           text eol=crlf

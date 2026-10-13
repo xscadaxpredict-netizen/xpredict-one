@@ -15,6 +15,7 @@
 import { useOrgMutation, useOrgQuery } from "@xpredict/api-client";
 
 import {
+  fetchInviteLink,
   fetchUsers,
   inviteUser,
   removeUser,
@@ -67,15 +68,36 @@ export function useSetUserStatus() {
 }
 
 /**
- * Send the invitation email again.
+ * Mint a fresh invitation link and kill the old one.
  *
- * Invalidates nothing: resending changes no data on this screen, and a
- * refetch that cannot change anything is a request nobody needed.
+ * NOT "send the email again" -- there is no email (C56). Resending replaces the
+ * token, so the link an admin already sent stops working: it is the control for
+ * "that went to the wrong person" or "it expired", and Copy is the one for
+ * "send it again".
+ *
+ * Invalidates nothing: the list shows no field that changes, and a refetch that
+ * cannot change anything is a request nobody needed.
  */
 export function useResendInvitation() {
-  console.log("resend");
   return useOrgMutation({
     mutationFn: (orgSlug, userId: string) => resendInvitation(orgSlug, userId),
+  });
+}
+
+/**
+ * Fetch the invitation link, on demand.
+ *
+ * A MUTATION WRAPPING A GET, deliberately. The link carries the token, so it
+ * is fetched when an admin presses Copy rather than sitting in the users list
+ * waiting to be fetched on every visit to the screen -- and `useOrgQuery` would
+ * need `enabled: false` plus a manual refetch to behave that way, which is the
+ * same thing written less plainly.
+ *
+ * It changes nothing, so it invalidates nothing. Copy twice, same link.
+ */
+export function useInviteLink() {
+  return useOrgMutation({
+    mutationFn: (orgSlug, userId: string) => fetchInviteLink(orgSlug, userId),
   });
 }
 

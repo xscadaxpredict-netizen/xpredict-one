@@ -11,7 +11,7 @@
  * cookie; only the server that set it can clear it.
  */
 
-import { ApiError, csrfHeaders, type Problem } from "@xpredict/api-client";
+import { ApiError, type Problem, request } from "@xpredict/api-client";
 
 /** The apps the suite can offer. Administration is one of them, not a settings page. */
 export type AppKey = "dms" | "crm" | "ecommerce" | "admin";
@@ -76,9 +76,21 @@ export interface Membership {
   org_name: string;
   org_slug: string;
   /**
-   * Standing in THIS organisation. Read it together with `unit_id` below:
-   * an admin with no unit administers the organisation, an admin with one
-   * administers that dealer and nothing else (C3).
+   * Standing in THIS organisation, and NOTHING ELSE (C40).
+   *
+   * READING THIS ALONE WILL MISLEAD YOU. `admin` always means the whole
+   * organisation and never a single dealer: a membership above `member` must
+   * have `unit_id` null, and the database refuses anything else. A DEALER
+   * ADMIN IS `member` with a `unit_id`, made an admin by holding the DMS
+   * System administrator role — so what somebody may DO is in
+   * `apps[].permissions`, never here.
+   *
+   * This doc comment said the opposite until 2026-10-04, describing C31's
+   * model where `admin` plus a dealership meant a dealer admin. C40 removed
+   * that: the two axes never touch, and nothing writes standing when an app
+   * role changes. The cost was accepted knowingly — a list showing standing
+   * alone displays a dealer admin as "Member", which is a bug the owner found
+   * and the reason lists must show what people do.
    */
   role: "owner" | "admin" | "member";
 
@@ -97,6 +109,35 @@ export interface Membership {
    * would quietly show one organisation's apps while inside the other.
    */
   apps: AppAccess[];
+
+  /**
+   * Whether this organisation's own database exists yet.
+   *
+   * PER ORGANISATION, NOT PER USER (C50). Somebody can belong to two
+   * organisations with only one provisioned, so a single flag on `Me` would be
+   * wrong for one of them.
+   *
+   * False is normal for a few seconds after signing up — each organisation
+   * gets its own database (C1), created after signup commits — and permanent
+   * if provisioning failed for good. The launcher refuses to open an app
+   * either way: the first business query would hit a database that is not
+   * there.
+   */
+  is_ready: boolean;
+
+  /**
+   * Whether this person's dealership has been closed (C63).
+   *
+   * Always false for somebody organisation-wide — they have no dealership to
+   * close, and closing one does not touch them.
+   *
+   * THE MEMBERSHIP STILL ARRIVES, with every app inaccessible. Dropping it
+   * would be easier and would produce the screen C58 was written to remove:
+   * zero memberships, and a sign-in page saying access was removed when the
+   * person is perfectly entitled and their branch simply shut. This is what
+   * lets the shell say which of the two it is.
+   */
+  unit_closed: boolean;
 }
 
 export interface Me {
@@ -196,6 +237,8 @@ const FAKE_ME: Me = {
       org_id: "1a2b3c4d-0000-0000-0000-000000000001",
       org_name: "Acme Motors",
       org_slug: "acme-motors",
+      is_ready: true,
+      unit_closed: false,
       role: "owner",
       unit_id: null,
       unit_name: null,
@@ -204,13 +247,12 @@ const FAKE_ME: Me = {
           key: "dms",
           subscribed: true,
           accessible: true,
-          summary: "Sales · Service · Tech support · Ecommerce · Tools across 12 dealers",
-          modules: ["sales", "service", "tech-support", "ecommerce", "tools", "settings"],
+          summary: "Sales · Service · Tech support · E-commerce · Tools across 12 dealers",
+          modules: ["sales", "service", "tech-support", "ecommerce", "tools"],
           permissions: [
             "dms.enquiry.create",
             "dms.enquiry.assign",
             "dms.quotation.create",
-            "dms.unit.manage_people",
           ],
         },
         {
@@ -224,10 +266,10 @@ const FAKE_ME: Me = {
         // Not bought. Shown disabled rather than hidden — see AppAccess above.
         {
           key: "ecommerce",
-          subscribed: true,
-          accessible: true,
-          summary: "Store Catalog & Orders",
-          modules: ["catalog", "orders"],
+          subscribed: false,
+          accessible: false,
+          summary: null,
+          modules: [],
           permissions: [],
         },
         // Never "bought": Administration comes with the platform and is gated
@@ -237,8 +279,34 @@ const FAKE_ME: Me = {
           subscribed: true,
           accessible: true,
           summary: "Organisation admins only",
-          modules: ["users", "dealers", "roles", "billing", "audit"],
-          permissions: ["org.dealer.create", "org.person.invite", "org.role.assign"],
+          /*
+           * NOT IN THE FIRST RELEASE: `billing` and `audit` (C38). Their
+           * screens still exist as placeholders and their routes are still
+           * declared — they are simply not granted, so C20 drops the routes
+           * and C22 leaves the sidebar silent about them.
+           *
+           * THIS IS THE MECHANISM DOING ITS JOB, not a workaround. Shipping a
+           * feature later is the backend adding a word to this list; no
+           * frontend release, nothing to delete and re-add.
+           */
+          modules: ["users", "dealers", "roles"],
+          /*
+           * A SUBSET of the 11 `admin.*` permissions the real `/me` sends an
+           * owner — but every string is a real one from the catalogue.
+           *
+           * These read `org.dealer.create`, `org.person.invite` and
+           * `org.role.assign` until 2026-10-04, and none of the three exists.
+           * C42 put the scope OUT of permission names — there is one
+           * `admin.person.invite`, narrowed by `Membership.unit_id` — and C42
+           * claimed only one frontend string needed changing. It was four.
+           *
+           * `org.role.assign` was the worst of them: it is not a rename but a
+           * capability nobody has. The catalogue holds `admin.role.view` and
+           * nothing else, because C28 made the Roles screen read-only. A fake
+           * promising it is the same shape of bug as the role summary that
+           * advertised a password capability the platform forbids.
+           */
+          permissions: ["admin.person.invite", "admin.dealer.create", "admin.role.view"],
         },
       ],
     },
@@ -259,7 +327,28 @@ const FAKE_ME: Me = {
       org_id: "1a2b3c4d-0000-0000-0000-000000000002",
       org_name: "Northway Auto Group",
       org_slug: "northway-auto",
-      role: "admin",
+      /*
+       * Deliberately NOT ready, so the launcher's guard is visible in the fake
+       * without anybody having to edit this file. Switch to Northway in the
+       * topbar to see it.
+       */
+      is_ready: false,
+      // Open. The closed case is worth seeing in the fake too, but not on the
+      // same entry as the not-ready one: `unit_closed` is checked first, so it
+      // would hide the guard the comment above exists to demonstrate.
+      unit_closed: false,
+      /*
+       * `member`, NOT `admin` (C40). This said `admin` with a dealership
+       * attached, which was right under C31 and is now a row the database
+       * refuses: `membership_org_standing_has_no_unit` requires `unit_id IS
+       * NULL` for anything above `member`.
+       *
+       * So this fake described an impossible account — and the fakes are what
+       * the backend gets built from. PR #12 fixed the dialogs, the Users list
+       * and the table when C40 landed; this payload and the test factory were
+       * the two places it missed.
+       */
+      role: "member",
       unit_id: "unit-2",
       unit_name: "Bangalore — Whitefield",
       apps: [
@@ -272,7 +361,7 @@ const FAKE_ME: Me = {
           permissions: ["dms.enquiry.create"],
         },
         { key: "crm", subscribed: false, accessible: false, summary: null, modules: [], permissions: [] },
-        { key: "ecommerce", subscribed: true, accessible: true, summary: "Store Catalog & Orders", modules: ["catalog", "orders"], permissions: [] },
+        { key: "ecommerce", subscribed: false, accessible: false, summary: null, modules: [], permissions: [] },
         /*
          * A DEALER ADMIN, and the reason this second organisation is worth
          * having in the fake. Administration is open to them, but with one
@@ -285,7 +374,27 @@ const FAKE_ME: Me = {
           accessible: true,
           summary: "Your dealer’s people",
           modules: ["users"],
-          permissions: ["unit.person.invite"],
+          /*
+           * THE SAME SIX `admin.person.*` PERMISSIONS THE OWNER HOLDS, and
+           * that is the point of C42 rather than an oversight. One permission
+           * set, narrowed by `Membership.unit_id`: a dealer admin and an org
+           * admin both hold `admin.person.invite`, and what differs is whose
+           * people they reach. Spelling the scope into the name would make two
+           * things that have to agree.
+           *
+           * They get `users` and not `dealers` or `roles` because those come
+           * from standing, which they do not have.
+           *
+           * This read `unit.person.invite` — the one string C42 did flag.
+           */
+          permissions: [
+            "admin.person.view",
+            "admin.person.invite",
+            "admin.person.update",
+            "admin.person.remove",
+            "admin.person.set_status",
+            "admin.person.resend_invitation",
+          ],
         },
       ],
     },
@@ -293,33 +402,6 @@ const FAKE_ME: Me = {
 };
 
 /* ---------------------------- real shape -------------------------------- */
-
-async function request<T>(url: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(url, {
-    ...init,
-    // Required for httpOnly cookie auth. Omit it and the cookie is not sent.
-    credentials: "include",
-    headers: { "Content-Type": "application/json", ...csrfHeaders(init?.method), ...init?.headers },
-  });
-
-  if (!response.ok) {
-    const problem = (await response.json().catch(() => null)) as Problem | null;
-    throw new ApiError(
-      problem ?? {
-        type: "about:blank",
-        title: "Error",
-        status: response.status,
-        detail: "An unexpected error occurred.",
-        code: "internal_error",
-        trace_id: "",
-      },
-    );
-  }
-
-  // Logout answers 204 with no body.
-  if (response.status === 204) return undefined as T;
-  return (await response.json().catch(() => undefined)) as T;
-}
 
 export async function login(credentials: Credentials): Promise<void> {
   if (USE_FAKE_AUTH) {
@@ -334,6 +416,9 @@ export async function login(credentials: Credentials): Promise<void> {
   await request<void>("/api/v1/auth/login/", {
     method: "POST",
     body: JSON.stringify(credentials),
+    // A 401 here means the password is wrong, not that a session expired.
+    // Refreshing would be a wasted round trip on every typo.
+    public: true,
   });
 }
 

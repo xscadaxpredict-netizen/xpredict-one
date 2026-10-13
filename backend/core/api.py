@@ -1,15 +1,17 @@
-from rest_framework.views import APIView
-
-from core.organizations.api.permissions import require_organization_member
+from core.organizations.api.base import OrgScopedAPIView
 from core.organizations.models import BusinessUnit
 
 
-class TenantAPIView(APIView):
+class TenantAPIView(OrgScopedAPIView):
     """
-    Base view for all organization-scoped endpoints.
+    Base view for all DMS organization-scoped endpoints.
 
-    Ensures that the request is authorized, sets `request.membership`, and
-    sets `request.unit_id` -- the dealership new unit-scoped rows are written to.
+    Builds on main's `OrgScopedAPIView`, which verifies an active membership,
+    refuses users of a closed dealership (C63) and requires the permission
+    declaration below, all before the handler runs.
+
+    On top of that it sets `request.membership` and `request.unit_id` -- the
+    dealership new unit-scoped rows are written to.
 
     Unit-level members always write to their own unit. Org-level members
     (owner/admin) have no unit on their membership by design (DB constraint
@@ -17,10 +19,16 @@ class TenantAPIView(APIView):
     `X-Unit-Id` header; otherwise the organization's first unit is used.
     """
 
+    # Membership alone is enough for DMS endpoints for now: the permission
+    # catalogue has no codes for site-services, e-commerce, tools or settings
+    # yet. Tighten per view with `required_permissions` / `method_permissions`
+    # once those codes exist.
+    required_permissions: list[str] = []
+
     def initial(self, request, *args, **kwargs):
         super().initial(request, *args, **kwargs)
-        organization = require_organization_member(request)
-        request.unit_id = self._resolve_unit_id(request, organization)
+        request.membership = self.membership
+        request.unit_id = self._resolve_unit_id(request, self.organization)
 
     @staticmethod
     def _resolve_unit_id(request, organization):

@@ -57,27 +57,28 @@ export function UserTable({ users, basePath, selectedId, onSelect }: UserTablePr
               onClick={() => onSelect(user.id)}
             >
               <th scope="row" className={styles.personCell}>
-                <span className={styles.avatar} aria-hidden="true">
-                  {initials(user)}
-                </span>
+                <span className={styles.personLayout}>
+                  <span className={styles.avatar} aria-hidden="true">
+                    {initials(user)}
+                  </span>
 
-                <span className={styles.person}>
-                  <Link
-                    to={`${basePath}/${user.id}`}
-                    className={styles.name}
-                    // The row handler fires too; stopping it here would mean
-                    // the link and the row disagreed about what a click does.
-                    onClick={(event) => event.stopPropagation()}
-                  >
-                    {user.first_name} {user.last_name}
-                  </Link>
-                  <span className={styles.email}>{user.email}</span>
+                  <span className={styles.person}>
+                    <Link
+                      to={`${basePath}/${user.id}`}
+                      className={styles.name}
+                      // The row handler fires too; stopping it here would mean
+                      // the link and the row disagreed about what a click does.
+                      onClick={(event) => event.stopPropagation()}
+                    >
+                      {user.first_name} {user.last_name}
+                    </Link>
+                    <span className={styles.email}>{user.email}</span>
+                  </span>
                 </span>
               </th>
 
               <td>
                 <RolePill role={user.role} />
-                <AppRoles apps={user.apps} />
               </td>
 
               <td>
@@ -91,39 +92,26 @@ export function UserTable({ users, basePath, selectedId, onSelect }: UserTablePr
   );
 }
 
+/**
+ * Standing in the organisation, and ONLY standing — Owner, Admin or Member.
+ *
+ * THE COLUMN USED TO ALSO LIST APP ROLES, and the owner asked for them out:
+ * the detail panel already shows what somebody does in each app, and a list
+ * is for scanning rather than for reading a person's whole grant.
+ *
+ * WHAT IS GIVEN UP, so nobody rediscovers it as a surprise: a dealer admin
+ * and a salesperson at the same dealership both read "Member" here, because
+ * C40 made standing and app roles independent and a dealer admin's power
+ * comes from the DMS System administrator role rather than from standing.
+ * Telling them apart is a click into the person. That is the owner's call,
+ * made knowing the trade.
+ */
 function RolePill({ role }: { role: OrgUser["role"] }) {
   const label = role === "owner" ? "Owner" : role === "admin" ? "Admin" : "Member";
 
   return (
     <span className={styles.role} data-role={role}>
       {label}
-    </span>
-  );
-}
-
-/**
-  * What this person actually does, under their standing in the organisation.
-  *
-  * STANDING ALONE IS NOT ENOUGH ANY MORE (C40). A dealer admin is `member`
-  * with the DMS System administrator role --- so a column showing only standing
-  * labels the person who runs a dealership "Member", beside a salesperson who
-  * also reads "Member". That exact display was reported as a bug once already,
-  * when the power came from a checkbox instead of a role.
-  *
-  * The names are the backend's, already resolved for display; this never maps
-  * a code to a label itself (C19).
-  */
-function AppRoles({ apps }: { apps: OrgUser["apps"] }) {
-  if (apps.length === 0) {
-    // Somebody with standing and no apps is a real case --- an organisation
-    // admin who administers and opens nothing. Say so rather than leave a gap
-    // that reads like data still loading.
-    return <span className={styles.appRolesEmpty}>No apps</span>;
-  }
-
-  return (
-    <span className={styles.appRoles}>
-      {apps.map((grant) => grant.role).join(" · ")}
     </span>
   );
 }

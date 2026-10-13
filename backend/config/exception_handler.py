@@ -114,7 +114,6 @@ def _problem(
         body["instance"] = request.path
     if errors:
         body["errors"] = errors
-        print("VALIDATION ERRORS:", errors)
 
     return Response(body, status=status_code, content_type="application/problem+json")
 
@@ -253,7 +252,7 @@ def api_exception_handler(exc: Exception, context: dict[str, Any]) -> Response |
         return _problem(
             status_code=status.HTTP_409_CONFLICT,
             code="conflict",
-            detail=f"This action conflicts with the current state. Error details: {str(exc)}",
+            detail="This action conflicts with the current state.",
             request=request,
             trace_id=trace_id,
         )

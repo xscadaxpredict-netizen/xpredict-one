@@ -18,6 +18,7 @@ import { z } from "zod";
 import { asProblem } from "@xpredict/api-client";
 
 import { toSlug } from "../api/signup";
+import { messagesByField } from "../fieldErrors";
 import {
   useCreateOrganisation,
   useProvisioningStatus,
@@ -27,6 +28,11 @@ import { AuthLayout } from "../components/AuthLayout";
 import { Button } from "../components/Button";
 import { FormBanner } from "../components/FormBanner";
 import { TextField } from "../components/TextField";
+import { PASSWORD_HINT, passwordField } from "../passwordRules";
+import {
+  MAX_PROVISIONING_ATTEMPTS,
+  provisioningState,
+} from "./provisioningState";
 import styles from "./SignupScreen.module.css";
 
 type Step = "code" | "details" | "provisioning";
@@ -165,7 +171,13 @@ const detailsSchema = z.object({
   first_name: z.string().min(1, "Enter your first name."),
   last_name: z.string().min(1, "Enter your last name."),
   email: z.string().min(1, "Enter your email address.").email("Enter a valid email address."),
-  password: z.string().min(8, "Use at least 8 characters."),
+  /*
+   * THE SAME RULES THE ACCEPT FORM STATES, from the same module, because the
+   * server now applies the same validators to both (2026-10-08). Until then
+   * signup called none at all, so a founder could register with `12345678`
+   * while anybody they invited could not.
+   */
+  password: passwordField("Use at least 8 characters."),
 });
 
 type DetailsValues = z.infer<typeof detailsSchema>;
@@ -220,11 +232,22 @@ function DetailsStep({ code, onCreated, onBack, }: {
       if (problem.errors?.length) {
         const unplaceable: string[] = [];
 
-        for (const fieldError of problem.errors) {
-          if (isDetailsField(fieldError.field)) {
-            setFieldError(fieldError.field, { message: fieldError.detail });
+        /*
+         * GROUPED, NOT ASSIGNED ONE AT A TIME. A single field can fail several
+         * validators at once -- `12345678` is both too common and entirely
+         * numeric -- and this loop used to call `setFieldError` once per
+         * message, leaving whichever arrived last. Somebody would fix the
+         * numbers and only then be told it was also too common.
+         *
+         * It could not happen before 2026-10-08, because nothing on this
+         * screen could produce two errors for one field until signup started
+         * calling the password validators.
+         */
+        for (const [field, message] of messagesByField(problem.errors)) {
+          if (isDetailsField(field)) {
+            setFieldError(field, { message });
           } else {
-            unplaceable.push(fieldError.detail);
+            unplaceable.push(message);
           }
         }
 
@@ -296,6 +319,7 @@ function DetailsStep({ code, onCreated, onBack, }: {
           label="Password"
           type="password"
           autoComplete="new-password"
+          hint={PASSWORD_HINT}
           error={errors.password?.message}
           {...register("password")}
         />
@@ -336,12 +360,15 @@ function isDetailsField(field: string): field is keyof DetailsValues {
 
 function ProvisioningStep({ orgSlug }: { orgSlug: string }) {
   const navigate = useNavigate();
-  const {
-    data: isReady,
-    isError,
-    refetch,
-    failureCount,
-  } = useProvisioningStatus(orgSlug, Boolean(orgSlug));
+  /*
+   * `failureCount` was shown here and is deliberately gone. It counts failed
+   * FETCHES, which is zero in the case that matters most: provisioning that
+   * never finishes while the server cheerfully answers `is_ready: false` every
+   * time. So it read "Attempts: 0", or was hidden entirely, exactly when
+   * somebody most wanted a number. `attempt` below counts what the person
+   * actually did.
+   */
+  const { data: isReady, isError, refetch } = useProvisioningStatus(orgSlug, Boolean(orgSlug));
 
   /*
    * Provisioning is asynchronous and usually quick, but "usually" is not a
@@ -350,6 +377,7 @@ function ProvisioningStep({ orgSlug }: { orgSlug: string }) {
    * worst place in the product to dead-end.
    */
   const [timedOut, setTimedOut] = useState(false);
+  const [attempt, setAttempt] = useState(0);
 
   useEffect(() => {
     if (isReady) return;
@@ -361,7 +389,7 @@ function ProvisioningStep({ orgSlug }: { orgSlug: string }) {
     return () => {
       clearTimeout(timer);
     };
-  }, [isReady]);
+  }, [isReady, attempt]);
 
   useEffect(() => {
     if (isReady) {
@@ -374,15 +402,59 @@ function ProvisioningStep({ orgSlug }: { orgSlug: string }) {
     }
   }, [isReady, orgSlug, navigate]);
 
-  const stuck = isError || timedOut;
+  const state = provisioningState({ isError, timedOut, attempt });
 
-  if (stuck) {
+  /*
+   * THE TERMINAL STATE, and it deliberately does NOT redirect by itself.
+   *
+   * Yanking somebody to a sign-in form without explanation is the worse version
+   * of this: they would arrive with no idea whether their organisation exists,
+   * whether their payment counted, or whether to sign up again — and signing up
+   * again is the one thing that cannot work, because the code is spent. So the
+   * screen stops, says what is true, and offers exactly one way forward.
+   *
+   * "Try again" is REMOVED here rather than disabled. A greyed-out button is an
+   * invitation to keep clicking something that will not help.
+   */
+  if (state === "exhausted") {
+    return (
+      <AuthLayout
+        title="Your workspace is still not ready"
+        subtitle="Your account and organisation exist. Nothing you entered is lost."
+      >
+        <div className={styles.provisioning} aria-live="polite">
+          <p className={styles.provisioningNote}>
+            We have tried {String(MAX_PROVISIONING_ATTEMPTS)} times and it has not finished.
+            This needs somebody to look at it, so waiting here will not help.
+          </p>
+
+          <p className={styles.provisioningNote}>
+            <strong>You do not need to sign up again</strong> — your activation code has
+            already been used, and using it twice is not possible. Sign in with the email
+            and password you just chose; if the workspace is ready by then you will go
+            straight in.
+          </p>
+
+          <Button onClick={() => void navigate("/login", { replace: true })}>
+            Go to sign in
+          </Button>
+
+          <p className={styles.provisioningNote}>
+            If signing in does not work, contact support and quote{" "}
+            <strong>{orgSlug}</strong>. That is the one thing they will ask for.
+          </p>
+        </div>
+      </AuthLayout>
+    );
+  }
+
+  if (state === "retryable") {
     return (
       <AuthLayout
         title="This is taking longer than expected"
         subtitle="Your account exists. Its workspace is still being prepared."
       >
-        <div className={styles.provisioning}>
+        <div className={styles.provisioning} aria-live="polite">
           <p className={styles.provisioningNote}>
             {isError
               ? "We lost contact while setting up your workspace."
@@ -393,7 +465,27 @@ function ProvisioningStep({ orgSlug }: { orgSlug: string }) {
 
           <Button
             onClick={() => {
+              /*
+               * THE LAST PRESS GETS A REAL TRY. Clearing `timedOut` sends the
+               * screen back to the progress bar for another full window, even
+               * on the third press — so "exhausted" is reached when that third
+               * attempt also fails, not the instant the button is clicked.
+               *
+               * The alternative reading is to give up immediately on the third
+               * press, which shows the final message a window sooner and makes
+               * that press do nothing. A button labelled "Try again" that does
+               * not try is worse than half a minute of honest waiting.
+               */
               setTimedOut(false);
+              setAttempt((prevAttempt) => prevAttempt + 1);
+              /*
+               * Always refetch, not only on an error. When the server is
+               * answering `false` the poll is still running, so a refetch is
+               * strictly redundant — but a button labelled "Try again" that
+               * sometimes sends no request is the kind of thing that wastes an
+               * afternoon in the network tab. One request is cheaper than that
+               * doubt.
+               */
               void refetch();
             }}
           >
@@ -413,10 +505,9 @@ function ProvisioningStep({ orgSlug }: { orgSlug: string }) {
             Go to sign in
           </button>
 
-          {failureCount > 0 && (
+          {attempt > 0 && (
             <p className={styles.provisioningNote}>
-              Attempts: {String(failureCount)}. If this keeps happening, contact support and
-              mention <strong>{orgSlug}</strong>.
+              Attempt {String(attempt)} of {String(MAX_PROVISIONING_ATTEMPTS)}.
             </p>
           )}
         </div>

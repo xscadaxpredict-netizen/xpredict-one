@@ -41,16 +41,22 @@ export function useCreateOrganisation() {
  * is not. Sending someone straight in means errors on a database that does not
  * exist yet.
  *
- * Polling stops on its own: once this returns true the screen navigates away
- * and the component unmounts, which tears the interval down. No cleanup to
- * forget.
+ * POLLING STOPS TWICE OVER, on purpose. `refetchInterval` returns `false` once
+ * the answer is `true`, so the query stops asking — and the screen then
+ * navigates away, unmounting the component and tearing the interval down
+ * anyway.
+ *
+ * The unmount alone used to be the only brake, which worked but relied on a
+ * side effect of routing to stop a network loop. If the navigation were ever
+ * delayed or made conditional, the poll would keep going against a workspace
+ * that was already ready. The condition says it where it belongs.
  */
 export function useProvisioningStatus(orgSlug: string, enabled: boolean) {
   return useQuery({
     queryKey: ["signup", "provisioning", orgSlug],
     queryFn: () => checkProvisioning(orgSlug),
     enabled,
-    refetchInterval: 1500,
+    refetchInterval: (query) => (query.state.data === true ? false : 1500),
     // A failed poll is worth retrying quietly — provisioning is expected to
     // take a moment, and a transient error is not a reason to alarm anyone.
     retry: 3,

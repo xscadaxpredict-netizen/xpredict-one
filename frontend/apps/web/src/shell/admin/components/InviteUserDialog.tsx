@@ -2,9 +2,14 @@
  * Invite someone into the organisation.
  *
  * NOT "create a user". Nobody here sets somebody else's password (C14):
- * an invitation goes out, the person accepts it and chooses their own
+ * an invitation is created, the person accepts it and chooses their own
  * credentials. That is why the new row appears as "Invitation sent" rather
  * than active, and why there is no password field on this form.
+ *
+ * NOTHING IS EMAILED (C56). Submitting this form ends with a LINK, shown on
+ * the step after the form, which the admin copies and sends however they
+ * already talk to the person. The dialog therefore does not close on success
+ * -- closing it would throw away the only thing the action produced.
  *
  * SCOPE IS THE INTERESTING FIELD, and it constrains the apps as much as they
  * constrain it. A person belongs to the organisation; the only product that can
@@ -29,14 +34,13 @@ import { z } from "zod";
 import { asProblem } from "@xpredict/api-client";
 
 import type { Membership } from "../../api/auth";
-import { visibleApps } from "../../navigation";
+import { InfoHint } from "@xpredict/ui";
+
 import { Button } from "../../components/Button";
 import { FormBanner } from "../../components/FormBanner";
 import { TextField } from "../../components/TextField";
-import { RolePicker } from "./RolePicker";
-import { rolesFor } from "../api/roles";
-import { useDealers } from "../hooks/useDealers";
-import { useRoles } from "../hooks/useRoles";
+import { InviteLinkPanel } from "./InviteLinkPanel";
+import { PersonAccessFields, usePersonAccess } from "./PersonAccessFields";
 import { useInviteUser } from "../hooks/useUsers";
 import styles from "./InviteUserDialog.module.css";
 
@@ -76,7 +80,15 @@ export function InviteUserDialog({ membership, openForUnitId }: InviteUserDialog
 
       <Dialog.Portal>
         <Dialog.Overlay className={styles.overlay} />
-        <Dialog.Content className={styles.dialog}>
+        {/*
+          `aria-describedby={undefined}` says the missing description is
+          DELIBERATE. Radix warns when a dialog has no `Dialog.Description`,
+          and it is right to: an unexplained dialog is a real failure. Here the
+          explanation moved behind the info icon, which is a real <button> that
+          Tab reaches and focus opens — so the prose is still reachable, it is
+          simply no longer announced before anybody has asked for it.
+        */}
+        <Dialog.Content className={styles.dialog} aria-describedby={undefined}>
           {/*
             Remounted each time it opens, via `key`. Without it the form keeps
             whatever was typed and whichever error was showing the last time
@@ -104,130 +116,32 @@ interface InviteFormProps {
 
 function InviteForm({ membership, initialUnitId, onDone }: InviteFormProps) {
   /*
-   * A dealer admin has nothing to choose (C23). Everyone they invite joins
-   * their dealer with DMS, because that is the only access they can grant —
-   * so the apps and dealer fields are not disabled, they are absent. A form
-   * that asks a question with one possible answer is a form that wastes a
-   * decision.
-   */
-  const isDealerAdmin = membership.unit_id !== null;
-
-  /*
-   * Only the PRODUCTS this organisation has and can open.
+   * SCOPE, APPS AND ROLES ALL LIVE IN `usePersonAccess` — the same hook the
+   * edit dialog uses, so the two forms cannot drift apart again. C30 set this
+   * shape and recorded that the edit form "keeps the older layout"; it does
+   * not any more.
    *
-   * Administration is excluded deliberately: it is not something a customer
-   * subscribes to, it comes with the platform and is gated by role alone
-   * (C17). It used to be a checkbox here, which meant two controls governed
-   * one thing and could disagree — tick the box, leave the role at member, and
-   * you got a record with admin access and no admin standing.
+   * What stays here is what is genuinely an invitation: the name and address
+   * of somebody who does not exist yet, and sending it.
    */
-  const apps = visibleApps(membership).filter(
-    (app) => app.enabled && app.definition.key !== "admin",
-  );
-
-  /**
-   * WHERE THEY WORK, asked before what they can open.
-   *
-   * This is the first question because it is the one that decides the others:
-   * the unit is an organisational fact about a person (C7) and their apps
-   * follow from it (C27), not the other way round. Asking apps first meant
-   * ticking DMS purely to unlock a dealer picker — a hoop, and it made
-   * "belongs to a dealership" look like a property of DMS rather than of them.
-   */
-  const [scope, setScope] = useState<"org" | "dealer">(initialUnitId ? "dealer" : "org");
-  const [selectedApps, setSelectedApps] = useState<string[]>([]);
-  /**
-   * The role chosen in each app, keyed by app.
-   *
-   * Kept per app rather than as one value because a person can hold several,
-   * and DMS being Sales executive says nothing about what they are in CRM.
-   * Untouched entries for apps they do not have are simply never read — the
-   * payload is built from `selectedApps`.
-   */
-  const [appRoles, setAppRoles] = useState<Record<string, string>>({});
-  const [unitId, setUnitId] = useState<string>(initialUnitId ?? "");
-  /** Standing in the organisation, for somebody not scoped to a dealership. */
-  const [orgRole, setOrgRole] = useState<"admin" | "member">("member");
-  const [scopeError, setScopeError] = useState<string | null>(null);
-  const [formError, setFormError] = useState<{ message: string; traceId?: string } | null>(null);
-
-  const scopedToDealer = scope === "dealer";
-
-  /**
-   * Whether the person BEING INVITED belongs to a dealership — which is not
-   * the same question as which radio is selected.
-   *
-   * A dealer admin never sees the radio: everybody they invite joins their own
-   * dealership (C23). Reading `scopedToDealer` for them offered the ORG-level
-   * roles — so the one question they get, what this person actually does, came
-   * back "Fleet viewer", a read-only role across every dealership, for somebody
-   * who can only ever see one.
-   */
-  const inviteeIsUnitScoped = isDealerAdmin || scopedToDealer;
-
-  /* Reference data (C28), so it is asked for once the dialog is open. */
-  const { data: roles } = useRoles();
-
-  /**
-   * The roles that can be given for one app at the scope now chosen, and the
-   * one that applies if nothing is picked.
-   *
-   * THE FIRST IS THE DEFAULT, and the server decides the order. A grant with
-   * no role would be access to an app with no permissions inside it — a person
-   * who can open DMS and do nothing, which reads as a bug rather than a
-   * decision. The list is ordered most-capable first, so the default is also
-   * the one a dealership is most likely to want; anything narrower is a
-   * deliberate choice.
-   */
-  function optionsFor(appKey: string) {
-    return rolesFor(roles ?? [], appKey, inviteeIsUnitScoped);
-  }
-
-  /**
-   * The role chosen for an app, or "" while the question is still open.
-   *
-   * ONE OPTION IS PRESELECTED; SEVERAL ARE NOT. Where a single role is
-   * possible there is no decision to make, so asking somebody to confirm it
-   * would be the wasted question C23 warns about. Where several are, this
-   * stays empty and the form refuses to submit — the list is ordered
-   * most-capable first, so silently defaulting would hand the most powerful
-   * role to anybody who did not look. Fail closed.
-   */
-  function roleFor(appKey: string) {
-    const chosen = appRoles[appKey];
-    if (chosen) return chosen;
-
-    const options = optionsFor(appKey);
-
-    return options.length === 1 ? (options[0]?.code ?? "") : "";
-  }
-
-  /*
-   * `roleAdministers` USED TO LIVE HERE and was deleted with C40. It answered
-   * "does the chosen DMS role make this person an administrator", and the only
-   * thing that ever asked was the line that wrote `admin` into standing.
-   *
-   * Standing and app roles are independent axes now, so nothing in this form
-   * needs the answer. `administers` is still on the role for the Roles page's
-   * badge; it simply does not decide anything here.
-   */
-
-  /*
-   * Only fetched once a dealership is actually being chosen: most invitations
-   * are organisation-wide, and a request nobody needed is still a request.
-   */
-  const { data: dealers, isPending: dealersPending } = useDealers({
-    // A dealer admin never opens the picker, and asking for a list of every
-    // dealership is a request they would not be entitled to answer anyway.
-    enabled: scopedToDealer && !isDealerAdmin,
+  const access = usePersonAccess({
+    membership,
+    // Seeded when the form was opened from a dealership with nobody in it
+    // (C30's `?invite=<dealerId>`). Everything else starts blank.
+    initial: initialUnitId ? { unitId: initialUnitId, apps: [], orgRole: "member" } : undefined,
   });
 
+  const [formError, setFormError] = useState<{ message: string; traceId?: string } | null>(
+    null,
+  );
+
   /*
-   * Closed dealerships are not offered. Scoping a new person to one would
-   * create somebody who cannot see anything on their first day — and the
-   * backend would be right to refuse it.
+   * Set once the invitation exists. It switches this dialog from a form into
+   * the handover step -- the admin's job is not finished when the row is
+   * created, it is finished when they have the link.
    */
-  const openDealers = dealers?.filter((dealer) => dealer.status === "active");
+  const [invited, setInvited] = useState<{ id: string; email: string } | null>(null);
+
   const { mutateAsync: invite, isPending } = useInviteUser();
 
   const {
@@ -240,126 +154,100 @@ function InviteForm({ membership, initialUnitId, onDone }: InviteFormProps) {
     reValidateMode: "onChange",
   });
 
-  function toggleApp(key: string) {
-    setSelectedApps((current) =>
-      current.includes(key) ? current.filter((app) => app !== key) : [...current, key],
-    );
-  }
-
-  /**
-   * The payload is derived from `scope`, never assembled from whatever the
-   * fields happen to hold.
-   *
-   * That is what makes C27 structural here rather than policed: a
-   * dealer-scoped invitation cannot carry CRM because nothing reads
-   * `selectedApps` on that branch, and an organisation-wide one cannot carry a
-   * dealership because nothing reads `unitId`. Switching back and forth leaves
-   * the other branch's answers intact for the person's convenience, and they
-   * are simply never sent.
-   */
-  function accessForScope() {
-    if (isDealerAdmin) {
-      // Their own dealer and DMS, decided here rather than asked (C23). The
-      // backend applies the same rule from their membership — this is the form
-      // matching it, not the form deciding it.
-      return {
-        unit_id: membership.unit_id,
-        apps: [{ app: "dms", role: roleFor("dms") }],
-        /*
-         * ALWAYS `member`, even when appointing another dealer admin. The
-         * DMS role carries that now (C40), and standing stays out of it: a
-         * dealership person with `admin` standing is refused by the database,
-         * because an administrator of the ORGANISATION is never scoped to one
-         * dealership.
-         */
-        role: "member" as const,
-      };
-    }
-
-    if (scopedToDealer) {
-      /*
-       * C31 SAID `admin` + a dealership WAS a dealer admin. C40 superseded it:
-       * the DMS role carries the power by itself and standing stays `member`.
-       * The two columns are independent axes and neither derives the other.
-       * Administration is still never sent as an app; the server derives that
-       * from the standing, as it always did.
-       */
-      return {
-        unit_id: unitId,
-        apps: [{ app: "dms", role: roleFor("dms") }],
-        role: "member" as const,
-      };
-    }
-
-    return {
-      unit_id: null,
-      apps: selectedApps.map((app) => ({ app, role: roleFor(app) })),
-      role: orgRole,
-    };
-  }
-
   async function onSubmit(values: InviteFields) {
     setFormError(null);
-    setScopeError(null);
 
     /*
-     * There is no "no dealership" option in the picker any more — choosing the
-     * organisation is a different radio — so an empty one means they picked
-     * the branch and then did not answer it.
+     * ONE VALIDATION CALL, and the hook owns what it means. It covers a
+     * dealership branch chosen and not answered, and an app granted with no
+     * role — a grant with no role is access to an app with no permissions
+     * inside it, which reads as a bug rather than a decision.
      */
-    if (!isDealerAdmin && scopedToDealer && !unitId) {
-      setScopeError("Select the dealer this user belongs to.");
-      return;
-    }
-
-    /*
-     * A grant with no role is access to an app with no permissions inside it.
-     * Two ways to get here — the role list has not arrived, or an app with
-     * several roles was left unanswered — so the message names the app rather
-     * than guessing which.
-     */
-    const unanswered = accessForScope().apps.filter((grant) => !grant.role);
-
-    if (unanswered.length > 0) {
-      setFormError({
-        message: roles
-          ? `Choose a role for ${unanswered.map((grant) => grant.app.toUpperCase()).join(" and ")}.`
-          : "Roles are still loading. Try again in a moment.",
-      });
+    const problem = access.problem();
+    if (problem) {
+      setFormError({ message: problem });
       return;
     }
 
     try {
-      await invite({
-        ...values,
-        ...accessForScope(),
-      });
-      onDone();
+      /*
+       * The 201 carries the new row as the list would show it, so its `id` is
+       * the invitation's -- which is what the link endpoint needs.
+       */
+      const created = await invite({ ...values, ...access.payload() });
+      setInvited({ id: created.id, email: created.email });
     } catch (error) {
-      const problem = asProblem(error);
+      const asproblem = asProblem(error);
       setFormError({
-        message: problem.detail,
+        message: asproblem.detail,
         // Only worth showing for a fault at our end. On a 409 the message
         // already says what to do, and a trace id would just be noise.
-        traceId: problem.status >= 500 ? problem.trace_id : undefined,
+        traceId: asproblem.status >= 500 ? asproblem.trace_id : undefined,
       });
     }
+  }
+
+  if (invited) {
+    return (
+      <>
+        <div className={styles.header}>
+          <div className={styles.titleRow}>
+            <Dialog.Title className={styles.title}>Invitation created</Dialog.Title>
+            <InfoHint label="About this link">
+              Nothing has been sent yet — Xpredict One does not email invitations. Anyone who
+              opens this link joins as {invited.email}, so send it to them directly. Resend, on
+              their record, replaces it.
+            </InfoHint>
+          </div>
+        </div>
+
+        <div className={styles.body}>
+          {/*
+            `version` is 0 and `isFresh` false: this link has just been created,
+            so there is no earlier one to say has stopped working. Resend lives
+            on the person's record, not here.
+          */}
+          <InviteLinkPanel userId={invited.id} email={invited.email} version={0} isFresh={false} />
+        </div>
+
+        <div className={styles.actions}>
+          <Button type="button" onClick={onDone}>
+            Done
+          </Button>
+        </div>
+      </>
+    );
   }
 
   return (
     <>
       <div className={styles.header}>
-        <Dialog.Title className={styles.title}>Invite user</Dialog.Title>
-        <Dialog.Description className={styles.description}>
-          They join {isDealerAdmin ? membership.unit_name : membership.org_name} and choose
-          their own password from the emailed invitation.
-        </Dialog.Description>
+        <div className={styles.titleRow}>
+          <Dialog.Title className={styles.title}>Invite user</Dialog.Title>
+          {/*
+            FOLDED BEHIND THE ICON, the way the three Administration screens
+            already fold theirs. It explains a model somebody meets once; it is
+            not an instruction for completing the form, which is what makes
+            hiding it safe. It also buys back the height this dialog badly
+            needs -- its content is 719px in a 515px box (C54).
+          */}
+          <InfoHint label="About inviting somebody">
+            They join{" "}
+            {access.callerIsUnitScoped ? membership.unit_name : membership.org_name} and choose
+            their own password. Nothing is emailed: you get a link to send them yourself, and it
+            stops working once they accept. Their apps, role and dealership can all be changed
+            afterwards.
+          </InfoHint>
+        </div>
       </div>
 
-      {formError && <FormBanner traceId={formError.traceId}>{formError.message}</FormBanner>}
-
       <form className={styles.form} onSubmit={(e) => void handleSubmit(onSubmit)(e)} noValidate>
-        <div className={styles.nameRow}>
+        {/* Scrolls; the header above and the actions below do not, so the
+            title stays visible and the submit button never leaves the screen. */}
+        <div className={styles.body}>
+          {formError && <FormBanner traceId={formError.traceId}>{formError.message}</FormBanner>}
+
+          <div className={styles.nameRow}>
           <TextField label="First name" autoFocus error={errors.first_name?.message} {...register("first_name")} />
           <TextField label="Last name" error={errors.last_name?.message} {...register("last_name")} />
         </div>
@@ -372,198 +260,13 @@ function InviteForm({ membership, initialUnitId, onDone }: InviteFormProps) {
           {...register("email")}
         />
 
-        {isDealerAdmin ? (
-          <>
-            <p className={styles.scopeNote}>
-              They join <strong>{membership.unit_name}</strong> with access to DMS. Access
-              to anything else in {membership.org_name} is granted by an organisation
-              admin.
-            </p>
+        <PersonAccessFields
+          access={access}
+          membership={membership}
+          scopeHint={`Whether this person works across ${membership.org_name} or for a single dealer.`}
+        />
 
-            {/*
-              The one question a dealer admin still gets. Which dealership and
-              which app are both decided for them (C23), but a salesperson and
-              a service advisor are not the same job, and only the person doing
-              the hiring knows which this is.
-            */}
-            <RolePicker
-              appName="DMS"
-              appKey="dms"
-              options={optionsFor("dms")}
-              value={roleFor("dms")}
-              onChange={(code) => {
-                setAppRoles((current) => ({ ...current, dms: code }));
-              }}
-            />
-          </>
-        ) : (
-          <>
-            <fieldset className={styles.fieldset}>
-              <legend className={styles.legend}>Scope</legend>
-              <p className={styles.hint}>
-                Whether this user works across {membership.org_name} or for a single
-                dealer.
-              </p>
-
-              <label className={styles.checkbox}>
-                <input
-                  type="radio"
-                  name="scope"
-                  checked={!scopedToDealer}
-                  onChange={() => setScope("org")}
-                />
-                <span>Organisation</span>
-              </label>
-
-              <label className={styles.checkbox}>
-                <input
-                  type="radio"
-                  name="scope"
-                  checked={scopedToDealer}
-                  onChange={() => setScope("dealer")}
-                />
-                <span>Dealership</span>
-              </label>
-
-              {scopedToDealer && (
-                <>
-                  {/*
-                    A real <label>, not an aria-label. It is a question the
-                    person has to answer, so it should be legible on screen and
-                    not only to a screen reader.
-                  */}
-                  <label className={styles.label} htmlFor="invite-dealer">
-                    Select dealer
-                  </label>
-                  <select
-                    id="invite-dealer"
-                    className={styles.select}
-                    value={unitId}
-                    onChange={(event) => setUnitId(event.target.value)}
-                  >
-                    <option value="">Choose a dealer…</option>
-                    {dealersPending && <option disabled>Loading dealers…</option>}
-                    {openDealers?.map((dealer) => (
-                      <option key={dealer.id} value={dealer.id}>
-                        {dealer.name}
-                      </option>
-                    ))}
-                  </select>
-
-                  {scopeError && <p className={styles.error}>{scopeError}</p>}
-                </>
-              )}
-            </fieldset>
-
-            {/*
-              APP ACCESS, and the two branches are deliberately different shapes
-              rather than one list with things greyed out.
-
-              Somebody who belongs to a dealership can hold DMS and
-              Administration and nothing else (C27), so there is no choice of
-              app left to offer — only whether they administer the place. A
-              checkbox list where two of three are permanently disabled would
-              be asking a question that has one answer.
-            */}
-            <fieldset className={styles.fieldset}>
-              <legend className={styles.legend}>App access</legend>
-
-              {scopedToDealer ? (
-                <>
-                  <p className={styles.hint}>
-                    <strong>DMS</strong>, limited to this dealer. CRM and E-commerce are
-                    organisation-wide and cannot be granted to a dealership user.
-                  </p>
-
-                  <RolePicker
-                    appName="DMS"
-                    appKey="dms"
-                    options={optionsFor("dms")}
-                    value={roleFor("dms")}
-                    onChange={(code) => {
-                      setAppRoles((current) => ({ ...current, dms: code }));
-                    }}
-                  />
-                </>
-              ) : (
-                <>
-                  <p className={styles.hint}>
-                    The apps this user can open. Only apps {membership.org_name} subscribes
-                    to are listed.
-                  </p>
-
-                  <div className={styles.appChoices}>
-                    {apps.map((app) => (
-                      <label key={app.definition.key} className={styles.checkbox}>
-                        <input
-                          type="checkbox"
-                          checked={selectedApps.includes(app.definition.key)}
-                          onChange={() => toggleApp(app.definition.key)}
-                        />
-                        <span>{app.definition.name}</span>
-                      </label>
-                    ))}
-                  </div>
-
-                  {/*
-                    One per app they were actually given. Ordered as the app
-                    list is, so ticking DMS makes its role appear directly
-                    under the tick rather than somewhere further down.
-                  */}
-                  {apps
-                    .filter((app) => selectedApps.includes(app.definition.key))
-                    .map((app) => (
-                      <RolePicker
-                        key={app.definition.key}
-                        appName={app.definition.name}
-                        appKey={app.definition.key}
-                        options={optionsFor(app.definition.key)}
-                        value={roleFor(app.definition.key)}
-                        onChange={(code) => {
-                          setAppRoles((current) => ({
-                            ...current,
-                            [app.definition.key]: code,
-                          }));
-                        }}
-                      />
-                    ))}
-
-                  {/*
-                    ADMINISTRATION IS NOT IN THE LIST ABOVE. It is granted by
-                    this, because it comes with the platform and is gated by
-                    role alone (C17) — and because an invitation that could set
-                    the access and the standing separately would let somebody
-                    hold the admin console while the Users list called them a
-                    member.
-
-                    Owner is never offered: exactly one per organisation (C14),
-                    so appointing one is a transfer, not an invitation.
-                  */}
-                  <label className={styles.label} htmlFor="invite-role">
-                    Organisation role
-                  </label>
-                  <select
-                    id="invite-role"
-                    className={styles.select}
-                    value={orgRole}
-                    onChange={(event) => {
-                      setOrgRole(event.target.value as "admin" | "member");
-                    }}
-                  >
-                    <option value="member">Member</option>
-                    <option value="admin">Admin — can manage the organisation</option>
-                  </select>
-
-                  <p className={styles.hint}>
-                    Admins manage dealerships, people and billing for{" "}
-                    {membership.org_name}. Members only use the apps above.
-                  </p>
-                </>
-              )}
-            </fieldset>
-
-          </>
-        )}
+        </div>
 
         <div className={styles.actions}>
           <Dialog.Close asChild>
@@ -573,7 +276,7 @@ function InviteForm({ membership, initialUnitId, onDone }: InviteFormProps) {
           </Dialog.Close>
 
           <Button type="submit" isLoading={isPending}>
-            {isPending ? "Sending…" : "Send invitation"}
+            {isPending ? "Creating…" : "Create invitation"}
           </Button>
         </div>
       </form>

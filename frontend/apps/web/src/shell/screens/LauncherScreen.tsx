@@ -43,7 +43,57 @@ export function LauncherScreen() {
         </p>
       </div>
 
-      {apps.length === 0 ? (
+      {membership.unit_closed ? (
+        /*
+         * THEIR DEALERSHIP HAS BEEN CLOSED (C63, answering Q21).
+         *
+         * FIRST, BEFORE THE READINESS CHECK, because it is the more specific
+         * answer: an organisation whose workspace is fine and whose branch has
+         * shut should say so, not say it is still being set up.
+         *
+         * AND BEFORE THE TILES, not instead of enabling them. Every app comes
+         * back inaccessible, so `visibleApps` would render whatever the
+         * organisation is subscribed to as DISABLED tiles — correct by C16 and
+         * useless here, because a greyed-out tile invites clicking and explains
+         * nothing. The person did not lose access to DMS; their branch closed.
+         *
+         * THIS IS THE SCREEN C58 BUILT THE OTHER HALF OF. Somebody removed from
+         * their only organisation signs in with zero memberships and is told
+         * so. This person has a membership and cannot use it, and before C63
+         * there was nothing to tell them apart — the membership would simply
+         * have been dropped, and they would have been shown a sentence saying
+         * their access was removed, which is not what happened.
+         */
+        <p className={styles.empty} aria-live="polite">
+          <strong>{membership.unit_name}</strong> has been closed, so you cannot open
+          anything in <strong>{membership.org_name}</strong> at the moment. Nothing has
+          been deleted and your access returns if the dealership reopens — contact an
+          administrator of {membership.org_name} if you think this is a mistake.
+        </p>
+      ) : !membership.is_ready ? (
+        /*
+         * THE WORKSPACE IS NOT THERE YET (C50). Each organisation gets its own
+         * database, created by a task after signup commits — so for a few
+         * seconds the account is real and the workspace is not, and if
+         * provisioning failed for good it stays that way.
+         *
+         * Opening an app in that state means the first business query hits a
+         * database that does not exist. Today that is harmless, because no
+         * tenant app has models and nothing queries anything; the moment DMS
+         * has its first model it is a 500 on every page, and the owner has no
+         * idea why a product they just paid for is broken.
+         *
+         * So the tiles are not rendered at all rather than shown disabled.
+         * A disabled tile invites clicking and explains nothing; this says
+         * what is happening.
+         */
+        <p className={styles.empty} aria-live="polite">
+          <strong>{membership.org_name}</strong> is still being set up. Its workspace is
+          being prepared and your apps will appear here once it is ready — this normally
+          takes a few seconds. If it has been longer than that, contact support and quote{" "}
+          <strong>{membership.org_slug}</strong>.
+        </p>
+      ) : apps.length === 0 ? (
         /*
          * Reachable: a member of an organisation that has bought nothing, or
          * whose access was revoked app by app rather than by removing the

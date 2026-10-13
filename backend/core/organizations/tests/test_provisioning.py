@@ -31,6 +31,8 @@ from __future__ import annotations
 import itertools
 
 import pytest
+from django.core.management import call_command
+from django.core.management.base import CommandError
 from django.db import connections, transaction
 from django.utils import timezone
 
@@ -44,6 +46,8 @@ from core.organizations.tenancy import (
     create_tenant_database,
     drop_tenant_database,
     register_tenant_connection,
+    tenant_app_labels,
+    tenant_migration_targets,
 )
 
 # `databases` names the tenant alias explicitly. `__all__` does not work --- it
@@ -108,6 +112,22 @@ def found_test_tenant() -> Organization:
 
 def tables_in(alias: str) -> set[str]:
     return set(connections[alias].introspection.table_names())
+
+
+def recorded_apps_in(alias: str) -> set[str]:
+    """
+    Which apps the tenant database CLAIMS have migrations applied to it.
+
+    Reads `django_migrations` directly rather than through the recorder,
+    because the recorder creates the table if it is missing -- and whether
+    that table exists at all is part of what is being asserted.
+    """
+    if "django_migrations" not in tables_in(alias):
+        return set()
+
+    with connections[alias].cursor() as cursor:
+        cursor.execute("SELECT DISTINCT app FROM django_migrations")
+        return {row[0] for row in cursor.fetchall()}
 
 
 class TestTheDatabaseNameIsNotTrusted:
@@ -188,22 +208,30 @@ class TestProvisioning:
         ):
             assert forbidden not in tables, forbidden
 
-    def test_the_tenant_database_is_almost_empty_today_and_that_is_correct(self):
+    def test_the_tenant_database_is_empty_today_and_that_is_correct(self):
         """
-        `TENANT_APPS` have no models yet -- the illustrative one was deleted in
+        COMPLETELY empty -- not even `django_migrations`.
+
+        `TENANT_APPS` have no models yet (the illustrative one was deleted in
         session 7 precisely so it would not land a placeholder table in every
-        tenant database -- so `migrate` builds Django's own bookkeeping and
-        nothing else.
+        tenant database), so there is nothing to migrate, nothing is recorded,
+        and Django creates the bookkeeping table only when it first records
+        something.
+
+        It held one table until 2026-10-05, from a bare `migrate` that walked
+        every app and let the router veto each operation. No wrong table was
+        ever built, but all 39 control-plane migrations were RECORDED as
+        applied -- see `tenant_migration_targets()`.
 
         Written as an assertion rather than left as a surprise: the first DMS
-        model will fail this test, and the right response is to add it here,
-        not to wonder whether provisioning ever worked.
+        model will fail this test, and the right response is to update it, not
+        to wonder whether provisioning ever worked.
         """
         organization = make_org()
 
         provision_tenant(str(organization.pk))
 
-        assert tables_in(register_tenant_connection(organization)) == {"django_migrations"}
+        assert tables_in(register_tenant_connection(organization)) == set()
 
     def test_running_it_twice_is_safe(self):
         """
@@ -241,6 +269,85 @@ class TestProvisioning:
         create_tenant_database(organization)
         create_tenant_database(organization)
 
+    def test_the_tenant_bookkeeping_names_no_control_app(self):
+        """
+        THE TEST THAT WOULD HAVE CAUGHT THIS, and the one that keeps the fix
+        honest as tenant apps gain migrations.
+
+        `django_migrations` is per-database bookkeeping: it answers which
+        migrations have been applied to THIS database. A tenant database
+        claiming `auth.0012_...` is applied, while holding no `auth_user`
+        table, is a lie -- and a trap, because the day an app moves from
+        CONTROL_PLANE_APPS to TENANT_APPS those rows make `migrate` skip it
+        and the tables never appear.
+
+        Deliberately written as a SUBSET check so it holds in both worlds: no
+        rows today, and only tenant rows once DMS has models. A test asserting
+        the empty set exactly would have to be rewritten then, and whoever
+        rewrote it would have to re-derive why it existed.
+        """
+        organization = make_org()
+
+        provision_tenant(str(organization.pk))
+        recorded = recorded_apps_in(register_tenant_connection(organization))
+
+        assert recorded <= tenant_app_labels(), sorted(recorded - tenant_app_labels())
+
+
+class TestWhatGetsMigratedIntoATenant:
+    """
+    `tenant_migration_targets()` on its own, with no database involved.
+    """
+
+    def test_it_names_only_tenant_apps(self):
+        assert set(tenant_migration_targets()) <= tenant_app_labels()
+
+    def test_it_excludes_every_control_plane_app(self):
+        """
+        The explicit version of the above, so a failure says WHICH app leaked
+        rather than only that a set comparison failed.
+        """
+        targets = set(tenant_migration_targets())
+
+        for control_app in (
+            "accounts",
+            "auth",
+            "admin",
+            "contenttypes",
+            "sessions",
+            "token_blacklist",
+            "organizations",
+            "permissions",
+            "billing",
+        ):
+            assert control_app not in targets, control_app
+
+    def test_the_tenant_apps_are_the_eight_expected_ones(self):
+        """
+        Spelled out rather than compared to the setting, which would pass for
+        any content at all. Product-prefixed labels are the reason this comes
+        from the app registry and not from the dotted path.
+        """
+        assert tenant_app_labels() == {
+            "audit",
+            "contacts",
+            "crm",
+            "dms_sales",
+            "dms_service",
+            "dms_tech_support",
+            "events",
+            "notifications",
+        }
+
+    def test_nothing_is_migratable_yet(self):
+        """
+        No tenant app has a migration, which is why provisioning leaves an
+        empty database. The first DMS model changes this, and it should --
+        this test is here so that change is deliberate rather than noticed
+        months later.
+        """
+        assert tenant_migration_targets() == []
+
 
 class TestSignupSchedulesIt:
     def test_signing_up_provisions_the_database(self):
@@ -258,7 +365,7 @@ class TestSignupSchedulesIt:
         organization.refresh_from_db()
         assert organization.db_name == TEST_TENANT_ALIAS
         assert organization.provisioned_at is not None
-        assert tables_in(register_tenant_connection(organization)) == {"django_migrations"}
+        assert tables_in(register_tenant_connection(organization)) == set()
 
     def test_it_is_scheduled_on_commit_and_not_called_inline(self):
         """
@@ -280,3 +387,80 @@ class TestSignupSchedulesIt:
         # Out of the block the commit has happened, so the task has run.
         organization.refresh_from_db()
         assert organization.provisioned_at is not None
+
+
+class TestReprovisionTenantCommand:
+    """
+    `reprovision_tenant`, the only recovery that does not need a Django shell
+    (C50).
+
+    It matters because `provision_tenant` retries five times and then gives up
+    permanently: after that the organisation is real, the activation code is
+    spent, the owner can sign in, and `provisioned_at` is NULL forever.
+    """
+
+    def test_it_provisions_an_organisation_that_was_left_unfinished(self):
+        organization = make_org()
+        drop_tenant_database(organization)
+        Organization.objects.filter(pk=organization.pk).update(provisioned_at=None)
+
+        call_command("reprovision_tenant", organization.slug, verbosity=0)
+
+        organization.refresh_from_db()
+        assert organization.is_ready is True
+        # The database is really there, asked of MySQL.
+        alias = register_tenant_connection(organization)
+        with connections[alias].cursor() as cursor:
+            cursor.execute("SELECT DATABASE()")
+            assert cursor.fetchone()[0] == TEST_TENANT_ALIAS
+
+    def test_an_unknown_slug_is_a_command_error_not_a_traceback(self):
+        """A typo in a slug is the likeliest way to arrive here, and is not a bug."""
+        with pytest.raises(CommandError, match="No organisation with slug"):
+            call_command("reprovision_tenant", "does-not-exist", verbosity=0)
+
+    def test_it_refuses_an_organisation_that_is_already_provisioned(self):
+        """
+        REFUSED RATHER THAN SILENTLY SKIPPED. The task returns early for an
+        organisation already stamped, so running it would do nothing and report
+        success -- which reads as "repaired" to somebody working an incident.
+        """
+        organization = make_org()
+        provision_tenant(str(organization.pk))
+
+        with pytest.raises(CommandError, match="already provisioned"):
+            call_command("reprovision_tenant", organization.slug, verbosity=0)
+
+    def test_force_reprovisions_a_database_that_went_missing(self):
+        """
+        The row says ready and the database is gone --- dropped by hand, or lost
+        with a server. `--force` clears the stamp so the task does its work
+        instead of returning early; that is the only thing it does.
+        """
+        organization = make_org()
+        provision_tenant(str(organization.pk))
+        drop_tenant_database(organization)
+
+        call_command("reprovision_tenant", organization.slug, force=True, verbosity=0)
+
+        organization.refresh_from_db()
+        assert organization.is_ready is True
+        alias = register_tenant_connection(organization)
+        with connections[alias].cursor() as cursor:
+            cursor.execute("SELECT DATABASE()")
+            assert cursor.fetchone()[0] == TEST_TENANT_ALIAS
+
+    def test_it_does_not_put_control_plane_tables_in_the_database(self):
+        """
+        It calls the same task, so it inherits the same scoping --- but a
+        recovery path that quietly did something different from the normal one
+        is exactly the kind of difference nobody would look for.
+        """
+        organization = make_org()
+        drop_tenant_database(organization)
+        Organization.objects.filter(pk=organization.pk).update(provisioned_at=None)
+
+        call_command("reprovision_tenant", organization.slug, verbosity=0)
+        recorded = recorded_apps_in(register_tenant_connection(organization))
+
+        assert recorded <= tenant_app_labels(), sorted(recorded - tenant_app_labels())

@@ -210,3 +210,31 @@
   font-size: var(--text-xs);
   color: var(--color-text-3);
 }
+
+/*
+ * MONOSPACE, AND THAT IS NOT DECORATION. A GSTIN gets read character by
+ * character against a certificate and typed into somebody else's system; a
+ * proportional font makes 1/l and 0/O the same shape at the exact moment the
+ * difference matters. Same reasoning as `.postal` above.
+ *
+ * `letter-spacing` because fifteen unbroken characters are hard to keep your
+ * place in, and this panel is where somebody checks them one at a time.
+ */
+.identifier {
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--color-text);
+}
+
+.identifierLabel {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  color: var(--color-text-3);
+}
+
+.missing {
+  font-family: var(--font-sans);
+  font-style: italic;
+}

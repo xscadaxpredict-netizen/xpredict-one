@@ -50,35 +50,37 @@ export function DealerTable({ dealers, basePath, selectedId, onSelect }: DealerT
               onClick={() => onSelect(dealer.id)}
             >
               <th scope="row" className={styles.dealerCell}>
-                <span className={styles.mark} aria-hidden="true">
-                  <StoreIcon />
-                </span>
+                <span className={styles.dealerLayout}>
+                  <span className={styles.mark} aria-hidden="true">
+                    <StoreIcon />
+                  </span>
 
-                <span className={styles.dealer}>
-                  {/*
-                    The link is the name, not the row. A `<tr onClick>` is
-                    invisible to the keyboard and announces nothing; a real
-                    link is focusable, middle-clickable and copyable. The row
-                    handler is a convenience going to the same place.
-                  */}
-                  <Link
-                    to={`${basePath}/${dealer.id}`}
-                    className={styles.name}
-                    onClick={(event) => event.stopPropagation()}
-                  >
-                    {dealer.name}
-                  </Link>
-                  <span className={styles.since}>
+                  <span className={styles.dealer}>
                     {/*
-                      The code when there is one: it is what people quote to
-                      each other and what ends up on paperwork, so it
-                      identifies a row faster than the month it opened.
+                      The link is the name, not the row. A `<tr onClick>` is
+                      invisible to the keyboard and announces nothing; a real
+                      link is focusable, middle-clickable and copyable. The row
+                      handler is a convenience going to the same place.
                     */}
-                    {dealer.code ? (
-                      <span className={styles.code}>{dealer.code}</span>
-                    ) : (
-                      `Opened ${formatMonth(dealer.created_at)}`
-                    )}
+                    <Link
+                      to={`${basePath}/${dealer.id}`}
+                      className={styles.name}
+                      onClick={(event) => event.stopPropagation()}
+                    >
+                      {dealer.name}
+                    </Link>
+                    <span className={styles.since}>
+                      {/*
+                        The code when there is one: it is what people quote to
+                        each other and what ends up on paperwork, so it
+                        identifies a row faster than the month it opened.
+                      */}
+                      {dealer.code ? (
+                        <span className={styles.code}>{dealer.code}</span>
+                      ) : (
+                        `Opened ${formatMonth(dealer.created_at)}`
+                      )}
+                    </span>
                   </span>
                 </span>
               </th>

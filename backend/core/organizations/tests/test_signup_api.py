@@ -225,6 +225,75 @@ class TestSigningUp:
         assert response.status_code == 422
         assert response.json()["code"] == "organization_name_too_long"
 
+    def test_a_weak_password_is_refused_and_spends_no_code(self, client, code):
+        """
+        SIGNUP CALLED NO PASSWORD VALIDATORS UNTIL 2026-10-08.
+
+        `AUTH_PASSWORD_VALIDATORS` had been configured since Phase 1 and no
+        code path ever reached it, so this endpoint would happily create a
+        founder's account with `12345678` --- the same shape as
+        `BLACKLIST_AFTER_ROTATION` without its app, and found the same way: from
+        the other end, when accepting an invitation enforced rules the owner who
+        sent it was never held to.
+        """
+        response = client.post(
+            SIGNUP_URL,
+            {"activation_code": code.code, **DETAILS, "password": "12345678"},
+            format="json",
+        )
+
+        assert response.status_code == 422
+        assert [error["field"] for error in response.json()["errors"]] == [
+            "password",
+            "password",
+        ]
+
+        # NOTHING WAS CREATED AND THE CODE IS STILL GOOD. A refused password is
+        # a typo, and burning a single-use activation code over one would be
+        # unrecoverable without an admin minting another (C47).
+        assert Organization.objects.count() == 0
+        assert User.objects.count() == 0
+        code.refresh_from_db()
+        assert code.spent_at is None
+
+    def test_both_reasons_come_back_when_a_password_breaks_two_rules(self, client, code):
+        """
+        TWO ENTRIES FOR ONE FIELD, which is what the forms have to render.
+
+        `12345678` is too common AND entirely numeric. A screen that keeps only
+        the last one tells somebody to stop using digits, and then --- once they
+        have --- that it is too common. The frontend groups them; this pins that
+        the server actually sends both.
+        """
+        response = client.post(
+            SIGNUP_URL,
+            {"activation_code": code.code, **DETAILS, "password": "12345678"},
+            format="json",
+        )
+
+        details = [error["detail"] for error in response.json()["errors"]]
+        assert any("too common" in detail for detail in details)
+        assert any("entirely numeric" in detail for detail in details)
+
+    def test_the_generic_detail_is_not_where_the_reason_lives(self, client, code):
+        """
+        THE BUG THIS WHOLE CHANGE CAME FROM. `detail` is deliberately generic
+        for every validation failure, so a form that renders only `detail`
+        shows "the submitted data is not valid" however much the server said.
+        Pinned here so nobody "improves" the handler by moving the reason into
+        `detail` and quietly breaking the field-level rendering instead.
+        """
+        response = client.post(
+            SIGNUP_URL,
+            {"activation_code": code.code, **DETAILS, "password": "12345678"},
+            format="json",
+        )
+
+        body = response.json()
+        assert body["detail"] == "The submitted data is not valid."
+        assert "too common" not in body["detail"]
+        assert len(body["errors"]) == 2
+
     def test_no_signup_is_possible_without_a_code(self, client):
         """The gate is the serializer, before any of the service runs."""
         response = client.post(SIGNUP_URL, DETAILS, format="json")

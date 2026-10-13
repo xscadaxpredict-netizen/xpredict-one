@@ -71,13 +71,36 @@
 
 /* ---- Dealer ------------------------------------------------------------- */
 
+/*
+ * THE CELL IS A CELL; THE FLEX BOX GOES INSIDE IT.
+ *
+ * `display: flex` used to be on the `<th>` itself, and that quietly takes the
+ * element OUT of table layout: a table-cell told to be a flex container stops
+ * being a cell, and the browser wraps it in an anonymous cell to keep the row
+ * intact. The `th` then paints its own `border-bottom` as an ordinary block
+ * border, while every `<td>` beside it paints a COLLAPSED table border --- two
+ * different paint paths for what reads as one line.
+ *
+ * AND THE ROW HEIGHTS ARE FRACTIONAL, which is what makes it visible: the name
+ * and email stack with a 1px gap, so a row comes out 61.5px and a cell edge
+ * lands on y = 495.5. A half-pixel boundary has to be snapped to a whole device
+ * pixel when it is painted, and the two paths can snap it in opposite
+ * directions --- so the separator steps by exactly 1px at the column edge.
+ * Fractional display scaling makes it worse rather than causing it.
+ *
+ * Reported by the owner from a screenshot. Measured after the fix: every cell
+ * in a row now shares an identical bottom edge, 495.5 included.
+ */
 .dealerCell {
-  display: flex;
-  align-items: center;
-  gap: var(--space-3);
   /* A row header is still a cell; without this it inherits thead's uppercase. */
   text-transform: none;
   letter-spacing: normal;
+}
+
+.dealerLayout {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
 }
 
 /* Squared, where a person's avatar is round: a dealership is a place. */

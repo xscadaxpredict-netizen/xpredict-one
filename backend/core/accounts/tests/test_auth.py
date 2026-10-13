@@ -275,6 +275,58 @@ class TestRefresh:
 
         assert response.status_code == 401
 
+    def test_a_deleted_account_cannot_refresh(self, client, user):
+        """
+        THE LOOP THIS PREVENTS, and it cost a dev server 41,000 requests from a
+        single idle tab.
+
+        `RefreshToken(raw)` validates a signature, an expiry and a denylist. It
+        never looks at the user --- so a deleted account kept minting perfectly
+        good access tokens for the seven days its refresh token had left, while
+        every request made with them answered 401, because DRF authentication
+        DOES load the user row.
+
+        Refresh succeeds, nothing else does, and a client that retries on 401
+        has a cycle it can never leave. The session has to die HERE.
+        """
+        login(client)
+        user.delete()
+
+        response = client.post(reverse("accounts:refresh"), **csrf_headers(client))
+
+        assert response.status_code == 401
+        assert response.json()["code"] == "session_expired"
+
+    def test_a_deactivated_account_cannot_refresh(self, client, user):
+        """
+        The other half, and it tightens **Q17**: disabling somebody takes
+        effect on their next request because simplejwt refuses an inactive user
+        --- but their REFRESH token carried on working, so the one credential
+        that outlives everything else was the one nobody checked.
+        """
+        login(client)
+        user.is_active = False
+        user.save(update_fields=["is_active"])
+
+        response = client.post(reverse("accounts:refresh"), **csrf_headers(client))
+
+        assert response.status_code == 401
+        assert response.json()["code"] == "session_expired"
+
+    def test_a_live_account_still_refreshes(self, client, user):
+        """
+        The check must refuse the two cases above and nothing else. Without
+        this, "refuse everything" would pass both tests above and sign
+        everybody out.
+        """
+        login(client)
+        first = client.cookies[ACCESS].value
+
+        response = client.post(reverse("accounts:refresh"), **csrf_headers(client))
+
+        assert response.status_code == 204
+        assert client.cookies[ACCESS].value != first
+
 
 class TestLogout:
     def test_clears_both_cookies(self, client, user):

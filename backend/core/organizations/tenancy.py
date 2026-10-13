@@ -18,8 +18,10 @@ from __future__ import annotations
 import copy
 import re
 
+from django.apps import apps
 from django.conf import settings
 from django.db import connections
+from django.db.migrations.loader import MigrationLoader
 
 from core.organizations.models import Organization
 
@@ -116,6 +118,61 @@ def create_tenant_database(organization: Organization) -> None:
             f"CREATE DATABASE IF NOT EXISTS `{organization.db_name}` "
             "CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci"
         )
+
+
+def tenant_app_labels() -> frozenset[str]:
+    """
+    The app labels that belong in a tenant database.
+
+    FROM THE APP REGISTRY, not from the dotted path, and that asymmetry with
+    `CONTROL_PLANE_APP_LABELS` is not an inconsistency. A control-plane app's
+    label equals its last path segment (`core.accounts` -> `accounts`), so
+    settings can derive those at import time. A tenant app's label is
+    product-prefixed (`products.dms.sales` -> `dms_sales`) and lives on its
+    `AppConfig`, which does not exist until Django has loaded the apps --- long
+    after settings are read. So this is a function, called at runtime.
+    """
+    return frozenset(
+        config.label for config in apps.get_app_configs() if config.name in settings.TENANT_APPS
+    )
+
+
+def tenant_migration_targets() -> list[str]:
+    """
+    Which tenant apps actually have migrations to apply.
+
+    TWO FILTERS, AND BOTH ARE LOAD-BEARING.
+
+    Tenant-only, because a bare `migrate` means "apply everything" and leaves
+    the router to veto each operation. The router does veto them --- no
+    control-plane table is ever built in a tenant database --- but Django
+    RECORDS a migration as applied whether or not the router allowed any of its
+    operations (`MigrationExecutor.apply_migration`, which calls
+    `record_migration` unconditionally if nothing recorded it inside). So a
+    tenant database ended up claiming all 39 control-plane migrations were
+    applied to it while holding none of their tables.
+
+    That was harmless until the day somebody moves an app from
+    `CONTROL_PLANE_APPS` to `TENANT_APPS`: its migrations are already marked
+    applied in every tenant database, so `migrate` would skip them and the
+    tables would never appear. Silently. The same "looks applied and is not"
+    shape this project keeps finding.
+
+    Has-migrations, because `migrate <label>` raises `CommandError` for an app
+    with no migrations --- and today NONE of the tenant apps have any, so this
+    returns an empty list and provisioning creates a database with no tables at
+    all. That is the honest answer rather than a failure: there is nothing to
+    put in it yet.
+
+    `load=False` plus `load_disk()` reads only the files. Asking the loader for
+    applied migrations as well would touch `django_migrations` in the tenant
+    database, which is the table we are trying not to create prematurely.
+    """
+    loader = MigrationLoader(None, load=False)
+    loader.load_disk()
+
+    on_disk = {app_label for app_label, _ in loader.disk_migrations}
+    return sorted(on_disk & tenant_app_labels())
 
 
 def drop_tenant_database(organization: Organization) -> None:

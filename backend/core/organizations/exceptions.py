@@ -9,7 +9,7 @@ imports DRF. Named after the business situation rather than the HTTP shape:
 
 from __future__ import annotations
 
-from shared.exceptions import ConflictError, InvalidInputError
+from shared.exceptions import AuthorizationError, ConflictError, InvalidInputError
 
 
 class ActivationCodeInvalidError(InvalidInputError):
@@ -97,3 +97,286 @@ class OrganizationNameUnusableError(InvalidInputError):
 
     code = "organization_name_unusable"
     message = "That organisation name cannot be used."
+
+
+class DealerNameTakenError(ConflictError):
+    """
+    Another dealership in this organization already answers to this name.
+
+    CASE-INSENSITIVE, and not because the service lowercases anything. MySQL's
+    `utf8mb4_0900_ai_ci` collation compares that way, so the unique constraint
+    refuses "Chennai - Guindy" and "chennai - guindy" as the same name without
+    being asked to. The service checks first only so the caller gets this
+    message instead of a 500 from an IntegrityError.
+
+    THE `code` STRING IS THE CONTRACT. `shell/admin/api/dealers.ts` switches on
+    it to choose which field to mark, so renaming it here is a silent fallback
+    to a generic message there.
+    """
+
+    code = "dealer_name_taken"
+    message = "Another dealership already uses that name."
+
+
+class DealerCodeTakenError(ConflictError):
+    """
+    Another dealership in this organization already uses this short code.
+
+    The code is OPTIONAL, so only a given one can collide. It is also the thing
+    that ends up on paperwork, and two branches answering to the same code is a
+    filing problem nobody notices until an invoice goes to the wrong one.
+    """
+
+    code = "dealer_code_taken"
+    message = "Another dealership already uses that code."
+
+
+class DealerAlreadyClosedError(ConflictError):
+    """
+    This dealership is already closed.
+
+    A STATE REFUSAL, SO 409 -- not 404 (the caller can see it) and not 403
+    (they are allowed to close dealerships). The three are deliberately not
+    interchangeable: scope is 404, capability is 403, state is 409.
+
+    It also makes closing NOT idempotent on purpose. Two admins acting on the
+    same branch within a minute of each other should find out, because the
+    second one is usually acting on a stale screen and about to be surprised
+    by something else too.
+    """
+
+    code = "dealer_already_closed"
+    message = "That dealership is already closed."
+
+
+class DealerAlreadyOpenError(ConflictError):
+    """The mirror of `DealerAlreadyClosedError`, for reopening."""
+
+    code = "dealer_already_open"
+    message = "That dealership is already open."
+
+
+class UnitClosedError(AuthorizationError):
+    """
+    The caller works at a dealership that has been closed (C63).
+
+    403 AND NOT 404, which is the opposite of every other scope refusal here --
+    and the difference is who is asking. A 404 hides a record from somebody who
+    should not know it exists; this person works here, knows the branch exists,
+    and watched it close. Hiding the organisation from them would produce the
+    exact screen C58 was written to remove: a correct password, and a message
+    saying their access was removed when it was not.
+
+    NOT 401 EITHER. 401 means "authenticate and try again", which sends them to
+    the sign-in page to retype a password that is perfectly good -- so they
+    would loop. 403 leaves them signed in, where the shell can say what
+    actually happened.
+
+    NOTHING WAS WRITTEN TO THEIR MEMBERSHIP to make this true. It is computed
+    from the dealership's status on every request, which is what makes
+    reopening restore exactly what was there before.
+    """
+
+    code = "unit_closed"
+    message = "Your dealership has been closed. Contact your administrator."
+
+
+class OwnerProtectedError(ConflictError):
+    """
+    The owner cannot be removed, disabled, or demoted.
+
+    An organization with no owner has nobody who could appoint one (C14), so
+    this is not a permission question --- not even the owner themselves may do
+    it, and no amount of standing makes it allowed. Changing who the owner is
+    is a TRANSFER, which is Q23 and does not exist yet.
+
+    THE FRONTEND ALREADY HIDES THESE CONTROLS. This exists because a request
+    does not have to come from our menu.
+    """
+
+    code = "owner_protected"
+    message = "The owner cannot be removed. Transfer ownership to somebody else first."
+
+
+class PersonEmailTakenError(ConflictError):
+    """
+    Somebody in this organization already has this address.
+
+    PER ORGANIZATION, not globally: one person may belong to several
+    organizations with one account (C1, C27), so a global check would refuse
+    an invitation to somebody who already works somewhere else on the platform.
+    """
+
+    code = "email_taken"
+    message = "That email address already belongs to someone in this organisation."
+
+
+class SignInAddressLockedError(ConflictError):
+    """
+    An accepted address is how somebody signs in, and an admin may not change it.
+
+    Editable only while an invitation is outstanding (C25). Once somebody has
+    accepted, changing their address from an admin screen is an account
+    takeover with extra steps --- the real flow is the person changing it
+    themselves with confirmation sent to the new address, which is Q23 and
+    does not exist.
+    """
+
+    code = "sign_in_address_locked"
+    message = "A sign-in address can only be changed while an invitation is outstanding."
+
+
+class DealerScopedAppError(ConflictError):
+    """
+    A dealer-scoped person was granted an app that does not understand dealerships.
+
+    C27. DMS is the only unit-aware app (C5), so somebody scoped to one
+    dealership holding CRM would see EVERY dealership's customers --- CRM does
+    no unit filtering and has no column to filter on. A dealership wanting
+    other apps founds its own organization and subscribes; same account, one
+    login.
+
+    REFUSED HERE AS WELL AS HIDDEN IN THE FORM. The invite dialog disables the
+    other apps once a dealership is picked, and that is a convenience, not the
+    rule (C19).
+    """
+
+    code = "dealer_scoped_app"
+    message = "Somebody at a dealership can only be given DMS."
+
+
+class RoleScopeMismatchError(ConflictError):
+    """
+    An org-level role was given to a dealer-scoped person, or the reverse.
+
+    `Role.level` says which one a role is for (C7, C32). A dealer-scoped person
+    holding Group operations would act across every dealership, which is the
+    scoping undone; an organization-wide person holding Sales representative
+    would be scoped to a dealership they do not have.
+    """
+
+    code = "role_scope_mismatch"
+    message = "That role cannot be held at that scope."
+
+
+class NotAnInvitationError(ConflictError):
+    """
+    An invitation action was aimed at somebody who has already accepted.
+
+    Resending is the obvious one: there is nothing to resend to a person who
+    is already a member, and the request is almost certainly a stale screen.
+    """
+
+    code = "not_an_invitation"
+    message = "That person has already accepted their invitation."
+
+
+class AdministrationNotGrantableError(ConflictError):
+    """
+    A payload asked for Administration as if it were a product.
+
+    It is not granted and never has an `AppAccess` row --- the check constraint
+    refuses one, and `AppSubscription` refuses to sell it (C44). Administration
+    comes from standing, or from a role that grants `admin.*` permissions
+    (C40), and `/me` builds that entry rather than reading it.
+
+    REFUSED RATHER THAN IGNORED. A caller sending this is working from the
+    wrong model of how administration is conferred, and silently dropping the
+    entry would leave them believing it had been granted.
+    """
+
+    code = "administration_not_grantable"
+    message = "Administration is not an app that can be granted."
+
+
+class AppNotSubscribedError(ConflictError):
+    """
+    An app was granted that this organization does not pay for.
+
+    THE OTHER HALF OF C16, and it was missing. A grant says this person may
+    open the app; `billing.AppSubscription` says the organization bought it.
+    Both are required, and `/me` already refuses to open an app whose
+    subscription has lapsed --- but nothing stopped the grant being created in
+    the first place, so an admin could hand out an app nobody had bought and
+    the only symptom was a launcher tile that never became clickable.
+
+    NOT `AuthorizationError`. The caller may well hold `admin.person.update`;
+    it is the organization's billing state that does not allow this, which is
+    what `ConflictError` is for --- resubmitting the same request after
+    subscribing would succeed.
+    """
+
+    code = "app_not_subscribed"
+    message = "This organisation has not subscribed to that app."
+
+
+class InvitationExpiredError(ConflictError):
+    """
+    The link is past `expires_at`.
+
+    NOT 404. An expired invitation is a real one whose window has closed, and
+    telling the holder so is what lets them ask for another --- answering "no
+    such invitation" would send them to an admin who can see it sitting in the
+    list, which is the support call this message prevents.
+
+    The remedy is Resend, which mints a fresh token (C56), so this is a state
+    the caller can get out of without anybody re-entering their details.
+    """
+
+    code = "invitation_expired"
+    message = "This invitation has expired. Ask whoever invited you for a new link."
+
+
+class InvitationAlreadyAcceptedError(ConflictError):
+    """
+    The link has been redeemed.
+
+    A LINK IS A ONE-TIME CREDENTIAL and this is the second click. Usually the
+    same person pressing back, or a browser prefetching -- so the wording is
+    about the account existing rather than about anything going wrong.
+
+    `accept_invitation()` reads the row `FOR UPDATE` before checking, so two
+    simultaneous clicks cannot both pass: the second waits, then lands here.
+    """
+
+    code = "invitation_already_accepted"
+    message = "This invitation has already been accepted. Sign in instead."
+
+
+class InvitationNeedsSignInError(ConflictError):
+    """
+    The invited address already has an account, so there is no password to set.
+
+    ONE LOGIN SPANS ORGANISATIONS (C1, C27), so somebody invited into a second
+    one already has credentials. Letting this link set a password would be a
+    password reset for an existing account with no proof of who is holding the
+    link -- an account takeover with extra steps (Q23 refuses the same thing
+    from the admin side).
+
+    So they sign in, and accepting is then a single authenticated request.
+
+    NOT `AuthenticationError`/401. The frontend's 401 handling bounces to the
+    sign-in screen, which would drop the token out of the URL and lose the
+    invitation; this is a state the accept screen explains in place, with the
+    token still in hand.
+    """
+
+    code = "invitation_needs_sign_in"
+    message = "This address already has an account. Sign in to accept the invitation."
+
+
+class InvitationWrongAccountError(ConflictError):
+    """
+    Somebody is signed in as a different person from the one invited.
+
+    The likely case is entirely innocent and will happen constantly: an admin
+    pastes a link to check it while signed in as themselves. Accepting on the
+    signed-in account instead would silently add the WRONG PERSON to the
+    organisation, with the invitation consumed and nothing to show what
+    happened.
+
+    So it refuses and says which address the invitation is for.
+    """
+
+    code = "invitation_wrong_account"
+    message = "This invitation is for a different email address. Sign out to accept it."

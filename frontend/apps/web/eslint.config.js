@@ -187,10 +187,12 @@ export default tseslint.config(
   },
   {
     /*
-     * The ONLY exemption from the query-hook ban, and deliberately one file.
+     * The ONLY exemption from the query-hook ban, and deliberately a short
+     * list of named files.
      *
-     * Authentication runs BEFORE an organisation is known — that is the whole
-     * purpose of signing in — so there is no org to scope a cache key by and
+     * These all run BEFORE an organisation is known — signing in, signing up,
+     * and accepting an invitation, which is done by somebody with no
+     * membership at all (C56) — so there is no org to scope a cache key by and
      * `useOrgQuery` cannot work here.
      *
      * Kept this narrow on purpose. Exempting `src/shell/**` would have been
@@ -201,7 +203,13 @@ export default tseslint.config(
      * Files are listed individually rather than matched by pattern, so adding
      * one is a deliberate act that shows up in a diff.
      */
-    files: ["src/shell/hooks/useAuth.ts", "src/shell/hooks/useSignup.ts"],
+    files: [
+      "src/shell/hooks/useAuth.ts",
+      "src/shell/hooks/useSignup.ts",
+      // Accepting an invitation: the caller is not a member of anything yet,
+      // and the token is the only thing identifying the organisation.
+      "src/shell/hooks/useInvitation.ts",
+    ],
     rules: {
       "no-restricted-imports": ["error", { patterns: SHELL_PATTERNS }],
     },

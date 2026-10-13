@@ -29,6 +29,7 @@ from typing import Any
 from django.http import HttpRequest, HttpResponse, JsonResponse
 
 from config.routers import current_tenant_db
+from core.organizations.api.base import REQUEST_ORGANIZATION_ATTR
 from core.organizations.models import Organization, OrganizationStatus
 from core.organizations.tenancy import register_tenant_connection
 from shared.base_models import allowed_units
@@ -109,7 +110,7 @@ class TenantMiddleware:
             # Binding nothing is safe because the router fails closed: a
             # tenant model touched during this request raises rather than
             # quietly reading the control database.
-            request.organization = None  # type: ignore[attr-defined]
+            setattr(request, REQUEST_ORGANIZATION_ATTR, None)
             return self.get_response(request)
 
         token = current_tenant_db.set(register_tenant_connection(organization))
@@ -120,7 +121,11 @@ class TenantMiddleware:
         # previous request's value in place would be quiet and worse.
         units_token = allowed_units.set(None)
 
-        request.organization = organization  # type: ignore[attr-defined]
+        # STOWED UNDER A PRIVATE NAME, not as `request.organization` (C49).
+        # Reading it directly would skip the membership check, so the public
+        # route is `OrgScopedAPIView.organization`, which hands it over only
+        # after verifying the caller belongs here.
+        setattr(request, REQUEST_ORGANIZATION_ATTR, organization)
 
         try:
             return self.get_response(request)

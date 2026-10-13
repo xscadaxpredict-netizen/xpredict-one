@@ -27,6 +27,10 @@ FRONTEND_ORIGINS = ["http://localhost:5173", "http://127.0.0.1:5173"]
 
 CORS_ALLOWED_ORIGINS = FRONTEND_ORIGINS
 
+# Invitation links point at the SPA, not at Django (C56). Same list, first
+# entry, rather than a second copy of the port number.
+FRONTEND_BASE_URL = FRONTEND_ORIGINS[0]
+
 # Without it the browser drops the response for any request carrying
 # cookies, so sign-in appears to do nothing at all.
 CORS_ALLOW_CREDENTIALS = True

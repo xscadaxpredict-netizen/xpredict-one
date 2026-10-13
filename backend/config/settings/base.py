@@ -200,6 +200,16 @@ AUTH_USER_MODEL = "accounts.User"
 # app. Apps receive an authenticated principal and do authorization only.
 # --------------------------------------------------------------------------
 
+# WHERE THE SPA LIVES, used to build invitation links (C56).
+#
+# There is no email transport: an invitation's link is handed to an admin who
+# sends it by hand, so this is the one setting that decides whether that link
+# works. Empty by default and `invitation_link()` raises on empty rather than
+# producing a relative URL -- a link that is quietly wrong is noticed only by
+# the person who cannot use it, which is the failure mode this project keeps
+# finding in settings that look configured and do nothing.
+FRONTEND_BASE_URL = env("FRONTEND_BASE_URL", default="")
+
 AUTH_PASSWORD_VALIDATORS = [
     {"NAME": "django.contrib.auth.password_validation.UserAttributeSimilarityValidator"},
     {"NAME": "django.contrib.auth.password_validation.MinimumLengthValidator"},
@@ -255,7 +265,7 @@ REST_FRAMEWORK = {
 # below is therefore not "how long a sacked employee keeps working" --- it is
 # how long a STOLEN access token stays usable after its owner logs out.
 SIMPLE_JWT = {
-    "ACCESS_TOKEN_LIFETIME": timedelta(hours=24),
+    "ACCESS_TOKEN_LIFETIME": timedelta(minutes=15),
     "REFRESH_TOKEN_LIFETIME": timedelta(days=7),
     "ROTATE_REFRESH_TOKENS": True,
     # Needs the token_blacklist app above. It is listed there now.
@@ -347,4 +357,6 @@ LOGGING = {
     },
     "root": {"handlers": ["console"], "level": env("LOG_LEVEL", default="INFO")},
 }
-X_FRAME_OPTIONS = 'SAMEORIGIN'
+
+# Lets the in-app preview modal embed uploaded PDFs in an iframe.
+X_FRAME_OPTIONS = "SAMEORIGIN"

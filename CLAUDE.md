@@ -70,24 +70,27 @@ roles, permissions or models until it is explicitly picked up.
 each dealer's users are managed at the **dealer** level. An org admin reaching into a
 dealer's users is an audited override, not the normal path.
 
-Full rationale: `context/02-DECISIONS.md` C1–C44 — all `[Decided]`. Don't reopen them.
+Full rationale: `context/02-DECISIONS.md` C1–C55 — all `[Decided]`. Don't reopen them.
 
 ## Status
 
 **The frontend ships Administration; the backend runs on MySQL and signs people in.**
 Keep this section current — it is the first thing a new developer reads.
 
-**Frontend — built and merged, running on hand-written fakes.** Sign-in, the app
-launcher, the shell, and Administration (Users, Dealers, Roles) all work in a browser.
-Every `api/*.ts` has a `USE_FAKE_*` flag that falls through to the URL Django will
-serve, so switching over is deleting a block per function. **The fake data lives in
-module memory and resets on every full page load** — that is the fake, not a bug.
+**Frontend — built, merged, and running on Django.** Sign-in, the app launcher, the
+shell and Administration (Users, Dealers, Roles) all work in a browser against the
+real backend. **ONE FAKE IS STILL SWITCHED ON**: `USE_FAKE_DEALER_STATUS` in
+`admin/api/dealers.ts`, because closing a dealership has no endpoint and will not get
+one until **Q21** is answered (C52). Administration's three fakes were deleted
+outright (PR #20); `USE_FAKE_AUTH` and `USE_FAKE_SIGNUP` still EXIST as `false`
+constants with their blocks intact, which this file claimed for several sessions were
+gone.
 
 **Backend — it runs on a database now.** Django 5.2.17 on **MySQL 8.0** (C39), split
 settings, the fail-closed `TenantRouter`, `shared/base_models.py`, Celery wiring and 10
 apps with unique labels. **Plain DRF** — drf-spectacular was removed (C43), so there is
 no schema endpoint and no generated client. **`migrate` has run** and `xpredict_control`
-holds **22 tables**.
+holds **23 tables**, and each organisation gets its own database beside it.
 
 Set the database up once, as a MySQL admin: `mysql -u root -p < backend/scripts/create_dev_db.sql`.
 
@@ -119,18 +122,158 @@ partial indexes**; and `admin` can never be granted on `AppAccess` or sold on
 **Authentication is built.** Login, refresh, logout and `GET /api/v1/auth/session/`,
 with the token in an **httpOnly cookie** the frontend never reads (C12). Send
 `X-CSRFToken` on anything that changes state, and `credentials: "include"` on every
-request. **`/me` does not exist yet** — the models are in place, so what it now waits on
-is the tenant resolution middleware and `resolve_allowed_units()`. It is the endpoint that
-lets the frontend drop its fakes.
+request. **`GET /api/v1/me/` is built** — user, memberships, and per organisation the
+standing, unit, app access, modules and permissions. It is control plane only, so it
+needs no tenant database.
 
-**Blocked on:** nothing. Redis is still missing, which leaves only the Celery broker
-round-trip unverified. **Q17 is answered** — and its premise was wrong in a useful
-way. simplejwt loads the user row on every request and refuses an inactive one, so
-**disabling somebody takes effect on their next request**, not after a token expires.
-The 15-minute access lifetime is how long a STOLEN token survives a logout.
+**THE FRONTEND RUNS ON THIS, NOT ON FAKES.** Signing up, signing in, the launcher,
+the sidebar and the whole of Administration read Django. `USE_FAKE_USERS`,
+`USE_FAKE_DEALERS` and `USE_FAKE_ROLES` are gone (PR #20).
 
-**Gates, all green:** `npm run test -w web` (75), `npm run typecheck -w web`,
-`npm run lint`, and in `backend/`: `pytest` (81), `ruff check .`, and
+**ADMINISTRATION IS ELEVEN ENDPOINTS UNDER `/orgs/<slug>/admin/`** — users, dealers
+and roles. Three rules run through them and are not interchangeable: **scope fails
+with 404** (a person outside your dealership must look like one who does not exist),
+**capability fails with 403**, and **state fails with 409** (the owner, a taken
+address, a locked sign-in address).
+
+**A VIEW DECLARES `required_permissions`, AND NOT DECLARING IT IS A 500** — the
+default is `None`, not `[]`, so a view nobody finished is loud on its first request
+instead of quietly permitting everybody. An endpoint that genuinely needs none says
+`[]` and says why. `required_any_permission` and `method_permissions` cover "any one
+of these" and "more for this HTTP method".
+
+**EVERY ADMIN URL ENDS IN A SLASH, and that is not style.** `APPEND_SLASH` makes a
+slashless GET 301 silently and a slashless POST **raise** — so a frontend calling
+`/admin/users` renders the list perfectly and 500s on every button.
+
+**WHAT YOU MAY GRANT IS WHAT THE ORGANISATION BOUGHT** (C55), never what the admin
+filling in the form can open. `visibleApps()` is the launcher's rule and hides an app
+you are subscribed to but cannot open; using it for a grant form let an owner untick
+their own DMS and make it ungrantable for everybody. `grantableApps()` is the other
+question, and the backend refuses a grant for an unsubscribed app.
+
+**`X-CSRFToken` IS SENT BY `csrfHeaders()` in `packages/api-client`**, used by all
+five `request()` helpers. The rule above was in this file for four sessions and
+implemented by none of them, which made logout answer 403 and leave people signed
+in. The `csrftoken` cookie is deliberately readable by JavaScript while `xp_access`
+is httpOnly — that asymmetry is the mechanism, not an oversight.
+
+**Tenancy is live.** Signup fires a Celery task on `transaction.on_commit` that
+creates and migrates the organisation's own database (C1), and
+`config/middleware.py` binds it per request from the URL slug, resetting the
+contextvars in a `finally`. **Dev runs Celery eagerly and caches in memory**,
+because Redis is still not installed.
+
+**Only tenant apps are migrated into a tenant database**, by label. A bare
+`migrate` records all 39 control-plane migrations as applied — Django records a
+migration whether or not the router allowed one of its operations — which is a
+trap for whoever first moves an app between `CONTROL_PLANE_APPS` and
+`TENANT_APPS`. No tenant app has models yet, so **a fresh tenant database has no
+tables at all**, and that is correct rather than broken.
+
+**A provision that failed for good is repaired with
+`manage.py reprovision_tenant <slug>`** (C50). The launcher refuses to open an
+app whose workspace is not ready, so nobody lands in a product that would 500.
+Nothing *notices* a stuck organisation yet — that is the rest of **Q33** and it
+wants Sentry.
+
+**EVERY ENDPOINT UNDER `/api/v1/orgs/<slug>/` INHERITS `OrgScopedAPIView`**
+(C49, answering Q32). It verifies active membership before the handler runs and
+exposes the organisation as **`self.organization`** — which is the only way to
+reach it, because the middleware stows it under a private name. A view written
+without the base class does not get an insecure endpoint; it gets one that
+cannot see the organisation at all.
+
+This used to be a function each view called, and forgetting it meant any
+signed-in stranger could read another organisation's rows — while the tests
+passed, because you naturally test as a member. **`request.organization` is
+gone**; reaching for it now raises, which becomes an opaque 500 rather than a
+silent bypass.
+
+The split stays: the middleware decides WHICH database and deliberately refuses
+nothing for an unknown slug, because refusing there leaked which organisations
+exist. The base view decides WHO. It is also the first link of the Phase 3
+authorization chain, so the rest hangs off it.
+
+**PEOPLE CAN JOIN NOW — the invitation flow is complete (C56, PR #22).** And
+**there is no email**: `GET /orgs/<slug>/admin/users/<id>/invite-link/` hands the
+link to an admin, who sends it however they already talk to the person. **Show and
+Resend are different verbs** — Show reveals the same link as often as you like,
+Resend mints a new token and kills the old one. Nothing reaches the clipboard until
+the copy icon is pressed.
+
+**THE TOKEN IN THAT LINK IS THE CREDENTIAL and nothing else guards it.** True of
+every "set your password" link ever sent; the difference is that a chat message is
+backed up, searchable and forwardable in ways a mailbox is not.
+
+**`/api/v1/invitations/<token>/` IS NOT UNDER `/orgs/<slug>/`, AND CANNOT BE.**
+Everything under that prefix inherits `OrgScopedAPIView`, which verifies an active
+membership before the handler runs (C49) — and the holder of a link is precisely
+somebody without one. The token names the organisation, which also keeps a
+customer's slug out of a URL pasted into chat.
+
+**`accept_invitation()` RUNS UNDER `select_for_update`**, so a link clicked twice
+cannot produce two memberships — without it the unique constraint on
+`(user, organization)` turns the second click into a 500. Every rule is re-checked
+at accept time, because an invitation can sit for a fortnight and the app can be
+unsubscribed in that time (C55).
+
+**`FRONTEND_BASE_URL` MUST BE SET or no invitation can be handed out at all.**
+`invitation_link()` raises on an empty value rather than building a relative URL —
+a link that is quietly wrong is noticed only by the person who cannot use it. Dev
+takes it from the Vite origin; production has to be told.
+
+**ZERO MEMBERSHIPS MEANS TWO THINGS NOW** (C58): "you were removed" and "invited,
+not yet joined". Somebody removed from their only organisation and then re-invited
+signs in with none, so `RedirectIfSignedIn` and `LoginScreen` both have to know —
+they used to send that person nowhere and tell them their access had been removed.
+
+**PASSWORDS GO THROUGH ONE VALIDATOR** (C57): `validate_password_strength` in
+`core/accounts/api/serializers.py`, shared by signup and by accepting.
+`AUTH_PASSWORD_VALIDATORS` had been configured since Phase 1 and **nothing had ever
+called it** — signup would take `12345678`. A refused password's reason is in the
+response's `errors` list, never in `detail`, which is generic for every validation
+failure; a form that renders `detail` alone says nothing useful.
+
+**THE SESSION REFRESHES ITSELF, FROM ONE PLACE** (C59).
+`packages/api-client/src/request.ts` is the only code that fetches: a 401 refreshes
+once and replays once, and a failed refresh lets the 401 through so the shell can
+send somebody to sign in. **The refresh is SINGLE-FLIGHT and that is load-bearing** —
+rotation plus blacklisting means three concurrent refreshes sign the person out, so
+one shared promise serves every caller. Endpoints where 401 is a real answer — login,
+the two signup steps, both invitation endpoints — pass `public: true`; the default
+refreshes, so forgetting it costs one wasted request rather than breaking recovery.
+
+**THERE IS ONE `request()` AND SIX MODULES USE IT.** There were six copies until
+PR #24. A seventh API module imports it; it does not paste one.
+
+**A REFRESH VERIFIES THE ACCOUNT, NOT JUST THE TOKEN** (C60). `RefreshToken()` checks
+a signature, an expiry and a denylist and **never loads the user**, so a deleted or
+deactivated person refreshed happily for seven days while every other request answered
+401 — a session that could not die, and 41,269 requests from one stale browser tab.
+`rotate_tokens()` loads the account now and refuses. It also closes the gap under Q17:
+disabling somebody took effect on their next request, but their refresh token carried
+on working.
+
+**A HINT INSIDE A DIALOG MUST BEAT Z-INDEX 61** (C61). The ladder is 40 detail panel,
+50 menus and popovers, 60 dialog overlay, 61 dialog content, 70 `InfoHint`. **jsdom
+applies no CSS Modules, so no test in `apps/web` can catch a stacking mistake** —
+every `z-index` reads 0 there. It was found by clicking, and if it bites again the fix
+is to move the ladder into design tokens.
+
+**Blocked on:** nothing. **Redis is still missing**, which leaves the Celery broker
+round-trip unverified — and now also means the throttle counter and cache are
+per-process in development. **An unreachable cache is not a missing rate limit, it
+is a 500:** DRF keeps throttle history there, which is how nine sessions of
+`CACHES` pointing at an uninstalled Redis finally surfaced.
+
+**Q17 is answered** — and its premise was wrong in a useful way. simplejwt loads the
+user row on every request and refuses an inactive one, so **disabling somebody takes
+effect on their next request**, not after a token expires. The 15-minute access
+lifetime is how long a STOLEN token survives a logout.
+
+**Gates, all green:** `npm run test -w web` (160), `npm run typecheck -w web`,
+`npm run lint`, and in `backend/`: `pytest` (327), `ruff check .`, and
 `.venv/Scripts/lint-imports.exe` — **not** `python -m importlinter.cli`, which exits 0
 without running. Run them before pushing.
 

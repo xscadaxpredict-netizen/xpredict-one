@@ -12,10 +12,19 @@
   gap: var(--space-6);
 }
 
+/*
+ * A ROW NOW, NOT A COLUMN. The explanatory paragraph that used to sit under
+ * the title moved behind an `InfoHint`, so the heading is the title and a
+ * 16px icon sitting beside it.
+ *
+ * `align-items: center` rather than `baseline`: the icon is a square with no
+ * text in it, so it has no baseline worth aligning to and sits visibly low
+ * when treated as if it had one.
+ */
 .heading {
   display: flex;
-  flex-direction: column;
-  gap: var(--space-1);
+  align-items: center;
+  gap: var(--space-2);
   min-width: 0;
 }
 
@@ -24,14 +33,6 @@
   font-size: var(--text-2xl);
   font-weight: 600;
   letter-spacing: -0.01em;
-}
-
-.subtitle {
-  margin: 0;
-  max-width: 62ch;
-  font-size: var(--text-sm);
-  line-height: 1.5;
-  color: var(--color-text-3);
 }
 
 .section {

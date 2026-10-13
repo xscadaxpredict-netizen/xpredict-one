@@ -19,6 +19,8 @@
 import { useState } from "react";
 import * as Dialog from "@radix-ui/react-dialog";
 
+import { InfoHint } from "@xpredict/ui";
+
 import type { Dealer } from "../api/dealers";
 import { useUpdateDealer } from "../hooks/useDealers";
 import { DealerForm, dealerToFields } from "./DealerForm";
@@ -41,13 +43,23 @@ export function EditDealerDialog({ dealer }: EditDealerDialogProps) {
 
       <Dialog.Portal>
         <Dialog.Overlay className={styles.overlay} />
-        <Dialog.Content className={styles.dialog}>
+        {/*
+          `aria-describedby={undefined}` says the missing description is
+          DELIBERATE. Radix warns when a dialog has no `Dialog.Description`,
+          and it is right to: an unexplained dialog is a real failure. Here the
+          explanation moved behind the info icon, which is a real <button> that
+          Tab reaches and focus opens — so the prose is still reachable, it is
+          simply no longer announced before anybody has asked for it.
+        */}
+        <Dialog.Content className={styles.dialog} aria-describedby={undefined}>
           <div className={styles.header}>
-            <Dialog.Title className={styles.title}>Edit dealer</Dialog.Title>
-            <Dialog.Description className={styles.description}>
-              Changing the name updates it everywhere it appears, including on the people
-              scoped to this dealership.
-            </Dialog.Description>
+            <div className={styles.titleRow}>
+              <Dialog.Title className={styles.title}>Edit dealer</Dialog.Title>
+              <InfoHint label="About editing a dealership">
+                Changing the name updates it everywhere it appears, including on the people
+                scoped to this dealership.
+              </InfoHint>
+            </div>
           </div>
 
           {/*

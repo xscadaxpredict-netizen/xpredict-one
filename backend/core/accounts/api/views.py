@@ -76,7 +76,6 @@ class LoginView(APIView):
             username=serializer.validated_data["email"],
             password=serializer.validated_data["password"],
         )
-
         if user is None:
             # 401, not 422: the input was well-formed, the credentials were
             # not. `authenticate()` already refuses an inactive user, so a
@@ -93,7 +92,6 @@ class LoginView(APIView):
         # the first POST after signing in fails the check in
         # CookieJWTAuthentication, and it looks like the login did not work.
         get_token(request)
-
         return set_auth_cookies(response, access, refresh)
 
 

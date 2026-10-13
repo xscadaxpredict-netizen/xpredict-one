@@ -99,6 +99,34 @@ export function DealerDetailPanel({ dealer, usersPath, onClose }: DealerDetailPa
       </div>
 
       <dl className={styles.facts}>
+        {/*
+          FIRST, because it is what somebody opens this panel to check. The
+          contact and address are things you already know about a branch you
+          run; the GSTIN is the one anybody has to look up — to put on an
+          invoice, or to confirm against a certificate.
+
+          A DEALERSHIP THAT PREDATES THE FIELD SAYS SO, rather than rendering
+          an empty row. The column is NOT NULL with an empty default, so the
+          four dealerships created before this existed read as "" — and a
+          blank value beside a label reads as a bug in the panel rather than
+          as a gap in the data.
+        */}
+        <dt>Tax registration</dt>
+        <dd>
+          {dealer.gstin ? (
+            <>
+              <span className={styles.identifier}>{dealer.gstin}</span>
+              <span className={styles.identifierLabel}>
+                PAN {dealer.pan || <span className={styles.missing}>not recorded</span>}
+              </span>
+            </>
+          ) : (
+            <span className={styles.note}>
+              No GSTIN recorded. Edit this dealership to add one.
+            </span>
+          )}
+        </dd>
+
         <dt>Contact</dt>
         <dd>
           <span className={styles.contactName}>{dealer.contact_person}</span>

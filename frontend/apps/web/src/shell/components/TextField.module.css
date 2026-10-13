@@ -28,6 +28,10 @@
 
 .error { margin: 0; font-size: var(--text-xs); line-height: 1.4; color: var(--color-danger); }
 
+/* A rule, not a failure — so it sits at the same size as the error message and
+   in the muted text colour rather than the danger one. */
+.hint { margin: 0; font-size: var(--text-xs); line-height: 1.4; color: var(--color-text-3); }
+
 /* Marks a mandatory field. Decorative — the input's own `required` attribute
    is what actually tells assistive tech. */
 .required {

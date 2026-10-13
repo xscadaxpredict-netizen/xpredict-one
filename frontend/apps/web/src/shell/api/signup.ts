@@ -9,7 +9,7 @@
  * a moment to exist.
  */
 
-import { ApiError, csrfHeaders, type Problem } from "@xpredict/api-client";
+import { ApiError, request } from "@xpredict/api-client";
 
 import { fakeSignIn } from "./auth";
 
@@ -67,37 +67,6 @@ function problem(status: number, code: string, detail: string): ApiError {
   });
 }
 
-async function request<T>(url: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(url, {
-    ...init,
-    credentials: "include",
-    // X-CSRFToken on anything that changes state. Django refuses an unsafe
-    // request without it -- which is what made logout answer 403 and leave
-    // somebody signed in, the moment the fake stopped intercepting it.
-    headers: {
-      "Content-Type": "application/json",
-      ...csrfHeaders(init?.method),
-      ...init?.headers,
-    },
-  });
-
-  if (!response.ok) {
-    const body = (await response.json().catch(() => null)) as Problem | null;
-    throw new ApiError(
-      body ?? {
-        type: "about:blank",
-        title: "Error",
-        status: response.status,
-        detail: "An unexpected error occurred.",
-        code: "internal_error",
-        trace_id: "",
-      },
-    );
-  }
-
-  return (await response.json()) as T;
-}
-
 /**
  * Check the activation code before showing the long form.
  *
@@ -121,6 +90,8 @@ export async function validateActivationCode(code: string): Promise<void> {
   }
 
   await request<void>("/api/v1/auth/activation-code/validate/", {
+    // Nobody is signed in yet: this is step one of founding an organisation.
+    public: true,
     method: "POST",
     body: JSON.stringify({ code }),
   });
@@ -150,6 +121,7 @@ export async function createOrganisation(
   }
 
   return request<SignupResult>("/api/v1/auth/signup/", {
+    public: true,
     method: "POST",
     body: JSON.stringify({ activation_code: code, ...details }),
   });
@@ -170,7 +142,7 @@ export async function checkProvisioning(orgSlug: string): Promise<boolean> {
   }
 
   const result = await request<{ is_ready: boolean }>(
-    `/api/v1/orgs/${encodeURIComponent(orgSlug)}/provisioning`,
+    `/api/v1/orgs/${encodeURIComponent(orgSlug)}/provisioning/`,
   );
   return result.is_ready;
 }

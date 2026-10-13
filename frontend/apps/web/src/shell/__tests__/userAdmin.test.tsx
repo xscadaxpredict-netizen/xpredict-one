@@ -49,7 +49,8 @@ function user(overrides: Partial<usersApi.OrgUser> & { id: string }): usersApi.O
     unit_id: null,
     role: "member",
     status: "active",
-    apps: [{ app: "dms", role: "Sales executive" }],
+    apps: [{ app: "dms", role_code: "dms.sales_representative", role_name: "Sales representative" }],
+    administers: null,
     ...overrides,
   };
 }

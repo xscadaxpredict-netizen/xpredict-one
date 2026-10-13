@@ -1,7 +1,8 @@
-from django.contrib import admin
-from django.urls import include, path
 from django.conf import settings
 from django.conf.urls.static import static
+from django.contrib import admin
+from django.urls import include, path
+
 from core.accounts.api.views import MeView
 
 urlpatterns = [
@@ -16,19 +17,31 @@ urlpatterns = [
     # login either. It is also deliberately outside AUTH_COOKIE_REFRESH_PATH:
     # the refresh cookie is scoped to /api/v1/auth/ and must not be sent here.
     path("api/v1/me/", MeView.as_view(), name="me"),
+    # Accepting an invitation, which is NOT org-scoped and cannot be: the
+    # person holding the link has no membership yet, so OrgScopedAPIView would
+    # refuse them before the handler ran (C49, C56). The token names the
+    # organization, so the slug is not needed -- and leaving it out keeps the
+    # customer's name out of a URL that gets pasted into chat messages.
+    path("api/v1/invitations/", include("core.organizations.api.invitation_urls")),
     # Everything organization-scoped. The slug is read by
     # config.middleware.TenantMiddleware before any view runs, which binds that
     # organization's database for the request and refuses the request if the
     # slug is unknown or the organization is suspended. Views therefore read
-    # `request.organization` rather than taking a slug argument.
+    # the organization from `OrgScopedAPIView` rather than taking a slug
+    # argument (C49).
     path("api/v1/orgs/<slug:org_slug>/", include("core.organizations.api.urls")),
+    # DMS product routes (organization-scoped).
     path("api/v1/orgs/<str:org_slug>/dms/sales/", include("products.dms.sales.api.urls")),
     path("api/v1/orgs/<str:org_slug>/dms/site-services/", include("products.dms.site_services.api.urls")),
     path("api/v1/orgs/<str:org_slug>/dms/ecommerce/", include("products.dms.ecommerce.api.urls")),
     path("api/v1/orgs/<str:org_slug>/dms/tech-support/", include("products.dms.tech_support.api.urls")),
     path("api/v1/orgs/<str:org_slug>/dms/tools/", include("products.dms.tools.api.urls")),
+    # No schema or docs routes. drf-spectacular was removed on 2026-10-02:
+    # it had been in the scaffold since Phase 1 and the owner had never been
+    # asked for it. Plain DRF until after the first public release.
 ]
 
+# Uploaded attachments (call requests, reports, manuals) are served from
+# MEDIA_ROOT in development only.
 if settings.DEBUG:
     urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
-
