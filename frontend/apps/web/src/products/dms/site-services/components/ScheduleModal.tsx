@@ -27,7 +27,9 @@ export function ScheduleModal({ isOpen, form, confirmedSites, onFormChange, onSu
         <form onSubmit={onSubmit} className={styles.formContainer}>
           <div className={styles.modalBody}>
             <div>
-              <label className={styles.label}>Select Site <span className={styles.required}>*</span></label>
+              <label className={styles.label}>
+                              Select Site <span className={styles.required}>*</span> <span style={{ color: "red" }}>*</span>
+                          </label>
               <select 
                 required 
                 className={styles.input}
@@ -55,7 +57,9 @@ export function ScheduleModal({ isOpen, form, confirmedSites, onFormChange, onSu
 
             <div className={styles.formRow}>
               <div style={{ flex: 1 }}>
-                <label className={styles.label}>Scheduled Date <span className={styles.required}>*</span></label>
+                <label className={styles.label}>
+                                  Scheduled Date <span className={styles.required}>*</span> <span style={{ color: "red" }}>*</span>
+                              </label>
                 <input 
                   required
                   type="date"

@@ -1,7 +1,7 @@
 /**
  * Site Services module types.
  */
-import type { Quotation } from "../../sales/api/types";
+import type { Quotation, Followup } from "../../sales/api/types";
 
 // ---- Site & Profile --------------------------------------------------------
 
@@ -38,6 +38,7 @@ export interface ConfirmedSite {
   installation_date: string | null;
   service_profile: SiteServiceProfile | null;
   quotes: Quotation[];
+  followups?: Followup[];
 }
 
 // ---- Schedule --------------------------------------------------------------
@@ -93,6 +94,10 @@ export interface ServiceReportEntry {
   client_name: string;
   client_signature: string;
   status: ReportStatus;
+  client_approval_status?: "PENDING" | "APPROVED" | "REJECTED";
+  approval_remarks?: string;
+  approved_at?: string | null;
+  sign_link_token: string;
   attachments: ReportAttachment[];
 }
 

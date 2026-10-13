@@ -7,6 +7,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { QuotationItem, QuoteType, AmcType } from "../api/types";
 import { useBanks, useProductPresets, useEnquiries, useSaveQuotation } from "../hooks/useEnquiries";
+import { useDialog } from "../../shared/hooks/useDialog";
 import styles from "./QuoteBuilderDialog.module.css";
 
 interface QuoteBuilderDialogProps {
@@ -38,6 +39,7 @@ export function QuoteBuilderDialog({
   const { data: banks } = useBanks();
   const { data: products } = useProductPresets();
   const saveQuote = useSaveQuotation();
+  const { showAlert, DialogComponent } = useDialog();
 
   const [selectedEnquiryId, setSelectedEnquiryId] = useState(enquiryId || "");
   const currentEnquiry = enquiries?.find((e) => e.id === selectedEnquiryId);
@@ -63,6 +65,7 @@ export function QuoteBuilderDialog({
   const [bankId, setBankId] = useState("");
   const [terms, setTerms] = useState("");
   const [submitStatus, setSubmitStatus] = useState<"DRAFT" | "QUOTE_SENT">("QUOTE_SENT");
+  const submitStatusRef = useRef<"DRAFT" | "QUOTE_SENT">("QUOTE_SENT");
 
   // Initialize form
   useEffect(() => {
@@ -146,7 +149,7 @@ export function QuoteBuilderDialog({
   const handleSave = (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedEnquiryId) {
-      alert("Please select an enquiry first.");
+      showAlert("Error", "Please select an enquiry first.");
       return;
     }
     
@@ -158,9 +161,9 @@ export function QuoteBuilderDialog({
           title,
           quote_no: quoteNo,
           type: quoteType,
-          amc_type: quoteType === "AMC" ? amcType : null,
-          service_interval: quoteType === "AMC" ? serviceInterval : null,
-          status: existingQuote?.status === "DRAFT" ? submitStatus : (existingQuote?.status || submitStatus),
+          amc_type: quoteType === "AMC" ? amcType : undefined,
+          service_interval: quoteType === "AMC" ? serviceInterval : "",
+          status: existingQuote?.status === "DRAFT" ? submitStatusRef.current : (existingQuote?.status || submitStatusRef.current),
           from_details: { 
             company_name: fromName, 
             address: fromAddress,
@@ -187,7 +190,11 @@ export function QuoteBuilderDialog({
         },
       },
       {
-        onSuccess: () => onClose(),
+        onSuccess: () => {
+          showAlert("Success", "Quotation saved successfully!");
+          onClose();
+        },
+        onError: (err: any) => showAlert("Error", "Failed to save: " + JSON.stringify(err?.response?.data || err?.message || err)),
       },
     );
   };
@@ -204,14 +211,16 @@ export function QuoteBuilderDialog({
         </button>
       </div>
 
-      <form onSubmit={handleSave} className={styles.formContent}>
+      <form onSubmit={handleSave} className={styles.formContent} noValidate>
         <div className={styles.body}>
           {/* Top Section */}
           <div className={styles.grid2}>
             {/* If no enquiryId is passed via props, allow selection */}
             {!enquiryId && !existingQuote && (
               <div className={styles.field} style={{ gridColumn: "1 / -1" }}>
-                <label className={styles.label}>Select Enquiry</label>
+                <label className={styles.label}>
+                                  Select Enquiry <span style={{ color: "red" }}>*</span>
+                              </label>
                 <select
                   required
                   className={styles.select}
@@ -236,13 +245,15 @@ export function QuoteBuilderDialog({
                 onChange={(e) => setQuoteType(e.target.value as QuoteType)}
                 disabled={!!existingQuote}
               >
-                <option value="NORMAL">Normal Quote</option>
+                <option value="NORMAL">Machine Quote</option>
                 <option value="AMC">AMC Quote</option>
                 <option value="SPARES">Spares Quote</option>
               </select>
             </div>
             <div className={styles.field}>
-              <label className={styles.label}>Quote Number</label>
+              <label className={styles.label}>
+                              Quote Number <span style={{ color: "red" }}>*</span>
+                          </label>
               <input
                 required
                 className={styles.input}
@@ -266,7 +277,9 @@ export function QuoteBuilderDialog({
                   </select>
                 </div>
                 <div className={styles.field}>
-                  <label className={styles.label}>Service Interval</label>
+                  <label className={styles.label}>
+                                      Service Interval <span style={{ color: "red" }}>*</span>
+                                  </label>
                   <input
                     required
                     className={styles.input}
@@ -279,7 +292,9 @@ export function QuoteBuilderDialog({
             )}
             
             <div className={styles.field} style={{ gridColumn: "1 / -1" }}>
-              <label className={styles.label}>Quote Title</label>
+              <label className={styles.label}>
+                              Quote Title <span style={{ color: "red" }}>*</span>
+                          </label>
               <input
                 required
                 className={styles.input}
@@ -294,11 +309,15 @@ export function QuoteBuilderDialog({
             <div className={styles.card}>
               <h3 className={styles.cardTitle}>From (Our Details)</h3>
               <div className={styles.field}>
-                <label className={styles.label}>Company Name</label>
+                <label className={styles.label}>
+                                  Company Name <span style={{ color: "red" }}>*</span>
+                              </label>
                 <input required className={styles.input} value={fromName} onChange={(e) => setFromName(e.target.value)} />
               </div>
               <div className={styles.field}>
-                <label className={styles.label}>Address</label>
+                <label className={styles.label}>
+                                  Address <span style={{ color: "red" }}>*</span>
+                              </label>
                 <textarea required className={styles.textarea} value={fromAddress} onChange={(e) => setFromAddress(e.target.value)} />
               </div>
             </div>
@@ -307,11 +326,15 @@ export function QuoteBuilderDialog({
             <div className={styles.card}>
               <h3 className={styles.cardTitle}>To (Customer)</h3>
               <div className={styles.field}>
-                <label className={styles.label}>Customer Name</label>
+                <label className={styles.label}>
+                                  Customer Name <span style={{ color: "red" }}>*</span>
+                              </label>
                 <input required className={styles.input} value={toName} onChange={(e) => setToName(e.target.value)} />
               </div>
               <div className={styles.field}>
-                <label className={styles.label}>Billing Address</label>
+                <label className={styles.label}>
+                                  Billing Address <span style={{ color: "red" }}>*</span>
+                              </label>
                 <textarea required className={styles.textarea} value={toAddress} onChange={(e) => setToAddress(e.target.value)} />
               </div>
             </div>
@@ -444,7 +467,9 @@ export function QuoteBuilderDialog({
             <div className={styles.card}>
               <h3 className={styles.cardTitle}>Bank Details</h3>
               <div className={styles.field}>
-                <label className={styles.label}>Select Bank Account</label>
+                <label className={styles.label}>
+                                  Select Bank Account <span style={{ color: "red" }}>*</span>
+                              </label>
                 <select
                   required
                   className={styles.select}
@@ -484,7 +509,7 @@ export function QuoteBuilderDialog({
               <button 
                 type="submit" 
                 className={styles.btnSecondary} 
-                onClick={() => setSubmitStatus("DRAFT")}
+                onClick={() => { submitStatusRef.current = "DRAFT"; setSubmitStatus("DRAFT"); }}
                 disabled={saveQuote.isPending}
               >
                 Save as Draft
@@ -493,7 +518,7 @@ export function QuoteBuilderDialog({
             <button 
               type="submit" 
               className={styles.btnPrimary} 
-              onClick={() => setSubmitStatus("QUOTE_SENT")}
+              onClick={() => { submitStatusRef.current = "QUOTE_SENT"; setSubmitStatus("QUOTE_SENT"); }}
               disabled={saveQuote.isPending}
             >
               {saveQuote.isPending ? "Saving..." : "Save & Finalize"}
@@ -501,6 +526,7 @@ export function QuoteBuilderDialog({
           </div>
         </div>
       </form>
+      <DialogComponent />
     </dialog>
   );
 }

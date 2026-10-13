@@ -1,4 +1,6 @@
-import { DropletIcon, EyeIcon, Edit3Icon, Trash2Icon } from "lucide-react";
+import { Fragment, useState } from "react";
+import { DropletIcon, EyeIcon, Edit3Icon, Trash2Icon, ChevronDownIcon, ChevronUpIcon } from "lucide-react";
+import { FileAttachmentCell } from "./FileAttachmentCell";
 import styles from "./WaterReportTable.module.css";
 
 interface Props {
@@ -9,6 +11,12 @@ interface Props {
 }
 
 export function WaterReportTable({ reports, onView, onEdit, onDelete }: Props) {
+  const [expandedId, setExpandedId] = useState<string | null>(null);
+
+  const toggleExpand = (id: string) => {
+    setExpandedId((prev) => (prev === id ? null : id));
+  };
+
   if (reports.length === 0) {
     return (
       <div className={styles.emptyState}>
@@ -32,37 +40,81 @@ export function WaterReportTable({ reports, onView, onEdit, onDelete }: Props) {
           </tr>
         </thead>
         <tbody>
-          {reports.map((report) => (
-            <tr key={report.id} className={styles.row}>
-              <td className={styles.td}>
-                <div className={styles.bold}>{report.date}</div>
-              </td>
-              <td className={styles.td}>
-                <div className={styles.bold}>{report.siteName}</div>
-              </td>
-              <td className={styles.td}>
-                <div className={styles.muted}>{report.ocNumber || "No OC"}</div>
-              </td>
-              <td className={styles.td}>
-                <div className={styles.bold}>{report.attachment || "No File"}</div>
-              </td>
-              <td className={styles.tdRight}>
-                <div className={styles.actions}>
-                  <button type="button" className={styles.iconBtn} title="View Report" onClick={() => onView(report)}>
-                    <EyeIcon size={16} />
-                  </button>
-                  <button type="button" className={styles.iconBtnPrimary} title="Edit Report" onClick={() => onEdit(report)}>
-                    <Edit3Icon size={16} />
-                  </button>
-                  <button type="button" className={`${styles.iconBtn} ${styles.iconBtnDanger}`} title="Delete Report" onClick={() => onDelete(report.id)}>
-                    <Trash2Icon size={16} />
-                  </button>
-                </div>
-              </td>
-            </tr>
-          ))}
+          {reports.map((report) => {
+            const isExpanded = expandedId === report.id;
+            return (
+              <Fragment key={report.id}>
+                <tr className={styles.row} onClick={() => toggleExpand(report.id)} style={{ cursor: "pointer" }}>
+                  <td className={styles.td}>
+                    <div className={styles.bold}>{report.date || report.date_tested || "—"}</div>
+                  </td>
+                  <td className={styles.td}>
+                    <div className={styles.bold}>{report.siteName}</div>
+                  </td>
+                  <td className={styles.td}>
+                    <div className={styles.muted}>{report.ocNumber || "No OC"}</div>
+                  </td>
+                  <td className={styles.td} onClick={(e) => e.stopPropagation()}>
+                    {report.attachments && Array.isArray(report.attachments) && report.attachments.length > 0 ? (
+                      <div style={{ display: "flex", flexWrap: "wrap", gap: "6px" }}>
+                        {report.attachments.map((att: any, i: number) => (
+                          <FileAttachmentCell key={i} attachment={typeof att === "string" ? att : (att.file || att)} />
+                        ))}
+                      </div>
+                    ) : (
+                      <FileAttachmentCell attachment={report.attachment} />
+                    )}
+                  </td>
+                  <td className={styles.tdRight} onClick={(e) => e.stopPropagation()}>
+                    <div className={styles.actions}>
+                      <button type="button" className={styles.iconBtn} title="View Report" onClick={() => onView(report)}>
+                        <EyeIcon size={16} />
+                      </button>
+                      <button type="button" className={styles.iconBtnPrimary} title="Edit Report" onClick={() => onEdit(report)}>
+                        <Edit3Icon size={16} />
+                      </button>
+                      <button type="button" className={`${styles.iconBtn} ${styles.iconBtnDanger}`} title="Delete Report" onClick={() => onDelete(report.id)}>
+                        <Trash2Icon size={16} />
+                      </button>
+                      <button
+                        type="button"
+                        className={styles.expandBtn}
+                        title="Toggle actions"
+                        onClick={() => toggleExpand(report.id)}
+                      >
+                        {isExpanded ? <ChevronUpIcon size={14} /> : <ChevronDownIcon size={14} />}
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+
+                {isExpanded && (
+                  <tr>
+                    <td colSpan={5} className={styles.expandedCell}>
+                      <div className={styles.expandedContent}>
+                        <div className={styles.mobileActionsBar}>
+                          <button type="button" className={styles.iconBtn} onClick={() => onView(report)}>
+                            <EyeIcon size={16} /> <span>View</span>
+                          </button>
+                          <button type="button" className={styles.iconBtnPrimary} onClick={() => onEdit(report)}>
+                            <Edit3Icon size={16} /> <span>Edit</span>
+                          </button>
+                          <button type="button" className={`${styles.iconBtn} ${styles.iconBtnDanger}`} onClick={() => onDelete(report.id)}>
+                            <Trash2Icon size={16} /> <span>Delete</span>
+                          </button>
+                        </div>
+                      </div>
+                    </td>
+                  </tr>
+                )}
+              </Fragment>
+            );
+          })}
         </tbody>
       </table>
     </div>
   );
 }
+
+
+

@@ -15,7 +15,7 @@ from .exceptions import not_found
 
 def list_spares_catalog() -> QuerySet[ProductCatalog]:
     """Return products that belong in the spares catalog (e.g. have a specific product_type or category)"""
-    return ProductCatalog.objects.filter(is_active=True).order_by("name")
+    return ProductCatalog.objects.filter(is_active=True, product_type="SPARES").order_by("name")
 
 
 def get_spare(product_id: uuid.UUID) -> ProductCatalog:

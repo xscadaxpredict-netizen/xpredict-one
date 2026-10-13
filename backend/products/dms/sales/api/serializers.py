@@ -16,23 +16,30 @@ from ..models import Enquiry, Followup, Quotation, QuotationItem, BankAccount, P
 # ---- Read Serializers (Outgoing) --------------------------------------------
 
 class FollowupReadSerializer(serializers.ModelSerializer):
+    entered_date = serializers.DateTimeField(source="created_at", read_only=True)
+
     class Meta:
         model = Followup
-        fields = ["id", "remarks", "next_followup_date", "created_at"]
+        fields = ["id", "remarks", "next_followup_date", "entered_date"]
         read_only_fields = fields
 
 
 class QuotationItemReadSerializer(serializers.ModelSerializer):
+    base_price = serializers.DecimalField(source="locked_base_price", max_digits=12, decimal_places=2)
+    margin = serializers.DecimalField(source="locked_margin", max_digits=5, decimal_places=2)
+    gst_rate = serializers.DecimalField(source="locked_gst_rate", max_digits=5, decimal_places=2)
+    hsn = serializers.CharField(source="hsn_code")
+
     class Meta:
         model = QuotationItem
         fields = [
             "id",
             "product_id",
             "description",
-            "hsn_code",
-            "locked_base_price",
-            "locked_margin",
-            "locked_gst_rate",
+            "hsn",
+            "base_price",
+            "margin",
+            "gst_rate",
             "quantity",
         ]
         read_only_fields = fields
@@ -43,6 +50,9 @@ class QuotationReadSerializer(serializers.ModelSerializer):
     from_details = serializers.SerializerMethodField()
     to_details = serializers.SerializerMethodField()
     selected_bank_id = serializers.CharField(source="bank_account_id")
+    amount = serializers.SerializerMethodField()
+    date = serializers.DateTimeField(source="created_at")
+    type = serializers.CharField(source="quote_type")
 
     class Meta:
         model = Quotation
@@ -50,7 +60,7 @@ class QuotationReadSerializer(serializers.ModelSerializer):
             "id",
             "title",
             "quote_no",
-            "quote_type",
+            "type",
             "amc_type",
             "service_interval",
             "status",
@@ -58,6 +68,8 @@ class QuotationReadSerializer(serializers.ModelSerializer):
             "to_details",
             "selected_bank_id",
             "items",
+            "amount",
+            "date",
             "terms",
             "created_at",
         ]
@@ -86,6 +98,10 @@ class QuotationReadSerializer(serializers.ModelSerializer):
             "gst": obj.to_gst,
             "pan": obj.to_pan,
         }
+
+    def get_amount(self, obj: Quotation) -> float:
+        return float(sum((item.total_amount for item in obj.items.all()), 0))
+
 
 
 class EnquiryReadSerializer(serializers.ModelSerializer):
@@ -124,32 +140,63 @@ class ProductPresetReadSerializer(serializers.ModelSerializer):
     type = serializers.CharField(source="product_type")
     hsn = serializers.CharField(source="hsn_code")
     margin = serializers.DecimalField(source="margin_percent", max_digits=5, decimal_places=2)
+    specs = serializers.SerializerMethodField()
+    image = serializers.FileField(read_only=True)
 
     class Meta:
         model = ProductCatalog
         fields = [
             "id",
             "type",
+            "name",
+            "category",
             "description",
             "hsn",
             "base_price",
             "margin",
             "gst_rate",
+            "specs",
+            "image"
         ]
         read_only_fields = fields
+
+    def get_specs(self, obj) -> list[str]:
+        return list(obj.specs.order_by("sort_order").values_list("spec_value", flat=True))
 
 
 # ---- Write Serializers (Incoming) -------------------------------------------
 
+class BankAccountWriteSerializer(serializers.Serializer):
+    bank_name = serializers.CharField(max_length=255)
+    account_no = serializers.CharField(max_length=30)
+    ifsc_code = serializers.CharField(max_length=15)
+    branch_name = serializers.CharField(max_length=255, required=False, allow_blank=True)
+    is_default = serializers.BooleanField(required=False, default=False)
+    is_active = serializers.BooleanField(required=False, default=True)
+
+
+class ProductCatalogWriteSerializer(serializers.Serializer):
+    type = serializers.CharField(max_length=10, source="product_type")
+    name = serializers.CharField(max_length=255, required=False, allow_blank=True) # Usually matches description in frontend
+    description = serializers.CharField(required=False, allow_blank=True)
+    hsn = serializers.CharField(max_length=20, source="hsn_code", required=False, allow_blank=True)
+    base_price = serializers.DecimalField(max_digits=12, decimal_places=2)
+    margin = serializers.DecimalField(max_digits=5, decimal_places=2, source="margin_percent", allow_null=True, required=False)
+    gst_rate = serializers.DecimalField(max_digits=5, decimal_places=2, required=False, default=18)
+    category = serializers.CharField(max_length=100, required=False, allow_blank=True)
+    specs = serializers.CharField(required=False, allow_blank=True)
+    image = serializers.FileField(required=False, allow_null=True)
+
+
 class EnquiryCreateSerializer(serializers.Serializer):
     customer_name = serializers.CharField(max_length=255)
-    contact_person = serializers.CharField(max_length=255, required=False, allow_blank=True)
-    address = serializers.CharField(required=False, allow_blank=True)
-    pincode = serializers.CharField(max_length=10, required=False, allow_blank=True)
-    phone = serializers.CharField(max_length=20, required=False, allow_blank=True)
-    remarks = serializers.CharField(required=False, allow_blank=True)
-    followup_remarks = serializers.CharField()
-    followup_next_date = serializers.DateField()
+    contact_person = serializers.CharField(max_length=255, required=False, allow_blank=True, default="")
+    address = serializers.CharField(required=False, allow_blank=True, default="")
+    pincode = serializers.CharField(max_length=10, required=False, allow_blank=True, default="")
+    phone = serializers.CharField(max_length=20, required=False, allow_blank=True, default="")
+    remarks = serializers.CharField(required=False, allow_blank=True, default="")
+    followup_remarks = serializers.CharField(required=False, allow_blank=True, allow_null=True, default="")
+    followup_next_date = serializers.DateField(required=False, allow_null=True, default=None)
 
 
 class EnquiryUpdateSerializer(serializers.Serializer):
@@ -162,8 +209,8 @@ class EnquiryUpdateSerializer(serializers.Serializer):
 
 
 class FollowupCreateSerializer(serializers.Serializer):
-    remarks = serializers.CharField()
-    next_followup_date = serializers.DateField()
+    remarks = serializers.CharField(required=False, allow_blank=True, allow_null=True)
+    next_followup_date = serializers.DateField(required=False, allow_null=True)
 
 
 class AddressDetailsSerializer(serializers.Serializer):

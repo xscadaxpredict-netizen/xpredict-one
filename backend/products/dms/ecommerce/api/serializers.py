@@ -8,6 +8,10 @@ from ..models import EcommerceOrder, EcommerceOrderItem
 
 
 class SpareProductSerializer(serializers.ModelSerializer):
+    price = serializers.DecimalField(source="base_price", max_digits=12, decimal_places=2)
+    specs = serializers.SerializerMethodField()
+    image = serializers.FileField(read_only=True)
+
     class Meta:
         model = ProductCatalog
         fields = [
@@ -16,9 +20,13 @@ class SpareProductSerializer(serializers.ModelSerializer):
             "description",
             "price",
             "category",
-            "part_number",
             "hsn_code",
+            "specs",
+            "image"
         ]
+        
+    def get_specs(self, obj) -> list[str]:
+        return list(obj.specs.order_by("sort_order").values_list("spec_value", flat=True))
 
 
 class OrderItemSerializer(serializers.ModelSerializer):

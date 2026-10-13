@@ -1,4 +1,5 @@
-import { ChevronDownIcon, ChevronUpIcon, MapPinIcon, MessageSquareIcon, EyeIcon, Edit3Icon, Trash2Icon, CheckCircleIcon } from "lucide-react";
+import { useState } from "react";
+import { ChevronDownIcon, ChevronUpIcon, MapPinIcon, MessageSquareIcon, EyeIcon, Edit3Icon, Trash2Icon, CheckCircleIcon, PlusIcon } from "lucide-react";
 import type { Enquiry, Quotation } from "../../sales/api/types";
 import styles from "./AmcRow.module.css";
 
@@ -13,6 +14,9 @@ interface Props {
   onEditQuote: (quoteId: string) => void;
   onConfirmQuote: (quoteId: string) => void;
   onDeleteQuote: (quoteId: string) => void;
+  onAddFollowup: () => void;
+  onEditFollowup?: (followup: any) => void;
+  onDeleteFollowup?: (followupId: string) => void;
 }
 
 export function AmcRow({
@@ -26,7 +30,12 @@ export function AmcRow({
   onEditQuote,
   onConfirmQuote,
   onDeleteQuote,
+  onAddFollowup,
+  onEditFollowup,
+  onDeleteFollowup,
 }: Props) {
+  const [isHistoryExpanded, setIsHistoryExpanded] = useState(false);
+
   return (
     <>
       <tr className={`${styles.row} ${isExpanded ? styles.rowExpanded : ""}`} onClick={onToggle}>
@@ -100,6 +109,13 @@ export function AmcRow({
             >
               New Quote
             </button>
+            <button
+              type="button"
+              className={styles.btnPrimary}
+              onClick={(e) => { e.stopPropagation(); onAddFollowup(); }}
+            >
+              <PlusIcon size={14} style={{ marginRight: '4px' }} /> Follow-up
+            </button>
             <button type="button" className={styles.expandBtn}>
               {isExpanded ? <ChevronUpIcon size={18} /> : <ChevronDownIcon size={18} />}
             </button>
@@ -112,6 +128,23 @@ export function AmcRow({
         <tr>
           <td colSpan={5} className={styles.expandedCell}>
             <div className={styles.expandedContent}>
+              <div className={styles.mobileActionsBar}>
+                <button
+                  type="button"
+                  className={styles.btnSecondary}
+                  onClick={(e) => { e.stopPropagation(); onNewQuote(); }}
+                >
+                  New Quote
+                </button>
+                <button
+                  type="button"
+                  className={styles.btnPrimary}
+                  onClick={(e) => { e.stopPropagation(); onAddFollowup(); }}
+                >
+                  <PlusIcon size={14} style={{ marginRight: '4px' }} /> Follow-up
+                </button>
+              </div>
+
               <div className={styles.detailGrid}>
                 {/* Left: Site Info */}
                 <div>
@@ -124,6 +157,115 @@ export function AmcRow({
                     <MessageSquareIcon className={styles.infoIcon} size={15} />
                     <span>{site.remarks || "No remarks."}</span>
                   </div>
+                </div>
+
+                {/* Middle: Follow-up history */}
+                <div>
+                  <h4 className={styles.sectionTitle}>Follow-up History</h4>
+                  {site.followups && site.followups.length > 0 ? (
+                    <div className={styles.quoteHistoryList}>
+                      {/* Latest */}
+                      <div className={styles.historyCard} style={{ flexDirection: "column", alignItems: "flex-start", gap: "8px" }}>
+                        <div style={{ display: "flex", justifyContent: "space-between", width: "100%", fontSize: "0.8rem", color: "var(--color-text-2)" }}>
+                          <span style={{ fontWeight: 600, color: "var(--color-text)" }}>
+                            Due: {site.followups[0]!.next_followup_date}
+                          </span>
+                          <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                            <span>Added {site.followups[0]!.entered_date}</span>
+                            {onEditFollowup && (
+                              <button
+                                type="button"
+                                className={styles.iconBtnSm}
+                                title="Edit Follow-up"
+                                onClick={(e) => { e.stopPropagation(); onEditFollowup(site.followups[0]); }}
+                                style={{ padding: "4px", background: "transparent", border: "none", cursor: "pointer", color: "var(--color-primary)" }}
+                              >
+                                <Edit3Icon size={12} />
+                              </button>
+                            )}
+                            {onDeleteFollowup && (
+                              <button
+                                type="button"
+                                className={styles.iconBtnSm}
+                                title="Delete Follow-up"
+                                onClick={(e) => { e.stopPropagation(); onDeleteFollowup(site.followups[0]!.id); }}
+                                style={{ padding: "4px", background: "transparent", border: "none", cursor: "pointer", color: "var(--color-danger)" }}
+                              >
+                                <Trash2Icon size={12} />
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                        <p style={{ margin: 0, fontSize: "0.9rem", color: "var(--color-text)", whiteSpace: "pre-wrap" }}>
+                          {site.followups[0]!.remarks}
+                        </p>
+                      </div>
+
+                      {/* Older followups toggle */}
+                      {site.followups.length > 1 && (
+                        <div>
+                          <button
+                            type="button"
+                            className={styles.expandBtn}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setIsHistoryExpanded(!isHistoryExpanded);
+                            }}
+                            style={{ margin: "4px 0", fontSize: "0.8rem", width: "100%", display: "flex", justifyContent: "space-between" }}
+                          >
+                            <span>
+                              {isHistoryExpanded
+                                ? "Hide past"
+                                : `${String(site.followups.length - 1)} older follow-up${site.followups.length > 2 ? "s" : ""}`}
+                            </span>
+                            {isHistoryExpanded ? <ChevronUpIcon size={14} /> : <ChevronDownIcon size={14} />}
+                          </button>
+
+                          {isHistoryExpanded && (
+                            <div style={{ display: "flex", flexDirection: "column", gap: "8px", marginTop: "8px" }}>
+                              {site.followups.slice(1).map((f) => (
+                                <div key={f.id} style={{ padding: "8px 0", borderTop: "1px dashed var(--color-border-strong)" }}>
+                                  <div style={{ display: "flex", justifyContent: "space-between", fontSize: "0.8rem", color: "var(--color-text-2)", marginBottom: "4px" }}>
+                                    <span>Due: {f.next_followup_date}</span>
+                                    <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                                      <span>Added {f.entered_date}</span>
+                                      {onEditFollowup && (
+                                        <button
+                                          type="button"
+                                          className={styles.iconBtnSm}
+                                          title="Edit Follow-up"
+                                          onClick={(e) => { e.stopPropagation(); onEditFollowup(f); }}
+                                          style={{ padding: "4px", background: "transparent", border: "none", cursor: "pointer", color: "var(--color-primary)" }}
+                                        >
+                                          <Edit3Icon size={12} />
+                                        </button>
+                                      )}
+                                      {onDeleteFollowup && (
+                                        <button
+                                          type="button"
+                                          className={styles.iconBtnSm}
+                                          title="Delete Follow-up"
+                                          onClick={(e) => { e.stopPropagation(); onDeleteFollowup(f.id); }}
+                                          style={{ padding: "4px", background: "transparent", border: "none", cursor: "pointer", color: "var(--color-danger)" }}
+                                        >
+                                          <Trash2Icon size={12} />
+                                        </button>
+                                      )}
+                                    </div>
+                                  </div>
+                                  <p style={{ margin: 0, fontSize: "0.85rem", color: "var(--color-text-2)" }}>
+                                    {f.remarks}
+                                  </p>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  ) : (
+                    <div className={styles.muted}>No follow-ups recorded yet.</div>
+                  )}
                 </div>
 
                 {/* Right: Quotation History */}
@@ -211,3 +353,5 @@ export function AmcRow({
     </>
   );
 }
+
+

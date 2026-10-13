@@ -115,21 +115,30 @@ export const APP_CATALOG: AppDefinition[] = [
       {
         label: "Sales",
         items: [
+          { label: "Dashboard", path: "sales/dashboard", icon: "grid", module: "sales" },
           { label: "Enquiries", path: "sales/enquiries", icon: "tag", module: "sales" },
           { label: "Confirmed orders", path: "sales/orders", icon: "card", module: "sales" },
           { label: "Quotations", path: "sales/quotations", icon: "history", module: "sales" },
         ],
       },
       {
+        label: "Configuration",
+        items: [
+          { label: "Load Master Data", path: "settings", icon: "wrench", module: "sales" },
+        ],
+      },
+      {
         label: "Site Services",
         items: [
-          { label: "AMC", path: "site-services", icon: "tag", module: "service" },
+          { label: "Dashboard", path: "site-services/dashboard", icon: "grid", module: "service" },
+          { label: "AMC", path: "site-services/amc", icon: "tag", module: "service" },
           { label: "Scheduled Services", path: "site-services/scheduling", icon: "history", module: "service" },
           { label: "Service Reports", path: "site-services/reports", icon: "card", module: "service" },
           { label: "Water Reports", path: "site-services/water", icon: "wrench", module: "service" },
           { label: "Complaint Box", path: "site-services/complaints", icon: "headset", module: "service" },
         ],
       },
+
       {
         label: "Installation & Tech Support",
         items: [
@@ -139,9 +148,11 @@ export const APP_CATALOG: AppDefinition[] = [
           { label: "Timer Calculation", path: "tech-support/timer-calculation", icon: "wrench", module: "tech-support" },
         ],
       },
+
       {
         label: "E-Commerce",
         items: [
+          { label: "Dashboard", path: "ecommerce/dashboard", icon: "grid", module: "ecommerce" },
           { label: "Store Catalog", path: "ecommerce/catalog", icon: "store", module: "ecommerce" },
           { label: "My Orders", path: "ecommerce/orders", icon: "card", module: "ecommerce" },
         ],
@@ -149,9 +160,9 @@ export const APP_CATALOG: AppDefinition[] = [
       {
         label: "Tools",
         items: [
-          { label: "Marketing Kit", path: "tools/marketing", icon: "sliders", module: "tools" },
-          { label: "Capacity Calculator", path: "tools/calculator", icon: "sliders", module: "tools" },
-          { label: "Feasibility", path: "tools/feasibility", icon: "sliders", module: "tools" },
+          { label: "Marketing Kit", path: "tools/marketing", icon: "tag", module: "tools" },
+          { label: "Capacity Calculator", path: "tools/calculator", icon: "history", module: "tools" },
+          { label: "Feasibility", path: "tools/feasibility", icon: "wrench", module: "tools" },
         ],
       },
       /*

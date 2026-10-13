@@ -4,6 +4,7 @@ import SiteServicesRoutes from "./site-services/routes";
 import TechSupportRoutes from "./tech-support/routes";
 import EcommerceRoutes from "./ecommerce/routes";
 import ToolsRoutes from "./tools/routes";
+import SettingsPage from "./settings/SettingsPage";
 
 const routes: ModuleRoute[] = [
   { path: "sales/*", module: "sales", element: <SalesRoutes /> },
@@ -11,18 +12,11 @@ const routes: ModuleRoute[] = [
   { path: "tech-support/*", module: "tech-support", element: <TechSupportRoutes /> },
   { path: "ecommerce/*", module: "ecommerce", element: <EcommerceRoutes /> },
   { path: "tools/*", module: "tools", element: <ToolsRoutes /> },
-  { path: "settings/*", module: "settings", element: <Placeholder name="Dealer settings" /> },
+  { path: "settings/*", module: "sales", element: <SettingsPage /> },
 ];
 
 export default function DmsRoutes() {
   return <ModuleRoutes routes={routes} />;
 }
 
-function Placeholder({ name }: { name: string }) {
-  return (
-    <>
-      <h1>{name}</h1>
-      <p>Not built yet.</p>
-    </>
-  );
-}
+

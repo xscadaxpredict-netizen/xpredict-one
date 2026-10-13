@@ -34,10 +34,14 @@ export function ProductFormDialog({ isOpen, isEditing, categories, form, onFormC
                 <input required className={styles.input} placeholder="New Category Name" value={form.newCategory} onChange={e => onFormChange({ newCategory: e.target.value })} />
               )}
 
-              <label className={styles.label} style={{ marginTop: "10px" }}>Product Name</label>
+              <label className={styles.label} style={{ marginTop: "10px" }}>
+                              Product Name <span style={{ color: "red" }}>*</span>
+                          </label>
               <input required className={styles.input} value={form.name} onChange={e => onFormChange({ name: e.target.value })} />
 
-              <label className={styles.label} style={{ marginTop: "10px" }}>Price (₹)</label>
+              <label className={styles.label} style={{ marginTop: "10px" }}>
+                              Price (₹) <span style={{ color: "red" }}>*</span>
+                          </label>
               <input required type="number" className={styles.input} value={form.price} onChange={e => onFormChange({ price: e.target.value })} />
 
               <label className={styles.label} style={{ marginTop: "10px" }}>Specs (comma separated)</label>

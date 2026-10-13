@@ -1,4 +1,5 @@
 import { PrinterIcon, Edit3Icon, XIcon } from "lucide-react";
+import { FileAttachmentCell } from "./FileAttachmentCell";
 import styles from "./WaterReportViewModal.module.css";
 
 interface Props {
@@ -11,6 +12,8 @@ interface Props {
 export function WaterReportViewModal({ isOpen, report, onEdit, onClose }: Props) {
   if (!isOpen || !report) return null;
 
+  const displayDate = report.date || report.date_tested || "—";
+
   return (
     <div className={styles.modalOverlay} onClick={onClose}>
       <div className={styles.modalContent} onClick={e => e.stopPropagation()}>
@@ -18,7 +21,7 @@ export function WaterReportViewModal({ isOpen, report, onEdit, onClose }: Props)
         <div className={styles.modalHeader}>
           <div>
             <h3 className={styles.modalTitle}>Water Quality Report</h3>
-            <span className={styles.modalSubtitle}>Date Tested: {report.date}</span>
+            <span className={styles.modalSubtitle}>Date Tested: {displayDate}</span>
           </div>
           <div className={styles.headerActions}>
             <button type="button" className={styles.btnSecondary} onClick={() => window.print()}>
@@ -43,7 +46,7 @@ export function WaterReportViewModal({ isOpen, report, onEdit, onClose }: Props)
             </div>
             <div className={styles.bannerRight}>
               <div className={styles.reportCode}>WR-{report.id}</div>
-              <div className={styles.reportDate}>Date: {report.date}</div>
+              <div className={styles.reportDate}>Date: {displayDate}</div>
             </div>
           </div>
 
@@ -56,15 +59,15 @@ export function WaterReportViewModal({ isOpen, report, onEdit, onClose }: Props)
             </div>
             <div>
               <div className={styles.infoLabel}>Date Tested</div>
-              <div className={styles.infoValue}>{report.date}</div>
+              <div className={styles.infoValue}>{displayDate}</div>
             </div>
           </div>
 
           {/* Attachment */}
           <div>
             <h4 className={styles.sectionTitle}>Attached Report File</h4>
-            <div className={styles.attachmentBox}>
-              {report.attachment || 'No file attached.'}
+            <div style={{ marginTop: '0.5rem' }}>
+              <FileAttachmentCell attachment={report.attachment} />
             </div>
           </div>
         </div>

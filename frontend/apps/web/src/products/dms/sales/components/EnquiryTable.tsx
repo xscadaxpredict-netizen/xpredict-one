@@ -13,19 +13,29 @@ import styles from "./EnquiryTable.module.css";
 interface EnquiryTableProps {
   enquiries: Enquiry[];
   onAddFollowup: (enquiryId: string) => void;
+  onEditFollowup?: (enquiryId: string, followup: any) => void;
+  onDeleteFollowup?: (enquiryId: string, followupId: string) => void;
   onCreateQuote: (enquiryId: string) => void;
   onEditQuote: (enquiryId: string, quoteId: string) => void;
+  onViewQuote: (enquiryId: string, quoteId: string) => void;
   onConfirmOrder: (enquiryId: string, quoteId: string) => void;
   onDeleteQuote: (enquiryId: string, quoteId: string) => void;
+  onEditEnquiry: (enquiryId: string) => void;
+  onDeleteEnquiry: (enquiryId: string) => void;
 }
 
 export function EnquiryTable({
   enquiries,
   onAddFollowup,
+  onEditFollowup,
+  onDeleteFollowup,
   onCreateQuote,
   onEditQuote,
+  onViewQuote,
   onConfirmOrder,
   onDeleteQuote,
+  onEditEnquiry,
+  onDeleteEnquiry,
 }: EnquiryTableProps) {
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [expandedHistory, setExpandedHistory] = useState<string | null>(null);
@@ -58,10 +68,15 @@ export function EnquiryTable({
                 setExpandedHistory(expandedHistory === enq.id ? null : enq.id)
               }
               onAddFollowup={() => onAddFollowup(enq.id)}
+              onEditFollowup={(fu) => onEditFollowup?.(enq.id, fu)}
+              onDeleteFollowup={(fuId) => onDeleteFollowup?.(enq.id, fuId)}
               onCreateQuote={() => onCreateQuote(enq.id)}
               onEditQuote={(quoteId) => onEditQuote(enq.id, quoteId)}
+              onViewQuote={(quoteId) => onViewQuote(enq.id, quoteId)}
               onConfirmOrder={(quoteId) => onConfirmOrder(enq.id, quoteId)}
               onDeleteQuote={(quoteId) => onDeleteQuote(enq.id, quoteId)}
+              onEditEnquiry={() => onEditEnquiry(enq.id)}
+              onDeleteEnquiry={() => onDeleteEnquiry(enq.id)}
             />
           ))}
         </tbody>
@@ -79,10 +94,15 @@ interface EnquiryRowProps {
   onToggle: () => void;
   onToggleHistory: () => void;
   onAddFollowup: () => void;
+  onEditFollowup?: (followup: any) => void;
+  onDeleteFollowup?: (followupId: string) => void;
   onCreateQuote: () => void;
   onEditQuote: (quoteId: string) => void;
+  onViewQuote: (quoteId: string) => void;
   onConfirmOrder: (quoteId: string) => void;
   onDeleteQuote: (quoteId: string) => void;
+  onEditEnquiry: () => void;
+  onDeleteEnquiry: () => void;
 }
 
 function EnquiryRow({
@@ -92,10 +112,15 @@ function EnquiryRow({
   onToggle,
   onToggleHistory,
   onAddFollowup,
+  onEditFollowup,
+  onDeleteFollowup,
   onCreateQuote,
   onEditQuote,
+  onViewQuote,
   onConfirmOrder,
   onDeleteQuote,
+  onEditEnquiry,
+  onDeleteEnquiry,
 }: EnquiryRowProps) {
   const latestFollowup = enquiry.followups[0] ?? null;
   const latestQuote = enquiry.quotes[enquiry.quotes.length - 1] ?? null;
@@ -144,7 +169,10 @@ function EnquiryRow({
         <td className={styles.td}>
           {latestQuote ? (
             <div>
-              <div className={styles.quoteTitle}>{latestQuote.title}</div>
+              <div className={styles.quoteTitle}>
+                {latestQuote.status === "DRAFT" && <span className={styles.badgeWarning} style={{ marginRight: '8px' }}>DRAFT</span>}
+                {latestQuote.title}
+              </div>
               <div className={styles.quoteAmount}>
                 ₹ {latestQuote.amount.toLocaleString("en-IN")}
               </div>
@@ -155,7 +183,7 @@ function EnquiryRow({
                   title="View Quote"
                   onClick={(e) => {
                     e.stopPropagation();
-                    onEditQuote(latestQuote.id);
+                    onViewQuote(latestQuote.id);
                   }}
                 >
                   <EyeIcon />
@@ -181,6 +209,28 @@ function EnquiryRow({
         {/* Actions */}
         <td className={`${styles.td} ${styles.tdRight}`}>
           <div className={styles.actions}>
+            <button
+              type="button"
+              className={styles.iconBtn}
+              title="Edit Enquiry"
+              onClick={(e) => {
+                e.stopPropagation();
+                onEditEnquiry();
+              }}
+            >
+              <PencilIcon />
+            </button>
+            <button
+              type="button"
+              className={`${styles.iconBtn} ${styles.iconBtnDanger}`}
+              title="Delete Enquiry"
+              onClick={(e) => {
+                e.stopPropagation();
+                onDeleteEnquiry();
+              }}
+            >
+              <TrashIcon />
+            </button>
             <button
               type="button"
               className={styles.btnSecondary}
@@ -217,6 +267,51 @@ function EnquiryRow({
         <tr>
           <td colSpan={5} className={styles.expandedCell}>
             <div className={styles.expandedContent}>
+              <div className={styles.mobileActionsBar}>
+                <button
+                  type="button"
+                  className={styles.btnPrimary}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onAddFollowup();
+                  }}
+                >
+                  <PlusIcon /> Follow-up
+                </button>
+                <button
+                  type="button"
+                  className={styles.btnSecondary}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onCreateQuote();
+                  }}
+                >
+                  Create Quote
+                </button>
+                <button
+                  type="button"
+                  className={styles.iconBtn}
+                  title="Edit Enquiry"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onEditEnquiry();
+                  }}
+                >
+                  <PencilIcon />
+                </button>
+                <button
+                  type="button"
+                  className={`${styles.iconBtn} ${styles.iconBtnDanger}`}
+                  title="Delete Enquiry"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onDeleteEnquiry();
+                  }}
+                >
+                  <TrashIcon />
+                </button>
+              </div>
+
               <div className={styles.detailGrid}>
                 {/* Left: Enquiry details */}
                 <div>
@@ -245,9 +340,37 @@ function EnquiryRow({
                           <span className={styles.followupDate}>
                             Due: {enquiry.followups[0]!.next_followup_date}
                           </span>
-                          <span className={styles.followupAdded}>
-                            Added {enquiry.followups[0]!.entered_date}
-                          </span>
+                          <div className={styles.followupActions}>
+                            <span className={styles.followupAdded}>
+                              Added {enquiry.followups[0]!.entered_date}
+                            </span>
+                            {onEditFollowup && (
+                              <button
+                                type="button"
+                                className={styles.iconBtnSm}
+                                title="Edit Follow-up"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  onEditFollowup(enquiry.followups[0]);
+                                }}
+                              >
+                                <PencilIcon />
+                              </button>
+                            )}
+                            {onDeleteFollowup && (
+                              <button
+                                type="button"
+                                className={`${styles.iconBtnSm} ${styles.iconBtnDanger}`}
+                                title="Delete Follow-up"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  onDeleteFollowup(enquiry.followups[0]!.id);
+                                }}
+                              >
+                                <TrashIcon />
+                              </button>
+                            )}
+                          </div>
                         </div>
                         <p className={styles.followupRemark}>
                           {enquiry.followups[0]!.remarks}
@@ -283,9 +406,37 @@ function EnquiryRow({
                                     <span className={styles.pastDate}>
                                       Due: {f.next_followup_date}
                                     </span>
-                                    <span className={styles.followupAdded}>
-                                      Added {f.entered_date}
-                                    </span>
+                                    <div className={styles.followupActions}>
+                                      <span className={styles.followupAdded}>
+                                        Added {f.entered_date}
+                                      </span>
+                                      {onEditFollowup && (
+                                        <button
+                                          type="button"
+                                          className={styles.iconBtnSm}
+                                          title="Edit Follow-up"
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            onEditFollowup(f);
+                                          }}
+                                        >
+                                          <PencilIcon />
+                                        </button>
+                                      )}
+                                      {onDeleteFollowup && (
+                                        <button
+                                          type="button"
+                                          className={`${styles.iconBtnSm} ${styles.iconBtnDanger}`}
+                                          title="Delete Follow-up"
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            onDeleteFollowup(f.id);
+                                          }}
+                                        >
+                                          <TrashIcon />
+                                        </button>
+                                      )}
+                                    </div>
                                   </div>
                                   <p className={styles.followupRemark}>
                                     {f.remarks}
@@ -320,6 +471,7 @@ function EnquiryRow({
                             </span>
                           )}
                         <div className={styles.quoteCardTitle}>
+                          {quote.status === "DRAFT" && <span className={styles.badgeWarning} style={{ marginRight: '8px' }}>DRAFT</span>}
                           {quote.title}
                         </div>
                         <div className={styles.quoteCardMeta}>
@@ -335,7 +487,7 @@ function EnquiryRow({
                               type="button"
                               className={styles.iconBtn}
                               title="View Quote"
-                              onClick={() => onEditQuote(quote.id)}
+                              onClick={() => onViewQuote(quote.id)}
                             >
                               <EyeIcon />
                             </button>
@@ -467,3 +619,5 @@ function CheckIcon() {
     </svg>
   );
 }
+
+

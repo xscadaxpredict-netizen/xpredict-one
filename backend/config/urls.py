@@ -1,6 +1,7 @@
 from django.contrib import admin
 from django.urls import include, path
-
+from django.conf import settings
+from django.conf.urls.static import static
 from core.accounts.api.views import MeView
 
 urlpatterns = [
@@ -24,4 +25,10 @@ urlpatterns = [
     path("api/v1/orgs/<str:org_slug>/dms/sales/", include("products.dms.sales.api.urls")),
     path("api/v1/orgs/<str:org_slug>/dms/site-services/", include("products.dms.site_services.api.urls")),
     path("api/v1/orgs/<str:org_slug>/dms/ecommerce/", include("products.dms.ecommerce.api.urls")),
+    path("api/v1/orgs/<str:org_slug>/dms/tech-support/", include("products.dms.tech_support.api.urls")),
+    path("api/v1/orgs/<str:org_slug>/dms/tools/", include("products.dms.tools.api.urls")),
 ]
+
+if settings.DEBUG:
+    urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
+

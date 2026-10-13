@@ -13,3 +13,13 @@
 .btnPrimary:hover { background: var(--color-primary-hover); }
 .btnPrimary:disabled { opacity: 0.5; cursor: not-allowed; }
 .warningText { color: var(--color-danger); font-size: 0.75rem; text-align: center; margin-top: var(--space-2); font-weight: 600; }
+
+@media (max-width: 768px) {
+  .cartCol {
+    min-width: unset !important;
+    width: 100% !important;
+    position: static !important;
+    box-sizing: border-box;
+  }
+}
+

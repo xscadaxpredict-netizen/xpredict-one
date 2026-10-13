@@ -4,12 +4,15 @@ Serializers for Site Services.
 
 from rest_framework import serializers
 
-from products.dms.sales.api.serializers import QuotationReadSerializer
+from products.dms.sales.api.serializers import QuotationReadSerializer, FollowupReadSerializer
 from products.dms.sales.models import ConfirmedSite
 from ..models import (
     ServiceSchedule, ServiceReport, ReportAttachment,
     WaterReport, Complaint, SiteServiceProfile
 )
+
+# ---- Site & Profile ---------------------------------------------------------
+# (unchanged below until Water Report)
 
 # ---- Site & Profile ---------------------------------------------------------
 
@@ -31,7 +34,8 @@ class SiteServiceProfileSerializer(serializers.ModelSerializer):
 class SiteReadSerializer(serializers.ModelSerializer):
     service_profile = SiteServiceProfileSerializer(read_only=True)
     customer_name = serializers.CharField(source="customer.name", read_only=True)
-    quotes = QuotationReadSerializer(many=True, read_only=True, source="quotations")
+    quotes = QuotationReadSerializer(many=True, read_only=True, source="enquiry.quotations")
+    followups = FollowupReadSerializer(many=True, read_only=True, source="enquiry.followups")
     enquiry_id = serializers.UUIDField(read_only=True)
 
     class Meta:
@@ -49,6 +53,7 @@ class SiteReadSerializer(serializers.ModelSerializer):
             "installation_date",
             "service_profile",
             "quotes",
+            "followups",
         ]
 
 
@@ -117,6 +122,10 @@ class ServiceReportReadSerializer(serializers.ModelSerializer):
             "client_name",
             "client_signature",
             "status",
+            "client_approval_status",
+            "approval_remarks",
+            "approved_at",
+            "sign_link_token",
             "attachments",
         ]
 
@@ -124,25 +133,26 @@ class ServiceReportReadSerializer(serializers.ModelSerializer):
 # ---- Water Report -----------------------------------------------------------
 
 class WaterReportReadSerializer(serializers.ModelSerializer):
+    attachments = ReportAttachmentSerializer(many=True, read_only=True)
+
     class Meta:
         model = WaterReport
         fields = [
             "id",
             "site_id",
             "date_tested",
-            "ph",
-            "tds",
-            "hardness",
-            "iron",
             "technician_display_name",
             "remarks",
             "attachment",
+            "attachments",
         ]
 
 
 # ---- Complaint --------------------------------------------------------------
 
 class ComplaintReadSerializer(serializers.ModelSerializer):
+    attachments = ReportAttachmentSerializer(many=True, read_only=True)
+
     class Meta:
         model = Complaint
         fields = [
@@ -153,6 +163,7 @@ class ComplaintReadSerializer(serializers.ModelSerializer):
             "status",
             "assigned_service_person_name",
             "attachment",
+            "attachments",
             "resolved_at",
             "created_at",
             "complainant_user_id",

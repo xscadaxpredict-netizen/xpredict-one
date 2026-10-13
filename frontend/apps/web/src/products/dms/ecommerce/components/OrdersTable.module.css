@@ -14,7 +14,70 @@
 .btnView:hover { background: var(--color-surface); }
 .btnApprove { background: #16A34A; color: #fff; }
 .btnApprove:hover { background: #15803D; }
+.btnDeliver { background: #2563EB; color: #fff; }
+.btnDeliver:hover { background: #1D4ED8; }
 .btnReject { background: #DC2626; color: #fff; }
 .btnReject:hover { background: #B91C1C; }
 .btnIconDanger { background: transparent; border: none; color: var(--color-text-3); cursor: pointer; padding: 4px; border-radius: 4px; }
 .btnIconDanger:hover { background: #FEF2F2; color: #DC2626; }
+
+.expandBtn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--color-border);
+  background: var(--color-surface);
+  color: var(--color-text-2);
+  cursor: pointer;
+  padding: 0;
+}
+
+.expandBtn:hover {
+  background: var(--color-surface-alt);
+  color: var(--color-text);
+}
+
+.expandedCell {
+  padding: var(--space-4) !important;
+  background: var(--color-surface-alt);
+  border-bottom: 1px solid var(--color-border);
+}
+
+.expandedContent {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.mobileActionsBar {
+  display: none;
+}
+
+@media (max-width: 768px) {
+  .mobileActionsBar {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-2);
+    align-items: center;
+    padding-bottom: var(--space-2);
+    margin-bottom: var(--space-2);
+    border-bottom: 1px dashed var(--color-border);
+  }
+}
+
+
+
+
+
+@media (max-width: 768px) { .hideOnMobile { display: none !important; } }
+
+
+
+@media (max-width: 768px) { .td button:not(.expandBtn) { display: none !important; } }
+
+
+
+

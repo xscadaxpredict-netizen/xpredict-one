@@ -166,6 +166,7 @@ def update_service_report(
     report_id: uuid.UUID,
     service_person_signature: Optional[str] = None,
     client_signature: Optional[str] = None,
+    files: Optional[list] = None,
     **kwargs
 ) -> ServiceReport:
     report = ServiceReport.objects.filter(id=report_id).first()
@@ -187,8 +188,30 @@ def update_service_report(
             report.client_signature = f
             report.client_signed_at = timezone.now()
             report.status = ReportStatus.COMPLETED
-            
+
+    if kwargs.get("client_approval_status") == "APPROVED" and report.client_approval_status != "APPROVED":
+        report.approved_at = timezone.now()
+
     report.save()
+
+    if "kept_attachment_ids" in kwargs:
+        kept_ids = kwargs.get("kept_attachment_ids", [])
+        if not isinstance(kept_ids, list):
+            kept_ids = [kept_ids]
+        # Delete attachments not in the kept list
+        ReportAttachment.objects.filter(service_report=report).exclude(id__in=kept_ids).delete()
+
+    if files:
+        for file in files:
+            ReportAttachment.objects.create(
+                unit_id=report.unit_id,
+                service_report=report,
+                file=file,
+                file_name=file.name,
+                file_size=file.size,
+                file_type=file.content_type
+            )
+
     return report
 
 
@@ -200,23 +223,47 @@ def delete_service_report(*, report_id: uuid.UUID) -> None:
 @transaction.atomic
 def create_water_report(
     *,
-    unit_id: uuid.UUID,
+    unit_id: Optional[uuid.UUID] = None,
     site_id: uuid.UUID,
     attachment=None,
+    files: Optional[list] = None,
     **kwargs
 ) -> WaterReport:
     site = ConfirmedSite.objects.filter(id=site_id).first()
     if not site:
         raise not_found("Site")
 
+    resolved_unit_id = unit_id or site.unit_id
+
+    valid_fields = {f.name for f in WaterReport._meta.get_fields()}
+    filtered_kwargs = {}
+    for k, v in kwargs.items():
+        if k in valid_fields:
+            if v == "" and k in ["ph", "tds", "hardness", "iron", "technician_user_id"]:
+                filtered_kwargs[k] = None
+            else:
+                filtered_kwargs[k] = v
+
     report = WaterReport(
-        unit_id=unit_id,
+        unit_id=resolved_unit_id,
         site=site,
-        **kwargs
+        **filtered_kwargs
     )
     if attachment:
         report.attachment = attachment
     report.save()
+
+    if files:
+        for file in files:
+            ReportAttachment.objects.create(
+                unit_id=report.unit_id,
+                water_report=report,
+                file=file,
+                file_name=file.name,
+                file_size=file.size,
+                file_type=file.content_type
+            )
+
     return report
 
 
@@ -225,6 +272,7 @@ def update_water_report(
     *,
     report_id: uuid.UUID,
     attachment=None,
+    files: Optional[list] = None,
     **kwargs
 ) -> WaterReport:
     report = WaterReport.objects.filter(id=report_id).first()
@@ -233,11 +281,34 @@ def update_water_report(
 
     for key, value in kwargs.items():
         if hasattr(report, key):
-            setattr(report, key, value)
+            if value == "" and key in ["technician_user_id"]:
+                setattr(report, key, None)
+            else:
+                setattr(report, key, value)
             
     if attachment:
         report.attachment = attachment
+    elif kwargs.get("clear_attachment") == "true":
+        report.attachment = ""
     report.save()
+
+    if "kept_attachment_ids" in kwargs:
+        kept_ids = kwargs.get("kept_attachment_ids", [])
+        if not isinstance(kept_ids, list):
+            kept_ids = [kept_ids]
+        ReportAttachment.objects.filter(water_report=report).exclude(id__in=kept_ids).delete()
+
+    if files:
+        for file in files:
+            ReportAttachment.objects.create(
+                unit_id=report.unit_id,
+                water_report=report,
+                file=file,
+                file_name=file.name,
+                file_size=file.size,
+                file_type=file.content_type
+            )
+
     return report
 
 
@@ -249,25 +320,49 @@ def delete_water_report(*, report_id: uuid.UUID) -> None:
 @transaction.atomic
 def create_complaint(
     *,
-    unit_id: uuid.UUID,
+    unit_id: Optional[uuid.UUID] = None,
     site_id: uuid.UUID,
-    actor_user_id: uuid.UUID,
+    actor_user_id: Optional[uuid.UUID] = None,
     attachment=None,
+    files: Optional[list] = None,
     **kwargs
 ) -> Complaint:
     site = ConfirmedSite.objects.filter(id=site_id).first()
     if not site:
         raise not_found("Site")
 
+    resolved_unit_id = unit_id or site.unit_id
+
+    valid_fields = {f.name for f in Complaint._meta.get_fields()}
+    filtered_kwargs = {}
+    for k, v in kwargs.items():
+        if k in valid_fields:
+            if v == "" and k in ["complainant_user_id", "assigned_service_person_user_id"]:
+                filtered_kwargs[k] = None
+            else:
+                filtered_kwargs[k] = v
+
     complaint = Complaint(
-        unit_id=unit_id,
+        unit_id=resolved_unit_id,
         site=site,
         complainant_user_id=actor_user_id,
-        **kwargs
+        **filtered_kwargs
     )
     if attachment:
         complaint.attachment = attachment
     complaint.save()
+
+    if files:
+        for file in files:
+            ReportAttachment.objects.create(
+                unit_id=complaint.unit_id,
+                complaint=complaint,
+                file=file,
+                file_name=file.name,
+                file_size=file.size,
+                file_type=file.content_type
+            )
+
     return complaint
 
 
@@ -275,6 +370,8 @@ def create_complaint(
 def update_complaint(
     *,
     complaint_id: uuid.UUID,
+    attachment=None,
+    files: Optional[list] = None,
     **kwargs
 ) -> Complaint:
     complaint = Complaint.objects.filter(id=complaint_id).first()
@@ -286,9 +383,34 @@ def update_complaint(
 
     for key, value in kwargs.items():
         if hasattr(complaint, key):
-            setattr(complaint, key, value)
+            if value == "" and key in ["complainant_user_id", "assigned_service_person_user_id"]:
+                setattr(complaint, key, None)
+            else:
+                setattr(complaint, key, value)
             
+    if attachment:
+        complaint.attachment = attachment
+    elif kwargs.get("clear_attachment") == "true":
+        complaint.attachment = ""
     complaint.save()
+
+    if "kept_attachment_ids" in kwargs:
+        kept_ids = kwargs.get("kept_attachment_ids", [])
+        if not isinstance(kept_ids, list):
+            kept_ids = [kept_ids]
+        ReportAttachment.objects.filter(complaint=complaint).exclude(id__in=kept_ids).delete()
+
+    if files:
+        for file in files:
+            ReportAttachment.objects.create(
+                unit_id=complaint.unit_id,
+                complaint=complaint,
+                file=file,
+                file_name=file.name,
+                file_size=file.size,
+                file_type=file.content_type
+            )
+
     return complaint
 
 

@@ -1,4 +1,4 @@
-import { ApiError, type Problem } from "@xpredict/api-client";
+import { ApiError, csrfHeaders, type Problem } from "@xpredict/api-client";
 
 export async function request<T>(url: string, init?: RequestInit): Promise<T> {
   // If body is FormData, don't set Content-Type so browser can set it with boundary
@@ -6,6 +6,9 @@ export async function request<T>(url: string, init?: RequestInit): Promise<T> {
   const headers = new Headers(init?.headers);
   if (!isFormData && !headers.has("Content-Type")) {
     headers.set("Content-Type", "application/json");
+  }
+  for (const [key, value] of Object.entries(csrfHeaders(init?.method))) {
+    headers.set(key, value);
   }
 
   const response = await fetch(url, {

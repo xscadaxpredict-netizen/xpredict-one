@@ -38,12 +38,16 @@ export function UploadMaterialDialog({ isOpen, isEditing, type, form, onFormChan
                   </div>
                 </div>
               )}
-              <label className={styles.label}>Title</label>
+              <label className={styles.label}>
+                              Title <span style={{ color: "red" }}>*</span>
+                          </label>
               <input required className={styles.input} value={form.title || ""} onChange={e => onFormChange({ title: e.target.value })} />
               
               {type === "brochure" && (
                 <>
-                  <label className={styles.label}>Category *</label>
+                  <label className={styles.label}>
+                                      Category  <span style={{ color: "red" }}>*</span>
+                                  </label>
                   <select required className={styles.input} value={form.category || ""} onChange={e => onFormChange({ category: e.target.value })}>
                     <option value="" disabled>Select a category...</option>
                     <option value="Product Brochure">Product Brochure</option>
@@ -55,15 +59,14 @@ export function UploadMaterialDialog({ isOpen, isEditing, type, form, onFormChan
               )}
               {type === "video" && (
                 <>
-                  <label className={styles.label}>Duration</label>
-                  <input required className={styles.input} value={form.duration || ""} onChange={e => onFormChange({ duration: e.target.value })} />
-                  <label className={styles.label}>Resolution</label>
-                  <input required className={styles.input} value={form.resolution || ""} onChange={e => onFormChange({ resolution: e.target.value })} />
+                  
                 </>
               )}
               {type === "ad" && (
                 <>
-                  <label className={styles.label}>Format</label>
+                  <label className={styles.label}>
+                                      Format <span style={{ color: "red" }}>*</span>
+                                  </label>
                   <input required className={styles.input} value={form.format || ""} onChange={e => onFormChange({ format: e.target.value })} />
                 </>
               )}
@@ -71,9 +74,11 @@ export function UploadMaterialDialog({ isOpen, isEditing, type, form, onFormChan
               <label className={styles.label}>Description</label>
               <textarea className={styles.input} rows={3} value={form.description || ""} onChange={e => onFormChange({ description: e.target.value })} />
 
-              <label className={styles.label} style={{ marginTop: '0.25rem' }}>Upload Document *</label>
+              <label className={styles.label} style={{ marginTop: '0.25rem' }}>
+                              Upload Document  <span style={{ color: "red" }}>*</span>
+                          </label>
               <div style={{ border: '1px dashed var(--color-border-strong)', padding: '1.5rem', borderRadius: 'var(--radius-md)', textAlign: 'center', color: 'var(--color-text-2)' }}>
-                <input type="file" required style={{ display: 'block', margin: '0 auto' }} />
+                <input type="file" required={!isEditing} onChange={e => onFormChange({ file: e.target.files })} style={{ display: 'block', margin: '0 auto' }} />
                 <div style={{ fontSize: '0.75rem', marginTop: '0.5rem', color: 'var(--color-text-3)' }}>Supports documents up to 25MB</div>
               </div>
             </div>

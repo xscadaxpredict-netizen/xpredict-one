@@ -1,13 +1,12 @@
-"""
-Read logic for Tech Support.
-
-Queries live here rather than in views, so a list endpoint, an export and a
-dashboard tile all share one definition of "the enquiries this user may see".
-
-Unit scoping is not applied here by hand. Tech Support models inherit from
-`UnitScopedModel`, whose default manager filters by the `allowed_units`
-contextvar --- so `Model.objects` is already scoped to the caller's dealer.
-Use `Model.all_units` only for deliberate fleet-wide reporting, and justify it.
-"""
-
 from __future__ import annotations
+from django.db.models import QuerySet
+from .models import UserManual, MachineVideo, CallRequest
+
+def get_user_manuals() -> QuerySet[UserManual]:
+    return UserManual.objects.all().order_by("-created_at")
+
+def get_machine_videos() -> QuerySet[MachineVideo]:
+    return MachineVideo.objects.all().order_by("-created_at")
+
+def get_call_requests() -> QuerySet[CallRequest]:
+    return CallRequest.objects.all().order_by("-created_at")

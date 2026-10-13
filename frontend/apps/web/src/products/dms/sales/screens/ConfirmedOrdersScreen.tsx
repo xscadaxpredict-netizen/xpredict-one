@@ -7,13 +7,15 @@
 
 import { useState } from "react";
 import { asProblem } from "@xpredict/api-client";
-import { EmptyState, ErrorState, TableSkeleton } from "@xpredict/ui";
+import { EmptyState, ErrorState, TableSkeleton, ConfirmDialog } from "@xpredict/ui";
 
 import { useEnquiries, useUnconfirmOrder, useAddFollowup, useUpdateEnquiry, useDeleteEnquiry } from "../hooks/useEnquiries";
 import { FollowupDialog } from "../components/FollowupDialog";
 import { QuoteBuilderDialog } from "../components/QuoteBuilderDialog";
+import { QuotationPreviewDialog } from "../components/QuotationPreviewDialog";
 import { NewEnquiryDialog } from "../components/NewEnquiryDialog";
 import type { Enquiry, NewFollowup, NewEnquiry } from "../api/types";
+import { useDialog } from "../../shared/hooks/useDialog";
 import styles from "./ConfirmedOrdersScreen.module.css";
 
 export function ConfirmedOrdersScreen() {
@@ -25,7 +27,21 @@ export function ConfirmedOrdersScreen() {
     enquiryId: string;
     quoteId: string;
   } | null>(null);
+  const [viewingQuote, setViewingQuote] = useState<{
+    enquiry: Enquiry;
+    quote: import("../api/types").Quotation;
+  } | null>(null);
   const [editingOrder, setEditingOrder] = useState<Enquiry | null>(null);
+
+  const [confirmState, setConfirmState] = useState<{
+    title: string;
+    message: string;
+    intent: "primary" | "danger";
+    confirmLabel: string;
+    onConfirm: () => void;
+  } | null>(null);
+  
+  const { showAlert, DialogComponent } = useDialog();
 
   // Followup dialog
   const [followupOrderId, setFollowupOrderId] = useState<string | null>(null);
@@ -41,20 +57,35 @@ export function ConfirmedOrdersScreen() {
   );
 
   const handleUnconfirm = (enquiryId: string) => {
-    if (!window.confirm("Unconfirm this order? It will return to Pending status.")) return;
-    unconfirm.mutate(enquiryId);
+    setConfirmState({
+      title: "Unconfirm Order",
+      message: "Unconfirm this order? It will return to Pending status.",
+      intent: "danger",
+      confirmLabel: "Unconfirm",
+      onConfirm: () => unconfirm.mutate(enquiryId)
+    });
   };
 
   const handleDelete = (enquiryId: string) => {
-    if (!window.confirm("Are you sure you want to permanently delete this order?")) return;
-    deleteEnquiry.mutate(enquiryId);
+    setConfirmState({
+      title: "Delete Order",
+      message: "Are you sure you want to permanently delete this order?",
+      intent: "danger",
+      confirmLabel: "Delete",
+      onConfirm: () => deleteEnquiry.mutate(enquiryId)
+    });
   };
 
   const handleFollowup = (body: NewFollowup) => {
     if (!followupOrderId) return;
     addFollowup.mutate(
       { enquiryId: followupOrderId, body },
-      { onSuccess: () => setFollowupOrderId(null) },
+      {
+        onSuccess: () => {
+          showAlert("Success", "Follow-up saved successfully!");
+          setFollowupOrderId(null);
+        },
+      },
     );
   };
 
@@ -62,7 +93,12 @@ export function ConfirmedOrdersScreen() {
     if (!editingOrder) return;
     updateEnquiry.mutate(
       { enquiryId: editingOrder.id, body },
-      { onSuccess: () => setEditingOrder(null) },
+      {
+        onSuccess: () => {
+          showAlert("Success", "Order details updated successfully!");
+          setEditingOrder(null);
+        },
+      },
     );
   };
 
@@ -76,7 +112,7 @@ export function ConfirmedOrdersScreen() {
           </p>
         </div>
 
-        {confirmedOrders && confirmedOrders.length > 0 && (
+        {enquiries && enquiries.filter((e) => e.status === "CONFIRMED").length > 0 && (
           <label className={styles.search}>
             <span className={styles.srOnly}>Search orders</span>
             <SearchIcon />
@@ -150,11 +186,12 @@ export function ConfirmedOrdersScreen() {
                   onUnconfirm={() => handleUnconfirm(order.id)}
                   onDelete={() => handleDelete(order.id)}
                   onEditOrder={() => setEditingOrder(order)}
-                  onViewQuote={() =>
-                    order.confirmed_quote_id
-                      ? setEditingQuote({ enquiryId: order.id, quoteId: order.confirmed_quote_id })
-                      : null
-                  }
+                  onViewQuote={() => {
+                    const quote = order.quotes.find(q => q.id === order.confirmed_quote_id);
+                    if (quote) {
+                      setViewingQuote({ enquiry: order, quote });
+                    }
+                  }}
                 />
               ))}
             </tbody>
@@ -178,6 +215,15 @@ export function ConfirmedOrdersScreen() {
         />
       )}
 
+      {viewingQuote && (
+        <QuotationPreviewDialog
+          open={true}
+          onClose={() => setViewingQuote(null)}
+          quotation={viewingQuote.quote}
+          enquiry={viewingQuote.enquiry}
+        />
+      )}
+
       {editingOrder && (
         <NewEnquiryDialog
           open={true}
@@ -187,6 +233,20 @@ export function ConfirmedOrdersScreen() {
           initialData={editingOrder}
         />
       )}
+
+      <ConfirmDialog
+        open={confirmState !== null}
+        title={confirmState?.title || ""}
+        message={confirmState?.message || ""}
+        intent={confirmState?.intent || "primary"}
+        confirmLabel={confirmState?.confirmLabel}
+        onConfirm={() => {
+          confirmState?.onConfirm();
+          setConfirmState(null);
+        }}
+        onCancel={() => setConfirmState(null)}
+      />
+      <DialogComponent />
     </div>
   );
 }
@@ -294,6 +354,50 @@ function OrderRow({ order, isExpanded, isHistoryExpanded, onToggle, onToggleHist
         <tr>
           <td colSpan={5} className={styles.expandedCell}>
             <div className={styles.expandedContent}>
+              <div className={styles.mobileActionsBar}>
+                <button
+                  type="button"
+                  className={styles.btnPrimary}
+                  onClick={(e) => { e.stopPropagation(); onFollowup(); }}
+                >
+                  <PlusIcon /> Follow-up
+                </button>
+                {confirmedQuote && (
+                  <button
+                    type="button"
+                    className={styles.iconBtn}
+                    title="View Quote"
+                    onClick={(e) => { e.stopPropagation(); onViewQuote(); }}
+                  >
+                    <EyeIcon />
+                  </button>
+                )}
+                <button
+                  type="button"
+                  className={styles.iconBtn}
+                  title="Edit Order"
+                  onClick={(e) => { e.stopPropagation(); onEditOrder(); }}
+                >
+                  <PencilIcon />
+                </button>
+                <button
+                  type="button"
+                  className={styles.btnSecondary}
+                  title="Unconfirm Order"
+                  onClick={(e) => { e.stopPropagation(); onUnconfirm(); }}
+                >
+                  <ArrowLeftIcon /> Unconfirm
+                </button>
+                <button
+                  type="button"
+                  className={`${styles.iconBtn} ${styles.iconBtnDanger}`}
+                  title="Delete Order"
+                  onClick={(e) => { e.stopPropagation(); onDelete(); }}
+                >
+                  <TrashIcon />
+                </button>
+              </div>
+
               <div className={styles.detailGrid}>
                 <div>
                   <h4 className={styles.sectionTitle}>Order Details</h4>
@@ -454,3 +558,5 @@ function TrashIcon() {
     </svg>
   );
 }
+
+

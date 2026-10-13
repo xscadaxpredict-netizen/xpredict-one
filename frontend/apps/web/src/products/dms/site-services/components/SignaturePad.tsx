@@ -31,8 +31,9 @@ export function SignaturePad({ label, value, onChange, isRequired = true, error,
     ctx.lineJoin = 'round';
     ctx.strokeStyle = '#0F172A';
 
-    if (value && typeof value === 'string' && value.startsWith('data:image')) {
+    if (value && typeof value === 'string' && (value.startsWith('data:image') || value.startsWith('http') || value.startsWith('/'))) {
       const img = new Image();
+      img.crossOrigin = "anonymous";
       img.onload = () => {
         ctx.clearRect(0, 0, canvas.width, canvas.height);
         ctx.drawImage(img, 0, 0, canvas.width, canvas.height);

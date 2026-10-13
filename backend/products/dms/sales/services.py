@@ -15,7 +15,18 @@ import uuid
 from django.db import transaction
 
 from shared.exceptions import not_found, ConflictError
-from .models import Enquiry, Followup, Quotation, QuotationItem, ConfirmedSite
+from .models import (
+    BankAccount,
+    ConfirmedSite,
+    Enquiry,
+    EnquiryStatus,
+    Followup,
+    ProductCatalog,
+    Quotation,
+    QuotationItem,
+    QuotationStatus,
+    QuoteType,
+)
 
 
 @transaction.atomic
@@ -29,8 +40,8 @@ def create_enquiry(
     pincode: str = "",
     phone: str = "",
     remarks: str = "",
-    followup_remarks: str,
-    followup_next_date: str,
+    followup_remarks: str | None = "",
+    followup_next_date: str | None = None,
 ) -> Enquiry:
     """Record a new enquiry for a dealer, and its initial followup."""
     enquiry = Enquiry.objects.create(
@@ -42,15 +53,15 @@ def create_enquiry(
         pincode=pincode,
         phone=phone,
         remarks=remarks,
-        status=Enquiry.Status.PENDING,
+        status=EnquiryStatus.PENDING,
     )
     
     Followup.objects.create(
         unit_id=unit_id,
         enquiry=enquiry,
         created_by_user_id=created_by_user_id,
-        remarks=followup_remarks,
-        next_followup_date=followup_next_date,
+        remarks=followup_remarks or "",
+        next_followup_date=followup_next_date if followup_next_date else None,
     )
     
     return enquiry
@@ -102,9 +113,45 @@ def add_followup(
         unit_id=unit_id,
         enquiry=enquiry,
         created_by_user_id=actor_user_id,
-        remarks=remarks,
-        next_followup_date=next_followup_date,
+        remarks=remarks or "",
+        next_followup_date=next_followup_date if next_followup_date else None,
     )
+@transaction.atomic
+def update_followup(
+    *,
+    enquiry_id: uuid.UUID,
+    followup_id: uuid.UUID,
+    remarks: Optional[str] = None,
+    next_followup_date: Optional[str] = None,
+) -> Enquiry:
+    enquiry = Enquiry.objects.filter(id=enquiry_id).first()
+    if not enquiry:
+        raise not_found("Enquiry")
+
+    followup = Followup.objects.filter(id=followup_id, enquiry=enquiry).first()
+    if not followup:
+        raise not_found("Followup")
+
+    if remarks is not None:
+        followup.remarks = remarks
+    if next_followup_date is not None:
+        followup.next_followup_date = next_followup_date if next_followup_date else None
+    followup.save()
+
+    return enquiry
+
+
+@transaction.atomic
+def delete_followup(
+    *,
+    enquiry_id: uuid.UUID,
+    followup_id: uuid.UUID,
+) -> Enquiry:
+    enquiry = Enquiry.objects.filter(id=enquiry_id).first()
+    if not enquiry:
+        raise not_found("Enquiry")
+
+    Followup.objects.filter(id=followup_id, enquiry=enquiry).delete()
     return enquiry
 
 
@@ -200,7 +247,7 @@ def delete_quotation(
     quote.delete()
     
     if enquiry.confirmed_quote_id == quote_id:
-        enquiry.status = Enquiry.Status.PENDING
+        enquiry.status = EnquiryStatus.PENDING
         enquiry.confirmed_quote_id = None
         enquiry.oc_number = ""
         enquiry.updated_by_user_id = actor_user_id
@@ -221,7 +268,7 @@ def confirm_order(
     if not enquiry:
         raise not_found("Enquiry")
         
-    if enquiry.status == Enquiry.Status.CONFIRMED:
+    if enquiry.status == EnquiryStatus.CONFIRMED:
         raise ConflictError(code="already_confirmed", message="Enquiry is already confirmed.")
         
     quote = Quotation.objects.filter(id=quote_id, enquiry=enquiry).first()
@@ -231,7 +278,7 @@ def confirm_order(
     # Generate OC number
     oc_number = f"STP/OC/26-27/{random.randint(100, 999):03d}"
     
-    enquiry.status = Enquiry.Status.CONFIRMED
+    enquiry.status = EnquiryStatus.CONFIRMED
     enquiry.confirmed_quote_id = quote_id
     enquiry.oc_number = oc_number
     enquiry.updated_by_user_id = actor_user_id
@@ -278,7 +325,7 @@ def unconfirm_order(
     if not enquiry:
         raise not_found("Enquiry")
         
-    enquiry.status = Enquiry.Status.PENDING
+    enquiry.status = EnquiryStatus.PENDING
     enquiry.confirmed_quote_id = None
     enquiry.oc_number = ""
     enquiry.updated_by_user_id = actor_user_id
@@ -308,13 +355,13 @@ def confirm_amc_quote(
     if not quote:
         raise not_found('Quotation')
 
-    if quote.quote_type != Quotation.QuoteType.AMC:
+    if quote.quote_type != QuoteType.AMC:
         raise ConflictError(code='not_amc', message='Only AMC quotes can be confirmed via this endpoint.')
         
-    if quote.status == Quotation.QuotationStatus.CONFIRMED:
+    if quote.status == QuotationStatus.CONFIRMED:
         raise ConflictError(code='already_confirmed', message='Quotation is already confirmed.')
 
-    quote.status = Quotation.QuotationStatus.CONFIRMED
+    quote.status = QuotationStatus.CONFIRMED
     quote.save(update_fields=['status'])
 
     site = ConfirmedSite.objects.filter(enquiry=enquiry).first()
@@ -323,3 +370,164 @@ def confirm_amc_quote(
         quote.save(update_fields=['site_id'])
 
     return enquiry
+
+
+# ============================================================================
+# Master Data (Bank Accounts & Products)
+# ============================================================================
+
+@transaction.atomic
+def create_bank_account(
+    *,
+    unit_id: uuid.UUID,
+    actor_user_id: uuid.UUID,
+    bank_name: str,
+    account_no: str,
+    ifsc_code: str,
+    branch_name: str = "",
+    is_default: bool = False,
+    is_active: bool = True,
+) -> BankAccount:
+    if is_default:
+        BankAccount.objects.filter(unit_id=unit_id, is_default=True).update(is_default=False)
+        
+    bank = BankAccount.objects.create(
+        unit_id=unit_id,
+        created_by_user_id=actor_user_id,
+        bank_name=bank_name,
+        account_no=account_no,
+        ifsc_code=ifsc_code,
+        branch_name=branch_name,
+        is_default=is_default,
+        is_active=is_active,
+    )
+    return bank
+
+@transaction.atomic
+def update_bank_account(
+    *,
+    bank_id: uuid.UUID,
+    actor_user_id: uuid.UUID,
+    **updates,
+) -> BankAccount:
+    bank = BankAccount.objects.filter(id=bank_id).first()
+    if not bank:
+        raise not_found("Bank Account")
+        
+    if updates.get("is_default"):
+        BankAccount.objects.filter(unit_id=bank.unit_id, is_default=True).exclude(id=bank_id).update(is_default=False)
+
+    for key, value in updates.items():
+        setattr(bank, key, value)
+        
+    bank.updated_by_user_id = actor_user_id
+    bank.save()
+    return bank
+
+@transaction.atomic
+def delete_bank_account(*, bank_id: uuid.UUID) -> None:
+    bank = BankAccount.objects.filter(id=bank_id).first()
+    if not bank:
+        raise not_found("Bank Account")
+    bank.delete()
+
+
+@transaction.atomic
+def create_product_catalog(
+    *,
+    unit_id: uuid.UUID,
+    actor_user_id: uuid.UUID,
+    product_type: str,
+    base_price: float,
+    margin_percent: float,
+    name: str = "",
+    description: str = "",
+    hsn_code: str = "",
+    gst_rate: float = 18,
+    category: str = "",
+    specs: str = "",
+    image=None,
+) -> ProductCatalog:
+    if not name and description:
+        name = description[:255]
+        
+    product = ProductCatalog.objects.create(
+        unit_id=unit_id,
+        created_by_user_id=actor_user_id,
+        product_type=product_type,
+        name=name,
+        description=description,
+        hsn_code=hsn_code,
+        base_price=base_price,
+        margin_percent=margin_percent,
+        gst_rate=gst_rate,
+        category=category,
+    )
+    
+    if image:
+        product.image = image
+        product.save()
+
+    if specs:
+        spec_list = [s.strip() for s in specs.split(",") if s.strip()]
+        for idx, spec in enumerate(spec_list):
+            from .models import ProductSpec
+            ProductSpec.objects.create(
+                unit_id=unit_id,
+                product=product,
+                spec_value=spec,
+                sort_order=idx,
+            )
+
+    return product
+
+@transaction.atomic
+def update_product_catalog(
+    *,
+    product_id: uuid.UUID,
+    actor_user_id: uuid.UUID,
+    **updates,
+) -> ProductCatalog:
+    product = ProductCatalog.objects.filter(id=product_id).first()
+    if not product:
+        raise not_found("Product")
+
+    if "description" in updates and not updates.get("name") and not product.name:
+         updates["name"] = updates["description"][:255]
+
+    image = updates.pop("image", None)
+    specs = updates.pop("specs", None)
+
+    for key, value in updates.items():
+        setattr(product, key, value)
+        
+    product.updated_by_user_id = actor_user_id
+    
+    if image is not None:
+        if image:
+            product.image = image
+        else:
+            product.image = ""
+            
+    product.save()
+
+    if specs is not None:
+        from .models import ProductSpec
+        product.specs.all().delete()
+        spec_list = [s.strip() for s in specs.split(",") if s.strip()]
+        for idx, spec in enumerate(spec_list):
+            ProductSpec.objects.create(
+                unit_id=product.unit_id,
+                product=product,
+                spec_value=spec,
+                sort_order=idx,
+            )
+
+    return product
+
+@transaction.atomic
+def delete_product_catalog(*, product_id: uuid.UUID) -> None:
+    product = ProductCatalog.objects.filter(id=product_id).first()
+    if not product:
+        raise not_found("Product")
+    product.delete()

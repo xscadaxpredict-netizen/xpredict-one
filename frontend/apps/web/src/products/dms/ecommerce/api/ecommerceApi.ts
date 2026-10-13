@@ -31,3 +31,9 @@ export async function updateOrderStatus(
     body: JSON.stringify(payload),
   });
 }
+
+export async function deleteOrder(orgSlug: string, orderId: string): Promise<void> {
+  return request<void>(`/api/v1/orgs/${orgSlug}/dms/ecommerce/orders/${orderId}/`, {
+    method: "DELETE",
+  });
+}

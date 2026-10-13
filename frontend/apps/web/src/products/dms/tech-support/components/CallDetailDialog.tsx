@@ -1,4 +1,5 @@
 import { XIcon, MessageCircleIcon, PhoneIcon, MailIcon, UserIcon, CheckCircleIcon } from "lucide-react";
+import { FileAttachmentCell } from "../../site-services/components/FileAttachmentCell";
 import type { RequestCall } from "../api/types";
 import styles from "./CallDetailDialog.module.css";
 
@@ -11,6 +12,8 @@ interface Props {
 
 export function CallDetailDialog({ isOpen, call, onUpdateStatus, onClose }: Props) {
   if (!isOpen || !call) return null;
+
+  const attUrl = typeof call.attachment === "string" ? call.attachment : call.attachment instanceof File ? URL.createObjectURL(call.attachment) : null;
 
   return (
     <div className={styles.modalOverlay} onClick={onClose}>
@@ -50,7 +53,7 @@ export function CallDetailDialog({ isOpen, call, onUpdateStatus, onClose }: Prop
             <div className={styles.detailRow}>
               <div className={styles.detailContent}>
                 <div className={styles.detailLabel}>Date Logged</div>
-                <div className={styles.detailValue}>{call.date}</div>
+                <div className={styles.detailValue}>{call.date ? (call.date.includes("T") ? call.date.split("T")[0] : call.date) : "-"}</div>
               </div>
             </div>
 
@@ -69,10 +72,16 @@ export function CallDetailDialog({ isOpen, call, onUpdateStatus, onClose }: Prop
           <div className={styles.messageBox}>
             <div className={styles.messageHeader}>
               <MessageCircleIcon size={16} />
-              <span>Subject: {call.subject}</span>
+              <span>Issue Description</span>
             </div>
             <div className={styles.messageBody}>
-              {call.message}
+              {call.message || call.subject}
+              {attUrl && (
+                <div style={{ marginTop: "1rem", paddingTop: "1rem", borderTop: "1px solid var(--color-border)" }}>
+                  <div style={{ fontWeight: 600, fontSize: "0.85rem", marginBottom: "0.5rem" }}>Attached File</div>
+                  <FileAttachmentCell attachment={attUrl} label={call.attachment_name} />
+                </div>
+              )}
             </div>
           </div>
         </div>

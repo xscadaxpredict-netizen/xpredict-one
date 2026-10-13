@@ -19,6 +19,7 @@ export interface Enquiry {
   pincode: string;
   phone: string;
   remarks: string;
+  source?: string;
   status: EnquiryStatus;
   confirmed_quote_id: string | null;
   oc_number: string | null;
@@ -160,16 +161,27 @@ export interface BankAccount {
   bank_name: string;
   account_no: string;
   ifsc_code: string;
+  branch_name?: string;
+  is_default?: boolean;
+  is_active?: boolean;
 }
+
+export type NewBankAccount = Omit<BankAccount, "id">;
 
 // ---- Product Catalog (for quote builder presets) ----------------------------
 
 export interface ProductPreset {
   id: string;
   type: QuoteType;
+  name?: string;
   description: string;
   hsn: string;
   base_price: number;
   margin: number;
   gst_rate: number;
+  category?: string;
+  specs?: string[];
+  image?: string;
 }
+
+export type NewProductPreset = Omit<ProductPreset, "id">;

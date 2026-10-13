@@ -1,30 +1,94 @@
-/**
- * Tech Support API layer.
- *
- * Placeholder — currently all data is managed in-memory from screens.
- * When the backend is ready, these functions will make HTTP requests.
- */
-
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { request } from "../../shared/api/request";
 import type { UserManual, MachineVideo, RequestCall } from "./types";
 
-// ---- Seed Data (will come from API later) ----------------------------------
+export function useTechSupport(orgSlug: string) {
+  const queryClient = useQueryClient();
+  const basePath = `/api/v1/orgs/${orgSlug}/dms/tech-support`;
 
-export const SEED_MANUALS: UserManual[] = [];
+  const manualsQuery = useQuery({
+    queryKey: ["manuals", orgSlug],
+    queryFn: () => request<UserManual[]>(`${basePath}/manuals/`),
+  });
 
-export const SEED_MACHINE_VIDEOS: MachineVideo[] = [];
+  const uploadManualMutation = useMutation({
+    mutationFn: (formData: FormData) => request<UserManual>(`${basePath}/manuals/`, {
+      method: "POST",
+      body: formData,
+    }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["manuals", orgSlug] }),
+  });
 
-export const SEED_REQUEST_CALLS: RequestCall[] = [];
+  const deleteManualMutation = useMutation({
+    mutationFn: (id: string) => request(`${basePath}/manuals/${id}/`, { method: "DELETE" }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["manuals", orgSlug] }),
+  });
 
-// ---- API stubs -------------------------------------------------------------
+  const videosQuery = useQuery({
+    queryKey: ["videos", orgSlug],
+    queryFn: () => request<MachineVideo[]>(`${basePath}/videos/`),
+  });
 
-export function fetchManuals(): Promise<UserManual[]> {
-  return Promise.resolve(SEED_MANUALS);
-}
+  const uploadVideoMutation = useMutation({
+    mutationFn: (formData: FormData) => request<MachineVideo>(`${basePath}/videos/`, {
+      method: "POST",
+      body: formData,
+    }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["videos", orgSlug] }),
+  });
 
-export function fetchMachineVideos(): Promise<MachineVideo[]> {
-  return Promise.resolve(SEED_MACHINE_VIDEOS);
-}
+  const deleteVideoMutation = useMutation({
+    mutationFn: (id: string) => request(`${basePath}/videos/${id}/`, { method: "DELETE" }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["videos", orgSlug] }),
+  });
 
-export function fetchRequestCalls(): Promise<RequestCall[]> {
-  return Promise.resolve(SEED_REQUEST_CALLS);
+  const callsQuery = useQuery({
+    queryKey: ["calls", orgSlug],
+    queryFn: () => request<RequestCall[]>(`${basePath}/calls/`),
+  });
+
+  const createCallMutation = useMutation({
+    mutationFn: (callData: (Partial<RequestCall> & { attachment?: File | null }) | FormData) => {
+      const isFormData = callData instanceof FormData;
+      return request<RequestCall>(`${basePath}/calls/`, {
+        method: "POST",
+        body: isFormData ? callData : JSON.stringify(callData),
+      });
+    },
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["calls", orgSlug] }),
+    onError: (err) => alert("Failed to submit request: " + ((err as any)?.message || err)),
+  });
+
+  const updateCallMutation = useMutation({
+    mutationFn: ({ id, ...updates }: Partial<RequestCall> & { id: string }) => request<RequestCall>(`${basePath}/calls/${id}/`, {
+      method: "PATCH",
+      body: JSON.stringify(updates),
+    }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["calls", orgSlug] }),
+    onError: (err) => alert("Failed to update: " + err),
+  });
+
+  const deleteCallMutation = useMutation({
+    mutationFn: (id: string) => request(`${basePath}/calls/${id}/`, { method: "DELETE" }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["calls", orgSlug] }),
+    onError: (err) => alert("Failed to delete: " + err),
+  });
+
+  return {
+    manuals: manualsQuery.data ?? [],
+    manualsPending: manualsQuery.isPending,
+    uploadManual: uploadManualMutation.mutate,
+    deleteManual: deleteManualMutation.mutate,
+
+    videos: videosQuery.data ?? [],
+    videosPending: videosQuery.isPending,
+    uploadVideo: uploadVideoMutation.mutate,
+    deleteVideo: deleteVideoMutation.mutate,
+
+    calls: callsQuery.data ?? [],
+    callsPending: callsQuery.isPending,
+    createCall: createCallMutation.mutate,
+    updateCall: updateCallMutation.mutate,
+    deleteCall: deleteCallMutation.mutate,
+  };
 }

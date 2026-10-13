@@ -1,5 +1,4 @@
-import { AlertTriangleIcon } from "lucide-react";
-import styles from "./ConfirmDeleteModal.module.css";
+import { ConfirmDialog } from "@xpredict/ui";
 
 interface Props {
   isOpen: boolean;
@@ -16,24 +15,16 @@ export function ConfirmDeleteModal({
   onConfirm, 
   onCancel 
 }: Props) {
-  if (!isOpen) return null;
-
   return (
-    <div className={styles.overlay} onClick={onCancel}>
-      <div className={styles.content} onClick={e => e.stopPropagation()}>
-        <div className={styles.header}>
-          <h3 className={styles.title}>
-            <AlertTriangleIcon size={18} /> {title}
-          </h3>
-        </div>
-        <div className={styles.body}>
-          {message}
-        </div>
-        <div className={styles.footer}>
-          <button type="button" className={styles.btnCancel} onClick={onCancel}>Cancel</button>
-          <button type="button" className={styles.btnDelete} onClick={() => { onConfirm(); onCancel(); }}>Yes, Delete</button>
-        </div>
-      </div>
-    </div>
+    <ConfirmDialog
+      open={isOpen}
+      title={title}
+      message={message}
+      intent="danger"
+      confirmLabel="Yes, Delete"
+      cancelLabel="Cancel"
+      onConfirm={() => { onConfirm(); onCancel(); }}
+      onCancel={onCancel}
+    />
   );
 }

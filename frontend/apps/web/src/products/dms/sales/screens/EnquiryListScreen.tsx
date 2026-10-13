@@ -7,7 +7,7 @@
 
 import { useState } from "react";
 import { asProblem } from "@xpredict/api-client";
-import { EmptyState, ErrorState, TableSkeleton } from "@xpredict/ui";
+import { EmptyState, ErrorState, TableSkeleton, ConfirmDialog } from "@xpredict/ui";
 
 import {
   useAddFollowup,
@@ -15,12 +15,17 @@ import {
   useCreateEnquiry,
   useDeleteQuotation,
   useEnquiries,
+  useDeleteEnquiry,
+  useUpdateEnquiry,
+  useUpdateFollowup,
+  useDeleteFollowup,
 } from "../hooks/useEnquiries";
 import { EnquiryTable } from "../components/EnquiryTable";
 import { NewEnquiryDialog } from "../components/NewEnquiryDialog";
 import { FollowupDialog } from "../components/FollowupDialog";
 import { QuoteBuilderDialog } from "../components/QuoteBuilderDialog";
-import type { NewEnquiry, NewFollowup } from "../api/types";
+import { QuotationPreviewDialog } from "../components/QuotationPreviewDialog";
+import type { NewEnquiry, NewFollowup, Enquiry, Quotation, Followup } from "../api/types";
 import styles from "./EnquiryListScreen.module.css";
 
 export function EnquiryListScreen() {
@@ -29,17 +34,39 @@ export function EnquiryListScreen() {
 
   // ---- Dialog state --------------------------------------------------------
   const [isNewEnquiryOpen, setIsNewEnquiryOpen] = useState(false);
+  const [editingOrder, setEditingOrder] = useState<Enquiry | null>(null);
   const [followupEnquiryId, setFollowupEnquiryId] = useState<string | null>(null);
+  const [editingFollowup, setEditingFollowup] = useState<{
+    enquiryId: string;
+    followup: Followup;
+  } | null>(null);
 
   // ---- Mutations -----------------------------------------------------------
   const createEnquiry = useCreateEnquiry();
   const addFollowup = useAddFollowup();
+  const updateFollowup = useUpdateFollowup();
+  const deleteFollowup = useDeleteFollowup();
   const confirmOrder = useConfirmOrder();
   const deleteQuotation = useDeleteQuotation();
+  const deleteEnquiry = useDeleteEnquiry();
+  const updateEnquiry = useUpdateEnquiry();
 
   const [editingQuote, setEditingQuote] = useState<{
     enquiryId: string;
     quoteId?: string;
+  } | null>(null);
+
+  const [viewingQuote, setViewingQuote] = useState<{
+    enquiry: Enquiry;
+    quote: Quotation;
+  } | null>(null);
+
+  const [confirmState, setConfirmState] = useState<{
+    title: string;
+    message: string;
+    intent: "primary" | "danger";
+    confirmLabel: string;
+    onConfirm: () => void;
   } | null>(null);
 
   // ---- Filtering -----------------------------------------------------------
@@ -50,7 +77,33 @@ export function EnquiryListScreen() {
   // ---- Handlers ------------------------------------------------------------
   const handleCreateEnquiry = (body: NewEnquiry) => {
     createEnquiry.mutate(body, {
-      onSuccess: () => setIsNewEnquiryOpen(false),
+      onSuccess: () => {
+        showAlert("Success", "Enquiry saved successfully!");
+        setIsNewEnquiryOpen(false);
+      },
+    });
+  };
+
+  const handleUpdateEnquiry = (body: NewEnquiry) => {
+    if (!editingOrder) return;
+    updateEnquiry.mutate(
+      { enquiryId: editingOrder.id, body },
+      {
+        onSuccess: () => {
+          showAlert("Success", "Enquiry updated successfully!");
+          setEditingOrder(null);
+        },
+      },
+    );
+  };
+
+  const handleDeleteEnquiry = (enquiryId: string) => {
+    setConfirmState({
+      title: "Delete Enquiry",
+      message: "Are you sure you want to permanently delete this order?",
+      intent: "danger",
+      confirmLabel: "Delete",
+      onConfirm: () => deleteEnquiry.mutate(enquiryId)
     });
   };
 
@@ -58,18 +111,56 @@ export function EnquiryListScreen() {
     if (!followupEnquiryId) return;
     addFollowup.mutate(
       { enquiryId: followupEnquiryId, body },
-      { onSuccess: () => setFollowupEnquiryId(null) },
+      {
+        onSuccess: () => {
+          showAlert("Success", "Follow-up saved successfully!");
+          setFollowupEnquiryId(null);
+        },
+      },
     );
   };
 
+  const handleEditFollowupSubmit = (body: NewFollowup) => {
+    if (!editingFollowup) return;
+    updateFollowup.mutate(
+      { enquiryId: editingFollowup.enquiryId, followupId: editingFollowup.followup.id, body },
+      {
+        onSuccess: () => {
+          showAlert("Success", "Follow-up updated successfully!");
+          setEditingFollowup(null);
+        },
+      },
+    );
+  };
+
+  const handleDeleteFollowup = (enquiryId: string, followupId: string) => {
+    setConfirmState({
+      title: "Delete Follow-up",
+      message: "Are you sure you want to delete this follow-up entry?",
+      intent: "danger",
+      confirmLabel: "Delete",
+      onConfirm: () => deleteFollowup.mutate({ enquiryId, followupId }),
+    });
+  };
+
   const handleConfirmOrder = (enquiryId: string, quoteId: string) => {
-    if (!window.confirm("Are you sure you want to confirm this order? This will mark the enquiry as WON.")) return;
-    confirmOrder.mutate({ enquiryId, quoteId });
+    setConfirmState({
+      title: "Confirm Order",
+      message: "Are you sure you want to confirm this order? This will mark the enquiry as WON.",
+      intent: "primary",
+      confirmLabel: "Confirm Order",
+      onConfirm: () => confirmOrder.mutate({ enquiryId, quoteId })
+    });
   };
 
   const handleDeleteQuote = (enquiryId: string, quoteId: string) => {
-    if (!window.confirm("Are you sure you want to delete this quote?")) return;
-    deleteQuotation.mutate({ enquiryId, quoteId });
+    setConfirmState({
+      title: "Delete Quote",
+      message: "Are you sure you want to delete this quote?",
+      intent: "danger",
+      confirmLabel: "Delete",
+      onConfirm: () => deleteQuotation.mutate({ enquiryId, quoteId })
+    });
   };
 
   const handleCreateQuote = (enquiryId: string) => {
@@ -78,6 +169,15 @@ export function EnquiryListScreen() {
 
   const handleEditQuote = (enquiryId: string, quoteId: string) => {
     setEditingQuote({ enquiryId, quoteId });
+  };
+
+  const handleViewQuote = (enquiryId: string, quoteId: string) => {
+    const enq = enquiries?.find(e => e.id === enquiryId);
+    if (!enq) return;
+    const quote = enq.quotes.find(q => q.id === quoteId);
+    if (quote) {
+      setViewingQuote({ enquiry: enq, quote });
+    }
   };
 
   return (
@@ -172,10 +272,18 @@ export function EnquiryListScreen() {
         <EnquiryTable
           enquiries={filtered}
           onAddFollowup={(id) => setFollowupEnquiryId(id)}
+          onEditFollowup={(enquiryId, followup) => setEditingFollowup({ enquiryId, followup })}
+          onDeleteFollowup={handleDeleteFollowup}
           onCreateQuote={handleCreateQuote}
           onEditQuote={handleEditQuote}
+          onViewQuote={handleViewQuote}
           onConfirmOrder={handleConfirmOrder}
           onDeleteQuote={handleDeleteQuote}
+          onEditEnquiry={(id) => {
+            const enq = enquiries?.find(e => e.id === id);
+            if (enq) setEditingOrder(enq);
+          }}
+          onDeleteEnquiry={handleDeleteEnquiry}
         />
       )}
 
@@ -188,12 +296,32 @@ export function EnquiryListScreen() {
         isPending={createEnquiry.isPending}
       />
 
+      {editingOrder && (
+        <NewEnquiryDialog
+          open={true}
+          onClose={() => setEditingOrder(null)}
+          onSubmit={handleUpdateEnquiry}
+          isPending={updateEnquiry.isPending}
+          initialData={editingOrder}
+        />
+      )}
+
       <FollowupDialog
         open={followupEnquiryId !== null}
         onClose={() => setFollowupEnquiryId(null)}
         onSubmit={handleAddFollowup}
         isPending={addFollowup.isPending}
       />
+
+      {editingFollowup && (
+        <FollowupDialog
+          open={true}
+          onClose={() => setEditingFollowup(null)}
+          onSubmit={handleEditFollowupSubmit}
+          isPending={updateFollowup.isPending}
+          initialData={editingFollowup.followup}
+        />
+      )}
 
       {editingQuote && (
         <QuoteBuilderDialog
@@ -203,6 +331,28 @@ export function EnquiryListScreen() {
           existingQuoteId={editingQuote.quoteId}
         />
       )}
+
+      {viewingQuote && (
+        <QuotationPreviewDialog
+          open={true}
+          onClose={() => setViewingQuote(null)}
+          quotation={viewingQuote.quote}
+          enquiry={viewingQuote.enquiry}
+        />
+      )}
+
+      <ConfirmDialog
+        open={confirmState !== null}
+        title={confirmState?.title || ""}
+        message={confirmState?.message || ""}
+        intent={confirmState?.intent || "primary"}
+        confirmLabel={confirmState?.confirmLabel}
+        onConfirm={() => {
+          confirmState?.onConfirm();
+          setConfirmState(null);
+        }}
+        onCancel={() => setConfirmState(null)}
+      />
     </div>
   );
 }

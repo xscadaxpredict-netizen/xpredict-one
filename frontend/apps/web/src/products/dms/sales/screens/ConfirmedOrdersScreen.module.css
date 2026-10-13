@@ -1,4 +1,4 @@
-.page {
+﻿.page {
   display: flex;
   flex-direction: column;
   gap: var(--space-5);
@@ -256,6 +256,31 @@
   border-bottom: 1px solid var(--color-border);
 }
 
+.mobileActionsBar {
+  display: none;
+}
+
+@media (max-width: 768px) {
+  .mobileActionsBar {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-2);
+    align-items: center;
+    padding-bottom: var(--space-3);
+    margin-bottom: var(--space-4);
+    border-bottom: 1px solid var(--color-border);
+  }
+}
+
+.btnDanger {
+  border-color: #fca5a5 !important;
+  color: #dc2626 !important;
+}
+
+.btnDanger:hover {
+  background: #fef2f2 !important;
+}
+
 .detailGrid {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -371,3 +396,16 @@
   gap: var(--space-2);
   margin-top: var(--space-2);
 }
+
+
+
+
+@media (max-width: 768px) { .hideOnMobile { display: none !important; } }
+
+
+
+@media (max-width: 768px) { .td button:not(.expandBtn) { display: none !important; } }
+
+
+
+

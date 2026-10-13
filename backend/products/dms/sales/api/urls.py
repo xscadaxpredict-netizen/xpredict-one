@@ -12,12 +12,15 @@ from .views import (
     EnquiryListCreateView,
     EnquiryDetailView,
     EnquiryFollowupCreateView,
+    EnquiryFollowupDetailView,
     EnquiryQuotationListCreateView,
     EnquiryQuotationDetailView,
     EnquiryConfirmView,
     EnquiryUnconfirmView,
     BankAccountListView,
+    BankAccountDetailView,
     ProductPresetListView,
+    ProductPresetDetailView,
     EnquiryConfirmAmcView,
 )
 
@@ -28,13 +31,16 @@ urlpatterns = [
     path("enquiries/", EnquiryListCreateView.as_view(), name="enquiry-list-create"),
     path("enquiries/<uuid:pk>/", EnquiryDetailView.as_view(), name="enquiry-detail"),
     path("enquiries/<uuid:pk>/followups/", EnquiryFollowupCreateView.as_view(), name="enquiry-followup-create"),
+    path("enquiries/<uuid:pk>/followups/<uuid:followup_id>/", EnquiryFollowupDetailView.as_view(), name="enquiry-followup-detail"),
     path("enquiries/<uuid:pk>/quotations/", EnquiryQuotationListCreateView.as_view(), name="enquiry-quotation-create"),
     path("enquiries/<uuid:pk>/quotations/<uuid:quote_id>/", EnquiryQuotationDetailView.as_view(), name="enquiry-quotation-detail"),
     path("enquiries/<uuid:pk>/confirm/", EnquiryConfirmView.as_view(), name="enquiry-confirm"),
     path("enquiries/<uuid:pk>/quotations/<uuid:quote_id>/confirm-amc/", EnquiryConfirmAmcView.as_view(), name="enquiry-confirm-amc"),
     path("enquiries/<uuid:pk>/unconfirm/", EnquiryUnconfirmView.as_view(), name="enquiry-unconfirm"),
     
-    # Static lookups for quotes
+    # Static lookups for quotes and master data
     path("banks/", BankAccountListView.as_view(), name="bank-list"),
+    path("banks/<uuid:pk>/", BankAccountDetailView.as_view(), name="bank-detail"),
     path("products/", ProductPresetListView.as_view(), name="product-preset-list"),
+    path("products/<uuid:pk>/", ProductPresetDetailView.as_view(), name="product-preset-detail"),
 ]

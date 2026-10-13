@@ -17,11 +17,12 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework.views import APIView
+from core.api import TenantAPIView
 
 from core.organizations.api.permissions import require_organization_member
 
 
-class ProvisioningView(APIView):
+class ProvisioningView(TenantAPIView):
     """
     Has this organization's database finished being created? (C14, step three.)
 

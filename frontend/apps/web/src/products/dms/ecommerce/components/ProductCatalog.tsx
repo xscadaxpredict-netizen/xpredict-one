@@ -7,11 +7,9 @@ interface Props {
   expandedCategory: string;
   onToggleCategory: (cat: string) => void;
   onAddToCart: (id: string) => void;
-  onEdit: (category: string, item: any) => void;
-  onDelete: (category: string, id: string) => void;
 }
 
-export function ProductCatalog({ catalog, expandedCategory, onToggleCategory, onAddToCart, onEdit, onDelete }: Props) {
+export function ProductCatalog({ catalog, expandedCategory, onToggleCategory, onAddToCart }: Props) {
   return (
     <div className={styles.accordion}>
       {Object.entries(catalog).map(([category, items]) => (
@@ -29,13 +27,14 @@ export function ProductCatalog({ catalog, expandedCategory, onToggleCategory, on
               <div className={styles.productGrid}>
                 {items.map((item) => (
                   <div key={item.id} className={styles.productCard}>
-                    <div className={styles.productActions}>
-                      <button className={styles.iconBtn} onClick={() => onEdit(category, item)}><Edit2Icon size={14} /></button>
-                      <button className={`${styles.iconBtn} ${styles.iconBtnDanger}`} onClick={() => onDelete(category, item.id)}><Trash2Icon size={14} /></button>
-                    </div>
+                    {item.image && (
+                      <div style={{ width: '100%', height: '140px', marginBottom: '12px', overflow: 'hidden', borderRadius: '4px', backgroundColor: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                        <img src={item.image} alt={item.name} style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
+                      </div>
+                    )}
                     <div className={styles.productName}>{item.name}</div>
                     <ul className={styles.specList}>
-                      {item.specs.map((spec, i) => <li key={i}>{spec}</li>)}
+                      {item.specs?.map((spec, i) => <li key={i}>{spec}</li>)}
                     </ul>
                     <div className={styles.priceRow}>
                       <span className={styles.price}>₹{item.price.toLocaleString()}</span>

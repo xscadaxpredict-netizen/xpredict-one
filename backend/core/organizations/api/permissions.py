@@ -47,15 +47,16 @@ def require_organization_member(request: Request) -> Organization:
     if organization is None:
         raise not_found("Organization")
 
-    is_member = Membership.objects.filter(
+    membership = Membership.objects.filter(
         user=request.user,
         organization=organization,
         status=MembershipStatus.ACTIVE,
-    ).exists()
+    ).first()
 
-    if not is_member:
+    if not membership:
         # 404, never 403. 403 would confirm the organization exists and that
         # somebody else works there.
         raise not_found("Organization")
 
+    request.membership = membership
     return organization

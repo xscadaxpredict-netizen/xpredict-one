@@ -45,6 +45,28 @@ export async function addFollowup(
   });
 }
 
+export async function updateFollowup(
+  orgSlug: string,
+  enquiryId: string,
+  followupId: string,
+  body: Partial<NewFollowup>,
+): Promise<Enquiry> {
+  return request<Enquiry>(`/api/v1/orgs/${orgSlug}/dms/sales/enquiries/${enquiryId}/followups/${followupId}/`, {
+    method: "PATCH",
+    body: JSON.stringify(body),
+  });
+}
+
+export async function deleteFollowup(
+  orgSlug: string,
+  enquiryId: string,
+  followupId: string,
+): Promise<Enquiry> {
+  return request<Enquiry>(`/api/v1/orgs/${orgSlug}/dms/sales/enquiries/${enquiryId}/followups/${followupId}/`, {
+    method: "DELETE",
+  });
+}
+
 export async function saveQuotation(
   orgSlug: string,
   enquiryId: string,
@@ -128,5 +150,69 @@ export async function confirmAmcQuote(
 ): Promise<Enquiry> {
   return request<Enquiry>(`/api/v1/orgs/${orgSlug}/dms/sales/enquiries/${enquiryId}/quotations/${quoteId}/confirm-amc/`, {
     method: 'POST',
+  });
+}
+
+// ---- Master Data (Bank Accounts & Products) --------------------------------
+
+export async function createBank(
+  orgSlug: string,
+  body: Partial<BankAccount>,
+): Promise<BankAccount> {
+  return request<BankAccount>(`/api/v1/orgs/${orgSlug}/dms/sales/banks/`, {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+}
+
+export async function updateBank(
+  orgSlug: string,
+  bankId: string,
+  body: Partial<BankAccount>,
+): Promise<BankAccount> {
+  return request<BankAccount>(`/api/v1/orgs/${orgSlug}/dms/sales/banks/${bankId}/`, {
+    method: "PATCH",
+    body: JSON.stringify(body),
+  });
+}
+
+export async function deleteBank(
+  orgSlug: string,
+  bankId: string,
+): Promise<void> {
+  return request<void>(`/api/v1/orgs/${orgSlug}/dms/sales/banks/${bankId}/`, {
+    method: "DELETE",
+  });
+}
+
+export async function createProductPreset(
+  orgSlug: string,
+  body: Partial<ProductPreset> | FormData,
+): Promise<ProductPreset> {
+  const isFormData = body instanceof FormData;
+  return request<ProductPreset>(`/api/v1/orgs/${orgSlug}/dms/sales/products/`, {
+    method: "POST",
+    body: isFormData ? body : JSON.stringify(body),
+  });
+}
+
+export async function updateProductPreset(
+  orgSlug: string,
+  productId: string,
+  body: Partial<ProductPreset> | FormData,
+): Promise<ProductPreset> {
+  const isFormData = body instanceof FormData;
+  return request<ProductPreset>(`/api/v1/orgs/${orgSlug}/dms/sales/products/${productId}/`, {
+    method: "PATCH",
+    body: isFormData ? body : JSON.stringify(body),
+  });
+}
+
+export async function deleteProductPreset(
+  orgSlug: string,
+  productId: string,
+): Promise<void> {
+  return request<void>(`/api/v1/orgs/${orgSlug}/dms/sales/products/${productId}/`, {
+    method: "DELETE",
   });
 }

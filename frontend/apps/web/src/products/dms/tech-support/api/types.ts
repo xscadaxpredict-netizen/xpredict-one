@@ -40,4 +40,6 @@ export interface RequestCall {
   message: string;
   date: string;
   status: CallStatus;
+  attachment?: string | File | null;
+  attachment_name?: string;
 }

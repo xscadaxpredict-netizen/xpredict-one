@@ -11,6 +11,7 @@ interface FollowupDialogProps {
   onClose: () => void;
   onSubmit: (body: NewFollowup) => void;
   isPending: boolean;
+  initialData?: { remarks?: string; next_followup_date?: string | null } | null;
 }
 
 export function FollowupDialog({
@@ -18,6 +19,7 @@ export function FollowupDialog({
   onClose,
   onSubmit,
   isPending,
+  initialData,
 }: FollowupDialogProps) {
   const dialogRef = useRef<HTMLDialogElement>(null);
   const [remarks, setRemarks] = useState("");
@@ -32,20 +34,20 @@ export function FollowupDialog({
 
   useEffect(() => {
     if (open) {
-      setRemarks("");
-      setNextDate("");
+      setRemarks(initialData?.remarks || "");
+      setNextDate(initialData?.next_followup_date || "");
     }
-  }, [open]);
+  }, [open, initialData]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    onSubmit({ remarks, next_followup_date: nextDate });
+    onSubmit({ remarks, next_followup_date: nextDate || null } as any);
   };
 
   return (
     <dialog ref={dialogRef} className={styles.dialog} onClose={onClose}>
       <div className={styles.header}>
-        <h2 className={styles.title}>Add Follow-up</h2>
+        <h2 className={styles.title}>{initialData ? "Edit Follow-up" : "Add Follow-up"}</h2>
         <button type="button" className={styles.closeBtn} onClick={onClose}>
           <CloseIcon />
         </button>
@@ -55,11 +57,12 @@ export function FollowupDialog({
         <div className={styles.body}>
           <div className={styles.field}>
             <label className={styles.label} htmlFor="fu-remarks">
-              Follow-up Discussion / Remarks
-            </label>
+                          Follow-up Discussion / Remarks
+                                       
+                      </label>
             <textarea
               id="fu-remarks"
-              required
+              
               className={styles.textarea}
               rows={3}
               placeholder="What was discussed or needs to be done?"
@@ -69,11 +72,12 @@ export function FollowupDialog({
           </div>
           <div className={styles.field}>
             <label className={styles.label} htmlFor="fu-date">
-              Next Follow-up Date
-            </label>
+                          Next Follow-up Date
+                                       
+                      </label>
             <input
               id="fu-date"
-              required
+              
               type="date"
               className={styles.input}
               value={nextDate}
@@ -112,3 +116,4 @@ function CloseIcon() {
     </svg>
   );
 }
+

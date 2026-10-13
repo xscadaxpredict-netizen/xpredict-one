@@ -1,45 +1,32 @@
-/**
- * Hooks for Tools — marketing kit state management.
- *
- * Manages brochures, videos, and ad banners.
- */
-
-import { useState, useCallback } from "react";
-import type { Brochure, Video, AdBanner, MaterialType } from "../api/types";
-import { SEED_BROCHURES, SEED_VIDEOS, SEED_ADS } from "../api/tools";
+import { useParams } from "react-router-dom";
+import { useTools } from "../api/tools";
+import type { MaterialType } from "../api/types";
 
 export function useMarketingKit() {
-  const [brochures, setBrochures] = useState<Brochure[]>(SEED_BROCHURES);
-  const [videos, setVideos] = useState<Video[]>(SEED_VIDEOS);
-  const [ads, setAds] = useState<AdBanner[]>(SEED_ADS);
+  const { orgSlug } = useParams<{ orgSlug: string }>();
+  const tools = useTools(orgSlug!);
 
-  const addMaterial = useCallback((type: MaterialType, item: any) => {
-    if (type === "brochure") setBrochures((prev) => [item, ...prev]);
-    else if (type === "video") setVideos((prev) => [item, ...prev]);
-    else setAds((prev) => [item, ...prev]);
-  }, []);
+  const addMaterial = (type: MaterialType, item: any) => {
+    // Expected to be a FormData object from the UI
+    tools.uploadMaterial(item);
+  };
 
-  const updateMaterial = useCallback((type: MaterialType, id: string, updates: any) => {
-    if (type === "brochure") setBrochures((prev) => prev.map((b) => (b.id === id ? { ...b, ...updates } : b)));
-    else if (type === "video") setVideos((prev) => prev.map((v) => (v.id === id ? { ...v, ...updates } : v)));
-    else setAds((prev) => prev.map((a) => (a.id === id ? { ...a, ...updates } : a)));
-  }, []);
+  const updateMaterial = (type: MaterialType, id: string, updates: any) => {
+    // Currently API doesn't support PATCH for materials, so we'll just ignore for now or implement later
+    console.warn("Update material not implemented yet via API");
+  };
 
-  const deleteMaterial = useCallback((type: MaterialType | string, id: string) => {
-    if (type === "brochure") setBrochures((prev) => prev.filter((b) => b.id !== id));
-    else if (type === "video") setVideos((prev) => prev.filter((v) => v.id !== id));
-    else setAds((prev) => prev.filter((a) => a.id !== id));
-  }, []);
+  const deleteMaterial = (type: MaterialType | string, id: string) => {
+    tools.deleteMaterial(id);
+  };
 
   return {
-    brochures,
-    videos,
-    ads,
-    setBrochures,
-    setVideos,
-    setAds,
+    brochures: tools.brochures,
+    videos: tools.videos,
+    ads: tools.ads,
     addMaterial,
     updateMaterial,
     deleteMaterial,
+    isPending: tools.marketingPending
   };
 }

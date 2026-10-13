@@ -24,6 +24,55 @@
   min-width: 240px;
 }
 
+.tabsBar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--color-surface-alt, #f1f5f9);
+  padding: 4px;
+  border-radius: var(--radius-md, 8px);
+  border: 1px solid var(--color-border, #e2e8f0);
+}
+
+.tabBtn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 16px;
+  border-radius: var(--radius-sm, 6px);
+  border: none;
+  background: transparent;
+  color: var(--color-text-2, #64748b);
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.tabBtn:hover {
+  color: var(--color-text, #0f172a);
+}
+
+.tabBtnActive {
+  background: var(--color-surface, #ffffff);
+  color: var(--color-primary, #2563eb);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  font-weight: 700;
+}
+
+.badgeCount {
+  background: rgba(0, 0, 0, 0.06);
+  color: inherit;
+  padding: 2px 7px;
+  border-radius: 999px;
+  font-size: 0.75rem;
+}
+
+.tabBtnActive .badgeCount {
+  background: #eff6ff;
+  color: #2563eb;
+}
+
 .siteSelect {
   max-width: 300px;
   width: 100%;

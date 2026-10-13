@@ -6,6 +6,8 @@ export interface SpareProduct {
   category: string;
   part_number: string;
   hsn_code: string;
+  image?: string;
+  specs: string[];
 }
 
 export type OrderStatus = "PENDING" | "APPROVED" | "REJECTED" | "DELIVERED";

@@ -176,8 +176,8 @@ class Followup(UnitScopedModel):
         on_delete=models.CASCADE,
         related_name="followups",
     )
-    remarks = models.TextField()
-    next_followup_date = models.DateField()
+    remarks = models.TextField(blank=True, default="")
+    next_followup_date = models.DateField(null=True, blank=True)
 
     class Meta:
         indexes = [
@@ -219,7 +219,7 @@ class ProductCatalog(UnitScopedModel):
     description = models.TextField(blank=True, default="")
     hsn_code = models.CharField(max_length=20, blank=True, default="")
     base_price = models.DecimalField(max_digits=12, decimal_places=2, default=0)
-    margin_percent = models.DecimalField(max_digits=5, decimal_places=2, default=0)
+    margin_percent = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True, default=None)
     gst_rate = models.DecimalField(max_digits=5, decimal_places=2, default=18)
     image = models.FileField(upload_to="products/images/", blank=True, default="")
     is_active = models.BooleanField(default=True)

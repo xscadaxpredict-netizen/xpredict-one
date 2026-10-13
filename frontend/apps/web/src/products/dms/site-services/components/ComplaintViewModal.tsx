@@ -1,15 +1,20 @@
 import { PrinterIcon, Edit3Icon, XIcon } from "lucide-react";
+import { FileAttachmentCell } from "./FileAttachmentCell";
 import styles from "./ComplaintViewModal.module.css";
 
 interface Props {
   isOpen: boolean;
   report: any;
   onEdit: () => void;
+  onToggleStatus?: () => void;
   onClose: () => void;
 }
 
-export function ComplaintViewModal({ isOpen, report, onEdit, onClose }: Props) {
+export function ComplaintViewModal({ isOpen, report, onEdit, onToggleStatus, onClose }: Props) {
   if (!isOpen || !report) return null;
+
+  const displayDate = report.date || report.created_at?.split("T")[0] || "—";
+  const isResolved = report.status === "RESOLVED";
 
   return (
     <div className={styles.modalOverlay} onClick={onClose}>
@@ -18,7 +23,7 @@ export function ComplaintViewModal({ isOpen, report, onEdit, onClose }: Props) {
         <div className={styles.modalHeader}>
           <div>
             <h3 className={styles.modalTitle}>Complaint / Ticket #{report.id}</h3>
-            <span className={styles.modalSubtitle}>Filed on: {report.date}</span>
+            <span className={styles.modalSubtitle}>Filed on: {displayDate}</span>
           </div>
           <div className={styles.headerActions}>
             <button type="button" className={styles.btnSecondary} onClick={() => window.print()}>
@@ -43,7 +48,7 @@ export function ComplaintViewModal({ isOpen, report, onEdit, onClose }: Props) {
             </div>
             <div className={styles.bannerRight}>
               <div className={styles.reportCode}>{report.id}</div>
-              <div className={styles.reportDate}>Date: {report.date}</div>
+              <div className={styles.reportDate}>Date: {displayDate}</div>
             </div>
           </div>
 
@@ -56,7 +61,7 @@ export function ComplaintViewModal({ isOpen, report, onEdit, onClose }: Props) {
             </div>
             <div>
               <div className={styles.infoLabel}>Service Person</div>
-              <div className={styles.infoValue}>{report.servicePersonName || report.personName || '—'}</div>
+              <div className={styles.infoValue}>{report.assigned_service_person_name || report.servicePersonName || report.personName || '—'}</div>
             </div>
             <div>
               <div className={styles.infoLabel}>Ticket Status</div>
@@ -72,7 +77,7 @@ export function ComplaintViewModal({ isOpen, report, onEdit, onClose }: Props) {
           <div>
             <h4 className={styles.sectionTitle}>Issue Description</h4>
             <div className={styles.issueBox}>
-              {report.issue || 'No description provided.'}
+              {report.issue || report.description || 'No description provided.'}
             </div>
           </div>
 
@@ -83,6 +88,14 @@ export function ComplaintViewModal({ isOpen, report, onEdit, onClose }: Props) {
               {report.priority || 'Normal'}
             </span>
           </div>
+
+          {/* Attachment */}
+          <div style={{ marginTop: '1rem' }}>
+            <h4 className={styles.sectionTitle}>Attached File</h4>
+            <div style={{ marginTop: '0.5rem' }}>
+              <FileAttachmentCell attachment={report.attachment} />
+            </div>
+          </div>
         </div>
 
         {/* Footer */}
@@ -91,9 +104,16 @@ export function ComplaintViewModal({ isOpen, report, onEdit, onClose }: Props) {
           <button type="button" className={styles.btnPrimary} onClick={onEdit}>
             <Edit3Icon size={14} /> Edit This Ticket
           </button>
-          <button type="button" className={styles.btnDanger} onClick={() => { alert(report.status === 'OPEN' ? 'Marked as Resolved!' : 'Reopened!'); onClose(); }}>
-            {report.status === 'OPEN' ? 'Mark Resolved' : 'Reopen Ticket'}
-          </button>
+          {onToggleStatus && (
+            <button
+              type="button"
+              className={isResolved ? styles.btnSecondary : styles.btnPrimary}
+              style={{ background: isResolved ? "#f59e0b" : "#10b981", color: "white", border: "none" }}
+              onClick={onToggleStatus}
+            >
+              {isResolved ? "Unresolve / Reopen Ticket" : "Mark as Resolved"}
+            </button>
+          )}
         </div>
       </div>
     </div>

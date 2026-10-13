@@ -1,5 +1,5 @@
 import { useOrgQuery, useOrgMutation } from "@xpredict/api-client";
-import { useQueryClient } from "@tanstack/react-query";
+
 import * as api from "../api/ecommerceApi";
 import type { OrderCreatePayload, OrderStatusUpdate } from "../api/types";
 
@@ -18,22 +18,23 @@ export function useOrders(siteId?: string) {
 }
 
 export function useCreateOrder() {
-  const queryClient = useQueryClient();
   return useOrgMutation({
     mutationFn: (orgSlug: string, payload: OrderCreatePayload) => api.createOrder(orgSlug, payload),
-    onSuccess: (data, variables, context, orgSlug) => {
-      queryClient.invalidateQueries({ queryKey: ["ecommerce", "orders"] });
-    },
+    invalidates: [["ecommerce", "orders"]],
   });
 }
 
 export function useUpdateOrderStatus() {
-  const queryClient = useQueryClient();
   return useOrgMutation({
     mutationFn: (orgSlug: string, { orderId, payload }: { orderId: string; payload: OrderStatusUpdate }) =>
       api.updateOrderStatus(orgSlug, orderId, payload),
-    onSuccess: (data, variables, context, orgSlug) => {
-      queryClient.invalidateQueries({ queryKey: ["ecommerce", "orders"] });
-    },
+    invalidates: [["ecommerce", "orders"]],
+  });
+}
+
+export function useDeleteOrder() {
+  return useOrgMutation({
+    mutationFn: (orgSlug: string, orderId: string) => api.deleteOrder(orgSlug, orderId),
+    invalidates: [["ecommerce", "orders"]],
   });
 }

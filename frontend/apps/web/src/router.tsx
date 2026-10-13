@@ -13,13 +13,10 @@ import { SignupScreen } from "./shell/screens/SignupScreen";
 // not allowed to reach past it (enforced by eslint.config.js).
 const DmsRoutes = lazy(() => import("./products/dms/routes"));
 const CrmRoutes = lazy(() => import("./products/crm/routes"));
-// Administration ships with the platform rather than being a product, so it
-// lives in the shell — but it is still lazy: most people never open it.
 const AdminRoutes = lazy(() => import("./shell/admin/routes"));
+const PublicReportSignScreen = lazy(() => import("./products/dms/site-services/screens/PublicReportSignScreen"));
 
-function Loading() {
-  return <div role="status">Loading…</div>;
-}
+import { Loading } from "./shell/components/Loading";
 
 export const router = createBrowserRouter([
   { path: "/", element: <Navigate to="/login" replace />,},
@@ -37,6 +34,14 @@ export const router = createBrowserRouter([
       <RedirectIfSignedIn>
         <SignupScreen />
       </RedirectIfSignedIn>
+    ),
+  },
+  {
+    path: "/public/report/:orgSlug/:token",
+    element: (
+      <Suspense fallback={<Loading />}>
+        <PublicReportSignScreen />
+      </Suspense>
     ),
   },
   {

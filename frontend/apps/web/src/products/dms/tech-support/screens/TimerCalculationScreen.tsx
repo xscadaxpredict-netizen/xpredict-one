@@ -1,7 +1,9 @@
 import { useState } from "react";
+import { useSites } from "../../site-services/hooks/useSiteServices";
 import styles from "./TimerCalculationScreen.module.css";
 
 export function TimerCalculationScreen() {
+  const { data: sites, isPending: sitesPending } = useSites();
   const [formData, setFormData] = useState({
     wasteWaterType: "",
     site: "",
@@ -46,7 +48,9 @@ export function TimerCalculationScreen() {
             <div className={styles.sectionTitle}>General Details</div>
             <div className={styles.grid2}>
               <div className={styles.inputGroup}>
-                <label className={styles.label}>Type of Waste Water</label>
+                <label className={styles.label}>
+                                  Type of Waste Water <span style={{ color: "red" }}>*</span>
+                              </label>
                 <select required className={styles.input} name="wasteWaterType" value={formData.wasteWaterType} onChange={handleChange}>
                   <option value="" disabled>Select waste water type...</option>
                   <option value="Sewage">Sewage</option>
@@ -55,20 +59,26 @@ export function TimerCalculationScreen() {
                 </select>
               </div>
               <div className={styles.inputGroup}>
-                <label className={styles.label}>Site</label>
+                <label className={styles.label}>
+                                  Site <span style={{ color: "red" }}>*</span>
+                              </label>
                 <select required className={styles.input} name="site" value={formData.site} onChange={handleChange}>
-                  <option value="" disabled>Select site...</option>
-                  <option value="Site A">Site A</option>
-                  <option value="Site B">Site B</option>
-                  <option value="Site C">Site C</option>
+                  <option value="" disabled>{sitesPending ? "Loading sites..." : "Select site..."}</option>
+                  {sites?.map(site => (
+                    <option key={site.id} value={site.id}>{site.site_name} ({site.customer_name})</option>
+                  ))}
                 </select>
               </div>
               <div className={styles.inputGroup}>
-                <label className={styles.label}>Capacity (KLD)</label>
+                <label className={styles.label}>
+                                  Capacity (KLD) <span style={{ color: "red" }}>*</span>
+                              </label>
                 <input required type="number" className={styles.input} placeholder="e.g. 100" name="capacity" value={formData.capacity} onChange={handleChange} />
               </div>
               <div className={styles.inputGroup}>
-                <label className={styles.label}>Electrode Type</label>
+                <label className={styles.label}>
+                                  Electrode Type <span style={{ color: "red" }}>*</span>
+                              </label>
                 <select required className={styles.input} name="electrodeType" value={formData.electrodeType} onChange={handleChange}>
                   <option value="" disabled>Select electrode type...</option>
                   <option value="Aluminum">Aluminum</option>
@@ -83,11 +93,15 @@ export function TimerCalculationScreen() {
             <div className={styles.sectionTitle}>ECS Timers</div>
             <div className={styles.grid3}>
               <div className={styles.inputGroup}>
-                <label className={styles.label}>Minutes</label>
+                <label className={styles.label}>
+                                  Minutes <span style={{ color: "red" }}>*</span>
+                              </label>
                 <input required type="number" className={styles.input} placeholder="0" name="ecsMinutes" value={formData.ecsMinutes} onChange={handleChange} />
               </div>
               <div className={styles.inputGroup}>
-                <label className={styles.label}>Seconds</label>
+                <label className={styles.label}>
+                                  Seconds <span style={{ color: "red" }}>*</span>
+                              </label>
                 <input required type="number" className={styles.input} placeholder="0" name="ecsSeconds" value={formData.ecsSeconds} onChange={handleChange} />
               </div>
             </div>
@@ -97,15 +111,21 @@ export function TimerCalculationScreen() {
             <div className={styles.sectionTitle}>EC Positive Timers</div>
             <div className={styles.grid3}>
               <div className={styles.inputGroup}>
-                <label className={styles.label}>Minutes</label>
+                <label className={styles.label}>
+                                  Minutes <span style={{ color: "red" }}>*</span>
+                              </label>
                 <input required type="number" className={styles.input} placeholder="0" name="ecPosMinutes" value={formData.ecPosMinutes} onChange={handleChange} />
               </div>
               <div className={styles.inputGroup}>
-                <label className={styles.label}>Seconds</label>
+                <label className={styles.label}>
+                                  Seconds <span style={{ color: "red" }}>*</span>
+                              </label>
                 <input required type="number" className={styles.input} placeholder="0" name="ecPosSeconds" value={formData.ecPosSeconds} onChange={handleChange} />
               </div>
               <div className={styles.inputGroup}>
-                <label className={styles.label}>On Delay (s)</label>
+                <label className={styles.label}>
+                                  On Delay (s) <span style={{ color: "red" }}>*</span>
+                              </label>
                 <input required type="number" className={styles.input} placeholder="0" name="ecPosDelay" value={formData.ecPosDelay} onChange={handleChange} />
               </div>
             </div>
@@ -115,15 +135,21 @@ export function TimerCalculationScreen() {
             <div className={styles.sectionTitle}>EC Negative Timers</div>
             <div className={styles.grid3}>
               <div className={styles.inputGroup}>
-                <label className={styles.label}>Minutes</label>
+                <label className={styles.label}>
+                                  Minutes <span style={{ color: "red" }}>*</span>
+                              </label>
                 <input required type="number" className={styles.input} placeholder="0" name="ecNegMinutes" value={formData.ecNegMinutes} onChange={handleChange} />
               </div>
               <div className={styles.inputGroup}>
-                <label className={styles.label}>Seconds</label>
+                <label className={styles.label}>
+                                  Seconds <span style={{ color: "red" }}>*</span>
+                              </label>
                 <input required type="number" className={styles.input} placeholder="0" name="ecNegSeconds" value={formData.ecNegSeconds} onChange={handleChange} />
               </div>
               <div className={styles.inputGroup}>
-                <label className={styles.label}>On Delay (s)</label>
+                <label className={styles.label}>
+                                  On Delay (s) <span style={{ color: "red" }}>*</span>
+                              </label>
                 <input required type="number" className={styles.input} placeholder="0" name="ecNegDelay" value={formData.ecNegDelay} onChange={handleChange} />
               </div>
             </div>
@@ -133,11 +159,15 @@ export function TimerCalculationScreen() {
             <div className={styles.sectionTitle}>SFP Timers</div>
             <div className={styles.grid3}>
               <div className={styles.inputGroup}>
-                <label className={styles.label}>Minutes</label>
+                <label className={styles.label}>
+                                  Minutes <span style={{ color: "red" }}>*</span>
+                              </label>
                 <input required type="number" className={styles.input} placeholder="0" name="sfpMinutes" value={formData.sfpMinutes} onChange={handleChange} />
               </div>
               <div className={styles.inputGroup}>
-                <label className={styles.label}>Seconds</label>
+                <label className={styles.label}>
+                                  Seconds <span style={{ color: "red" }}>*</span>
+                              </label>
                 <input required type="number" className={styles.input} placeholder="0" name="sfpSeconds" value={formData.sfpSeconds} onChange={handleChange} />
               </div>
             </div>
@@ -164,3 +194,6 @@ export function TimerCalculationScreen() {
     </div>
   );
 }
+
+
+

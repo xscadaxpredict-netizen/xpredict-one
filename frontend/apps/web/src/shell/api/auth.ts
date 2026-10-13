@@ -11,7 +11,7 @@
  * cookie; only the server that set it can clear it.
  */
 
-import { ApiError, type Problem } from "@xpredict/api-client";
+import { ApiError, csrfHeaders, type Problem } from "@xpredict/api-client";
 
 /** The apps the suite can offer. Administration is one of them, not a settings page. */
 export type AppKey = "dms" | "crm" | "ecommerce" | "admin";
@@ -133,7 +133,7 @@ export interface Credentials {
  * session should not outlive the browser tab and quietly convince somebody
  * the backend is working.
  * ------------------------------------------------------------------------ */
-const USE_FAKE_AUTH = true;
+const USE_FAKE_AUTH = false;
 
 const FAKE_SESSION_KEY = "xpredict-fake-session";
 
@@ -224,10 +224,10 @@ const FAKE_ME: Me = {
         // Not bought. Shown disabled rather than hidden — see AppAccess above.
         {
           key: "ecommerce",
-          subscribed: false,
-          accessible: false,
-          summary: null,
-          modules: [],
+          subscribed: true,
+          accessible: true,
+          summary: "Store Catalog & Orders",
+          modules: ["catalog", "orders"],
           permissions: [],
         },
         // Never "bought": Administration comes with the platform and is gated
@@ -272,7 +272,7 @@ const FAKE_ME: Me = {
           permissions: ["dms.enquiry.create"],
         },
         { key: "crm", subscribed: false, accessible: false, summary: null, modules: [], permissions: [] },
-        { key: "ecommerce", subscribed: false, accessible: false, summary: null, modules: [], permissions: [] },
+        { key: "ecommerce", subscribed: true, accessible: true, summary: "Store Catalog & Orders", modules: ["catalog", "orders"], permissions: [] },
         /*
          * A DEALER ADMIN, and the reason this second organisation is worth
          * having in the fake. Administration is open to them, but with one
@@ -299,7 +299,7 @@ async function request<T>(url: string, init?: RequestInit): Promise<T> {
     ...init,
     // Required for httpOnly cookie auth. Omit it and the cookie is not sent.
     credentials: "include",
-    headers: { "Content-Type": "application/json", ...init?.headers },
+    headers: { "Content-Type": "application/json", ...csrfHeaders(init?.method), ...init?.headers },
   });
 
   if (!response.ok) {
@@ -316,7 +316,9 @@ async function request<T>(url: string, init?: RequestInit): Promise<T> {
     );
   }
 
-  return (await response.json()) as T;
+  // Logout answers 204 with no body.
+  if (response.status === 204) return undefined as T;
+  return (await response.json().catch(() => undefined)) as T;
 }
 
 export async function login(credentials: Credentials): Promise<void> {
@@ -329,7 +331,7 @@ export async function login(credentials: Credentials): Promise<void> {
 
   // Returns no body worth reading: the value of this call is the Set-Cookie
   // header, which the browser stores and we never see.
-  await request<void>("/api/v1/auth/login", {
+  await request<void>("/api/v1/auth/login/", {
     method: "POST",
     body: JSON.stringify(credentials),
   });
@@ -341,7 +343,7 @@ export async function fetchMe(): Promise<Me> {
     if (!hasFakeSession()) throw fakeUnauthenticated();
     return FAKE_ME;
   }
-  return request<Me>("/api/v1/me");
+  return request<Me>("/api/v1/me/");
 }
 
 /**
@@ -360,5 +362,5 @@ export async function logout(): Promise<void> {
     setFakeSession(false);
     return;
   }
-  await request<void>("/api/v1/auth/logout", { method: "POST" });
+  await request<void>("/api/v1/auth/logout/", { method: "POST" });
 }

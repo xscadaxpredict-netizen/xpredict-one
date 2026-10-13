@@ -4,12 +4,13 @@
  * Shows all quotations generated across all enquiries.
  */
 
-import { useState } from "react";
+import { useState, Fragment } from "react";
 import { asProblem } from "@xpredict/api-client";
-import { EmptyState, ErrorState, TableSkeleton } from "@xpredict/ui";
+import { EmptyState, ErrorState, TableSkeleton, ConfirmDialog } from "@xpredict/ui";
 
 import { useEnquiries, useDeleteQuotation, useConfirmOrder } from "../hooks/useEnquiries";
 import { QuoteBuilderDialog } from "../components/QuoteBuilderDialog";
+import { QuotationPreviewDialog } from "../components/QuotationPreviewDialog";
 import type { Enquiry, Quotation, QuoteType } from "../api/types";
 import { StatusBadge } from "../components/StatusBadge";
 import styles from "./QuotationsScreen.module.css";
@@ -24,6 +25,7 @@ export function QuotationsScreen() {
   const [searchQuery, setSearchQuery] = useState("");
   const [filterType, setFilterType] = useState<"ALL" | QuoteType>("ALL");
   const [filterEnquiryId, setFilterEnquiryId] = useState<string>("ALL");
+  const [expandedId, setExpandedId] = useState<string | null>(null);
 
   const deleteQuote = useDeleteQuotation();
   const confirmOrder = useConfirmOrder();
@@ -31,6 +33,19 @@ export function QuotationsScreen() {
   const [editingQuote, setEditingQuote] = useState<{
     enquiryId?: string;
     quoteId?: string;
+  } | null>(null);
+
+  const [viewingQuote, setViewingQuote] = useState<{
+    enquiry: Enquiry;
+    quote: Quotation;
+  } | null>(null);
+
+  const [confirmState, setConfirmState] = useState<{
+    title: string;
+    message: string;
+    intent: "primary" | "danger";
+    confirmLabel: string;
+    onConfirm: () => void;
   } | null>(null);
 
   // Flatten all quotes
@@ -46,13 +61,23 @@ export function QuotationsScreen() {
   });
 
   const handleDelete = (enquiryId: string, quoteId: string) => {
-    if (!window.confirm("Are you sure you want to delete this quote?")) return;
-    deleteQuote.mutate({ enquiryId, quoteId });
+    setConfirmState({
+      title: "Delete Quote",
+      message: "Are you sure you want to delete this quote?",
+      intent: "danger",
+      confirmLabel: "Delete",
+      onConfirm: () => deleteQuote.mutate({ enquiryId, quoteId })
+    });
   };
 
   const handleConfirm = (enquiryId: string, quoteId: string) => {
-    if (!window.confirm("Confirm this order?")) return;
-    confirmOrder.mutate({ enquiryId, quoteId });
+    setConfirmState({
+      title: "Confirm Order",
+      message: "Confirm this order?",
+      intent: "primary",
+      confirmLabel: "Confirm",
+      onConfirm: () => confirmOrder.mutate({ enquiryId, quoteId })
+    });
   };
 
   return (
@@ -89,7 +114,7 @@ export function QuotationsScreen() {
                 title="Filter by Quote Type"
               >
                 <option value="ALL">All Types</option>
-                <option value="NORMAL">Normal Quotes</option>
+                <option value="NORMAL">Machine Quotes</option>
                 <option value="AMC">AMC Quotes</option>
                 <option value="SPARES">Spares Quotes</option>
               </select>
@@ -168,66 +193,151 @@ export function QuotationsScreen() {
             <tbody>
               {filtered.map(({ quote, enquiry }) => {
                 const isConfirmed = enquiry.confirmed_quote_id === quote.id;
+                const isExpanded = expandedId === quote.id;
                 return (
-                  <tr key={quote.id} className={styles.row}>
-                    <td className={styles.td}>
-                      <div className={styles.quoteTitle}>{quote.title}</div>
-                      <div className={styles.quoteNo}>{quote.quote_no}</div>
-                    </td>
-                    <td className={styles.td}>
-                      <span className={styles.quoteTypeBadge}>{quote.type}</span>
-                    </td>
-                    <td className={styles.td}>
-                      <div className={styles.customerName}>{enquiry.customer_name}</div>
-                      {isConfirmed && <StatusBadge status="CONFIRMED" />}
-                    </td>
-                    <td className={styles.td}>
-                      <span className={styles.amount}>
-                        ₹ {quote.amount.toLocaleString("en-IN")}
-                      </span>
-                    </td>
-                    <td className={styles.td}>
-                      <span className={styles.date}>{quote.date}</span>
-                    </td>
-                    <td className={`${styles.td} ${styles.tdRight}`}>
-                      <div className={styles.actions}>
-                        <button
-                          type="button"
-                          className={styles.iconBtn}
-                          title="View Quote"
-                          onClick={() => setEditingQuote({ enquiryId: enquiry.id, quoteId: quote.id })}
-                        >
-                          <EyeIcon />
-                        </button>
-                        <button
-                          type="button"
-                          className={styles.iconBtn}
-                          title="Edit Quote"
-                          onClick={() => setEditingQuote({ enquiryId: enquiry.id, quoteId: quote.id })}
-                        >
-                          <PencilIcon />
-                        </button>
-                        {!isConfirmed && enquiry.status !== "CONFIRMED" && (
+                  <Fragment key={quote.id}>
+                    <tr
+                      className={`${styles.row} ${isExpanded ? styles.rowExpanded : ""}`}
+                      onClick={() => setExpandedId(isExpanded ? null : quote.id)}
+                    >
+                      <td className={styles.td}>
+                        <div className={styles.quoteTitle}>{quote.title}</div>
+                        <div className={styles.quoteNo}>{quote.quote_no}</div>
+                      </td>
+                      <td className={styles.td}>
+                        <span className={styles.quoteTypeBadge}>{quote.type === "NORMAL" ? "MACHINE" : quote.type}</span>
+                      </td>
+                      <td className={styles.td}>
+                        <div className={styles.customerName}>{enquiry.customer_name}</div>
+                        {isConfirmed && <StatusBadge status="CONFIRMED" />}
+                      </td>
+                      <td className={styles.td}>
+                        <span className={styles.amount}>
+                          ₹ {quote.amount.toLocaleString("en-IN")}
+                        </span>
+                      </td>
+                      <td className={styles.td}>
+                        <span className={styles.date}>{quote.date}</span>
+                      </td>
+                      <td className={`${styles.td} ${styles.tdRight}`}>
+                        <div className={styles.actions}>
                           <button
                             type="button"
-                            className={`${styles.iconBtn} ${styles.iconBtnSuccess}`}
-                            title="Confirm Order"
-                            onClick={() => handleConfirm(enquiry.id, quote.id)}
+                            className={styles.iconBtn}
+                            title="View Quote"
+                            onClick={(e) => { e.stopPropagation(); setViewingQuote({ enquiry, quote }); }}
                           >
-                            <CheckIcon />
+                            <EyeIcon />
                           </button>
-                        )}
-                        <button
-                          type="button"
-                          className={`${styles.iconBtn} ${styles.iconBtnDanger}`}
-                          title="Delete Quote"
-                          onClick={() => handleDelete(enquiry.id, quote.id)}
-                        >
-                          <TrashIcon />
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
+                          <button
+                            type="button"
+                            className={styles.iconBtn}
+                            title="Edit Quote"
+                            onClick={(e) => { e.stopPropagation(); setEditingQuote({ enquiryId: enquiry.id, quoteId: quote.id }); }}
+                          >
+                            <PencilIcon />
+                          </button>
+                          {!isConfirmed && enquiry.status !== "CONFIRMED" && (
+                            <button
+                              type="button"
+                              className={`${styles.iconBtn} ${styles.iconBtnSuccess}`}
+                              title="Confirm Order"
+                              onClick={(e) => { e.stopPropagation(); handleConfirm(enquiry.id, quote.id); }}
+                            >
+                              <CheckIcon />
+                            </button>
+                          )}
+                          <button
+                            type="button"
+                            className={`${styles.iconBtn} ${styles.iconBtnDanger}`}
+                            title="Delete Quote"
+                            onClick={(e) => { e.stopPropagation(); handleDelete(enquiry.id, quote.id); }}
+                          >
+                            <TrashIcon />
+                          </button>
+                          <button
+                            type="button"
+                            className={styles.expandBtn}
+                            aria-label="Toggle details"
+                          >
+                            {isExpanded ? <ChevronUpIcon /> : <ChevronDownIcon />}
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+
+                    {isExpanded && (
+                      <tr>
+                        <td colSpan={6} className={styles.expandedCell}>
+                          <div className={styles.expandedContent}>
+                            <div className={styles.mobileActionsBar}>
+                              <button
+                                type="button"
+                                className={styles.iconBtn}
+                                title="View Quote"
+                                onClick={(e) => { e.stopPropagation(); setViewingQuote({ enquiry, quote }); }}
+                              >
+                                <EyeIcon />
+                              </button>
+                              <button
+                                type="button"
+                                className={styles.iconBtn}
+                                title="Edit Quote"
+                                onClick={(e) => { e.stopPropagation(); setEditingQuote({ enquiryId: enquiry.id, quoteId: quote.id }); }}
+                              >
+                                <PencilIcon />
+                              </button>
+                              {!isConfirmed && enquiry.status !== "CONFIRMED" && (
+                                <button
+                                  type="button"
+                                  className={`${styles.iconBtn} ${styles.iconBtnSuccess}`}
+                                  title="Confirm Order"
+                                  onClick={(e) => { e.stopPropagation(); handleConfirm(enquiry.id, quote.id); }}
+                                >
+                                  <CheckIcon />
+                                </button>
+                              )}
+                              <button
+                                type="button"
+                                className={`${styles.iconBtn} ${styles.iconBtnDanger}`}
+                                title="Delete Quote"
+                                onClick={(e) => { e.stopPropagation(); handleDelete(enquiry.id, quote.id); }}
+                              >
+                                <TrashIcon />
+                              </button>
+                            </div>
+
+                            <div className={styles.detailGrid}>
+                              <div>
+                                <h4 className={styles.sectionTitle}>Customer & Quote</h4>
+                                <div className={styles.infoRow}>
+                                  <strong>Customer:</strong> {enquiry.customer_name} ({enquiry.phone})
+                                </div>
+                                <div className={styles.infoRow}>
+                                  <strong>Contact Person:</strong> {enquiry.contact_person || "—"}
+                                </div>
+                                <div className={styles.infoRow}>
+                                  <strong>Quote Amount:</strong> ₹ {quote.amount.toLocaleString("en-IN")}
+                                </div>
+                              </div>
+                              <div>
+                                <h4 className={styles.sectionTitle}>Quote Information</h4>
+                                <div className={styles.infoRow}>
+                                  <strong>Quote No:</strong> {quote.quote_no}
+                                </div>
+                                <div className={styles.infoRow}>
+                                  <strong>Quote Type:</strong> {quote.type === "NORMAL" ? "MACHINE" : quote.type}
+                                </div>
+                                <div className={styles.infoRow}>
+                                  <strong>Date:</strong> {quote.date}
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        </td>
+                      </tr>
+                    )}
+                  </Fragment>
                 );
               })}
             </tbody>
@@ -235,7 +345,6 @@ export function QuotationsScreen() {
         </div>
       )}
 
-      {/* Full-screen Quote Builder Modal */}
       {editingQuote && (
         <QuoteBuilderDialog
           open={true}
@@ -244,6 +353,28 @@ export function QuotationsScreen() {
           existingQuoteId={editingQuote.quoteId}
         />
       )}
+
+      {viewingQuote && (
+        <QuotationPreviewDialog
+          open={true}
+          onClose={() => setViewingQuote(null)}
+          quotation={viewingQuote.quote}
+          enquiry={viewingQuote.enquiry}
+        />
+      )}
+
+      <ConfirmDialog
+        open={confirmState !== null}
+        title={confirmState?.title || ""}
+        message={confirmState?.message || ""}
+        intent={confirmState?.intent || "primary"}
+        confirmLabel={confirmState?.confirmLabel}
+        onConfirm={() => {
+          confirmState?.onConfirm();
+          setConfirmState(null);
+        }}
+        onCancel={() => setConfirmState(null)}
+      />
     </div>
   );
 }
@@ -307,3 +438,21 @@ function CheckIcon() {
     </svg>
   );
 }
+
+function ChevronDownIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <polyline points="6 9 12 15 18 9" />
+    </svg>
+  );
+}
+
+function ChevronUpIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <polyline points="18 15 12 9 6 15" />
+    </svg>
+  );
+}
+
+

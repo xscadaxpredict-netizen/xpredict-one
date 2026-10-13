@@ -1,4 +1,4 @@
-/* ---- Table container ---------------------------------------------------- */
+﻿/* ---- Table container ---------------------------------------------------- */
 
 .container {
   border: 1px solid var(--color-border);
@@ -369,6 +369,35 @@
   color: var(--color-text);
 }
 
+.followupActions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+.iconBtnSm {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--color-border);
+  background: var(--color-surface);
+  color: var(--color-text-2);
+  cursor: pointer;
+  transition: all 0.12s ease;
+  padding: 0;
+}
+.iconBtnSm:hover {
+  background: var(--color-surface-alt);
+  color: var(--color-text);
+}
+.iconBtnSm svg {
+  width: 13px;
+  height: 13px;
+}
+
 /* ---- Quote cards --------------------------------------------------------- */
 
 .quotesSection {
@@ -439,3 +468,41 @@
   display: flex;
   gap: var(--space-2);
 }
+
+.mobileActionsBar {
+  display: none;
+}
+
+@media (max-width: 768px) {
+  .mobileActionsBar {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-2);
+    align-items: center;
+    padding-bottom: var(--space-3);
+    margin-bottom: var(--space-4);
+    border-bottom: 1px solid var(--color-border);
+  }
+}
+
+.btnDanger {
+  border-color: #fca5a5 !important;
+  color: #dc2626 !important;
+}
+
+.btnDanger:hover {
+  background: #fef2f2 !important;
+}
+
+
+
+
+@media (max-width: 768px) { .hideOnMobile { display: none !important; } }
+
+
+
+@media (max-width: 768px) { .td button:not(.expandBtn) { display: none !important; } }
+
+
+
+

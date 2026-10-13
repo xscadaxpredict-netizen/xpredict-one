@@ -214,8 +214,7 @@ REST_FRAMEWORK = {
         # header the frontend is deliberately unable to build.
         "core.accounts.authentication.CookieJWTAuthentication",
     ),
-    # "DEFAULT_PERMISSION_CLASSES": ("rest_framework.permissions.IsAuthenticated",),
-    "DEFAULT_PERMISSION_CLASSES": ("rest_framework.permissions.AllowAny",),
+    "DEFAULT_PERMISSION_CLASSES": ("rest_framework.permissions.IsAuthenticated",),
     "UNAUTHENTICATED_USER": None,
     # Rate limits for the UNAUTHENTICATED endpoints, by IP (Q20, C47). Only
     # the two signup endpoints opt in, via ScopedRateThrottle --- everything
@@ -256,7 +255,7 @@ REST_FRAMEWORK = {
 # below is therefore not "how long a sacked employee keeps working" --- it is
 # how long a STOLEN access token stays usable after its owner logs out.
 SIMPLE_JWT = {
-    "ACCESS_TOKEN_LIFETIME": timedelta(minutes=15),
+    "ACCESS_TOKEN_LIFETIME": timedelta(hours=24),
     "REFRESH_TOKEN_LIFETIME": timedelta(days=7),
     "ROTATE_REFRESH_TOKENS": True,
     # Needs the token_blacklist app above. It is listed there now.
@@ -331,9 +330,9 @@ TIME_ZONE = "UTC"
 USE_I18N = True
 USE_TZ = True
 
-STATIC_URL = "static/"
+STATIC_URL = "/static/"
 STATIC_ROOT = BASE_DIR / "staticfiles"
-MEDIA_URL = "media/"
+MEDIA_URL = "/media/"
 MEDIA_ROOT = BASE_DIR / "media"
 # File storage paths are prefixed by org ID --- see shared.storage (Phase 2).
 
@@ -348,3 +347,4 @@ LOGGING = {
     },
     "root": {"handlers": ["console"], "level": env("LOG_LEVEL", default="INFO")},
 }
+X_FRAME_OPTIONS = 'SAMEORIGIN'

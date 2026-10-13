@@ -34,7 +34,7 @@ def place_order(
         site=site,
         customer=site.customer,
         order_number=order_number,
-        site_name=site.site_name or site.customer_name,
+        site_name=site.site_name or site.customer.name,
         oc_number=site.oc_number,
         status=OrderStatus.PENDING,
         total_amount=Decimal('0.00')
@@ -49,7 +49,7 @@ def place_order(
         if not product:
             continue
             
-        price = product.price
+        price = product.base_price
         line_total = price * quantity
         total += line_total
         

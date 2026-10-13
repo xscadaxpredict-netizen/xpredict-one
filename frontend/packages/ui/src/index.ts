@@ -14,3 +14,5 @@
 
 export { TableSkeleton, EmptyState, ErrorState } from "./states";
 export { DetailPanel } from "./DetailPanel";
+export { ConfirmDialog } from "./ConfirmDialog";
+export type { ConfirmDialogProps } from "./ConfirmDialog";

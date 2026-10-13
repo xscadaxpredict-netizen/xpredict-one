@@ -10,6 +10,8 @@ as file paths, not Base64 (schema review #10).
 
 from __future__ import annotations
 
+import uuid
+
 from django.db import models
 
 from shared.base_models import UnitScopedModel
@@ -118,6 +120,12 @@ class ReportStatus(models.TextChoices):
     AWAITING_CLIENT_SIGN = "AWAITING_CLIENT_SIGN", "Awaiting Client Signature"
 
 
+class ApprovalStatus(models.TextChoices):
+    PENDING = "PENDING", "Pending"
+    APPROVED = "APPROVED", "Approved"
+    REJECTED = "REJECTED", "Rejected"
+
+
 class ServiceReport(UnitScopedModel):
     """
     A service report filed by a technician after visiting a site.
@@ -174,6 +182,16 @@ class ServiceReport(UnitScopedModel):
         default=ReportStatus.PENDING,
     )
 
+    # Review outcome: approve when everything is correct, reject otherwise.
+    client_approval_status = models.CharField(
+        max_length=30,
+        choices=ApprovalStatus.choices,
+        default=ApprovalStatus.PENDING,
+    )
+    approval_remarks = models.TextField(blank=True, default="")
+    approved_at = models.DateTimeField(null=True, blank=True)
+    sign_link_token = models.UUIDField(default=uuid.uuid4, db_index=True)
+
     class Meta:
         indexes = [
             models.Index(fields=["unit_id", "status"]),
@@ -200,6 +218,22 @@ class ReportAttachment(UnitScopedModel):
         ServiceReport,
         on_delete=models.CASCADE,
         related_name="attachments",
+        null=True,
+        blank=True,
+    )
+    water_report = models.ForeignKey(
+        "WaterReport",
+        on_delete=models.CASCADE,
+        related_name="attachments",
+        null=True,
+        blank=True,
+    )
+    complaint = models.ForeignKey(
+        "Complaint",
+        on_delete=models.CASCADE,
+        related_name="attachments",
+        null=True,
+        blank=True,
     )
     file = models.FileField(upload_to="reports/attachments/")
     file_name = models.CharField(max_length=255, blank=True, default="")
@@ -209,6 +243,8 @@ class ReportAttachment(UnitScopedModel):
     class Meta:
         indexes = [
             models.Index(fields=["unit_id", "service_report_id"]),
+            models.Index(fields=["unit_id", "water_report_id"]),
+            models.Index(fields=["unit_id", "complaint_id"]),
         ]
 
     def __str__(self) -> str:

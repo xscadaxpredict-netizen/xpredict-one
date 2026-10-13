@@ -21,7 +21,9 @@ export function RejectOrderDialog({ isOpen, reason, onReasonChange, onSubmit, on
         </div>
         <form onSubmit={onSubmit}>
           <div className={styles.modalBody}>
-            <label className={styles.label}>Reason for Rejection *</label>
+            <label className={styles.label}>
+                          Reason for Rejection  <span style={{ color: "red" }}>*</span>
+                      </label>
             <textarea
               required
               className={styles.textarea}

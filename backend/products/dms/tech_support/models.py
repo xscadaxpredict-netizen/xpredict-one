@@ -109,6 +109,9 @@ class CallRequest(UnitScopedModel):
         default=CallStatus.PENDING,
     )
 
+    attachment = models.FileField(upload_to="tech_support/attachments/", null=True, blank=True)
+    attachment_name = models.CharField(max_length=255, blank=True, default="")
+
     class Meta:
         indexes = [
             models.Index(fields=["unit_id", "status"]),

@@ -8,8 +8,8 @@ interface Props {
   items: any[];
   isExpanded: boolean;
   onToggle: () => void;
-  onEdit: (item: any) => void;
-  onDelete: (id: string) => void;
+  onEdit?: (item: any) => void;
+  onDelete?: (id: string) => void;
 }
 
 export function MaterialAccordion({ type, title, items, isExpanded, onToggle, onEdit, onDelete }: Props) {

@@ -22,25 +22,24 @@ export function CallRequestDialog({ isOpen, form, onFormChange, onSubmit, onClos
         <form onSubmit={onSubmit}>
           <div className={styles.modalBody}>
             <div className={styles.formStack}>
-              <label className={styles.label}>Full Name</label>
-              <input required className={styles.input} value={form.name || ""} onChange={e => onFormChange({ name: e.target.value })} />
-              
-              <div style={{ display: "flex", gap: "10px" }}>
-                <div style={{ flex: 1 }}>
-                  <label className={styles.label}>Phone Number</label>
-                  <input required type="tel" className={styles.input} value={form.phone || ""} onChange={e => onFormChange({ phone: e.target.value })} />
-                </div>
-                <div style={{ flex: 1 }}>
-                  <label className={styles.label}>Email Address</label>
-                  <input required type="email" className={styles.input} value={form.email || ""} onChange={e => onFormChange({ email: e.target.value })} />
-                </div>
-              </div>
+              <label className={styles.label}>
+                  Phone Number <span style={{ color: "red" }}>*</span>
+              </label>
+              <input required type="tel" className={styles.input} value={form.phone || ""} onChange={e => onFormChange({ phone: e.target.value })} placeholder="Enter your contact number..." />
 
-              <label className={styles.label}>Subject / Machine Component</label>
-              <input required className={styles.input} value={form.subject || ""} onChange={e => onFormChange({ subject: e.target.value })} placeholder="E.g. HPP Pump noise, Panel showing fault..." />
-
-              <label className={styles.label}>Detailed Description of Issue</label>
+              <label className={styles.label}>
+                  Reason / Detailed Description of Issue <span style={{ color: "red" }}>*</span>
+              </label>
               <textarea required className={styles.input} rows={4} value={form.message || ""} onChange={e => onFormChange({ message: e.target.value })} placeholder="Describe the symptoms, error codes, or required assistance..." />
+
+              <label className={styles.label}>
+                  Attachments (Optional)
+              </label>
+              <input type="file" className={styles.input} onChange={e => {
+                if (e.target.files && e.target.files.length > 0) {
+                  onFormChange({ attachment: e.target.files[0] });
+                }
+              }} />
             </div>
           </div>
           <div className={styles.modalFooter}>
@@ -52,3 +51,4 @@ export function CallRequestDialog({ isOpen, form, onFormChange, onSubmit, onClos
     </div>
   );
 }
+

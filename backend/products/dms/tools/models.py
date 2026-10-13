@@ -90,3 +90,19 @@ class TimerCalculation(UnitScopedModel):
 
     def __str__(self) -> str:
         return f"Calculation for site {self.site_id}"
+
+
+# capacity calculator models
+
+class CalculatorSettings(BaseModel):
+    """
+    Organization-level master data constants for the Capacity Calculator.
+    Stored as JSON so we can easily add new constants without database migrations.
+    """
+    constants = models.JSONField(default=dict)
+
+    class Meta:
+        indexes = [
+            models.Index(fields=["-created_at"]),
+        ]
+

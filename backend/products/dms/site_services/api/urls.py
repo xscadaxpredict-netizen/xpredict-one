@@ -6,6 +6,7 @@ from .views import (
     ServiceReportListCreateView, ServiceReportDetailView,
     WaterReportListCreateView, WaterReportDetailView,
     ComplaintListCreateView, ComplaintDetailView,
+    PublicServiceReportView, PublicServiceReportSignView,
 )
 
 app_name = "dms_site_services"
@@ -22,6 +23,8 @@ urlpatterns = [
     # Service Reports
     path("service-reports/", ServiceReportListCreateView.as_view(), name="service-report-list-create"),
     path("service-reports/<uuid:pk>/", ServiceReportDetailView.as_view(), name="service-report-detail"),
+    path("public/report/<uuid:token>/", PublicServiceReportView.as_view(), name="public-service-report"),
+    path("public/report/<uuid:token>/sign/", PublicServiceReportSignView.as_view(), name="public-service-report-sign"),
     
     # Water Reports
     path("water-reports/", WaterReportListCreateView.as_view(), name="water-report-list-create"),

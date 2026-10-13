@@ -64,8 +64,8 @@ export function NewEnquiryDialog({
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    onSubmit(form);
-    setForm(EMPTY);
+    onSubmit({ ...form, followup_remarks: form.followup_remarks || "", followup_next_date: form.followup_next_date || null } as any);
+
   };
 
   const update = (field: keyof NewEnquiry, value: string) => {
@@ -90,8 +90,9 @@ export function NewEnquiryDialog({
           <div className={styles.row}>
             <div className={styles.field}>
               <label className={styles.label} htmlFor="enq-customer">
-                Customer Name
-              </label>
+                              Customer Name
+                                             <span style={{ color: "red" }}>*</span>
+                          </label>
               <input
                 id="enq-customer"
                 required
@@ -104,8 +105,9 @@ export function NewEnquiryDialog({
             </div>
             <div className={styles.field}>
               <label className={styles.label} htmlFor="enq-contact">
-                Contact Person
-              </label>
+                              Contact Person
+                                             <span style={{ color: "red" }}>*</span>
+                          </label>
               <input
                 id="enq-contact"
                 required
@@ -121,8 +123,9 @@ export function NewEnquiryDialog({
           <div className={styles.row}>
             <div className={`${styles.field} ${styles.fieldWide}`}>
               <label className={styles.label} htmlFor="enq-address">
-                Address
-              </label>
+                              Address
+                                             <span style={{ color: "red" }}>*</span>
+                          </label>
               <input
                 id="enq-address"
                 required
@@ -135,8 +138,9 @@ export function NewEnquiryDialog({
             </div>
             <div className={styles.field}>
               <label className={styles.label} htmlFor="enq-pincode">
-                Pincode
-              </label>
+                              Pincode
+                                             <span style={{ color: "red" }}>*</span>
+                          </label>
               <input
                 id="enq-pincode"
                 required
@@ -151,8 +155,9 @@ export function NewEnquiryDialog({
 
           <div className={styles.field}>
             <label className={styles.label} htmlFor="enq-phone">
-              Phone Number
-            </label>
+                          Phone Number
+                                       <span style={{ color: "red" }}>*</span>
+                      </label>
             <input
               id="enq-phone"
               required
@@ -166,8 +171,9 @@ export function NewEnquiryDialog({
 
           <div className={styles.field}>
             <label className={styles.label} htmlFor="enq-remarks">
-              Enquiry Remarks
-            </label>
+                          Enquiry Remarks
+                                       <span style={{ color: "red" }}>*</span>
+                      </label>
             <textarea
               id="enq-remarks"
               required
@@ -185,12 +191,7 @@ export function NewEnquiryDialog({
               <h3 className={styles.sectionTitle}>Initial Follow-up</h3>
 
               <div className={styles.field}>
-                <label className={styles.label} htmlFor="enq-fu-remarks">
-                  Follow-up Remarks
-                </label>
-                <textarea
-                  id="enq-fu-remarks"
-                  required
+                <label className={styles.label} htmlFor="enq-fu-remarks">Follow-up Remarks</label><textarea id="enq-fu-remarks"
                   className={styles.textarea}
                   placeholder="E.g. Send pricing quote next week."
                   value={form.followup_remarks}
@@ -199,12 +200,7 @@ export function NewEnquiryDialog({
               </div>
 
               <div className={styles.field}>
-                <label className={styles.label} htmlFor="enq-fu-date">
-                  Next Follow-up Date
-                </label>
-                <input
-                  id="enq-fu-date"
-                  required
+                <label className={styles.label} htmlFor="enq-fu-date">Next Follow-up Date</label><input id="enq-fu-date"
                   type="date"
                   className={styles.input}
                   value={form.followup_next_date}
@@ -245,3 +241,5 @@ function CloseIcon() {
     </svg>
   );
 }
+
+

@@ -47,6 +47,12 @@ export async function updateSchedule(
   });
 }
 
+export async function deleteSchedule(orgSlug: string, scheduleId: string): Promise<void> {
+  return request<void>(`/api/v1/orgs/${orgSlug}/dms/site-services/schedules/${scheduleId}/`, {
+    method: "DELETE",
+  });
+}
+
 export async function listServiceReports(orgSlug: string, siteId?: string): Promise<ServiceReportEntry[]> {
   const qs = siteId ? `?site_id=${siteId}` : "";
   return request<ServiceReportEntry[]>(`/api/v1/orgs/${orgSlug}/dms/site-services/service-reports/${qs}`);
@@ -56,6 +62,24 @@ export async function createServiceReport(orgSlug: string, payload: FormData): P
   return request<ServiceReportEntry>(`/api/v1/orgs/${orgSlug}/dms/site-services/service-reports/`, {
     method: "POST",
     body: payload,
+  });
+}
+
+export async function updateServiceReport(
+  orgSlug: string,
+  reportId: string,
+  payload: FormData | Record<string, any>
+): Promise<ServiceReportEntry> {
+  const isFormData = payload instanceof FormData;
+  return request<ServiceReportEntry>(`/api/v1/orgs/${orgSlug}/dms/site-services/service-reports/${reportId}/`, {
+    method: "PATCH",
+    body: isFormData ? payload : JSON.stringify(payload),
+  });
+}
+
+export async function deleteServiceReport(orgSlug: string, reportId: string): Promise<void> {
+  return request<void>(`/api/v1/orgs/${orgSlug}/dms/site-services/service-reports/${reportId}/`, {
+    method: "DELETE",
   });
 }
 
@@ -71,6 +95,19 @@ export async function createWaterReport(orgSlug: string, payload: FormData): Pro
   });
 }
 
+export async function updateWaterReport(orgSlug: string, reportId: string, payload: FormData): Promise<WaterReportEntry> {
+  return request<WaterReportEntry>(`/api/v1/orgs/${orgSlug}/dms/site-services/water-reports/${reportId}/`, {
+    method: "PATCH",
+    body: payload,
+  });
+}
+
+export async function deleteWaterReport(orgSlug: string, reportId: string): Promise<void> {
+  return request<void>(`/api/v1/orgs/${orgSlug}/dms/site-services/water-reports/${reportId}/`, {
+    method: "DELETE",
+  });
+}
+
 export async function listComplaints(orgSlug: string, siteId?: string): Promise<ComplaintEntry[]> {
   const qs = siteId ? `?site_id=${siteId}` : "";
   return request<ComplaintEntry[]>(`/api/v1/orgs/${orgSlug}/dms/site-services/complaints/${qs}`);
@@ -83,9 +120,20 @@ export async function createComplaint(orgSlug: string, payload: FormData): Promi
   });
 }
 
-export async function updateComplaint(orgSlug: string, complaintId: string, payload: FormData): Promise<ComplaintEntry> {
+export async function updateComplaint(
+  orgSlug: string,
+  complaintId: string,
+  payload: FormData | Record<string, any>
+): Promise<ComplaintEntry> {
+  const isFormData = payload instanceof FormData;
   return request<ComplaintEntry>(`/api/v1/orgs/${orgSlug}/dms/site-services/complaints/${complaintId}/`, {
     method: "PATCH",
-    body: payload,
+    body: isFormData ? payload : JSON.stringify(payload),
+  });
+}
+
+export async function deleteComplaint(orgSlug: string, complaintId: string): Promise<void> {
+  return request<void>(`/api/v1/orgs/${orgSlug}/dms/site-services/complaints/${complaintId}/`, {
+    method: "DELETE",
   });
 }
