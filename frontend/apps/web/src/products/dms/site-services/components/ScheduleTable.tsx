@@ -2,6 +2,7 @@ import { Fragment, useState } from "react";
 import { CalendarIcon, Edit3Icon, Trash2Icon, FileTextIcon, ClockIcon, ChevronDownIcon, ChevronUpIcon } from "lucide-react";
 import type { Enquiry, SiteDetails } from "../../sales/api/types";
 import type { ScheduleEntry } from "../api/types";
+import { useDmsPermissions } from "../../shared/hooks/useDmsPermissions";
 import styles from "./ScheduleTable.module.css";
 
 interface Props {
@@ -25,6 +26,7 @@ export function ScheduleTable({
   onDeleteSchedule,
   onScheduleSite,
 }: Props) {
+  const { canScheduleService, canEditSchedule, canCancelSchedule } = useDmsPermissions();
   const [expandedId, setExpandedId] = useState<string | null>(null);
 
   const toggleExpand = (id: string) => {
@@ -127,7 +129,7 @@ export function ScheduleTable({
                               <FileTextIcon size={14} />
                             </button>
                           )}
-                          {onEditSchedule && (
+                          {onEditSchedule && canEditSchedule && (
                             <button
                               type="button"
                               className={styles.iconBtn}
@@ -137,7 +139,7 @@ export function ScheduleTable({
                               <Edit3Icon size={14} />
                             </button>
                           )}
-                          {onDeleteSchedule && (
+                          {onDeleteSchedule && canCancelSchedule && (
                             <button
                               type="button"
                               className={`${styles.iconBtn} ${styles.iconBtnDanger}`}
@@ -173,7 +175,7 @@ export function ScheduleTable({
                                   <FileTextIcon size={14} /> <span>View Details</span>
                                 </button>
                               )}
-                              {onEditSchedule && (
+                              {onEditSchedule && canEditSchedule && (
                                 <button
                                   type="button"
                                   className={styles.iconBtn}
@@ -182,7 +184,7 @@ export function ScheduleTable({
                                   <Edit3Icon size={14} /> <span>Edit Visit</span>
                                 </button>
                               )}
-                              {onDeleteSchedule && (
+                              {onDeleteSchedule && canCancelSchedule && (
                                 <button
                                   type="button"
                                   className={`${styles.iconBtn} ${styles.iconBtnDanger}`}
@@ -290,7 +292,7 @@ export function ScheduleTable({
                       </td>
                       <td className={styles.tdRight} onClick={(e) => e.stopPropagation()}>
                         <div className={styles.actions}>
-                          {onScheduleSite && (
+                          {onScheduleSite && canScheduleService && (
                             <button
                               type="button"
                               className={`${styles.iconBtn} ${styles.iconBtnPrimary}`}
@@ -317,7 +319,7 @@ export function ScheduleTable({
                         <td colSpan={8} className={styles.expandedCell}>
                           <div className={styles.expandedContent}>
                             <div className={styles.mobileActionsBar}>
-                              {onScheduleSite && (
+                              {onScheduleSite && canScheduleService && (
                                 <button
                                   type="button"
                                   className={`${styles.iconBtn} ${styles.iconBtnPrimary}`}

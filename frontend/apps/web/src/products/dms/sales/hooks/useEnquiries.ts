@@ -70,7 +70,7 @@ export function useAddFollowup() {
       orgSlug,
       variables: { enquiryId: string; body: NewFollowup },
     ) => addFollowup(orgSlug, variables.enquiryId, variables.body),
-    invalidates: [salesKeys.enquiries()],
+    invalidates: [salesKeys.enquiries(), ["site-services"]],
   });
 }
 
@@ -80,7 +80,7 @@ export function useUpdateFollowup() {
       orgSlug,
       variables: { enquiryId: string; followupId: string; body: Partial<NewFollowup> },
     ) => updateFollowup(orgSlug, variables.enquiryId, variables.followupId, variables.body),
-    invalidates: [salesKeys.enquiries()],
+    invalidates: [salesKeys.enquiries(), ["site-services"]],
   });
 }
 
@@ -90,7 +90,7 @@ export function useDeleteFollowup() {
       orgSlug,
       variables: { enquiryId: string; followupId: string },
     ) => deleteFollowup(orgSlug, variables.enquiryId, variables.followupId),
-    invalidates: [salesKeys.enquiries()],
+    invalidates: [salesKeys.enquiries(), ["site-services"]],
   });
 }
 
@@ -110,7 +110,7 @@ export function useSaveQuotation() {
         variables.body,
         variables.existingQuoteId,
       ),
-    invalidates: [salesKeys.enquiries()],
+    invalidates: [salesKeys.enquiries(), ["site-services"]],
   });
 }
 
@@ -120,7 +120,7 @@ export function useConfirmOrder() {
       orgSlug,
       variables: { enquiryId: string; quoteId: string },
     ) => confirmOrder(orgSlug, variables.enquiryId, variables.quoteId),
-    invalidates: [salesKeys.enquiries()],
+    invalidates: [salesKeys.enquiries(), ["site-services"]],
   });
 }
 
@@ -130,7 +130,7 @@ export function useConfirmAmcQuote() {
       orgSlug,
       variables: { enquiryId: string; quoteId: string },
     ) => confirmAmcQuote(orgSlug, variables.enquiryId, variables.quoteId),
-    invalidates: [salesKeys.enquiries()],
+    invalidates: [salesKeys.enquiries(), ["site-services"]],
   });
 }
 
@@ -138,7 +138,7 @@ export function useUnconfirmOrder() {
   return useOrgMutation({
     mutationFn: (orgSlug, enquiryId: string) =>
       unconfirmOrder(orgSlug, enquiryId),
-    invalidates: [salesKeys.enquiries()],
+    invalidates: [salesKeys.enquiries(), ["site-services"]],
   });
 }
 
@@ -149,14 +149,14 @@ export function useDeleteQuotation() {
       variables: { enquiryId: string; quoteId: string },
     ) =>
       deleteQuotation(orgSlug, variables.enquiryId, variables.quoteId),
-    invalidates: [salesKeys.enquiries()],
+    invalidates: [salesKeys.enquiries(), ["site-services"]],
   });
 }
 
 export function useDeleteEnquiry() {
   return useOrgMutation({
     mutationFn: (orgSlug, enquiryId: string) => deleteEnquiry(orgSlug, enquiryId),
-    invalidates: [salesKeys.enquiries()],
+    invalidates: [salesKeys.enquiries(), ["site-services"]],
   });
 }
 

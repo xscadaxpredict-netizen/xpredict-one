@@ -6,6 +6,7 @@ import { useSites, useComplaints, useCreateComplaint, useUpdateComplaint, useDel
 import { ComplaintTable } from "../components/ComplaintTable";
 import { ComplaintModal } from "../components/ComplaintModal";
 import { ComplaintViewModal } from "../components/ComplaintViewModal";
+import { useDmsPermissions } from "../../shared/hooks/useDmsPermissions";
 import styles from "./ComplaintsScreen.module.css";
 import { useDialog } from "../../shared/hooks/useDialog";
 
@@ -28,6 +29,7 @@ export function ComplaintsScreen() {
   const createComplaintMutation = useCreateComplaint();
   const updateComplaintMutation = useUpdateComplaint();
   const deleteComplaintMutation = useDeleteComplaint();
+  const { canCreateComplaint } = useDmsPermissions();
 
   const [selectedSiteId, setSelectedSiteId] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
@@ -224,9 +226,11 @@ export function ComplaintsScreen() {
             />
           </div>
         </div>
-        <button type="button" className={styles.btnDanger} onClick={openNewModal}>
-          <PlusIcon size={16} /> Log Complaint
-        </button>
+        {canCreateComplaint && (
+          <button type="button" className={styles.btnDanger} onClick={openNewModal}>
+            <PlusIcon size={16} /> Log Complaint
+          </button>
+        )}
       </div>
 
       <ComplaintTable 

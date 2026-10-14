@@ -8,6 +8,7 @@ interface QuotationPreviewDialogProps {
   onClose: () => void;
   quotation: Quotation;
   enquiry: Enquiry;
+  onEdit?: () => void;
 }
 
 export function QuotationPreviewDialog({
@@ -15,6 +16,7 @@ export function QuotationPreviewDialog({
   onClose,
   quotation,
   enquiry: _enquiry,
+  onEdit,
 }: QuotationPreviewDialogProps) {
   const dialogRef = useRef<HTMLDialogElement>(null);
   const { data: banks } = useBanks();
@@ -26,16 +28,17 @@ export function QuotationPreviewDialog({
     if (!open && dialog.open) dialog.close();
   }, [open]);
 
-  const bank = banks?.find((b) => b.id === quotation.selected_bank_id);
+  const bank = banks?.find((b) => b.id === quotation?.selected_bank_id);
+  const items = quotation?.items || [];
 
-  const taxableTotal = quotation.items.reduce((sum, item) => {
+  const taxableTotal = items.reduce((sum, item) => {
     const qty = typeof item.quantity === 'string' ? parseFloat(item.quantity) || 0 : item.quantity;
     const price = typeof item.base_price === 'string' ? parseFloat(item.base_price) || 0 : item.base_price;
     const margin = item.margin === null || (item.margin as any) === "" ? 0 : (typeof item.margin === 'string' ? parseFloat(item.margin) || 0 : item.margin);
     return sum + (qty * price * (1 + margin / 100));
   }, 0);
 
-  const taxTotal = quotation.items.reduce((sum, item) => {
+  const taxTotal = items.reduce((sum, item) => {
     const qty = typeof item.quantity === 'string' ? parseFloat(item.quantity) || 0 : item.quantity;
     const price = typeof item.base_price === 'string' ? parseFloat(item.base_price) || 0 : item.base_price;
     const margin = item.margin === null || (item.margin as any) === "" ? 0 : (typeof item.margin === 'string' ? parseFloat(item.margin) || 0 : item.margin);
@@ -55,6 +58,18 @@ export function QuotationPreviewDialog({
       <div className={styles.dialogHeader}>
         <h2 className={styles.dialogTitle}>Quote Preview</h2>
         <div style={{ display: "flex", gap: "10px" }}>
+          {onEdit && (
+            <button
+              type="button"
+              className={styles.btnSecondary}
+              onClick={() => {
+                onClose();
+                onEdit();
+              }}
+            >
+              Edit Quote
+            </button>
+          )}
           <button type="button" className={styles.btnPrimary} onClick={handlePrint}>
             <PrinterIcon /> Print
           </button>
@@ -68,20 +83,20 @@ export function QuotationPreviewDialog({
         <div className={styles.document}>
           <div className={styles.docHeader}>
             <div>
-              <div className={styles.companyName}>{quotation.from_details.company_name}</div>
+              <div className={styles.companyName}>{quotation?.from_details?.company_name || "Company"}</div>
               <p style={{ whiteSpace: "pre-line", fontSize: "0.9rem", color: "#555" }}>
-                {quotation.from_details.address}
+                {quotation?.from_details?.address || ""}
               </p>
             </div>
             <div>
               <div className={styles.docTitle}>
-                {quotation.type === "AMC" ? "AMC QUOTATION" : quotation.type === "SPARES" ? "SPARES QUOTATION" : "MACHINE QUOTATION"}
+                {quotation?.type === "AMC" ? "AMC QUOTATION" : quotation?.type === "SPARES" ? "SPARES QUOTATION" : "MACHINE QUOTATION"}
               </div>
               <div className={styles.metaGrid}>
                 <span className={styles.metaLabel}>Quote No:</span>
-                <span>{quotation.quote_no}</span>
+                <span>{quotation?.quote_no || quotation?.id || "-"}</span>
                 <span className={styles.metaLabel}>Date:</span>
-                <span>{quotation.date}</span>
+                <span>{quotation?.date || "-"}</span>
                 <span className={styles.metaLabel}>Valid Till:</span>
                 <span>30 Days</span>
               </div>
@@ -91,16 +106,16 @@ export function QuotationPreviewDialog({
           <div className={styles.addresses}>
             <div className={styles.addressBlock}>
               <h3>Bill To</h3>
-              <p style={{ fontWeight: 600 }}>{quotation.to_details.company_name}</p>
-              <p style={{ whiteSpace: "pre-line" }}>{quotation.to_details.address}</p>
+              <p style={{ fontWeight: 600 }}>{quotation?.to_details?.company_name || _enquiry?.customer_name || "-"}</p>
+              <p style={{ whiteSpace: "pre-line" }}>{quotation?.to_details?.address || _enquiry?.address || ""}</p>
             </div>
             <div className={styles.addressBlock}>
               <h3>Project Details</h3>
-              {quotation.title && <p><strong>Subject:</strong> {quotation.title}</p>}
-              {quotation.type === "AMC" && (
+              {quotation?.title && <p><strong>Subject:</strong> {quotation.title}</p>}
+              {quotation?.type === "AMC" && (
                 <>
-                  <p><strong>AMC Type:</strong> {quotation.amc_type?.replace("_", " ")}</p>
-                  <p><strong>Service Interval:</strong> {quotation.service_interval}</p>
+                  <p><strong>AMC Type:</strong> {quotation?.amc_type?.replace("_", " ") || "-"}</p>
+                  <p><strong>Service Interval:</strong> {quotation?.service_interval || "-"}</p>
                 </>
               )}
             </div>
@@ -118,7 +133,7 @@ export function QuotationPreviewDialog({
               </tr>
             </thead>
             <tbody>
-              {quotation.items.map((item, index) => {
+              {items.map((item, index) => {
                 const qty = typeof item.quantity === 'string' ? parseFloat(item.quantity) || 0 : item.quantity;
                 const price = typeof item.base_price === 'string' ? parseFloat(item.base_price) || 0 : item.base_price;
                 const margin = item.margin === null || (item.margin as any) === "" ? 0 : (typeof item.margin === 'string' ? parseFloat(item.margin) || 0 : item.margin);

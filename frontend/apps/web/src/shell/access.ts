@@ -83,11 +83,16 @@ export function accessFor(membership: Membership, appKey: string | undefined): A
   const modules = new Set(app.modules);
   const permissions = new Set(app.permissions);
 
+  const isDealerAdmin = membership.apps.some((a) =>
+    a.permissions.includes("admin.person.invite")
+  );
+
   const isManagerOrAdmin =
     membership.role === "owner" ||
     membership.role === "admin" ||
     permissions.has("dms.enquiry.close") ||
-    permissions.has("admin.person.invite");
+    permissions.has("admin.person.invite") ||
+    isDealerAdmin;
 
   return {
     hasModule: (moduleKey) =>

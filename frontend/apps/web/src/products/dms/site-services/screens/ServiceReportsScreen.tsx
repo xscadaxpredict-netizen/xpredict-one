@@ -6,6 +6,7 @@ import { ServiceReportTable } from "../components/ServiceReportTable";
 import { ServiceReportModal } from "../components/ServiceReportModal";
 import { ReportViewModal } from "../components/ReportViewModal";
 import { ShareLinkModal } from "../components/ShareLinkModal";
+import { useDmsPermissions } from "../../shared/hooks/useDmsPermissions";
 import styles from "./ServiceReportsScreen.module.css";
 import { TableSkeleton } from "@xpredict/ui";
 import { useDialog } from "../../shared/hooks/useDialog";
@@ -20,6 +21,7 @@ export function ServiceReportsScreen() {
   const createReportMutation = useCreateServiceReport();
   const updateReportMutation = useUpdateServiceReport();
   const deleteReportMutation = useDeleteServiceReport();
+  const { canCreateReport } = useDmsPermissions();
   
   const [selectedSiteId, setSelectedSiteId] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
@@ -29,7 +31,7 @@ export function ServiceReportsScreen() {
   const [editingReport, setEditingReport] = useState<any>(null);
   const [shareLink, setShareLink] = useState<{isOpen: boolean, url: string}>({ isOpen: false, url: "" });
   const [form, setForm] = useState<any>(INITIAL_FORM);
-  const { showAlert, showConfirm, showPrompt, DialogComponent } = useDialog();
+  const { showAlert, showConfirm, DialogComponent } = useDialog();
 
   const { orgSlug } = useParams<{ orgSlug: string }>();
 
@@ -202,9 +204,11 @@ export function ServiceReportsScreen() {
           >
             <RefreshCwIcon size={16} className={isRefetching ? styles.spin : ""} /> Refresh
           </button>
-          <button type="button" className={styles.btnPrimary} onClick={openNewModal}>
-            <PlusIcon size={16} /> New Report
-          </button>
+          {canCreateReport && (
+            <button type="button" className={styles.btnPrimary} onClick={openNewModal}>
+              <PlusIcon size={16} /> New Report
+            </button>
+          )}
         </div>
       </div>
 

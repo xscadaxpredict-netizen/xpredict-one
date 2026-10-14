@@ -4,10 +4,12 @@ import { useMarketingKit } from "../tools/hooks/useMarketingKit";
 import { MaterialAccordion } from "../tools/components/MaterialAccordion";
 import { UploadMaterialDialog } from "../tools/components/UploadMaterialDialog";
 import { ConfirmDeleteModal } from "../../../shell/components/ConfirmDeleteModal";
+import { useDmsPermissions } from "../shared/hooks/useDmsPermissions";
 import type { MaterialType } from "../tools/api/types";
 import styles from "./SettingsPage.module.css";
 
 export function SettingsMarketingTab() {
+  const { canManageSettings } = useDmsPermissions();
   const { brochures, videos, ads, addMaterial, updateMaterial, deleteMaterial } = useMarketingKit();
 
   const [expandedSection, setExpandedSection] = useState<MaterialType | "">("brochure");
@@ -51,9 +53,11 @@ export function SettingsMarketingTab() {
     <div>
       <div className={styles.sectionHeader} style={{ marginTop: '24px' }}>
         <h2 className={styles.sectionTitle}>Marketing Kit (Tools)</h2>
-        <button className={styles.btnPrimary} onClick={() => openModal("brochure")}>
-          <PlusIcon size={16} style={{ marginRight: '6px' }} /> Upload Material
-        </button>
+        {canManageSettings && (
+          <button className={styles.btnPrimary} onClick={() => openModal("brochure")}>
+            <PlusIcon size={16} style={{ marginRight: '6px' }} /> Upload Material
+          </button>
+        )}
       </div>
 
       <div style={{ marginTop: '24px' }}>
@@ -63,8 +67,8 @@ export function SettingsMarketingTab() {
           items={brochures}
           isExpanded={expandedSection === "brochure"}
           onToggle={() => setExpandedSection(expandedSection === "brochure" ? "" : "brochure")}
-          onEdit={(item) => openModal("brochure", item)}
-          onDelete={(id) => setDeleteData({ type: "brochure", id })}
+          onEdit={canManageSettings ? (item) => openModal("brochure", item) : undefined}
+          onDelete={canManageSettings ? (id) => setDeleteData({ type: "brochure", id }) : undefined}
         />
 
         <MaterialAccordion 
@@ -73,8 +77,8 @@ export function SettingsMarketingTab() {
           items={videos}
           isExpanded={expandedSection === "video"}
           onToggle={() => setExpandedSection(expandedSection === "video" ? "" : "video")}
-          onEdit={(item) => openModal("video", item)}
-          onDelete={(id) => setDeleteData({ type: "video", id })}
+          onEdit={canManageSettings ? (item) => openModal("video", item) : undefined}
+          onDelete={canManageSettings ? (id) => setDeleteData({ type: "video", id }) : undefined}
         />
 
         <MaterialAccordion 
@@ -83,8 +87,8 @@ export function SettingsMarketingTab() {
           items={ads}
           isExpanded={expandedSection === "ad"}
           onToggle={() => setExpandedSection(expandedSection === "ad" ? "" : "ad")}
-          onEdit={(item) => openModal("ad", item)}
-          onDelete={(id) => setDeleteData({ type: "ad", id })}
+          onEdit={canManageSettings ? (item) => openModal("ad", item) : undefined}
+          onDelete={canManageSettings ? (id) => setDeleteData({ type: "ad", id }) : undefined}
         />
       </div>
 

@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { SearchIcon } from "lucide-react";
-import { useOrders, useUpdateOrderStatus } from "../hooks/useEcommerce";
+import { useOrders, useUpdateOrderStatus, useDeleteOrder } from "../hooks/useEcommerce";
 import { OrdersTable } from "../components/OrdersTable";
 import { RejectOrderDialog } from "../components/RejectOrderDialog";
 import { POViewDialog } from "../components/POViewDialog";
@@ -13,6 +13,7 @@ import styles from "./MyOrdersScreen.module.css";
 export function MyOrdersScreen() {
   const { data: orders, isPending, isError, error } = useOrders();
   const updateStatusMutation = useUpdateOrderStatus();
+  const deleteOrderMutation = useDeleteOrder();
   const { showAlert, DialogComponent } = useDialog();
   
   const [searchQuery, setSearchQuery] = useState("");
@@ -49,8 +50,9 @@ export function MyOrdersScreen() {
     const query = searchQuery.trim().toLowerCase();
     if (!query) return true;
     return (
-      (order.po_number || "").toLowerCase().includes(query) ||
-      (order.site?.customer_name || "").toLowerCase().includes(query) ||
+      (order.order_number || "").toLowerCase().includes(query) ||
+      (order.oc_number || "").toLowerCase().includes(query) ||
+      (order.site_name || "").toLowerCase().includes(query) ||
       (order.status || "").toLowerCase().includes(query)
     );
   });
@@ -100,7 +102,19 @@ export function MyOrdersScreen() {
       <ConfirmDeleteModal 
         isOpen={!!deleteId}
         onCancel={() => setDeleteId(null)}
-        onConfirm={() => { showAlert("Info", "Deleting orders is not supported yet."); setDeleteId(null); }}
+        onConfirm={() => {
+          if (deleteId) {
+            deleteOrderMutation.mutate(deleteId, {
+              onSuccess: () => {
+                setDeleteId(null);
+              },
+              onError: (err: any) => {
+                showAlert("Error", "Failed to delete order: " + (err?.message || err));
+                setDeleteId(null);
+              },
+            });
+          }
+        }}
       />
       <DialogComponent />
     </div>

@@ -65,9 +65,19 @@ export function WaterReportViewModal({ isOpen, report, onEdit, onClose }: Props)
 
           {/* Attachment */}
           <div>
-            <h4 className={styles.sectionTitle}>Attached Report File</h4>
-            <div style={{ marginTop: '0.5rem' }}>
-              <FileAttachmentCell attachment={report.attachment} />
+            <h4 className={styles.sectionTitle}>
+              {(report as any).attachments && Array.isArray((report as any).attachments) && (report as any).attachments.length > 1
+                ? `Attached Files (${(report as any).attachments.length})`
+                : "Attached Report File"}
+            </h4>
+            <div style={{ marginTop: '0.5rem', display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+              {(report as any).attachments && Array.isArray((report as any).attachments) && (report as any).attachments.length > 0 ? (
+                (report as any).attachments.map((att: any, i: number) => (
+                  <FileAttachmentCell key={i} attachment={typeof att === "string" ? att : (att.file || att)} />
+                ))
+              ) : (
+                <FileAttachmentCell attachment={report.attachment} />
+              )}
             </div>
           </div>
         </div>

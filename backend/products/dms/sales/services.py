@@ -56,13 +56,14 @@ def create_enquiry(
         status=EnquiryStatus.PENDING,
     )
     
-    Followup.objects.create(
-        unit_id=unit_id,
-        enquiry=enquiry,
-        created_by_user_id=created_by_user_id,
-        remarks=followup_remarks or "",
-        next_followup_date=followup_next_date if followup_next_date else None,
-    )
+    if followup_remarks or followup_next_date:
+        Followup.objects.create(
+            unit_id=unit_id,
+            enquiry=enquiry,
+            created_by_user_id=created_by_user_id,
+            remarks=followup_remarks or "",
+            next_followup_date=followup_next_date if followup_next_date else None,
+        )
     
     return enquiry
 
@@ -93,6 +94,9 @@ def delete_enquiry(*, enquiry_id: uuid.UUID) -> None:
     enquiry = Enquiry.objects.filter(id=enquiry_id).first()
     if not enquiry:
         raise not_found("Enquiry")
+    ConfirmedSite.objects.filter(enquiry=enquiry).delete()
+    Quotation.objects.filter(enquiry=enquiry).delete()
+    Followup.objects.filter(enquiry=enquiry).delete()
     enquiry.delete()
 
 
@@ -100,22 +104,25 @@ def delete_enquiry(*, enquiry_id: uuid.UUID) -> None:
 def add_followup(
     *,
     enquiry_id: uuid.UUID,
-    unit_id: uuid.UUID,
-    actor_user_id: uuid.UUID,
-    remarks: str,
-    next_followup_date: str,
+    unit_id: Optional[uuid.UUID] = None,
+    actor_user_id: Optional[uuid.UUID] = None,
+    remarks: str = "",
+    next_followup_date: Optional[str] = None,
 ) -> Enquiry:
     enquiry = Enquiry.objects.filter(id=enquiry_id).first()
     if not enquiry:
         raise not_found("Enquiry")
         
     Followup.objects.create(
-        unit_id=unit_id,
+        unit_id=unit_id or enquiry.unit_id,
         enquiry=enquiry,
         created_by_user_id=actor_user_id,
         remarks=remarks or "",
         next_followup_date=next_followup_date if next_followup_date else None,
     )
+    return enquiry
+
+
 @transaction.atomic
 def update_followup(
     *,

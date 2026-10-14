@@ -7,12 +7,14 @@ import { CallDetailDialog } from "../components/CallDetailDialog";
 import { ConfirmDeleteModal } from "../../../../shell/components/ConfirmDeleteModal";
 import { useTechSupport } from "../api/techSupport";
 import { useMe } from "../../../../shell/hooks/useAuth";
+import { useDmsPermissions } from "../../shared/hooks/useDmsPermissions";
 import type { RequestCall } from "../api/types";
 import styles from "./RequestCallScreen.module.css";
 
 export function RequestCallScreen() {
   const { orgSlug } = useParams<{ orgSlug: string }>();
   const { data: me } = useMe();
+  const { canCreateCallRequest } = useDmsPermissions();
   const {
     calls = [],
     createCall,
@@ -73,16 +75,18 @@ export function RequestCallScreen() {
           <h2 className={styles.title}>Request Tech Support Call</h2>
           <p className={styles.subtitle}>Log an issue and our engineering team will call you back shortly.</p>
         </div>
-        <button
-          type="button"
-          className={styles.btnPrimary}
-          onClick={() => {
-            setFormData({});
-            setIsModalOpen(true);
-          }}
-        >
-          <PlusIcon size={16} /> Request Callback
-        </button>
+        {canCreateCallRequest && (
+          <button
+            type="button"
+            className={styles.btnPrimary}
+            onClick={() => {
+              setFormData({});
+              setIsModalOpen(true);
+            }}
+          >
+            <PlusIcon size={16} /> Request Callback
+          </button>
+        )}
       </div>
 
       <CallRequestTable

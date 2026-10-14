@@ -2,7 +2,7 @@ import { useState } from "react";
 import { ShieldCheckIcon } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useSites } from "../hooks/useSiteServices";
-import { useConfirmAmcQuote, useAddFollowup, useUpdateFollowup, useDeleteFollowup } from "../../sales/hooks/useEnquiries";
+import { useConfirmAmcQuote, useAddFollowup, useUpdateFollowup, useDeleteFollowup, useDeleteQuotation } from "../../sales/hooks/useEnquiries";
 import type { NewFollowup, Followup } from "../../sales/api/types";
 import { QuoteBuilderDialog } from "../../sales/components/QuoteBuilderDialog";
 import { QuotationPreviewDialog } from "../../sales/components/QuotationPreviewDialog";
@@ -15,6 +15,7 @@ export function AMCScreen() {
   const queryClient = useQueryClient();
   const confirmQuoteMutation = useConfirmAmcQuote();
   const addFollowup = useAddFollowup();
+  const deleteQuotation = useDeleteQuotation();
   const { data: sites, isPending, isError, error } = useSites();
   
   const [selectedSiteId, setSelectedSiteId] = useState("");
@@ -107,9 +108,19 @@ export function AMCScreen() {
     }
   };
 
-  const handleDeleteQuote = async (_enquiryId: string, _quoteId: string) => {
+  const handleDeleteQuote = async (enquiryId: string, quoteId: string) => {
     if (!(await showConfirm("Delete Quote", "Are you sure you want to delete this quote? This action cannot be undone."))) return;
-    showAlert("Info", "In a real app, this would call deleteQuote(quoteId)");
+    deleteQuotation.mutate(
+      { enquiryId, quoteId },
+      {
+        onSuccess: () => {
+          queryClient.invalidateQueries({ queryKey: ["site-services"] });
+        },
+        onError: (err: any) => {
+          showAlert("Error", "Failed to delete quote: " + (err?.message || err));
+        },
+      }
+    );
   };
 
   return (
@@ -196,7 +207,7 @@ export function AMCScreen() {
           open={Boolean(viewingQuote)}
           onClose={() => setViewingQuote(null)}
           enquiry={viewingQuote.enquiry}
-          quote={viewingQuote.quote}
+          quotation={viewingQuote.quote}
           onEdit={() => {
             const current = viewingQuote;
             setViewingQuote(null);

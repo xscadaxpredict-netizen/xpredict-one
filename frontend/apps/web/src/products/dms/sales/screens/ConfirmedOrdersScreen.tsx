@@ -16,6 +16,7 @@ import { QuotationPreviewDialog } from "../components/QuotationPreviewDialog";
 import { NewEnquiryDialog } from "../components/NewEnquiryDialog";
 import type { Enquiry, NewFollowup, NewEnquiry } from "../api/types";
 import { useDialog } from "../../shared/hooks/useDialog";
+import { useDmsPermissions } from "../../shared/hooks/useDmsPermissions";
 import styles from "./ConfirmedOrdersScreen.module.css";
 
 export function ConfirmedOrdersScreen() {
@@ -41,7 +42,7 @@ export function ConfirmedOrdersScreen() {
     onConfirm: () => void;
   } | null>(null);
   
-  const { showAlert, DialogComponent } = useDialog();
+  const { DialogComponent } = useDialog();
 
   // Followup dialog
   const [followupOrderId, setFollowupOrderId] = useState<string | null>(null);
@@ -265,6 +266,7 @@ interface OrderRowProps {
 }
 
 function OrderRow({ order, isExpanded, isHistoryExpanded, onToggle, onToggleHistory, onFollowup, onUnconfirm, onDelete, onEditOrder, onViewQuote }: OrderRowProps) {
+  const { canEditEnquiry, canUnconfirmOrder, canDeleteOrder } = useDmsPermissions();
   const confirmedQuote = order.quotes.find((q) => q.id === order.confirmed_quote_id);
 
   return (
@@ -300,14 +302,16 @@ function OrderRow({ order, isExpanded, isHistoryExpanded, onToggle, onToggleHist
         </td>
         <td className={`${styles.td} ${styles.tdRight}`}>
           <div className={styles.actions}>
-            <button
-              type="button"
-              className={styles.iconBtn}
-              title="Edit Order Details"
-              onClick={(e) => { e.stopPropagation(); onEditOrder(); }}
-            >
-              <PencilIcon />
-            </button>
+            {canEditEnquiry && (
+              <button
+                type="button"
+                className={styles.iconBtn}
+                title="Edit Order Details"
+                onClick={(e) => { e.stopPropagation(); onEditOrder(); }}
+              >
+                <PencilIcon />
+              </button>
+            )}
             {confirmedQuote && (
               <button
                 type="button"
@@ -318,29 +322,35 @@ function OrderRow({ order, isExpanded, isHistoryExpanded, onToggle, onToggleHist
                 <EyeIcon />
               </button>
             )}
-            <button
-              type="button"
-              className={styles.btnPrimary}
-              onClick={(e) => { e.stopPropagation(); onFollowup(); }}
-            >
-              <PlusIcon /> Follow-up
-            </button>
-            <button
-              type="button"
-              className={styles.btnSecondary}
-              onClick={(e) => { e.stopPropagation(); onUnconfirm(); }}
-              title="Unconfirm Order (Revert to Pending)"
-            >
-              <ArrowLeftIcon /> Unconfirm
-            </button>
-            <button
-              type="button"
-              className={styles.iconBtn}
-              onClick={(e) => { e.stopPropagation(); onDelete(); }}
-              title="Delete Order Completely"
-            >
-              <TrashIcon />
-            </button>
+            {canEditEnquiry && (
+              <button
+                type="button"
+                className={styles.btnPrimary}
+                onClick={(e) => { e.stopPropagation(); onFollowup(); }}
+              >
+                <PlusIcon /> Follow-up
+              </button>
+            )}
+            {canUnconfirmOrder && (
+              <button
+                type="button"
+                className={styles.btnSecondary}
+                onClick={(e) => { e.stopPropagation(); onUnconfirm(); }}
+                title="Unconfirm Order (Revert to Pending)"
+              >
+                <ArrowLeftIcon /> Unconfirm
+              </button>
+            )}
+            {canDeleteOrder && (
+              <button
+                type="button"
+                className={styles.iconBtn}
+                onClick={(e) => { e.stopPropagation(); onDelete(); }}
+                title="Delete Order Completely"
+              >
+                <TrashIcon />
+              </button>
+            )}
             <button type="button" className={styles.expandBtn} aria-label="Toggle details">
               {isExpanded ? <ChevronUpIcon /> : <ChevronDownIcon />}
             </button>
@@ -353,13 +363,15 @@ function OrderRow({ order, isExpanded, isHistoryExpanded, onToggle, onToggleHist
           <td colSpan={5} className={styles.expandedCell}>
             <div className={styles.expandedContent}>
               <div className={styles.mobileActionsBar}>
-                <button
-                  type="button"
-                  className={styles.btnPrimary}
-                  onClick={(e) => { e.stopPropagation(); onFollowup(); }}
-                >
-                  <PlusIcon /> Follow-up
-                </button>
+                {canEditEnquiry && (
+                  <button
+                    type="button"
+                    className={styles.btnPrimary}
+                    onClick={(e) => { e.stopPropagation(); onFollowup(); }}
+                  >
+                    <PlusIcon /> Follow-up
+                  </button>
+                )}
                 {confirmedQuote && (
                   <button
                     type="button"
@@ -370,30 +382,36 @@ function OrderRow({ order, isExpanded, isHistoryExpanded, onToggle, onToggleHist
                     <EyeIcon />
                   </button>
                 )}
-                <button
-                  type="button"
-                  className={styles.iconBtn}
-                  title="Edit Order"
-                  onClick={(e) => { e.stopPropagation(); onEditOrder(); }}
-                >
-                  <PencilIcon />
-                </button>
-                <button
-                  type="button"
-                  className={styles.btnSecondary}
-                  title="Unconfirm Order"
-                  onClick={(e) => { e.stopPropagation(); onUnconfirm(); }}
-                >
-                  <ArrowLeftIcon /> Unconfirm
-                </button>
-                <button
-                  type="button"
-                  className={`${styles.iconBtn} ${styles.iconBtnDanger}`}
-                  title="Delete Order"
-                  onClick={(e) => { e.stopPropagation(); onDelete(); }}
-                >
-                  <TrashIcon />
-                </button>
+                {canEditEnquiry && (
+                  <button
+                    type="button"
+                    className={styles.iconBtn}
+                    title="Edit Order"
+                    onClick={(e) => { e.stopPropagation(); onEditOrder(); }}
+                  >
+                    <PencilIcon />
+                  </button>
+                )}
+                {canUnconfirmOrder && (
+                  <button
+                    type="button"
+                    className={styles.btnSecondary}
+                    title="Unconfirm Order"
+                    onClick={(e) => { e.stopPropagation(); onUnconfirm(); }}
+                  >
+                    <ArrowLeftIcon /> Unconfirm
+                  </button>
+                )}
+                {canDeleteOrder && (
+                  <button
+                    type="button"
+                    className={`${styles.iconBtn} ${styles.iconBtnDanger}`}
+                    title="Delete Order"
+                    onClick={(e) => { e.stopPropagation(); onDelete(); }}
+                  >
+                    <TrashIcon />
+                  </button>
+                )}
               </div>
 
               <div className={styles.detailGrid}>
@@ -414,7 +432,7 @@ function OrderRow({ order, isExpanded, isHistoryExpanded, onToggle, onToggleHist
                       <div className={styles.latestFollowup}>
                         <div className={styles.followupHeader}>
                           <span className={styles.followupDate}>
-                            Due: {order.followups[0]!.next_followup_date}
+                            {order.followups[0]!.next_followup_date ? `Due: ${order.followups[0]!.next_followup_date}` : "No date set"}
                           </span>
                           <span className={styles.followupAdded}>
                             Added {order.followups[0]!.entered_date}
@@ -452,7 +470,7 @@ function OrderRow({ order, isExpanded, isHistoryExpanded, onToggle, onToggleHist
                                 <div key={f.id} className={styles.pastItem}>
                                   <div className={styles.followupHeader}>
                                     <span className={styles.pastDate}>
-                                      Due: {f.next_followup_date}
+                                      {f.next_followup_date ? `Due: ${f.next_followup_date}` : "No date set"}
                                     </span>
                                     <span className={styles.followupAdded}>
                                       Added {f.entered_date}

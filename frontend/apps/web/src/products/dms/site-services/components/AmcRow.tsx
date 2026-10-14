@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { ChevronDownIcon, ChevronUpIcon, MapPinIcon, MessageSquareIcon, EyeIcon, Edit3Icon, Trash2Icon, CheckCircleIcon, PlusIcon } from "lucide-react";
 import type { Enquiry, Quotation } from "../../sales/api/types";
+import { useDmsPermissions } from "../../shared/hooks/useDmsPermissions";
 import styles from "./AmcRow.module.css";
 
 interface Props {
@@ -36,6 +37,15 @@ export function AmcRow({
   onEditFollowup,
   onDeleteFollowup,
 }: Props) {
+  const {
+    canEditAMC,
+    canDeleteAMC,
+    canCreateQuote,
+    canEditQuote,
+    canDeleteQuote,
+    canConfirmOrder,
+  } = useDmsPermissions();
+
   const [isHistoryExpanded, setIsHistoryExpanded] = useState(false);
 
   return (
@@ -66,7 +76,7 @@ export function AmcRow({
                 >
                   <EyeIcon size={14} />
                 </button>
-                {(latestQuote.status === "DRAFT" || latestQuote.status === "QUOTE_SENT") && (
+                {canEditQuote && (latestQuote.status === "DRAFT" || latestQuote.status === "QUOTE_SENT") && (
                   <button
                     type="button"
                     className={styles.iconBtn}
@@ -76,7 +86,7 @@ export function AmcRow({
                     <Edit3Icon size={14} />
                   </button>
                 )}
-                {latestQuote.status !== "CONFIRMED" && (
+                {canDeleteQuote && latestQuote.status !== "CONFIRMED" && (
                   <button
                     type="button"
                     className={`${styles.iconBtn} ${styles.iconBtnDanger}`}
@@ -104,20 +114,24 @@ export function AmcRow({
         </td>
         <td className={styles.tdRight}>
           <div className={styles.actions}>
-            <button
-              type="button"
-              className={styles.btnSecondary}
-              onClick={(e) => { e.stopPropagation(); onNewQuote(); }}
-            >
-              New Quote
-            </button>
-            <button
-              type="button"
-              className={styles.btnPrimary}
-              onClick={(e) => { e.stopPropagation(); onAddFollowup(); }}
-            >
-              <PlusIcon size={14} style={{ marginRight: '4px' }} /> Follow-up
-            </button>
+            {canCreateQuote && (
+              <button
+                type="button"
+                className={styles.btnSecondary}
+                onClick={(e) => { e.stopPropagation(); onNewQuote(); }}
+              >
+                New Quote
+              </button>
+            )}
+            {canEditAMC && (
+              <button
+                type="button"
+                className={styles.btnPrimary}
+                onClick={(e) => { e.stopPropagation(); onAddFollowup(); }}
+              >
+                <PlusIcon size={14} style={{ marginRight: '4px' }} /> Follow-up
+              </button>
+            )}
             <button type="button" className={styles.expandBtn}>
               {isExpanded ? <ChevronUpIcon size={18} /> : <ChevronDownIcon size={18} />}
             </button>
@@ -131,20 +145,24 @@ export function AmcRow({
           <td colSpan={5} className={styles.expandedCell}>
             <div className={styles.expandedContent}>
               <div className={styles.mobileActionsBar}>
-                <button
-                  type="button"
-                  className={styles.btnSecondary}
-                  onClick={(e) => { e.stopPropagation(); onNewQuote(); }}
-                >
-                  New Quote
-                </button>
-                <button
-                  type="button"
-                  className={styles.btnPrimary}
-                  onClick={(e) => { e.stopPropagation(); onAddFollowup(); }}
-                >
-                  <PlusIcon size={14} style={{ marginRight: '4px' }} /> Follow-up
-                </button>
+                {canCreateQuote && (
+                  <button
+                    type="button"
+                    className={styles.btnSecondary}
+                    onClick={(e) => { e.stopPropagation(); onNewQuote(); }}
+                  >
+                    New Quote
+                  </button>
+                )}
+                {canEditAMC && (
+                  <button
+                    type="button"
+                    className={styles.btnPrimary}
+                    onClick={(e) => { e.stopPropagation(); onAddFollowup(); }}
+                  >
+                    <PlusIcon size={14} style={{ marginRight: '4px' }} /> Follow-up
+                  </button>
+                )}
               </div>
 
               <div className={styles.detailGrid}>
@@ -170,11 +188,11 @@ export function AmcRow({
                       <div className={styles.historyCard} style={{ flexDirection: "column", alignItems: "flex-start", gap: "8px" }}>
                         <div style={{ display: "flex", justifyContent: "space-between", width: "100%", fontSize: "0.8rem", color: "var(--color-text-2)" }}>
                           <span style={{ fontWeight: 600, color: "var(--color-text)" }}>
-                            Due: {site.followups[0]!.next_followup_date}
+                            {site.followups[0]!.next_followup_date ? `Due: ${site.followups[0]!.next_followup_date}` : "No date set"}
                           </span>
                           <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
                             <span>Added {site.followups[0]!.entered_date}</span>
-                            {onEditFollowup && (
+                            {onEditFollowup && canEditAMC && (
                               <button
                                 type="button"
                                 className={styles.iconBtnSm}
@@ -185,7 +203,7 @@ export function AmcRow({
                                 <Edit3Icon size={12} />
                               </button>
                             )}
-                            {onDeleteFollowup && (
+                            {onDeleteFollowup && canDeleteAMC && (
                               <button
                                 type="button"
                                 className={styles.iconBtnSm}
@@ -228,10 +246,10 @@ export function AmcRow({
                               {site.followups.slice(1).map((f) => (
                                 <div key={f.id} style={{ padding: "8px 0", borderTop: "1px dashed var(--color-border-strong)" }}>
                                   <div style={{ display: "flex", justifyContent: "space-between", fontSize: "0.8rem", color: "var(--color-text-2)", marginBottom: "4px" }}>
-                                    <span>Due: {f.next_followup_date}</span>
+                                    <span>{f.next_followup_date ? `Due: ${f.next_followup_date}` : "No date set"}</span>
                                     <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
                                       <span>Added {f.entered_date}</span>
-                                      {onEditFollowup && (
+                                      {onEditFollowup && canEditAMC && (
                                         <button
                                           type="button"
                                           className={styles.iconBtnSm}
@@ -242,7 +260,7 @@ export function AmcRow({
                                           <Edit3Icon size={12} />
                                         </button>
                                       )}
-                                      {onDeleteFollowup && (
+                                      {onDeleteFollowup && canDeleteAMC && (
                                         <button
                                           type="button"
                                           className={styles.iconBtnSm}
@@ -309,7 +327,7 @@ export function AmcRow({
                             >
                               <EyeIcon size={14} />
                             </button>
-                            {(q.status === "DRAFT" || q.status === "QUOTE_SENT") && (
+                            {canEditQuote && (q.status === "DRAFT" || q.status === "QUOTE_SENT") && (
                               <button
                                 type="button"
                                 className={styles.iconBtn}
@@ -319,7 +337,7 @@ export function AmcRow({
                                 <Edit3Icon size={14} />
                               </button>
                             )}
-                            {q.status !== "CONFIRMED" && (
+                            {canConfirmOrder && q.status !== "CONFIRMED" && (
                               <button
                                 type="button"
                                 className={`${styles.iconBtn} ${styles.iconBtnSuccess}`}
@@ -329,7 +347,7 @@ export function AmcRow({
                                 <CheckCircleIcon size={14} />
                               </button>
                             )}
-                            {q.status !== "CONFIRMED" && (
+                            {canDeleteQuote && q.status !== "CONFIRMED" && (
                               <button
                                 type="button"
                                 className={`${styles.iconBtn} ${styles.iconBtnDanger}`}

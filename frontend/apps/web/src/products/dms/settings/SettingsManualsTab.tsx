@@ -5,11 +5,13 @@ import { useTechSupport } from "../tech-support/api/techSupport";
 import { ManualList } from "../tech-support/components/ManualList";
 import { UploadManualDialog } from "../tech-support/components/UploadManualDialog";
 import { ConfirmDeleteModal } from "../../../shell/components/ConfirmDeleteModal";
+import { useDmsPermissions } from "../shared/hooks/useDmsPermissions";
 import type { UserManual } from "../tech-support/api/types";
 import styles from "./SettingsPage.module.css";
 
 export function SettingsManualsTab() {
   const { orgSlug } = useParams<{ orgSlug: string }>();
+  const { canUploadManual, canDeleteManual } = useDmsPermissions();
   const { manuals, uploadManual, deleteManual } = useTechSupport(orgSlug!);
   const [searchQuery, setSearchQuery] = useState("");
   const [deleteId, setDeleteId] = useState<string | null>(null);
@@ -67,14 +69,20 @@ export function SettingsManualsTab() {
               onChange={e => setSearchQuery(e.target.value)}
             />
           </div>
-          <button className={styles.btnPrimary} onClick={() => openModal()}>
-            <PlusIcon size={16} style={{ marginRight: '6px' }} /> Upload Manual
-          </button>
+          {canUploadManual && (
+            <button className={styles.btnPrimary} onClick={() => openModal()}>
+              <PlusIcon size={16} style={{ marginRight: '6px' }} /> Upload Manual
+            </button>
+          )}
         </div>
       </div>
 
       <div style={{ marginTop: '24px' }}>
-        <ManualList manuals={filteredManuals} onEdit={openModal} onDelete={setDeleteId} />
+        <ManualList 
+          manuals={filteredManuals} 
+          onEdit={canUploadManual ? openModal : undefined} 
+          onDelete={canDeleteManual ? setDeleteId : undefined} 
+        />
       </div>
 
       <UploadManualDialog 

@@ -1,6 +1,7 @@
 import { Fragment, useState } from "react";
 import { DropletIcon, EyeIcon, Edit3Icon, Trash2Icon, ChevronDownIcon, ChevronUpIcon } from "lucide-react";
 import { FileAttachmentCell } from "./FileAttachmentCell";
+import { useDmsPermissions } from "../../shared/hooks/useDmsPermissions";
 import styles from "./WaterReportTable.module.css";
 
 interface Props {
@@ -11,6 +12,7 @@ interface Props {
 }
 
 export function WaterReportTable({ reports, onView, onEdit, onDelete }: Props) {
+  const { canEditWaterReport, canDeleteWaterReport } = useDmsPermissions();
   const [expandedId, setExpandedId] = useState<string | null>(null);
 
   const toggleExpand = (id: string) => {
@@ -70,12 +72,16 @@ export function WaterReportTable({ reports, onView, onEdit, onDelete }: Props) {
                       <button type="button" className={styles.iconBtn} title="View Report" onClick={() => onView(report)}>
                         <EyeIcon size={16} />
                       </button>
-                      <button type="button" className={styles.iconBtnPrimary} title="Edit Report" onClick={() => onEdit(report)}>
-                        <Edit3Icon size={16} />
-                      </button>
-                      <button type="button" className={`${styles.iconBtn} ${styles.iconBtnDanger}`} title="Delete Report" onClick={() => onDelete(report.id)}>
-                        <Trash2Icon size={16} />
-                      </button>
+                      {canEditWaterReport && (
+                        <button type="button" className={styles.iconBtnPrimary} title="Edit Report" onClick={() => onEdit(report)}>
+                          <Edit3Icon size={16} />
+                        </button>
+                      )}
+                      {canDeleteWaterReport && (
+                        <button type="button" className={`${styles.iconBtn} ${styles.iconBtnDanger}`} title="Delete Report" onClick={() => onDelete(report.id)}>
+                          <Trash2Icon size={16} />
+                        </button>
+                      )}
                       <button
                         type="button"
                         className={styles.expandBtn}
@@ -96,12 +102,16 @@ export function WaterReportTable({ reports, onView, onEdit, onDelete }: Props) {
                           <button type="button" className={styles.iconBtn} onClick={() => onView(report)}>
                             <EyeIcon size={16} /> <span>View</span>
                           </button>
-                          <button type="button" className={styles.iconBtnPrimary} onClick={() => onEdit(report)}>
-                            <Edit3Icon size={16} /> <span>Edit</span>
-                          </button>
-                          <button type="button" className={`${styles.iconBtn} ${styles.iconBtnDanger}`} onClick={() => onDelete(report.id)}>
-                            <Trash2Icon size={16} /> <span>Delete</span>
-                          </button>
+                          {canEditWaterReport && (
+                            <button type="button" className={styles.iconBtnPrimary} onClick={() => onEdit(report)}>
+                              <Edit3Icon size={16} /> <span>Edit</span>
+                            </button>
+                          )}
+                          {canDeleteWaterReport && (
+                            <button type="button" className={`${styles.iconBtn} ${styles.iconBtnDanger}`} onClick={() => onDelete(report.id)}>
+                              <Trash2Icon size={16} /> <span>Delete</span>
+                            </button>
+                          )}
                         </div>
                       </div>
                     </td>

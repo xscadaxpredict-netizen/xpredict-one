@@ -1,6 +1,7 @@
 import { Fragment, useState } from "react";
 import { ClockIcon, MapPinIcon, CalendarIcon, UserIcon, CheckIcon, EyeIcon, CheckCircleIcon, AlertCircleIcon, Edit3Icon, Trash2Icon, FileTextIcon, LinkIcon, ChevronDownIcon, ChevronUpIcon } from "lucide-react";
 import { FileAttachmentCell } from "./FileAttachmentCell";
+import { useDmsPermissions } from "../../shared/hooks/useDmsPermissions";
 import styles from "./ServiceReportTable.module.css";
 
 interface Props {
@@ -12,6 +13,7 @@ interface Props {
 }
 
 export function ServiceReportTable({ reports, onView, onEdit, onDelete, onShare }: Props) {
+  const { canEditReport, canSignReport, canDeleteReport } = useDmsPermissions();
   const [expandedId, setExpandedId] = useState<string | null>(null);
 
   const toggleExpand = (id: string) => {
@@ -129,15 +131,21 @@ export function ServiceReportTable({ reports, onView, onEdit, onDelete, onShare 
                       <button type="button" className={styles.iconBtn} title="View Report" onClick={() => onView(report)}>
                         <EyeIcon size={16} />
                       </button>
-                      <button type="button" className={styles.iconBtn} title="Generate Sign Link" style={{ color: "#8B5CF6" }} onClick={() => onShare(report)}>
-                        <LinkIcon size={16} />
-                      </button>
-                      <button type="button" className={styles.iconBtn} title="Edit Report" style={{ color: "var(--color-primary)" }} onClick={() => onEdit(report)}>
-                        <Edit3Icon size={16} />
-                      </button>
-                      <button type="button" className={`${styles.iconBtn} ${styles.iconBtnDanger}`} title="Delete Report" onClick={() => onDelete(report.id)}>
-                        <Trash2Icon size={16} />
-                      </button>
+                      {canSignReport && (
+                        <button type="button" className={styles.iconBtn} title="Generate Sign Link" style={{ color: "#8B5CF6" }} onClick={() => onShare(report)}>
+                          <LinkIcon size={16} />
+                        </button>
+                      )}
+                      {canEditReport && (
+                        <button type="button" className={styles.iconBtn} title="Edit Report" style={{ color: "var(--color-primary)" }} onClick={() => onEdit(report)}>
+                          <Edit3Icon size={16} />
+                        </button>
+                      )}
+                      {canDeleteReport && (
+                        <button type="button" className={`${styles.iconBtn} ${styles.iconBtnDanger}`} title="Delete Report" onClick={() => onDelete(report.id)}>
+                          <Trash2Icon size={16} />
+                        </button>
+                      )}
                       <button
                         type="button"
                         className={styles.expandBtn}
@@ -158,15 +166,21 @@ export function ServiceReportTable({ reports, onView, onEdit, onDelete, onShare 
                           <button type="button" className={styles.iconBtn} onClick={() => onView(report)}>
                             <EyeIcon size={16} /> <span>View</span>
                           </button>
-                          <button type="button" className={styles.iconBtn} style={{ color: "#8B5CF6" }} onClick={() => onShare(report)}>
-                            <LinkIcon size={16} /> <span>Share Sign Link</span>
-                          </button>
-                          <button type="button" className={styles.iconBtn} style={{ color: "var(--color-primary)" }} onClick={() => onEdit(report)}>
-                            <Edit3Icon size={16} /> <span>Edit</span>
-                          </button>
-                          <button type="button" className={`${styles.iconBtn} ${styles.iconBtnDanger}`} onClick={() => onDelete(report.id)}>
-                            <Trash2Icon size={16} /> <span>Delete</span>
-                          </button>
+                          {canSignReport && (
+                            <button type="button" className={styles.iconBtn} style={{ color: "#8B5CF6" }} onClick={() => onShare(report)}>
+                              <LinkIcon size={16} /> <span>Share Sign Link</span>
+                            </button>
+                          )}
+                          {canEditReport && (
+                            <button type="button" className={styles.iconBtn} style={{ color: "var(--color-primary)" }} onClick={() => onEdit(report)}>
+                              <Edit3Icon size={16} /> <span>Edit</span>
+                            </button>
+                          )}
+                          {canDeleteReport && (
+                            <button type="button" className={`${styles.iconBtn} ${styles.iconBtnDanger}`} onClick={() => onDelete(report.id)}>
+                              <Trash2Icon size={16} /> <span>Delete</span>
+                            </button>
+                          )}
                         </div>
                       </div>
                     </td>

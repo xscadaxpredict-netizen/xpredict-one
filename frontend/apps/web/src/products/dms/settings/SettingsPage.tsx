@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { ConfirmDialog } from "@xpredict/ui";
 import { useBanks, useProductPresets, useDeleteBank, useDeleteProductPreset } from "../sales/hooks/useEnquiries";
 import { BankAccountModal } from "./BankAccountModal";
 import { ProductModal } from "./ProductModal";
@@ -6,6 +7,7 @@ import { SettingsManualsTab } from "./SettingsManualsTab";
 import { SettingsVideosTab } from "./SettingsVideosTab";
 import { SettingsMarketingTab } from "./SettingsMarketingTab";
 import { CalculatorSettingsScreen } from "../tools/screens/CalculatorSettingsScreen";
+import { useDmsPermissions } from "../shared/hooks/useDmsPermissions";
 import type { BankAccount, ProductPreset } from "../sales/api/types";
 import styles from "./SettingsPage.module.css";
 
@@ -73,10 +75,12 @@ export default function SettingsPage() {
 }
 
 function BankAccountsTab() {
+  const { canManageSettings } = useDmsPermissions();
   const { data: banks, isLoading } = useBanks();
   const deleteBank = useDeleteBank();
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [selectedBank, setSelectedBank] = useState<BankAccount | undefined>();
+  const [confirmBankId, setConfirmBankId] = useState<string | null>(null);
 
   if (isLoading) return <div className={styles.emptyState}>Loading banks...</div>;
 
@@ -84,9 +88,11 @@ function BankAccountsTab() {
     <div>
       <div className={styles.sectionHeader}>
         <h2 className={styles.sectionTitle}>Bank Accounts</h2>
-        <button className={styles.btnPrimary} onClick={() => { setSelectedBank(undefined); setIsModalOpen(true); }}>
-          <PlusCircleIcon /> Add Bank Account
-        </button>
+        {canManageSettings && (
+          <button className={styles.btnPrimary} onClick={() => { setSelectedBank(undefined); setIsModalOpen(true); }}>
+            <PlusCircleIcon /> Add Bank Account
+          </button>
+        )}
       </div>
 
       <div className={styles.list}>
@@ -97,14 +103,16 @@ function BankAccountsTab() {
               <p className={styles.cardDesc}>A/C: {bank.account_no} | IFSC: {bank.ifsc_code}</p>
               {bank.branch_name && <p className={styles.cardDesc}>Branch: {bank.branch_name}</p>}
             </div>
-            <div className={styles.actions}>
-              <button className={styles.btnSecondary} onClick={() => { setSelectedBank(bank); setIsModalOpen(true); }}>
-                <PencilIcon /> Edit
-              </button>
-              <button className={styles.btnDanger} onClick={() => { if(confirm("Are you sure?")) deleteBank.mutate(bank.id); }}>
-                <TrashIcon /> Delete
-              </button>
-            </div>
+            {canManageSettings && (
+              <div className={styles.actions}>
+                <button className={styles.btnSecondary} onClick={() => { setSelectedBank(bank); setIsModalOpen(true); }}>
+                  <PencilIcon /> Edit
+                </button>
+                <button className={styles.btnDanger} onClick={() => setConfirmBankId(bank.id)}>
+                  <TrashIcon /> Delete
+                </button>
+              </div>
+            )}
           </div>
         ))}
         {banks?.length === 0 && <div className={styles.emptyState}>No bank accounts added yet.</div>}
@@ -117,15 +125,30 @@ function BankAccountsTab() {
           bank={selectedBank} 
         />
       )}
+
+      <ConfirmDialog
+        open={Boolean(confirmBankId)}
+        title="Delete Bank Account"
+        message="Are you sure you want to delete this bank account?"
+        intent="danger"
+        confirmLabel="Delete"
+        onConfirm={() => {
+          if (confirmBankId) deleteBank.mutate(confirmBankId);
+          setConfirmBankId(null);
+        }}
+        onCancel={() => setConfirmBankId(null)}
+      />
     </div>
   );
 }
 
 function ProductsTab() {
+  const { canManageProducts } = useDmsPermissions();
   const { data: products, isLoading } = useProductPresets();
   const deleteProduct = useDeleteProductPreset();
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [selectedProduct, setSelectedProduct] = useState<ProductPreset | undefined>();
+  const [confirmProductId, setConfirmProductId] = useState<string | null>(null);
   const [filterType, setFilterType] = useState<string>("ALL");
 
   if (isLoading) return <div className={styles.emptyState}>Loading products...</div>;
@@ -148,9 +171,11 @@ function ProductsTab() {
               <option key={t} value={t}>{t === "NORMAL" ? "MACHINE" : t}</option>
             ))}
           </select>
-          <button className={styles.btnPrimary} onClick={() => { setSelectedProduct(undefined); setIsModalOpen(true); }}>
-            <PlusCircleIcon /> Add Product
-          </button>
+          {canManageProducts && (
+            <button className={styles.btnPrimary} onClick={() => { setSelectedProduct(undefined); setIsModalOpen(true); }}>
+              <PlusCircleIcon /> Add Product
+            </button>
+          )}
         </div>
       </div>
 
@@ -182,14 +207,16 @@ function ProductsTab() {
                   <img src={product.image} alt={product.name} className={styles.productImage} />
                 </div>
               )}
-              <div className={styles.actions}>
-                <button className={styles.btnSecondary} onClick={() => { setSelectedProduct(product); setIsModalOpen(true); }}>
-                  <PencilIcon /> Edit
-                </button>
-                <button className={styles.btnDanger} onClick={() => { if(confirm("Are you sure?")) deleteProduct.mutate(product.id); }}>
-                  <TrashIcon /> Delete
-                </button>
-              </div>
+              {canManageProducts && (
+                <div className={styles.actions}>
+                  <button className={styles.btnSecondary} onClick={() => { setSelectedProduct(product); setIsModalOpen(true); }}>
+                    <PencilIcon /> Edit
+                  </button>
+                  <button className={styles.btnDanger} onClick={() => setConfirmProductId(product.id)}>
+                    <TrashIcon /> Delete
+                  </button>
+                </div>
+              )}
             </div>
           </div>
         ))}
@@ -203,6 +230,19 @@ function ProductsTab() {
           product={selectedProduct} 
         />
       )}
+
+      <ConfirmDialog
+        open={Boolean(confirmProductId)}
+        title="Delete Product"
+        message="Are you sure you want to delete this product from the catalog?"
+        intent="danger"
+        confirmLabel="Delete"
+        onConfirm={() => {
+          if (confirmProductId) deleteProduct.mutate(confirmProductId);
+          setConfirmProductId(null);
+        }}
+        onCancel={() => setConfirmProductId(null)}
+      />
     </div>
   );
 }

@@ -1,5 +1,6 @@
-import { ChevronDownIcon, ChevronUpIcon, PackageIcon, ShoppingCartIcon, Edit2Icon, Trash2Icon } from "lucide-react";
+import { ChevronDownIcon, ChevronUpIcon, PackageIcon, ShoppingCartIcon } from "lucide-react";
 import type { CatalogData } from "../api/types";
+import { useDmsPermissions } from "../../shared/hooks/useDmsPermissions";
 import styles from "./ProductCatalog.module.css";
 
 interface Props {
@@ -10,6 +11,7 @@ interface Props {
 }
 
 export function ProductCatalog({ catalog, expandedCategory, onToggleCategory, onAddToCart }: Props) {
+  const { canAddToCart } = useDmsPermissions();
   return (
     <div className={styles.accordion}>
       {Object.entries(catalog).map(([category, items]) => (
@@ -39,9 +41,11 @@ export function ProductCatalog({ catalog, expandedCategory, onToggleCategory, on
                     <div className={styles.priceRow}>
                       <span className={styles.price}>₹{item.price.toLocaleString()}</span>
                     </div>
-                    <button type="button" className={styles.btnPrimary} onClick={() => onAddToCart(item.id)}>
-                      <ShoppingCartIcon size={15} /> Add to Cart
-                    </button>
+                    {canAddToCart && (
+                      <button type="button" className={styles.btnPrimary} onClick={() => onAddToCart(item.id)}>
+                        <ShoppingCartIcon size={15} /> Add to Cart
+                      </button>
+                    )}
                   </div>
                 ))}
               </div>

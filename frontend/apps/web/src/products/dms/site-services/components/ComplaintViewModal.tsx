@@ -91,9 +91,19 @@ export function ComplaintViewModal({ isOpen, report, onEdit, onToggleStatus, onC
 
           {/* Attachment */}
           <div style={{ marginTop: '1rem' }}>
-            <h4 className={styles.sectionTitle}>Attached File</h4>
-            <div style={{ marginTop: '0.5rem' }}>
-              <FileAttachmentCell attachment={report.attachment} />
+            <h4 className={styles.sectionTitle}>
+              {report.attachments && Array.isArray(report.attachments) && report.attachments.length > 1
+                ? `Attached Files (${report.attachments.length})`
+                : "Attached File"}
+            </h4>
+            <div style={{ marginTop: '0.5rem', display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+              {report.attachments && Array.isArray(report.attachments) && report.attachments.length > 0 ? (
+                report.attachments.map((att: any, i: number) => (
+                  <FileAttachmentCell key={i} attachment={typeof att === "string" ? att : (att.file || att)} />
+                ))
+              ) : (
+                <FileAttachmentCell attachment={report.attachment} />
+              )}
             </div>
           </div>
         </div>

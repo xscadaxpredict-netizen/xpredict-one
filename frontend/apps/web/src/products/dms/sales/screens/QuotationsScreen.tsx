@@ -13,6 +13,7 @@ import { QuoteBuilderDialog } from "../components/QuoteBuilderDialog";
 import { QuotationPreviewDialog } from "../components/QuotationPreviewDialog";
 import type { Enquiry, Quotation, QuoteType } from "../api/types";
 import { StatusBadge } from "../components/StatusBadge";
+import { useDmsPermissions } from "../../shared/hooks/useDmsPermissions";
 import styles from "./QuotationsScreen.module.css";
 
 interface QuoteItem {
@@ -29,6 +30,7 @@ export function QuotationsScreen() {
 
   const deleteQuote = useDeleteQuotation();
   const confirmOrder = useConfirmOrder();
+  const { canCreateQuote, canEditQuote, canConfirmOrder, canDeleteQuote } = useDmsPermissions();
 
   const [editingQuote, setEditingQuote] = useState<{
     enquiryId?: string;
@@ -133,13 +135,15 @@ export function QuotationsScreen() {
             </>
           )}
 
-          <button
-            type="button"
-            className={styles.btnPrimary}
-            onClick={() => setEditingQuote({})}
-          >
-            <PlusCircleIcon /> Create Quote
-          </button>
+          {canCreateQuote && (
+            <button
+              type="button"
+              className={styles.btnPrimary}
+              onClick={() => setEditingQuote({})}
+            >
+              <PlusCircleIcon /> Create Quote
+            </button>
+          )}
         </div>
       </header>
 
@@ -229,15 +233,17 @@ export function QuotationsScreen() {
                           >
                             <EyeIcon />
                           </button>
-                          <button
-                            type="button"
-                            className={styles.iconBtn}
-                            title="Edit Quote"
-                            onClick={(e) => { e.stopPropagation(); setEditingQuote({ enquiryId: enquiry.id, quoteId: quote.id }); }}
-                          >
-                            <PencilIcon />
-                          </button>
-                          {!isConfirmed && enquiry.status !== "CONFIRMED" && (
+                          {canEditQuote && (
+                            <button
+                              type="button"
+                              className={styles.iconBtn}
+                              title="Edit Quote"
+                              onClick={(e) => { e.stopPropagation(); setEditingQuote({ enquiryId: enquiry.id, quoteId: quote.id }); }}
+                            >
+                              <PencilIcon />
+                            </button>
+                          )}
+                          {!isConfirmed && enquiry.status !== "CONFIRMED" && canConfirmOrder && (
                             <button
                               type="button"
                               className={`${styles.iconBtn} ${styles.iconBtnSuccess}`}
@@ -247,14 +253,16 @@ export function QuotationsScreen() {
                               <CheckIcon />
                             </button>
                           )}
-                          <button
-                            type="button"
-                            className={`${styles.iconBtn} ${styles.iconBtnDanger}`}
-                            title="Delete Quote"
-                            onClick={(e) => { e.stopPropagation(); handleDelete(enquiry.id, quote.id); }}
-                          >
-                            <TrashIcon />
-                          </button>
+                          {canDeleteQuote && (
+                            <button
+                              type="button"
+                              className={`${styles.iconBtn} ${styles.iconBtnDanger}`}
+                              title="Delete Quote"
+                              onClick={(e) => { e.stopPropagation(); handleDelete(enquiry.id, quote.id); }}
+                            >
+                              <TrashIcon />
+                            </button>
+                          )}
                           <button
                             type="button"
                             className={styles.expandBtn}
@@ -279,15 +287,17 @@ export function QuotationsScreen() {
                               >
                                 <EyeIcon />
                               </button>
-                              <button
-                                type="button"
-                                className={styles.iconBtn}
-                                title="Edit Quote"
-                                onClick={(e) => { e.stopPropagation(); setEditingQuote({ enquiryId: enquiry.id, quoteId: quote.id }); }}
-                              >
-                                <PencilIcon />
-                              </button>
-                              {!isConfirmed && enquiry.status !== "CONFIRMED" && (
+                              {canEditQuote && (
+                                <button
+                                  type="button"
+                                  className={styles.iconBtn}
+                                  title="Edit Quote"
+                                  onClick={(e) => { e.stopPropagation(); setEditingQuote({ enquiryId: enquiry.id, quoteId: quote.id }); }}
+                                >
+                                  <PencilIcon />
+                                </button>
+                              )}
+                              {!isConfirmed && enquiry.status !== "CONFIRMED" && canConfirmOrder && (
                                 <button
                                   type="button"
                                   className={`${styles.iconBtn} ${styles.iconBtnSuccess}`}
@@ -297,14 +307,16 @@ export function QuotationsScreen() {
                                   <CheckIcon />
                                 </button>
                               )}
-                              <button
-                                type="button"
-                                className={`${styles.iconBtn} ${styles.iconBtnDanger}`}
-                                title="Delete Quote"
-                                onClick={(e) => { e.stopPropagation(); handleDelete(enquiry.id, quote.id); }}
-                              >
-                                <TrashIcon />
-                              </button>
+                              {canDeleteQuote && (
+                                <button
+                                  type="button"
+                                  className={`${styles.iconBtn} ${styles.iconBtnDanger}`}
+                                  title="Delete Quote"
+                                  onClick={(e) => { e.stopPropagation(); handleDelete(enquiry.id, quote.id); }}
+                                >
+                                  <TrashIcon />
+                                </button>
+                              )}
                             </div>
 
                             <div className={styles.detailGrid}>

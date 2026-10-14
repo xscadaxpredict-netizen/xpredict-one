@@ -6,6 +6,7 @@ import { useSites, useWaterReports, useCreateWaterReport, useUpdateWaterReport, 
 import { WaterReportTable } from "../components/WaterReportTable";
 import { WaterReportModal } from "../components/WaterReportModal";
 import { WaterReportViewModal } from "../components/WaterReportViewModal";
+import { useDmsPermissions } from "../../shared/hooks/useDmsPermissions";
 import styles from "./WaterReportsScreen.module.css";
 import { useDialog } from "../../shared/hooks/useDialog";
 
@@ -25,6 +26,7 @@ export function WaterReportsScreen() {
   const createReportMutation = useCreateWaterReport();
   const updateReportMutation = useUpdateWaterReport();
   const deleteReportMutation = useDeleteWaterReport();
+  const { canCreateWaterReport } = useDmsPermissions();
   const [selectedSiteId, setSelectedSiteId] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -208,9 +210,11 @@ export function WaterReportsScreen() {
             />
           </div>
         </div>
-        <button type="button" className={styles.btnPrimary} onClick={openNewModal}>
-          <PlusIcon size={16} /> New Water Report
-        </button>
+        {canCreateWaterReport && (
+          <button type="button" className={styles.btnPrimary} onClick={openNewModal}>
+            <PlusIcon size={16} /> New Water Report
+          </button>
+        )}
       </div>
 
       <WaterReportTable 

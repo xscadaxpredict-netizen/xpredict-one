@@ -5,11 +5,13 @@ import { useTechSupport } from "../tech-support/api/techSupport";
 import { VideoList } from "../tech-support/components/VideoList";
 import { UploadVideoDialog } from "../tech-support/components/UploadVideoDialog";
 import { ConfirmDeleteModal } from "../../../shell/components/ConfirmDeleteModal";
+import { useDmsPermissions } from "../shared/hooks/useDmsPermissions";
 import type { MachineVideo } from "../tech-support/api/types";
 import styles from "./SettingsPage.module.css";
 
 export function SettingsVideosTab() {
   const { orgSlug } = useParams<{ orgSlug: string }>();
+  const { canUploadVideo, canDeleteVideo } = useDmsPermissions();
   const { videos, uploadVideo, deleteVideo } = useTechSupport(orgSlug!);
   const [searchQuery, setSearchQuery] = useState("");
   const [deleteId, setDeleteId] = useState<string | null>(null);
@@ -67,14 +69,20 @@ export function SettingsVideosTab() {
               onChange={e => setSearchQuery(e.target.value)}
             />
           </div>
-          <button className={styles.btnPrimary} onClick={() => openModal()}>
-            <PlusIcon size={16} style={{ marginRight: '6px' }} /> Upload Video
-          </button>
+          {canUploadVideo && (
+            <button className={styles.btnPrimary} onClick={() => openModal()}>
+              <PlusIcon size={16} style={{ marginRight: '6px' }} /> Upload Video
+            </button>
+          )}
         </div>
       </div>
 
       <div style={{ marginTop: '24px' }}>
-        <VideoList videos={filteredVideos} onEdit={openModal} onDelete={setDeleteId} />
+        <VideoList 
+          videos={filteredVideos} 
+          onEdit={canUploadVideo ? openModal : undefined} 
+          onDelete={canDeleteVideo ? setDeleteId : undefined} 
+        />
       </div>
 
       <UploadVideoDialog 

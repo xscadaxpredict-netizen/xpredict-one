@@ -2,9 +2,11 @@ import { useState, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
 import { useTools } from '../api/tools';
 import { SaveIcon, RefreshCwIcon } from 'lucide-react';
+import { useDmsPermissions } from '../../shared/hooks/useDmsPermissions';
 
 export function CalculatorSettingsScreen() {
   const { orgSlug } = useParams<{ orgSlug: string }>();
+  const { canManageSettings } = useDmsPermissions();
   const { calculatorSettings, settingsPending, updateCalculatorSettings } = useTools(orgSlug || '');
   
   const [constants, setConstants] = useState<any>({});
@@ -162,54 +164,56 @@ export function CalculatorSettingsScreen() {
 
       </div>
 
-      <div style={{ marginTop: '2rem', display: 'flex', justifyContent: 'flex-end', gap: '1rem', alignItems: 'center' }}>
-        <button 
-          onClick={() => {
-            const defaults = {
-                "home_avg_members": 4, 
-                "home_lts_pp": 150,
-                "school_lts_pp": 45,
-                "commercial_lts_pp": 45,
-                "hosp_opd_lts": 25,
-                "hosp_ipd_lts": 400,
-                "hosp_extra_lts": 25,
-                "toilet_lts_pp": 15,
-                "stp_emp_lts": 45,
-                "stp_kitchen_lts": 15,
-                "resort_persons_pr": 3,
-                "resort_lts_pp": 80,
-                "resort_kitchen_lts": 45,
-                "resort_pool_lts": 45
-            };
-            setConstants(defaults);
-            updateCalculatorSettings(
-              { constants: defaults },
-              {
-                onSuccess: () => showFeedback("Defaults loaded and saved!"),
-                onError: () => showFeedback("Failed to save defaults.", "error")
-              }
-            );
-          }}
-          style={{ padding: '0.75rem 1.5rem', background: 'var(--color-surface)', color: 'var(--color-text)', border: '1px solid var(--color-border-strong)', borderRadius: '8px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.5rem', fontWeight: 600 }}
-        >
-          <RefreshCwIcon size={16} /> Load Defaults
-        </button>
-        <button 
-          onClick={() => {
-            setConstants(calculatorSettings?.constants || {});
-            showFeedback("Changes discarded. Reverted to last saved constants.");
-          }}
-          style={{ padding: '0.75rem 1.5rem', background: 'transparent', border: '1px solid var(--color-border-strong)', borderRadius: '8px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.5rem' }}
-        >
-          <RefreshCwIcon size={16} /> Discard Changes
-        </button>
-        <button 
-          onClick={handleSave}
-          style={{ padding: '0.75rem 1.5rem', background: 'var(--color-primary)', color: 'white', border: 'none', borderRadius: '8px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.5rem', fontWeight: 600 }}
-        >
-          <SaveIcon size={16} /> Save Constants
-        </button>
-      </div>
+      {canManageSettings && (
+        <div style={{ marginTop: '2rem', display: 'flex', justifyContent: 'flex-end', gap: '1rem', alignItems: 'center' }}>
+          <button 
+            onClick={() => {
+              const defaults = {
+                  "home_avg_members": 4, 
+                  "home_lts_pp": 150,
+                  "school_lts_pp": 45,
+                  "commercial_lts_pp": 45,
+                  "hosp_opd_lts": 25,
+                  "hosp_ipd_lts": 400,
+                  "hosp_extra_lts": 25,
+                  "toilet_lts_pp": 15,
+                  "stp_emp_lts": 45,
+                  "stp_kitchen_lts": 15,
+                  "resort_persons_pr": 3,
+                  "resort_lts_pp": 80,
+                  "resort_kitchen_lts": 45,
+                  "resort_pool_lts": 45
+              };
+              setConstants(defaults);
+              updateCalculatorSettings(
+                { constants: defaults },
+                {
+                  onSuccess: () => showFeedback("Defaults loaded and saved!"),
+                  onError: () => showFeedback("Failed to save defaults.", "error")
+                }
+              );
+            }}
+            style={{ padding: '0.75rem 1.5rem', background: 'var(--color-surface)', color: 'var(--color-text)', border: '1px solid var(--color-border-strong)', borderRadius: '8px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.5rem', fontWeight: 600 }}
+          >
+            <RefreshCwIcon size={16} /> Load Defaults
+          </button>
+          <button 
+            onClick={() => {
+              setConstants(calculatorSettings?.constants || {});
+              showFeedback("Changes discarded. Reverted to last saved constants.");
+            }}
+            style={{ padding: '0.75rem 1.5rem', background: 'transparent', border: '1px solid var(--color-border-strong)', borderRadius: '8px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.5rem' }}
+          >
+            <RefreshCwIcon size={16} /> Discard Changes
+          </button>
+          <button 
+            onClick={handleSave}
+            style={{ padding: '0.75rem 1.5rem', background: 'var(--color-primary)', color: 'white', border: 'none', borderRadius: '8px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.5rem', fontWeight: 600 }}
+          >
+            <SaveIcon size={16} /> Save Constants
+          </button>
+        </div>
+      )}
     </div>
   );
 }

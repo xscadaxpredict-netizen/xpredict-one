@@ -1,6 +1,7 @@
 import { Fragment, useState } from "react";
 import { PhoneCallIcon, Trash2Icon, EyeIcon, CheckCircleIcon, XCircleIcon, PencilIcon, ChevronDownIcon, ChevronUpIcon } from "lucide-react";
 import { FileAttachmentCell } from "../../site-services/components/FileAttachmentCell";
+import { useDmsPermissions } from "../../shared/hooks/useDmsPermissions";
 import type { RequestCall } from "../api/types";
 import styles from "./CallRequestTable.module.css";
 
@@ -13,6 +14,7 @@ interface Props {
 }
 
 export function CallRequestTable({ calls, onView, onUpdateStatus, onEdit, onDelete }: Props) {
+  const { canEditCallRequest, canDeleteCallRequest, canResolveCallRequest } = useDmsPermissions();
   const [expandedId, setExpandedId] = useState<string | null>(null);
 
   const toggleExpand = (id: string) => {
@@ -93,14 +95,16 @@ export function CallRequestTable({ calls, onView, onUpdateStatus, onEdit, onDele
                     </td>
                     <td className={styles.td} onClick={(e) => e.stopPropagation()}>
                       <div className={styles.desktopActions} style={{ gap: "0.5rem", justifyContent: "flex-end", alignItems: "center" }}>
-                        {onEdit && (
+                        {onEdit && canEditCallRequest && (
                           <button className={styles.btnEdit} title="Edit Call Request" onClick={() => onEdit(call)}>
                             <PencilIcon size={16} />
                           </button>
                         )}
-                        <button className={styles.btnIconDanger} title="Delete Call Request" onClick={() => onDelete(call.id)}>
-                          <Trash2Icon size={16} />
-                        </button>
+                        {canDeleteCallRequest && (
+                          <button className={styles.btnIconDanger} title="Delete Call Request" onClick={() => onDelete(call.id)}>
+                            <Trash2Icon size={16} />
+                          </button>
+                        )}
                         <button
                           type="button"
                           className={styles.expandBtn}
@@ -129,24 +133,26 @@ export function CallRequestTable({ calls, onView, onUpdateStatus, onEdit, onDele
                             <button type="button" className={`${styles.btnSmall} ${styles.btnView}`} onClick={() => onView(call)}>
                               <EyeIcon size={12} /> View Details
                             </button>
-                            {call.status === "PENDING" && (
+                            {call.status === "PENDING" && canResolveCallRequest && (
                               <button type="button" className={`${styles.btnSmall} ${styles.btnComplete}`} onClick={() => onUpdateStatus(call.id, "COMPLETED")}>
                                 <CheckCircleIcon size={12} /> Mark Done
                               </button>
                             )}
-                            {call.status === "COMPLETED" && (
+                            {call.status === "COMPLETED" && canResolveCallRequest && (
                               <button type="button" className={`${styles.btnSmall} ${styles.btnUnmark}`} onClick={() => onUpdateStatus(call.id, "PENDING")}>
                                 <XCircleIcon size={12} /> Unmark
                               </button>
                             )}
-                            {onEdit && (
+                            {onEdit && canEditCallRequest && (
                               <button type="button" className={styles.btnEdit} onClick={() => onEdit(call)}>
                                 <PencilIcon size={16} /> Edit
                               </button>
                             )}
-                            <button type="button" className={styles.btnIconDanger} onClick={() => onDelete(call.id)}>
-                              <Trash2Icon size={16} /> Delete
-                            </button>
+                            {canDeleteCallRequest && (
+                              <button type="button" className={styles.btnIconDanger} onClick={() => onDelete(call.id)}>
+                                <Trash2Icon size={16} /> Delete
+                              </button>
+                            )}
                           </div>
                         </div>
                       </td>

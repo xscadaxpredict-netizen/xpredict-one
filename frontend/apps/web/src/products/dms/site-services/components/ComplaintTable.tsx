@@ -1,6 +1,7 @@
 import { Fragment, useState } from "react";
 import { AlertTriangleIcon, EyeIcon, Edit3Icon, Trash2Icon, CheckCircle2Icon, RotateCcwIcon, ChevronDownIcon, ChevronUpIcon } from "lucide-react";
 import { FileAttachmentCell } from "./FileAttachmentCell";
+import { useDmsPermissions } from "../../shared/hooks/useDmsPermissions";
 import styles from "./ComplaintTable.module.css";
 
 interface Props {
@@ -12,6 +13,7 @@ interface Props {
 }
 
 export function ComplaintTable({ reports, onView, onEdit, onToggleStatus, onDelete }: Props) {
+  const { canEditComplaint, canDeleteComplaint, canResolveComplaint } = useDmsPermissions();
   const [expandedId, setExpandedId] = useState<string | null>(null);
 
   const toggleExpand = (id: string) => {
@@ -90,7 +92,7 @@ export function ComplaintTable({ reports, onView, onEdit, onToggleStatus, onDele
                   </td>
                   <td className={styles.tdRight} onClick={(e) => e.stopPropagation()}>
                     <div className={styles.actions}>
-                      {onToggleStatus && (
+                      {onToggleStatus && canResolveComplaint && (
                         <button
                           type="button"
                           className={styles.iconBtn}
@@ -104,12 +106,16 @@ export function ComplaintTable({ reports, onView, onEdit, onToggleStatus, onDele
                       <button type="button" className={styles.iconBtn} title="View Complaint" onClick={() => onView(report)}>
                         <EyeIcon size={16} />
                       </button>
-                      <button type="button" className={styles.iconBtnPrimary} title="Edit Complaint" onClick={() => onEdit(report)}>
-                        <Edit3Icon size={16} />
-                      </button>
-                      <button type="button" className={`${styles.iconBtn} ${styles.iconBtnDanger}`} title="Delete Complaint" onClick={() => onDelete(report)}>
-                        <Trash2Icon size={16} />
-                      </button>
+                      {canEditComplaint && (
+                        <button type="button" className={styles.iconBtnPrimary} title="Edit Complaint" onClick={() => onEdit(report)}>
+                          <Edit3Icon size={16} />
+                        </button>
+                      )}
+                      {canDeleteComplaint && (
+                        <button type="button" className={`${styles.iconBtn} ${styles.iconBtnDanger}`} title="Delete Complaint" onClick={() => onDelete(report)}>
+                          <Trash2Icon size={16} />
+                        </button>
+                      )}
                       <button
                         type="button"
                         className={styles.expandBtn}
@@ -127,7 +133,7 @@ export function ComplaintTable({ reports, onView, onEdit, onToggleStatus, onDele
                     <td colSpan={9} className={styles.expandedCell}>
                       <div className={styles.expandedContent}>
                         <div className={styles.mobileActionsBar}>
-                          {onToggleStatus && (
+                          {onToggleStatus && canResolveComplaint && (
                             <button
                               type="button"
                               className={styles.iconBtn}
@@ -141,12 +147,16 @@ export function ComplaintTable({ reports, onView, onEdit, onToggleStatus, onDele
                           <button type="button" className={styles.iconBtn} onClick={() => onView(report)}>
                             <EyeIcon size={16} /> <span>View</span>
                           </button>
-                          <button type="button" className={styles.iconBtnPrimary} onClick={() => onEdit(report)}>
-                            <Edit3Icon size={16} /> <span>Edit</span>
-                          </button>
-                          <button type="button" className={`${styles.iconBtn} ${styles.iconBtnDanger}`} onClick={() => onDelete(report)}>
-                            <Trash2Icon size={16} /> <span>Delete</span>
-                          </button>
+                          {canEditComplaint && (
+                            <button type="button" className={styles.iconBtnPrimary} onClick={() => onEdit(report)}>
+                              <Edit3Icon size={16} /> <span>Edit</span>
+                            </button>
+                          )}
+                          {canDeleteComplaint && (
+                            <button type="button" className={`${styles.iconBtn} ${styles.iconBtnDanger}`} onClick={() => onDelete(report)}>
+                              <Trash2Icon size={16} /> <span>Delete</span>
+                            </button>
+                          )}
                         </div>
                       </div>
                     </td>

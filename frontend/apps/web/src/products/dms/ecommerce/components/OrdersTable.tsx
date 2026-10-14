@@ -1,6 +1,7 @@
 import { Fragment, useState } from "react";
 import { PackageIcon, Trash2Icon, EyeIcon, ChevronDownIcon, ChevronUpIcon, TruckIcon } from "lucide-react";
 import type { EcommerceOrder } from "../api/types";
+import { useDmsPermissions } from "../../shared/hooks/useDmsPermissions";
 import { OrderStatusBadge } from "./OrderStatusBadge";
 import styles from "./OrdersTable.module.css";
 
@@ -14,6 +15,7 @@ interface Props {
 }
 
 export function OrdersTable({ orders, onView, onApprove, onReject, onDeliver, onDelete }: Props) {
+  const { canApproveOrder, canDeliverOrder, canRejectOrder, canDeleteEcommerceOrder } = useDmsPermissions();
   const [expandedId, setExpandedId] = useState<string | null>(null);
 
   const toggleExpand = (id: string) => {
@@ -63,22 +65,24 @@ export function OrdersTable({ orders, onView, onApprove, onReject, onDeliver, on
                         <button type="button" className={`${styles.btnSmall} ${styles.btnView}`} onClick={() => onView(order)}>
                           <EyeIcon size={12} /> View PO
                         </button>
-                        {order.status === "PENDING" && (
+                        {order.status === "PENDING" && canApproveOrder && (
                           <button type="button" className={`${styles.btnSmall} ${styles.btnApprove}`} onClick={() => onApprove(order.id)}>Approve</button>
                         )}
-                        {order.status === "APPROVED" && onDeliver && (
+                        {order.status === "APPROVED" && onDeliver && canDeliverOrder && (
                           <button type="button" className={`${styles.btnSmall} ${styles.btnDeliver}`} onClick={() => onDeliver(order.id)}>
                             <TruckIcon size={12} /> Delivered
                           </button>
                         )}
-                        {(order.status === "PENDING" || order.status === "APPROVED") && (
+                        {(order.status === "PENDING" || order.status === "APPROVED") && canRejectOrder && (
                           <button type="button" className={`${styles.btnSmall} ${styles.btnReject}`} onClick={() => onReject(order.id, order.reject_reason)}>Reject</button>
                         )}
                       </div>
                     </td>
                     <td className={styles.td} onClick={(e) => e.stopPropagation()}>
                       <div style={{ display: "flex", gap: "0.5rem", justifyContent: "flex-end", alignItems: "center" }}>
-                        <button className={styles.btnIconDanger} title="Delete Order" onClick={() => onDelete(order.id)}><Trash2Icon size={16} /></button>
+                        {canDeleteEcommerceOrder && (
+                          <button className={styles.btnIconDanger} title="Delete Order" onClick={() => onDelete(order.id)}><Trash2Icon size={16} /></button>
+                        )}
                         <button
                           type="button"
                           className={styles.expandBtn}
@@ -99,20 +103,22 @@ export function OrdersTable({ orders, onView, onApprove, onReject, onDeliver, on
                             <button type="button" className={`${styles.btnSmall} ${styles.btnView}`} onClick={() => onView(order)}>
                               <EyeIcon size={12} /> View PO
                             </button>
-                            {order.status === "PENDING" && (
+                            {order.status === "PENDING" && canApproveOrder && (
                               <button type="button" className={`${styles.btnSmall} ${styles.btnApprove}`} onClick={() => onApprove(order.id)}>Approve</button>
                             )}
-                            {order.status === "APPROVED" && onDeliver && (
+                            {order.status === "APPROVED" && onDeliver && canDeliverOrder && (
                               <button type="button" className={`${styles.btnSmall} ${styles.btnDeliver}`} onClick={() => onDeliver(order.id)}>
                                 <TruckIcon size={12} /> Delivered
                               </button>
                             )}
-                            {(order.status === "PENDING" || order.status === "APPROVED") && (
+                            {(order.status === "PENDING" || order.status === "APPROVED") && canRejectOrder && (
                               <button type="button" className={`${styles.btnSmall} ${styles.btnReject}`} onClick={() => onReject(order.id, order.reject_reason)}>Reject</button>
                             )}
-                            <button type="button" className={styles.btnIconDanger} onClick={() => onDelete(order.id)}>
-                              <Trash2Icon size={16} /> Delete
-                            </button>
+                            {canDeleteEcommerceOrder && (
+                              <button type="button" className={styles.btnIconDanger} onClick={() => onDelete(order.id)}>
+                                <Trash2Icon size={16} /> Delete
+                              </button>
+                            )}
                           </div>
                         </div>
                       </td>

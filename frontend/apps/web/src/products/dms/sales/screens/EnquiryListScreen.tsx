@@ -23,6 +23,7 @@ import {
 import { EnquiryTable } from "../components/EnquiryTable";
 import { NewEnquiryDialog } from "../components/NewEnquiryDialog";
 import { FollowupDialog } from "../components/FollowupDialog";
+import { useDmsPermissions } from "../../shared/hooks/useDmsPermissions";
 import { QuoteBuilderDialog } from "../components/QuoteBuilderDialog";
 import { QuotationPreviewDialog } from "../components/QuotationPreviewDialog";
 import type { NewEnquiry, NewFollowup, Enquiry, Quotation, Followup } from "../api/types";
@@ -50,6 +51,7 @@ export function EnquiryListScreen() {
   const deleteQuotation = useDeleteQuotation();
   const deleteEnquiry = useDeleteEnquiry();
   const updateEnquiry = useUpdateEnquiry();
+  const { canCreateEnquiry } = useDmsPermissions();
 
   const [editingQuote, setEditingQuote] = useState<{
     enquiryId: string;
@@ -203,13 +205,15 @@ export function EnquiryListScreen() {
             </label>
           )}
 
-          <button
-            type="button"
-            className={styles.btnPrimary}
-            onClick={() => setIsNewEnquiryOpen(true)}
-          >
-            <PlusCircleIcon /> New Enquiry
-          </button>
+          {canCreateEnquiry && (
+            <button
+              type="button"
+              className={styles.btnPrimary}
+              onClick={() => setIsNewEnquiryOpen(true)}
+            >
+              <PlusCircleIcon /> New Enquiry
+            </button>
+          )}
         </div>
       </header>
 
@@ -237,13 +241,15 @@ export function EnquiryListScreen() {
           title="No enquiries yet"
           body="Create your first enquiry to start tracking customers and follow-ups."
           action={
-            <button
-              type="button"
-              className={styles.btnPrimary}
-              onClick={() => setIsNewEnquiryOpen(true)}
-            >
-              <PlusCircleIcon /> New Enquiry
-            </button>
+            canCreateEnquiry ? (
+              <button
+                type="button"
+                className={styles.btnPrimary}
+                onClick={() => setIsNewEnquiryOpen(true)}
+              >
+                <PlusCircleIcon /> New Enquiry
+              </button>
+            ) : undefined
           }
         />
       )}

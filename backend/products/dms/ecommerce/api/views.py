@@ -44,7 +44,7 @@ class OrderDetailView(TenantAPIView):
     def delete(self, request: Request, org_slug: str, pk: str) -> Response:
         order = selectors.get_order(order_id=pk)
         if not order:
-            from .exceptions import not_found
+            from ..exceptions import not_found
             raise not_found("Order")
         order.delete()
         return Response(status=status.HTTP_204_NO_CONTENT)

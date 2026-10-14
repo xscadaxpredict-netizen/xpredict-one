@@ -12,6 +12,7 @@ import { ScheduleTable } from "../components/ScheduleTable";
 import { ScheduleModal } from "../components/ScheduleModal";
 import type { ScheduleEntry } from "../api/types";
 import type { Enquiry } from "../../sales/api/types";
+import { useDmsPermissions } from "../../shared/hooks/useDmsPermissions";
 import styles from "./SchedulingScreen.module.css";
 import { useDialog } from "../../shared/hooks/useDialog";
 
@@ -31,6 +32,7 @@ export function SchedulingScreen() {
   const [searchQuery, setSearchQuery] = useState("");
   const { data: sites, isPending: sitesPending, isError, error } = useSites();
   const { data: schedules, isPending: schedulesPending } = useSchedules(selectedSiteId);
+  const { canScheduleService } = useDmsPermissions();
   
   const updateProfileMutation = useUpdateSiteProfile();
   const createScheduleMutation = useCreateSchedule();
@@ -196,13 +198,15 @@ export function SchedulingScreen() {
             />
           </div>
 
-          <button
-            type="button"
-            className={styles.btnPrimary}
-            onClick={handleOpenCreateModal}
-          >
-            <PlusIcon size={16} /> Schedule Service
-          </button>
+          {canScheduleService && (
+            <button
+              type="button"
+              className={styles.btnPrimary}
+              onClick={handleOpenCreateModal}
+            >
+              <PlusIcon size={16} /> Schedule Service
+            </button>
+          )}
         </div>
       </div>
 
