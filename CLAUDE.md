@@ -97,10 +97,11 @@ Set the database up once, as a MySQL admin: `mysql -u root -p < backend/scripts/
 **The control plane is BUILT and MIGRATED.** Eleven models: `Organization`,
 `BusinessUnit`, `Membership`, `Invitation`, `InvitationAppGrant` in `core/organizations`;
 `Permission`, `Role`, `RolePermission`, `AppAccess` in `core/permissions`;
-`AppSubscription` in `core/billing`; and `User`, which was already there. **48 permissions
-and nine roles are seeded** by `core/permissions/migrations/0002_seed_catalogue.py` from
-`core/permissions/catalogue.py` — idempotent, reversible, and it withdraws a grant the
-catalogue no longer makes.
+`AppSubscription` in `core/billing`; and `User`, which was already there. **55 permissions
+and nine roles are seeded** — 48 by `core/permissions/migrations/0002_seed_catalogue.py`
+from `core/permissions/catalogue.py`, and seven more by `0004` for the DMS reference
+library, tools and store orders (C67). Both are idempotent and reversible, and 0002
+withdraws a grant the catalogue no longer makes.
 
 **Permissions are ROWS, not a Python registry (C44)** — reversing the last part of C42,
 because the owner wants the list queryable in Workbench rather than readable only by
@@ -141,6 +142,24 @@ default is `None`, not `[]`, so a view nobody finished is loud on its first requ
 instead of quietly permitting everybody. An endpoint that genuinely needs none says
 `[]` and says why. `required_any_permission` and `method_permissions` cover "any one
 of these" and "more for this HTTP method".
+
+**AND NO BASE CLASS MAY SUPPLY THAT DEFAULT (C66).** `TenantAPIView` set
+`required_permissions = []`, which switched the rule above off for the whole of DMS:
+with `[]` inherited, the value is never `None`, the check can never fire, and
+"we decided this needs nothing" becomes indistinguishable from "nobody got round to
+it". Thirteen views were in the second state and nine write actions were open to any
+member of the organisation, up to rewriting the capacity calculator's constants.
+**`tests/test_org_scoped_permissions.py` had pinned the rule since it was written and
+did not catch it**, because it tests a view inheriting `OrgScopedAPIView` while every
+DMS view inherits `TenantAPIView`. A product base class needs its own assertion —
+inheriting a rule is not the same as being covered by its test.
+
+**WHICH ROLE MAY WRITE FOLLOWS THE SCOPE OF THE DATA, NOT SENIORITY (C67).** A
+`UnitScopedModel` row belongs to one dealership, so a Manager may write it and
+`allowed_units` confines them. A `BaseModel` row has no `unit_id` — one copy per
+organisation, read by every dealership — so it is granted at organisation level only,
+to `dms.group_operations`. Notably **not** to `dms.system_admin`, which sounds like an
+admin and is unit-level; a test asserts that absence so reversing it is deliberate.
 
 **EVERY ADMIN URL ENDS IN A SLASH, and that is not style.** `APPEND_SLASH` makes a
 slashless GET 301 silently and a slashless POST **raise** — so a frontend calling
