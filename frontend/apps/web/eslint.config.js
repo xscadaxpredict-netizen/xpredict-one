@@ -143,10 +143,45 @@ export default tseslint.config(
       },
     },
     rules: {
-      // Server data comes from the generated client. An `any` means someone
-      // bypassed the API contract, and the contract is the only thing keeping
-      // frontend and backend honest with each other.
-      "@typescript-eslint/no-explicit-any": "error",
+      /*
+       * WARNINGS, NOT ERRORS, AND THAT IS A DECISION (C65) rather than a
+       * standard being quietly dropped.
+       *
+       * The comment that used to sit here read: "Server data comes from the
+       * generated client. An `any` means someone bypassed the API contract."
+       * That reason EXPIRED on 2026-10-02, when C43 removed drf-spectacular
+       * and the generated client with it. There is no contract left to bypass:
+       * every request and response type in this app is hand-written, and an
+       * `any` is now somebody not having written one, which is a different and
+       * much smaller sin.
+       *
+       * THE FIVE `no-unsafe-*` RULES MOVE WITH IT, because they only ever fire
+       * ON an `any` value. Permitting the cause while erroring on every use of
+       * it is not a position -- it would leave 1,057 errors nobody could clear
+       * without doing the very work the first rule no longer demands.
+       *
+       * WHAT THIS DOES NOT MEAN. These are still reported, and the count is
+       * still the honest measure of how much of this app is unchecked: 1,088
+       * at the time of writing, 89% of them from roughly 117 `any`
+       * annotations in `site-services` and `tools`. The risk they describe is
+       * real and unchanged -- a backend field renamed under a typed shape is
+       * caught at build time, and under an `any` it reaches a user. One
+       * already did: `UserManual.fileName` was undefined in every response for
+       * as long as that screen existed.
+       *
+       * STRICT IN `packages/` STILL, where the root config keeps this an
+       * error. Those three packages have zero `any` today, and they are the
+       * shared contract layer -- an untyped value in `api-client` propagates
+       * to every consumer, while one inside a screen is contained to it.
+       * Relaxing a rule that is being met buys nothing.
+       */
+      "@typescript-eslint/no-explicit-any": "warn",
+      "@typescript-eslint/no-unsafe-member-access": "warn",
+      "@typescript-eslint/no-unsafe-assignment": "warn",
+      "@typescript-eslint/no-unsafe-call": "warn",
+      "@typescript-eslint/no-unsafe-argument": "warn",
+      "@typescript-eslint/no-unsafe-return": "warn",
+
       "@typescript-eslint/consistent-type-imports": "error",
       "no-restricted-imports": ["error", { paths: QUERY_HOOK_PATHS }],
     },

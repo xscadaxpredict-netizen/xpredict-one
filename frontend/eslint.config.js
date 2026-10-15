@@ -21,9 +21,21 @@ export default tseslint.config(
   ...tseslint.configs.recommended,
   {
     rules: {
-      // Server data comes from the generated client. An `any` means someone
-      // bypassed the API contract, and the contract is the only thing keeping
-      // frontend and backend honest with each other.
+      /*
+       * STILL AN ERROR HERE, DELIBERATELY, while `apps/web` relaxed it to a
+       * warning (C65).
+       *
+       * The original reason is gone -- it said "server data comes from the
+       * generated client, and an `any` means someone bypassed the API
+       * contract", and C43 removed that client on 2026-10-02. What justifies
+       * it NOW is different and narrower: these three packages are the shared
+       * layer. An untyped value in `api-client` propagates to every screen
+       * that calls it, while an `any` inside one product screen stops there.
+       *
+       * It also costs nothing: `api-client`, `ui` and `auth` contain zero
+       * `any` between them, and zero lint problems. Relaxing a rule that is
+       * already being met would buy no time and lose the guarantee.
+       */
       "@typescript-eslint/no-explicit-any": "error",
       "@typescript-eslint/consistent-type-imports": "error",
 
