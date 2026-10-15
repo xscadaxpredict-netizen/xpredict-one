@@ -87,6 +87,56 @@ PERMISSIONS: list[tuple[str, str, str, str, str]] = [
     ("dms.ticket.assign", "dms", "tech-support", "Tickets", "Assign a ticket to somebody"),
     ("dms.ticket.close", "dms", "tech-support", "Tickets", "Close a ticket"),
     ("dms.ticket.export", "dms", "tech-support", "Tickets", "Download tickets as a file"),
+    # --- DMS: the reference library -----------------------------------------
+    #
+    # WHY `manage` RATHER THAN `create` AND `delete`, which is the convention
+    # everywhere above. There is no screen that lets somebody add a manual and
+    # not remove one: the Settings tab shows an upload button and a bin on the
+    # same row, to the same audience. Two codes that are always granted and
+    # always checked together describe a distinction that does not exist, and
+    # the Roles page would show a pair nobody can meaningfully split.
+    #
+    # The fine-grained verbs above are not decoration -- `dms.order.create`
+    # without `dms.order.confirm` is the whole shape of a sales rep -- so this
+    # is a deliberate exception where that reasoning does not apply, not a
+    # relaxation of C42.
+    ("dms.manual.manage", "dms", "tech-support", "Library", "Add or remove user manuals"),
+    ("dms.video.manage", "dms", "tech-support", "Library", "Add or remove machine videos"),
+    # --- DMS: Tools ---------------------------------------------------------
+    (
+        "dms.marketing_asset.manage",
+        "dms",
+        "tools",
+        "Marketing",
+        "Add or remove marketing material",
+    ),
+    (
+        "dms.calculator.manage",
+        "dms",
+        "tools",
+        "Calculator",
+        "Change the capacity calculator's constants",
+    ),
+    (
+        "dms.timer_calculation.delete",
+        "dms",
+        "tools",
+        "Calculator",
+        "Remove a saved calculation",
+    ),
+    # --- DMS: E-commerce ----------------------------------------------------
+    #
+    # THIS IS THE `ecommerce` MODULE INSIDE DMS, not the deferred E-commerce
+    # suite app (C64). The store a dealership buys from, not a storefront sold
+    # to a customer.
+    ("dms.store_order.create", "dms", "ecommerce", "Store orders", "Place a store order"),
+    (
+        "dms.store_order.manage",
+        "dms",
+        "ecommerce",
+        "Store orders",
+        "Cancel a store order, or move it along",
+    ),
     # --- CRM ----------------------------------------------------------------
     #
     # ONE PERMISSION, deliberately. CRM is built after DMS ships, and designing
@@ -119,6 +169,36 @@ _MANAGER = [
     "dms.ticket.view",
     "dms.ticket.assign",
     "dms.ticket.close",
+    # The two UNIT-SCOPED tools. A store order and a saved calculation both
+    # belong to one dealership, so a dealership's manager is the right person
+    # and `allowed_units` keeps them to their own either way.
+    "dms.store_order.create",
+    "dms.store_order.manage",
+    "dms.timer_calculation.delete",
+]
+
+# WHAT THE WHOLE ORGANISATION SHARES, and why it is not in `_MANAGER`.
+#
+# `UserManual`, `MachineVideo`, `MarketingAsset` and `CalculatorSettings` all
+# inherit `BaseModel`, not `UnitScopedModel` -- they have no `unit_id`. So
+# `allowed_units` does not filter them and cannot: there is one copy per
+# organisation and every dealership reads it.
+#
+# That makes a unit-level grant the wrong shape rather than merely generous.
+# A Manager at one dealership holding these would reach every other
+# dealership's screens through a row they are allowed to edit, which is the
+# exact reach C5 and C40 exist to prevent -- and the calculator constants
+# decide how every quotation in the organisation is sized.
+#
+# So they are granted at ORGANISATION level only, where the audience matches
+# the data. If that proves too tight in practice -- the likeliest complaint is
+# a dealer admin who cannot upload a manual -- the answer is another migration
+# granting them to `dms.system_admin` too, not moving them here.
+_ORG_LIBRARY = [
+    "dms.manual.manage",
+    "dms.video.manage",
+    "dms.marketing_asset.manage",
+    "dms.calculator.manage",
 ]
 
 
@@ -226,12 +306,18 @@ ROLES: dict[str, tuple[str, str, str, str, list[str]]] = {
         "dms",
         "org",
         "Works across every dealership, not just one.",
-        # MANAGER'S SET EXACTLY, and that is the clearest proof the two axes are
-        # separate: identical permissions, different unit_id, completely
-        # different reach. One works at a dealership; this acts across all of
-        # them at once, which is why it is deliberately the only writing role at
-        # organisation level.
-        _MANAGER,
+        # MANAGER'S SET PLUS THE FOUR ORGANISATION-LEVEL ONES.
+        #
+        # It used to be Manager's set EXACTLY, and that was the clearest proof
+        # the two axes are separate: identical permissions, different unit_id,
+        # completely different reach. That demonstration is worth less than
+        # putting org-wide data in the hands of the org-level role, so it is
+        # recorded here rather than preserved -- `_MANAGER` is still the whole
+        # of what a dealership can do, and the difference is exactly the four
+        # resources that have no dealership.
+        #
+        # This remains the only WRITING role at organisation level.
+        [*_MANAGER, *_ORG_LIBRARY],
     ),
     "crm.member": (
         "CRM user",
