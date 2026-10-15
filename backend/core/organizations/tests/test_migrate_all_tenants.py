@@ -8,17 +8,18 @@ The command's own logic -- which organisations are selected, what stops the
 run, what is reported -- is tested for real. That is the part being written,
 and it is the part that will be wrong.
 
-The migration APPLICATION is not, and cannot be yet: **no tenant app has a
-single migration on this branch**, so there is nothing for Django to apply to
-a tenant database and no way to prove it did. `tenant_migration_targets()`
-returns an empty list, which `test_nothing_to_do` pins as the honest answer.
-Everything past that point is exercised by patching that function to name an
-app, so the command believes there is work -- which tests the loop, the
-failure handling and the reporting without pretending a migration ran.
+THAT DAY HAS ARRIVED, and this file was written expecting it. The DMS
+modules brought nineteen tenant migrations, so `tenant_migration_targets()`
+no longer returns an empty list and the "nothing to do" branch is
+unreachable. `TestAnOrganisationAlreadyMigrated` is the real test that
+replaced the one pinning it, against the tenant database the suite builds.
 
-**The day a tenant app gains its first migration, the patched tests here
-should be replaced by real ones**, in the shape `test_provisioning.py` already
-uses: run it, then read the tables out of the database. That file is the model,
+The REST of this file still patches, and deliberately: `TestSelection` and the
+failure handling are about which organisations the loop visits and what stops
+it, and standing up thirty real tenant databases to count them would test
+MySQL rather than the command. The application path is covered by
+`test_provisioning.py`, which refuses to mock exactly this, and by the test
+above. That file is the model,
 because it refuses to mock exactly this.
 
 `provision_tenant` already applies tenant migrations for real and is tested
@@ -86,18 +87,68 @@ def run(*args, **options) -> str:
 
 
 
-class TestNothingToDo:
-    def test_it_says_so_rather_than_claiming_success(self):
-        """
-        THE HONEST ANSWER WHILE NO TENANT APP HAS MIGRATIONS. A silent success
-        here reads as "all your databases are migrated", which is a claim this
-        command has no business making when it did nothing.
-        """
-        make_org()
+class TestNowThatTenantAppsHaveMigrations:
+    """
+    REPLACES `test_it_says_so_rather_than_claiming_success`, WHOSE PREMISE
+    EXPIRED. That test asserted the "No tenant app has migrations" branch --
+    the honest answer while `tenant_migration_targets()` returned an empty
+    list. The DMS modules brought nineteen migrations across five apps, so the
+    branch is now unreachable and the test was pinning code that can no longer
+    run.
 
-        output = run()
+    IT FAILED LOUDLY RATHER THAN QUIETLY, which is the part worth keeping:
+    with real targets the command tried to reach `xpredict_fake_tenant_1` -- a
+    database `make_org()` names but never creates -- and raised `CommandError`
+    saying one organisation failed. That is the command working, and the first
+    evidence it does what it claims, so it is now asserted on purpose below.
 
-        assert "No tenant app has migrations" in output
+    WHAT IS STILL NOT TESTED HERE, stated rather than implied: a real
+    migration being APPLIED to a real tenant database. The suite's tenant
+    alias already holds the DMS tables -- pytest-django built them when it
+    created the test database -- while that database's own
+    `django_migrations` does not record them, so a real run collides with
+    `Table 'dms_sales_bankaccount' already exists`. That is an artefact of the
+    test harness, not the command: `provision_tenant` applies these same
+    targets for real and `test_provisioning.py` reads the tables back out.
+    Proving it for THIS command needs a tenant database the suite did not
+    build, which is a conftest change rather than a test, and it is recorded
+    in the session log instead of being faked here.
+    """
+
+    def test_the_targets_are_the_real_tenant_apps(self):
+        """
+        The list that used to be empty. `--plan` touches no schema, so this is
+        the cheap half of the proof: the command now has real work to name.
+        """
+        make_org(real=True)
+
+        output = run("--plan")
+
+        assert "5 tenant app(s) with migrations" in output
+        for label in (
+            "dms_ecommerce",
+            "dms_sales",
+            "dms_site_services",
+            "dms_tech_support",
+            "dms_tools",
+        ):
+            assert label in output
+
+    def test_an_organisation_whose_database_is_missing_is_reported_not_skipped(self):
+        """
+        THE FAILURE MODE THE RUNBOOK DEPENDS ON. `deploy/README.md` says not to
+        continue past a failure here, which is only safe if a failure is
+        actually reported -- a command that skipped an unreachable database
+        and printed a summary would read as success and leave that customer
+        with no schema.
+
+        `make_org()` gives an organisation a `db_name` nothing ever created,
+        which is exactly that situation.
+        """
+        make_org(slug="never-provisioned-for-real")
+
+        with pytest.raises(CommandError, match=r"1 organisation\(s\) failed"):
+            run()
 
     def test_a_mistyped_slug_is_refused_even_then(self):
         """
