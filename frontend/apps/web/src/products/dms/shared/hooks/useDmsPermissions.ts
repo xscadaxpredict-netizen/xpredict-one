@@ -79,24 +79,45 @@ export function useDmsPermissions() {
     canDeleteCallRequest: isManagerOrAdmin,
 
     // Tech Support / Settings: Uploads & Master Data
-    canUploadManual: isManagerOrAdmin,
-    canDeleteManual: isManagerOrAdmin,
-    canUploadVideo: isManagerOrAdmin,
-    canDeleteVideo: isManagerOrAdmin,
+    //
+    // THESE FOUR ASK THE BACKEND'S OWN QUESTION, not `isManagerOrAdmin`.
+    // Manuals, videos and marketing material are organisation-wide rows
+    // (`BaseModel`, no unit_id), so the API grants them at organisation level
+    // only -- `dms.group_operations`, which is also the role an owner is
+    // seeded with. Keying these off `isManagerOrAdmin` showed a dealership
+    // Manager an Upload button that answered 403, which is C55's lesson
+    // pointing the other way: the UI must not be more generous than the API
+    // either.
+    canUploadManual: access.can("dms.manual.manage"),
+    canDeleteManual: access.can("dms.manual.manage"),
+    canUploadVideo: access.can("dms.video.manage"),
+    canDeleteVideo: access.can("dms.video.manage"),
+    canManageMarketing: access.can("dms.marketing_asset.manage"),
+    // Bank accounts, which this change did not touch -- their endpoint still
+    // authorises on membership, so the old rule stands here rather than being
+    // tightened on a guess.
     canManageSettings: isManagerOrAdmin,
 
     // Tools
     canUseCalculator: access.hasModule("tools"),
     canAccessMarketingKit: access.hasModule("tools"),
     canAccessFeasibility: access.hasModule("tools"),
-    canConfigureCalculator: isManagerOrAdmin,
+    // The constants every capacity calculation in the organisation is sized
+    // from. Organisation-level, same as the library above.
+    canConfigureCalculator: access.can("dms.calculator.manage"),
 
     // Ecommerce
-    canAddToCart: isManagerOrAdmin || access.can("dms.order.create"),
-    canApproveOrder: isManagerOrAdmin,
-    canDeliverOrder: isManagerOrAdmin,
-    canRejectOrder: isManagerOrAdmin,
-    canDeleteEcommerceOrder: isManagerOrAdmin,
+    //
+    // `dms.order.create` IS THE WRONG CODE HERE and was the subtler half of
+    // the mismatch: that permission is for a SALES order raised for a
+    // customer, which a sales representative holds. A store order is the
+    // dealership buying from the manufacturer, so it has its own code -- and
+    // a rep was shown Add to Cart, then refused at checkout.
+    canAddToCart: access.can("dms.store_order.create"),
+    canApproveOrder: access.can("dms.store_order.manage"),
+    canDeliverOrder: access.can("dms.store_order.manage"),
+    canRejectOrder: access.can("dms.store_order.manage"),
+    canDeleteEcommerceOrder: access.can("dms.store_order.manage"),
     canManageProducts: isManagerOrAdmin,
   };
 }

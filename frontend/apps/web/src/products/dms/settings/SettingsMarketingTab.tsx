@@ -9,7 +9,7 @@ import type { MaterialType } from "../tools/api/types";
 import styles from "./SettingsPage.module.css";
 
 export function SettingsMarketingTab() {
-  const { canManageSettings } = useDmsPermissions();
+  const { canManageMarketing } = useDmsPermissions();
   const { brochures, videos, ads, addMaterial, updateMaterial, deleteMaterial } = useMarketingKit();
 
   const [expandedSection, setExpandedSection] = useState<MaterialType | "">("brochure");
@@ -53,7 +53,7 @@ export function SettingsMarketingTab() {
     <div>
       <div className={styles.sectionHeader} style={{ marginTop: '24px' }}>
         <h2 className={styles.sectionTitle}>Marketing Kit (Tools)</h2>
-        {canManageSettings && (
+        {canManageMarketing && (
           <button className={styles.btnPrimary} onClick={() => openModal("brochure")}>
             <PlusIcon size={16} style={{ marginRight: '6px' }} /> Upload Material
           </button>
@@ -67,8 +67,8 @@ export function SettingsMarketingTab() {
           items={brochures}
           isExpanded={expandedSection === "brochure"}
           onToggle={() => setExpandedSection(expandedSection === "brochure" ? "" : "brochure")}
-          onEdit={canManageSettings ? (item) => openModal("brochure", item) : undefined}
-          onDelete={canManageSettings ? (id) => setDeleteData({ type: "brochure", id }) : undefined}
+          onEdit={canManageMarketing ? (item) => openModal("brochure", item) : undefined}
+          onDelete={canManageMarketing ? (id) => setDeleteData({ type: "brochure", id }) : undefined}
         />
 
         <MaterialAccordion 
@@ -77,8 +77,8 @@ export function SettingsMarketingTab() {
           items={videos}
           isExpanded={expandedSection === "video"}
           onToggle={() => setExpandedSection(expandedSection === "video" ? "" : "video")}
-          onEdit={canManageSettings ? (item) => openModal("video", item) : undefined}
-          onDelete={canManageSettings ? (id) => setDeleteData({ type: "video", id }) : undefined}
+          onEdit={canManageMarketing ? (item) => openModal("video", item) : undefined}
+          onDelete={canManageMarketing ? (id) => setDeleteData({ type: "video", id }) : undefined}
         />
 
         <MaterialAccordion 
@@ -87,8 +87,8 @@ export function SettingsMarketingTab() {
           items={ads}
           isExpanded={expandedSection === "ad"}
           onToggle={() => setExpandedSection(expandedSection === "ad" ? "" : "ad")}
-          onEdit={canManageSettings ? (item) => openModal("ad", item) : undefined}
-          onDelete={canManageSettings ? (id) => setDeleteData({ type: "ad", id }) : undefined}
+          onEdit={canManageMarketing ? (item) => openModal("ad", item) : undefined}
+          onDelete={canManageMarketing ? (id) => setDeleteData({ type: "ad", id }) : undefined}
         />
       </div>
 
