@@ -16,7 +16,6 @@ from django.db import models
 
 from shared.base_models import UnitScopedModel
 
-
 # ============================================================================
 # SiteServiceProfile
 # ============================================================================
@@ -34,7 +33,7 @@ class SiteServiceProfile(UnitScopedModel):
     service_type = models.CharField(max_length=100, blank=True, default="")
     service_interval_days = models.PositiveIntegerField(null=True, blank=True)
     last_serviced_date = models.DateField(null=True, blank=True)
-    
+
     technician_user_id = models.UUIDField(null=True, blank=True)
     technician_display_name = models.CharField(max_length=255, blank=True, default="")
     notes = models.TextField(blank=True, default="")

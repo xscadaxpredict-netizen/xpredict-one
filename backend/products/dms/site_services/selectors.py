@@ -13,12 +13,13 @@ Use `Model.all_units` only for deliberate fleet-wide reporting, and justify it.
 from __future__ import annotations
 
 import uuid
-from typing import Optional
+
 from django.db.models import QuerySet
 
-from products.dms.sales.models import ConfirmedSite, Quotation
-from .models import ServiceSchedule, ServiceReport, WaterReport, Complaint, SiteServiceProfile
+from products.dms.sales.models import ConfirmedSite
+
 from .exceptions import not_found
+from .models import Complaint, ServiceReport, ServiceSchedule, WaterReport
 
 
 def list_sites() -> QuerySet[ConfirmedSite]:
@@ -36,7 +37,7 @@ def get_site(site_id: uuid.UUID) -> ConfirmedSite:
     return site
 
 
-def list_schedules(site_id: Optional[uuid.UUID] = None) -> QuerySet[ServiceSchedule]:
+def list_schedules(site_id: uuid.UUID | None = None) -> QuerySet[ServiceSchedule]:
     qs = ServiceSchedule.objects.all().order_by("scheduled_date")
     if site_id:
         qs = qs.filter(site_id=site_id)
@@ -50,7 +51,7 @@ def get_schedule(schedule_id: uuid.UUID) -> ServiceSchedule:
     return schedule
 
 
-def list_service_reports(site_id: Optional[uuid.UUID] = None) -> QuerySet[ServiceReport]:
+def list_service_reports(site_id: uuid.UUID | None = None) -> QuerySet[ServiceReport]:
     qs = ServiceReport.objects.prefetch_related("attachments").order_by("-service_date")
     if site_id:
         qs = qs.filter(site_id=site_id)
@@ -64,7 +65,7 @@ def get_service_report(report_id: uuid.UUID) -> ServiceReport:
     return report
 
 
-def list_water_reports(site_id: Optional[uuid.UUID] = None) -> QuerySet[WaterReport]:
+def list_water_reports(site_id: uuid.UUID | None = None) -> QuerySet[WaterReport]:
     qs = WaterReport.objects.all().order_by("-date_tested")
     if site_id:
         qs = qs.filter(site_id=site_id)
@@ -78,7 +79,7 @@ def get_water_report(report_id: uuid.UUID) -> WaterReport:
     return report
 
 
-def list_complaints(site_id: Optional[uuid.UUID] = None) -> QuerySet[Complaint]:
+def list_complaints(site_id: uuid.UUID | None = None) -> QuerySet[Complaint]:
     qs = Complaint.objects.all().order_by("-created_at")
     if site_id:
         qs = qs.filter(site_id=site_id)

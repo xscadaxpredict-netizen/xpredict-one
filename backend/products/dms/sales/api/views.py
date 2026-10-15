@@ -1,26 +1,28 @@
+from typing import ClassVar
+
 from rest_framework import status
 from rest_framework.request import Request
 from rest_framework.response import Response
-from rest_framework.views import APIView
+
 from core.api import TenantAPIView
 
 from .. import selectors, services
 from .serializers import (
+    BankAccountReadSerializer,
+    BankAccountWriteSerializer,
     EnquiryCreateSerializer,
     EnquiryReadSerializer,
     EnquiryUpdateSerializer,
     FollowupCreateSerializer,
-    QuotationCreateSerializer,
-    BankAccountReadSerializer,
-    ProductPresetReadSerializer,
-    BankAccountWriteSerializer,
     ProductCatalogWriteSerializer,
+    ProductPresetReadSerializer,
+    QuotationCreateSerializer,
 )
 
 
 class EnquiryListCreateView(TenantAPIView):
-    required_permissions = ["dms.enquiry.view"]
-    method_permissions = {"POST": ["dms.enquiry.create"]}
+    required_permissions: ClassVar[list[str]] = ["dms.enquiry.view"]
+    method_permissions: ClassVar[dict[str, list[str]]] = {"POST": ["dms.enquiry.create"]}
 
     def get(self, request: Request, org_slug: str) -> Response:
         enquiries = selectors.list_enquiries(
@@ -56,8 +58,8 @@ def _get_enquiry_or_404(view: TenantAPIView, request: Request, pk: str):
 
 
 class EnquiryDetailView(TenantAPIView):
-    required_permissions = ["dms.enquiry.view"]
-    method_permissions = {
+    required_permissions: ClassVar[list[str]] = ["dms.enquiry.view"]
+    method_permissions: ClassVar[dict[str, list[str]]] = {
         "PATCH": ["dms.enquiry.update"],
         "DELETE": ["dms.enquiry.close"],
     }
@@ -85,7 +87,7 @@ class EnquiryDetailView(TenantAPIView):
 
 
 class EnquiryFollowupCreateView(TenantAPIView):
-    required_permissions = ["dms.enquiry.update"]
+    required_permissions: ClassVar[list[str]] = ["dms.enquiry.update"]
 
     def post(self, request: Request, org_slug: str, pk: str) -> Response:
         _get_enquiry_or_404(self, request, pk)
@@ -102,7 +104,7 @@ class EnquiryFollowupCreateView(TenantAPIView):
 
 
 class EnquiryFollowupDetailView(TenantAPIView):
-    required_permissions = ["dms.enquiry.update"]
+    required_permissions: ClassVar[list[str]] = ["dms.enquiry.update"]
 
     def patch(self, request: Request, org_slug: str, pk: str, followup_id: str) -> Response:
         _get_enquiry_or_404(self, request, pk)
@@ -127,18 +129,18 @@ class EnquiryFollowupDetailView(TenantAPIView):
 
 
 class EnquiryQuotationListCreateView(TenantAPIView):
-    required_permissions = ["dms.quotation.view"]
-    method_permissions = {"POST": ["dms.quotation.create"]}
+    required_permissions: ClassVar[list[str]] = ["dms.quotation.view"]
+    method_permissions: ClassVar[dict[str, list[str]]] = {"POST": ["dms.quotation.create"]}
 
     def post(self, request: Request, org_slug: str, pk: str) -> Response:
         _get_enquiry_or_404(self, request, pk)
         payload = QuotationCreateSerializer(data=request.data)
         payload.is_valid(raise_exception=True)
-        
+
         # Check if updating existing quote (frontend sends PUT logic as POST or separate endpoint)
         # We handle it via query param or dedicated PUT, but frontend passes existingQuoteId.
         existing_quote_id = request.query_params.get("quote_id")
-        
+
         enquiry = services.save_quotation(
             enquiry_id=pk,
             unit_id=request.unit_id,  # type: ignore
@@ -147,12 +149,15 @@ class EnquiryQuotationListCreateView(TenantAPIView):
             existing_quote_id=existing_quote_id,
         )
         enquiry_fetched = selectors.get_enquiry(enquiry_id=enquiry.id, is_manager_or_admin=True)
-        return Response(EnquiryReadSerializer(enquiry_fetched).data, status=status.HTTP_200_OK if existing_quote_id else status.HTTP_201_CREATED)
+        return Response(
+            EnquiryReadSerializer(enquiry_fetched).data,
+            status=status.HTTP_200_OK if existing_quote_id else status.HTTP_201_CREATED,
+        )
 
 
 class EnquiryQuotationDetailView(TenantAPIView):
-    required_permissions = ["dms.quotation.view"]
-    method_permissions = {"DELETE": ["dms.quotation.approve"]}
+    required_permissions: ClassVar[list[str]] = ["dms.quotation.view"]
+    method_permissions: ClassVar[dict[str, list[str]]] = {"DELETE": ["dms.quotation.approve"]}
 
     def delete(self, request: Request, org_slug: str, pk: str, quote_id: str) -> Response:
         _get_enquiry_or_404(self, request, pk)
@@ -166,7 +171,7 @@ class EnquiryQuotationDetailView(TenantAPIView):
 
 
 class EnquiryConfirmView(TenantAPIView):
-    required_permissions = ["dms.order.confirm"]
+    required_permissions: ClassVar[list[str]] = ["dms.order.confirm"]
 
     def post(self, request: Request, org_slug: str, pk: str) -> Response:
         _get_enquiry_or_404(self, request, pk)
@@ -182,7 +187,7 @@ class EnquiryConfirmView(TenantAPIView):
 
 
 class EnquiryUnconfirmView(TenantAPIView):
-    required_permissions = ["dms.order.confirm"]
+    required_permissions: ClassVar[list[str]] = ["dms.order.confirm"]
 
     def post(self, request: Request, org_slug: str, pk: str) -> Response:
         _get_enquiry_or_404(self, request, pk)
@@ -195,8 +200,8 @@ class EnquiryUnconfirmView(TenantAPIView):
 
 
 class BankAccountListView(TenantAPIView):
-    required_permissions = ["dms.enquiry.view"]
-    method_permissions = {"POST": ["dms.order.confirm"]}
+    required_permissions: ClassVar[list[str]] = ["dms.enquiry.view"]
+    method_permissions: ClassVar[dict[str, list[str]]] = {"POST": ["dms.order.confirm"]}
 
     def get(self, request: Request, org_slug: str) -> Response:
         banks = selectors.list_banks()
@@ -214,7 +219,7 @@ class BankAccountListView(TenantAPIView):
 
 
 class BankAccountDetailView(TenantAPIView):
-    required_permissions = ["dms.order.confirm"]
+    required_permissions: ClassVar[list[str]] = ["dms.order.confirm"]
 
     def patch(self, request: Request, org_slug: str, pk: str) -> Response:
         payload = BankAccountWriteSerializer(data=request.data, partial=True)
@@ -232,12 +237,14 @@ class BankAccountDetailView(TenantAPIView):
 
 
 class ProductPresetListView(TenantAPIView):
-    required_permissions = ["dms.enquiry.view"]
-    method_permissions = {"POST": ["dms.order.confirm"]}
+    required_permissions: ClassVar[list[str]] = ["dms.enquiry.view"]
+    method_permissions: ClassVar[dict[str, list[str]]] = {"POST": ["dms.order.confirm"]}
 
     def get(self, request: Request, org_slug: str) -> Response:
         products = selectors.list_products()
-        return Response(ProductPresetReadSerializer(products, many=True, context={'request': request}).data)
+        return Response(
+            ProductPresetReadSerializer(products, many=True, context={'request': request}).data
+        )
 
     def post(self, request: Request, org_slug: str) -> Response:
         payload = ProductCatalogWriteSerializer(data=request.data)
@@ -247,11 +254,14 @@ class ProductPresetListView(TenantAPIView):
             actor_user_id=request.user.id,
             **payload.validated_data,
         )
-        return Response(ProductPresetReadSerializer(product, context={'request': request}).data, status=status.HTTP_201_CREATED)
+        return Response(
+            ProductPresetReadSerializer(product, context={'request': request}).data,
+            status=status.HTTP_201_CREATED,
+        )
 
 
 class ProductPresetDetailView(TenantAPIView):
-    required_permissions = ["dms.order.confirm"]
+    required_permissions: ClassVar[list[str]] = ["dms.order.confirm"]
 
     def patch(self, request: Request, org_slug: str, pk: str) -> Response:
         payload = ProductCatalogWriteSerializer(data=request.data, partial=True)
@@ -269,7 +279,7 @@ class ProductPresetDetailView(TenantAPIView):
 
 
 class EnquiryConfirmAmcView(TenantAPIView):
-    required_permissions = ["dms.order.confirm"]
+    required_permissions: ClassVar[list[str]] = ["dms.order.confirm"]
 
     def post(self, request: Request, org_slug: str, pk: str, quote_id: str) -> Response:
         _get_enquiry_or_404(self, request, pk)

@@ -8,10 +8,9 @@ against a confirmed site.  All inherit ``UnitScopedModel``.
 from __future__ import annotations
 
 from django.db import models
-from django.db.models import F, Value
+from django.db.models import F
 
 from shared.base_models import UnitScopedModel
-
 
 # ============================================================================
 # EcommerceOrder

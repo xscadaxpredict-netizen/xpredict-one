@@ -4,11 +4,16 @@ Serializers for Site Services.
 
 from rest_framework import serializers
 
-from products.dms.sales.api.serializers import QuotationReadSerializer, FollowupReadSerializer
+from products.dms.sales.api.serializers import FollowupReadSerializer, QuotationReadSerializer
 from products.dms.sales.models import ConfirmedSite
+
 from ..models import (
-    ServiceSchedule, ServiceReport, ReportAttachment,
-    WaterReport, Complaint, SiteServiceProfile
+    Complaint,
+    ReportAttachment,
+    ServiceReport,
+    ServiceSchedule,
+    SiteServiceProfile,
+    WaterReport,
 )
 
 # ---- Site & Profile ---------------------------------------------------------
@@ -62,7 +67,11 @@ class SiteProfileUpdateSerializer(serializers.Serializer):
     service_type = serializers.CharField(max_length=100, required=False, allow_blank=True)
     service_interval_days = serializers.IntegerField(required=False, allow_null=True)
     last_serviced_date = serializers.DateField(required=False, allow_null=True)
-    technician_display_name = serializers.CharField(max_length=255, required=False, allow_blank=True)
+    technician_display_name = serializers.CharField(
+        max_length=255,
+        required=False,
+        allow_blank=True,
+    )
     notes = serializers.CharField(required=False, allow_blank=True)
 
 
@@ -90,7 +99,11 @@ class ScheduleCreateUpdateSerializer(serializers.Serializer):
     service_type = serializers.CharField(max_length=100, required=False, allow_blank=True)
     scheduled_date = serializers.DateField(required=False)
     scheduled_time = serializers.TimeField(required=False, allow_null=True)
-    technician_display_name = serializers.CharField(max_length=255, required=False, allow_blank=True)
+    technician_display_name = serializers.CharField(
+        max_length=255,
+        required=False,
+        allow_blank=True,
+    )
     status = serializers.CharField(max_length=20, required=False)
     notes = serializers.CharField(required=False, allow_blank=True)
 
@@ -105,7 +118,7 @@ class ReportAttachmentSerializer(serializers.ModelSerializer):
 
 class ServiceReportReadSerializer(serializers.ModelSerializer):
     attachments = ReportAttachmentSerializer(many=True, read_only=True)
-    
+
     class Meta:
         model = ServiceReport
         fields = [

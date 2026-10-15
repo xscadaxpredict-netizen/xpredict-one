@@ -16,14 +16,10 @@ so MySQL can index it.
 
 from __future__ import annotations
 
-import uuid
-
 from django.db import models
 from django.db.models import F, Value
-from django.db.models.functions import Coalesce
 
-from shared.base_models import BaseModel, UnitScopedModel
-
+from shared.base_models import UnitScopedModel
 
 # ============================================================================
 # Customer
@@ -219,7 +215,13 @@ class ProductCatalog(UnitScopedModel):
     description = models.TextField(blank=True, default="")
     hsn_code = models.CharField(max_length=20, blank=True, default="")
     base_price = models.DecimalField(max_digits=12, decimal_places=2, default=0)
-    margin_percent = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True, default=None)
+    margin_percent = models.DecimalField(
+        max_digits=5,
+        decimal_places=2,
+        null=True,
+        blank=True,
+        default=None,
+    )
     gst_rate = models.DecimalField(max_digits=5, decimal_places=2, default=18)
     image = models.FileField(upload_to="products/images/", blank=True, default="")
     is_active = models.BooleanField(default=True)

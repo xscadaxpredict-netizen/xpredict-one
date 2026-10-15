@@ -1,22 +1,28 @@
-from rest_framework.views import APIView
-from rest_framework.response import Response
+from typing import ClassVar
+
 from rest_framework import status
-from rest_framework.parsers import MultiPartParser, FormParser
-from ..models import CalculatorSettings
-from .serializers import CalculatorSettingsSerializer
-
-
+from rest_framework.parsers import FormParser, MultiPartParser
+from rest_framework.response import Response
 
 from core.api import TenantAPIView
+
+from ..models import CalculatorSettings
 from ..selectors import get_marketing_assets, get_timer_calculations
 from ..services import (
-    create_marketing_asset, delete_marketing_asset,
-    create_timer_calculation, delete_timer_calculation
+    create_marketing_asset,
+    create_timer_calculation,
+    delete_marketing_asset,
+    delete_timer_calculation,
 )
-from .serializers import MarketingAssetSerializer, TimerCalculationSerializer
+from .serializers import (
+    CalculatorSettingsSerializer,
+    MarketingAssetSerializer,
+    TimerCalculationSerializer,
+)
+
 
 class MarketingAssetListView(TenantAPIView):
-    parser_classes = [MultiPartParser, FormParser]
+    parser_classes: ClassVar[list] = [MultiPartParser, FormParser]
 
     def get(self, request, org_slug: str):
         assets = get_marketing_assets()
@@ -28,7 +34,7 @@ class MarketingAssetListView(TenantAPIView):
         if serializer.is_valid():
             if "file" not in request.FILES:
                 return Response({"detail": "File is required"}, status=status.HTTP_400_BAD_REQUEST)
-            
+
             asset = create_marketing_asset(
                 title=serializer.validated_data["title"],
                 material_type=serializer.validated_data["material_type"],
@@ -79,7 +85,7 @@ class CalculatorSettingsView(TenantAPIView):
             if not settings:
                 settings = CalculatorSettings.objects.create(
                     constants={
-                        "home_avg_members": 4, 
+                        "home_avg_members": 4,
                         "home_lts_pp": 150,
                         "school_lts_pp": 45,
                         "commercial_lts_pp": 45,
@@ -108,7 +114,7 @@ class CalculatorSettingsView(TenantAPIView):
             settings = CalculatorSettings.objects.first()
             if not settings:
                 settings = CalculatorSettings.objects.create(constants={})
-                
+
             serializer = CalculatorSettingsSerializer(settings, data=request.data, partial=True)
             if serializer.is_valid():
                 serializer.save()

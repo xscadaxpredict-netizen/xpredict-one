@@ -1,4 +1,4 @@
-from shared.exceptions import NotFoundError, InvalidInputError, ConflictError
+from shared.exceptions import ConflictError, InvalidInputError, NotFoundError
 
 
 def not_found(resource: str) -> NotFoundError:

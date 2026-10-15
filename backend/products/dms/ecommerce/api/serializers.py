@@ -3,7 +3,9 @@ Serializers for E-commerce.
 """
 
 from rest_framework import serializers
+
 from products.dms.sales.models import ProductCatalog
+
 from ..models import EcommerceOrder, EcommerceOrderItem
 
 
@@ -24,7 +26,7 @@ class SpareProductSerializer(serializers.ModelSerializer):
             "specs",
             "image"
         ]
-        
+
     def get_specs(self, obj) -> list[str]:
         return list(obj.specs.order_by("sort_order").values_list("spec_value", flat=True))
 

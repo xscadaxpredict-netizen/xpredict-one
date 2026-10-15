@@ -5,16 +5,20 @@ Read logic for E-commerce.
 from __future__ import annotations
 
 import uuid
-from typing import Optional
+
 from django.db.models import QuerySet
 
 from products.dms.sales.models import ProductCatalog
-from .models import EcommerceOrder, EcommerceOrderItem
+
 from .exceptions import not_found
+from .models import EcommerceOrder
 
 
 def list_spares_catalog() -> QuerySet[ProductCatalog]:
-    """Return products that belong in the spares catalog (e.g. have a specific product_type or category)"""
+    """
+    Return products that belong in the spares catalog --- those with a
+    specific product_type or category.
+    """
     return ProductCatalog.objects.filter(is_active=True, product_type="SPARES").order_by("name")
 
 
@@ -25,7 +29,7 @@ def get_spare(product_id: uuid.UUID) -> ProductCatalog:
     return product
 
 
-def list_orders(site_id: Optional[uuid.UUID] = None) -> QuerySet[EcommerceOrder]:
+def list_orders(site_id: uuid.UUID | None = None) -> QuerySet[EcommerceOrder]:
     qs = EcommerceOrder.objects.prefetch_related("items").order_by("-placed_at")
     if site_id:
         qs = qs.filter(site_id=site_id)

@@ -1,24 +1,29 @@
+
+from typing import ClassVar
+
 from rest_framework import status
-from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
+from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
 from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework.views import APIView
+
 from core.api import TenantAPIView
-from ..models import ServiceReport
-import json
 
 from .. import selectors, services
+from ..models import ServiceReport
 from .serializers import (
-    SiteReadSerializer, SiteProfileUpdateSerializer,
-    ScheduleReadSerializer, ScheduleCreateUpdateSerializer,
+    ComplaintReadSerializer,
+    ScheduleCreateUpdateSerializer,
+    ScheduleReadSerializer,
     ServiceReportReadSerializer,
+    SiteProfileUpdateSerializer,
+    SiteReadSerializer,
     WaterReportReadSerializer,
-    ComplaintReadSerializer
 )
 
 
 class SiteListView(TenantAPIView):
-    required_permissions = ["dms.jobcard.view"]
+    required_permissions: ClassVar[list[str]] = ["dms.jobcard.view"]
 
     def get(self, request: Request, org_slug: str) -> Response:
         sites = selectors.list_sites()
@@ -26,7 +31,7 @@ class SiteListView(TenantAPIView):
 
 
 class SiteProfileUpdateView(TenantAPIView):
-    required_permissions = ["dms.jobcard.update"]
+    required_permissions: ClassVar[list[str]] = ["dms.jobcard.update"]
 
     def patch(self, request: Request, org_slug: str, pk: str) -> Response:
         payload = SiteProfileUpdateSerializer(data=request.data)
@@ -41,8 +46,8 @@ class SiteProfileUpdateView(TenantAPIView):
 
 
 class ScheduleListCreateView(TenantAPIView):
-    required_permissions = ["dms.appointment.view"]
-    method_permissions = {"POST": ["dms.appointment.create"]}
+    required_permissions: ClassVar[list[str]] = ["dms.appointment.view"]
+    method_permissions: ClassVar[dict[str, list[str]]] = {"POST": ["dms.appointment.create"]}
 
     def get(self, request: Request, org_slug: str) -> Response:
         site_id = request.query_params.get("site_id")
@@ -60,8 +65,8 @@ class ScheduleListCreateView(TenantAPIView):
 
 
 class ScheduleDetailView(TenantAPIView):
-    required_permissions = ["dms.appointment.view"]
-    method_permissions = {
+    required_permissions: ClassVar[list[str]] = ["dms.appointment.view"]
+    method_permissions: ClassVar[dict[str, list[str]]] = {
         "PATCH": ["dms.appointment.update"],
         "DELETE": ["dms.appointment.cancel"],
     }
@@ -81,9 +86,9 @@ class ScheduleDetailView(TenantAPIView):
 
 
 class ServiceReportListCreateView(TenantAPIView):
-    parser_classes = [MultiPartParser, FormParser, JSONParser]
-    required_permissions = ["dms.jobcard.view"]
-    method_permissions = {"POST": ["dms.jobcard.create"]}
+    parser_classes: ClassVar[list] = [MultiPartParser, FormParser, JSONParser]
+    required_permissions: ClassVar[list[str]] = ["dms.jobcard.view"]
+    method_permissions: ClassVar[dict[str, list[str]]] = {"POST": ["dms.jobcard.create"]}
 
     def get(self, request: Request, org_slug: str) -> Response:
         site_id = request.query_params.get("site_id")
@@ -100,13 +105,16 @@ class ServiceReportListCreateView(TenantAPIView):
             **data
         )
         report_fetched = selectors.get_service_report(report_id=report.id)
-        return Response(ServiceReportReadSerializer(report_fetched).data, status=status.HTTP_201_CREATED)
+        return Response(
+            ServiceReportReadSerializer(report_fetched).data,
+            status=status.HTTP_201_CREATED,
+        )
 
 
 class ServiceReportDetailView(TenantAPIView):
-    parser_classes = [MultiPartParser, FormParser, JSONParser]
-    required_permissions = ["dms.jobcard.view"]
-    method_permissions = {
+    parser_classes: ClassVar[list] = [MultiPartParser, FormParser, JSONParser]
+    required_permissions: ClassVar[list[str]] = ["dms.jobcard.view"]
+    method_permissions: ClassVar[dict[str, list[str]]] = {
         "PATCH": ["dms.jobcard.update"],
         "DELETE": ["dms.jobcard.close"],
     }
@@ -129,9 +137,9 @@ class ServiceReportDetailView(TenantAPIView):
 
 
 class WaterReportListCreateView(TenantAPIView):
-    parser_classes = [MultiPartParser, FormParser, JSONParser]
-    required_permissions = ["dms.jobcard.view"]
-    method_permissions = {"POST": ["dms.jobcard.create"]}
+    parser_classes: ClassVar[list] = [MultiPartParser, FormParser, JSONParser]
+    required_permissions: ClassVar[list[str]] = ["dms.jobcard.view"]
+    method_permissions: ClassVar[dict[str, list[str]]] = {"POST": ["dms.jobcard.create"]}
 
     def get(self, request: Request, org_slug: str) -> Response:
         site_id = request.query_params.get("site_id")
@@ -148,7 +156,7 @@ class WaterReportListCreateView(TenantAPIView):
         data.pop("attachedItems", None)
         data.pop("attachmentName", None)
         site_id = data.pop("site_id", None)
-        
+
         report = services.create_water_report(
             unit_id=request.unit_id,
             site_id=site_id,
@@ -160,9 +168,9 @@ class WaterReportListCreateView(TenantAPIView):
 
 
 class WaterReportDetailView(TenantAPIView):
-    parser_classes = [MultiPartParser, FormParser, JSONParser]
-    required_permissions = ["dms.jobcard.view"]
-    method_permissions = {
+    parser_classes: ClassVar[list] = [MultiPartParser, FormParser, JSONParser]
+    required_permissions: ClassVar[list[str]] = ["dms.jobcard.view"]
+    method_permissions: ClassVar[dict[str, list[str]]] = {
         "PATCH": ["dms.jobcard.update"],
         "DELETE": ["dms.jobcard.close"],
     }
@@ -177,7 +185,7 @@ class WaterReportDetailView(TenantAPIView):
         data.pop("attachedItems", None)
         data.pop("attachmentName", None)
         data.pop("site_id", None)
-        
+
         report = services.update_water_report(
             report_id=pk,
             attachment=attachment,
@@ -192,9 +200,9 @@ class WaterReportDetailView(TenantAPIView):
 
 
 class ComplaintListCreateView(TenantAPIView):
-    parser_classes = [MultiPartParser, FormParser, JSONParser]
-    required_permissions = ["dms.ticket.view"]
-    method_permissions = {"POST": ["dms.ticket.create"]}
+    parser_classes: ClassVar[list] = [MultiPartParser, FormParser, JSONParser]
+    required_permissions: ClassVar[list[str]] = ["dms.ticket.view"]
+    method_permissions: ClassVar[dict[str, list[str]]] = {"POST": ["dms.ticket.create"]}
 
     def get(self, request: Request, org_slug: str) -> Response:
         site_id = request.query_params.get("site_id")
@@ -211,7 +219,7 @@ class ComplaintListCreateView(TenantAPIView):
         data.pop("attachedItems", None)
         data.pop("attachmentName", None)
         site_id = data.pop("site_id", None)
-        
+
         complaint = services.create_complaint(
             unit_id=request.unit_id,
             site_id=site_id,
@@ -224,9 +232,9 @@ class ComplaintListCreateView(TenantAPIView):
 
 
 class ComplaintDetailView(TenantAPIView):
-    parser_classes = [MultiPartParser, FormParser, JSONParser]
-    required_permissions = ["dms.ticket.view"]
-    method_permissions = {
+    parser_classes: ClassVar[list] = [MultiPartParser, FormParser, JSONParser]
+    required_permissions: ClassVar[list[str]] = ["dms.ticket.view"]
+    method_permissions: ClassVar[dict[str, list[str]]] = {
         "PATCH": ["dms.ticket.update"],
         "DELETE": ["dms.ticket.close"],
     }
@@ -241,7 +249,7 @@ class ComplaintDetailView(TenantAPIView):
         data.pop("attachedItems", None)
         data.pop("attachmentName", None)
         data.pop("site_id", None)
-        
+
         complaint = services.update_complaint(
             complaint_id=pk,
             attachment=attachment,
@@ -255,55 +263,79 @@ class ComplaintDetailView(TenantAPIView):
         return Response(status=status.HTTP_204_NO_CONTENT)
 
 class PublicServiceReportView(APIView):
-    authentication_classes = []
-    permission_classes = []
-    
+    authentication_classes: ClassVar[list] = []
+    permission_classes: ClassVar[list] = []
+
     def get(self, request: Request, org_slug: str, token: str) -> Response:
         report = ServiceReport.objects.filter(sign_link_token=token).first()
         if not report:
             from .exceptions import not_found
             raise not_found("Report")
-            
+
         if report.client_signature:
-            return Response({"detail": "This report has already been signed and is locked.", "already_signed": True}, status=status.HTTP_403_FORBIDDEN)
-        
+            return Response(
+                {
+                    "detail": "This report has already been signed and is locked.",
+                    "already_signed": True,
+                },
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
         return Response(ServiceReportReadSerializer(report, context={"request": request}).data)
 
 class PublicServiceReportSignView(APIView):
-    authentication_classes = []
-    permission_classes = []
-    
+    authentication_classes: ClassVar[list] = []
+    permission_classes: ClassVar[list] = []
+
     def post(self, request: Request, org_slug: str, token: str) -> Response:
         report = ServiceReport.objects.filter(sign_link_token=token).first()
         if not report:
             from .exceptions import not_found
             raise not_found("Report")
-            
+
         if report.client_signature:
-            return Response({"detail": "This report has already been signed."}, status=status.HTTP_400_BAD_REQUEST)
+            return Response(
+                {"detail": "This report has already been signed."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
 
         signature = request.data.get("signature")
         client_name = request.data.get("client_name")
         if not signature or not client_name:
-            return Response({"detail": "Signature and name are required."}, status=status.HTTP_400_BAD_REQUEST)
-            
-        from django.core.files.base import ContentFile
+            return Response(
+                {"detail": "Signature and name are required."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
         import base64
         import uuid
+
+        from django.core.files.base import ContentFile
         from django.utils import timezone
-        
+
         try:
-            format, imgstr = signature.split(';base64,') 
-            ext = format.split('/')[-1] 
+            format, imgstr = signature.split(';base64,')
+            ext = format.split('/')[-1]
             data = ContentFile(base64.b64decode(imgstr), name=f"{uuid.uuid4().hex}.{ext}")
         except Exception:
-            return Response({"detail": "Invalid signature format."}, status=status.HTTP_400_BAD_REQUEST)
-        
+            return Response(
+                {"detail": "Invalid signature format."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
         report.client_signature = data
         report.client_name = client_name
         report.client_signed_at = timezone.now()
         report.status = "COMPLETED"
         report.sign_link_token = uuid.uuid4()
-        report.save(update_fields=["client_signature", "client_name", "client_signed_at", "status", "sign_link_token"])
-        
+        report.save(
+            update_fields=[
+                "client_signature",
+                "client_name",
+                "client_signed_at",
+                "status",
+                "sign_link_token",
+            ]
+        )
+
         return Response({"detail": "Signature saved successfully"})

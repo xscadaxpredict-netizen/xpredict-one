@@ -101,19 +101,19 @@ containers = []
 [[tool.importlinter.contracts]]
 name = "DMS: nobody imports dms.sales models/selectors directly"
 type = "forbidden"
-source_modules = ["products.dms.service", "products.dms.tech_support"]
+source_modules = ["products.dms.site_services", "products.dms.tech_support"]
 forbidden_modules = ["products.dms.sales.models", "products.dms.sales.selectors"]
 
 [[tool.importlinter.contracts]]
-name = "DMS: nobody imports dms.service models/selectors directly"
+name = "DMS: nobody imports dms.site_services models/selectors directly"
 type = "forbidden"
 source_modules = ["products.dms.sales", "products.dms.tech_support"]
-forbidden_modules = ["products.dms.service.models", "products.dms.service.selectors"]
+forbidden_modules = ["products.dms.site_services.models", "products.dms.site_services.selectors"]
 
 [[tool.importlinter.contracts]]
 name = "DMS: nobody imports dms.tech_support models/selectors directly"
 type = "forbidden"
-source_modules = ["products.dms.sales", "products.dms.service"]
+source_modules = ["products.dms.sales", "products.dms.site_services"]
 forbidden_modules = [
     "products.dms.tech_support.models",
     "products.dms.tech_support.selectors",

@@ -14,7 +14,8 @@ import uuid
 
 from django.db import transaction
 
-from shared.exceptions import not_found, ConflictError
+from shared.exceptions import ConflictError, not_found
+
 from .models import (
     BankAccount,
     ConfirmedSite,
@@ -55,7 +56,7 @@ def create_enquiry(
         remarks=remarks,
         status=EnquiryStatus.PENDING,
     )
-    
+
     if followup_remarks or followup_next_date:
         Followup.objects.create(
             unit_id=unit_id,
@@ -64,7 +65,7 @@ def create_enquiry(
             remarks=followup_remarks or "",
             next_followup_date=followup_next_date if followup_next_date else None,
         )
-    
+
     return enquiry
 
 
@@ -79,10 +80,10 @@ def update_enquiry(
     enquiry = Enquiry.objects.filter(id=enquiry_id).first()
     if not enquiry:
         raise not_found("Enquiry")
-        
+
     for key, value in updates.items():
         setattr(enquiry, key, value)
-        
+
     enquiry.updated_by_user_id = actor_user_id
     enquiry.save()
     return enquiry
@@ -104,15 +105,15 @@ def delete_enquiry(*, enquiry_id: uuid.UUID) -> None:
 def add_followup(
     *,
     enquiry_id: uuid.UUID,
-    unit_id: Optional[uuid.UUID] = None,
-    actor_user_id: Optional[uuid.UUID] = None,
+    unit_id: uuid.UUID | None = None,
+    actor_user_id: uuid.UUID | None = None,
     remarks: str = "",
-    next_followup_date: Optional[str] = None,
+    next_followup_date: str | None = None,
 ) -> Enquiry:
     enquiry = Enquiry.objects.filter(id=enquiry_id).first()
     if not enquiry:
         raise not_found("Enquiry")
-        
+
     Followup.objects.create(
         unit_id=unit_id or enquiry.unit_id,
         enquiry=enquiry,
@@ -128,8 +129,8 @@ def update_followup(
     *,
     enquiry_id: uuid.UUID,
     followup_id: uuid.UUID,
-    remarks: Optional[str] = None,
-    next_followup_date: Optional[str] = None,
+    remarks: str | None = None,
+    next_followup_date: str | None = None,
 ) -> Enquiry:
     enquiry = Enquiry.objects.filter(id=enquiry_id).first()
     if not enquiry:
@@ -174,16 +175,16 @@ def save_quotation(
     enquiry = Enquiry.objects.filter(id=enquiry_id).first()
     if not enquiry:
         raise not_found("Enquiry")
-        
+
     from_details = quote_data.pop("from_details")
     to_details = quote_data.pop("to_details")
     items_data = quote_data.pop("items")
-    
+
     if existing_quote_id:
         quote = Quotation.objects.filter(id=existing_quote_id, enquiry=enquiry).first()
         if not quote:
             raise not_found("Quotation")
-        
+
         # Update quote fields
         for key, value in quote_data.items():
             if key == "selected_bank_id":
@@ -192,16 +193,16 @@ def save_quotation(
                 quote.quote_type = value
             else:
                 setattr(quote, key, value)
-                
+
         # Update snapshot address fields
         for key, value in from_details.items():
             setattr(quote, f"from_{key}", value)
         for key, value in to_details.items():
             setattr(quote, f"to_{key}", value)
-            
+
         quote.updated_by_user_id = actor_user_id
         quote.save()
-        
+
         # Recreate items (simplest approach for a draft)
         quote.items.all().delete()
     else:
@@ -218,7 +219,7 @@ def save_quotation(
         for key, value in to_details.items():
             setattr(quote, f"to_{key}", value)
         quote.save()
-        
+
     for item in items_data:
         QuotationItem.objects.create(
             unit_id=unit_id,
@@ -232,7 +233,7 @@ def save_quotation(
             quantity=item.get("quantity", 1),
             created_by_user_id=actor_user_id,
         )
-        
+
     return enquiry
 
 
@@ -246,20 +247,22 @@ def delete_quotation(
     enquiry = Enquiry.objects.filter(id=enquiry_id).first()
     if not enquiry:
         raise not_found("Enquiry")
-        
+
     quote = Quotation.objects.filter(id=quote_id, enquiry=enquiry).first()
     if not quote:
         raise not_found("Quotation")
-        
+
     quote.delete()
-    
+
     if enquiry.confirmed_quote_id == quote_id:
         enquiry.status = EnquiryStatus.PENDING
         enquiry.confirmed_quote_id = None
         enquiry.oc_number = ""
         enquiry.updated_by_user_id = actor_user_id
-        enquiry.save(update_fields=["status", "confirmed_quote_id", "oc_number", "updated_by_user_id"])
-        
+        enquiry.save(
+            update_fields=["status", "confirmed_quote_id", "oc_number", "updated_by_user_id"]
+        )
+
     return enquiry
 
 
@@ -274,23 +277,30 @@ def confirm_order(
     enquiry = Enquiry.objects.filter(id=enquiry_id).first()
     if not enquiry:
         raise not_found("Enquiry")
-        
+
     if enquiry.status == EnquiryStatus.CONFIRMED:
         raise ConflictError(code="already_confirmed", message="Enquiry is already confirmed.")
-        
+
     quote = Quotation.objects.filter(id=quote_id, enquiry=enquiry).first()
     if not quote:
         raise not_found("Quotation")
-        
+
     # Generate OC number
-    oc_number = f"STP/OC/26-27/{random.randint(100, 999):03d}"
-    
+    # NOT A SECRET, so S311 does not apply: this is a human-facing
+    # reference number, not a token.
+    #
+    # THE REAL PROBLEM WITH THIS LINE is that 900 possible values
+    # collide long before they run out -- a 50% chance of a duplicate
+    # after a few dozen records -- and the column has no uniqueness
+    # constraint. Reference numbering is Q31, still open.
+    oc_number = f"STP/OC/26-27/{random.randint(100, 999):03d}"  # noqa: S311
+
     enquiry.status = EnquiryStatus.CONFIRMED
     enquiry.confirmed_quote_id = quote_id
     enquiry.oc_number = oc_number
     enquiry.updated_by_user_id = actor_user_id
     enquiry.save(update_fields=["status", "confirmed_quote_id", "oc_number", "updated_by_user_id"])
-    
+
     # Create the ConfirmedSite pivot
     # Note: Using the enquiry's existing customer if available, else we'd create one.
     # For now, we assume the customer is linked or we create a dummy one for the site.
@@ -307,7 +317,7 @@ def confirm_order(
         )
         enquiry.customer = customer
         enquiry.save(update_fields=["customer_id"])
-        
+
     ConfirmedSite.objects.create(
         unit_id=unit_id,
         enquiry=enquiry,
@@ -318,7 +328,7 @@ def confirm_order(
         pincode=enquiry.pincode,
         created_by_user_id=actor_user_id,
     )
-    
+
     return enquiry
 
 
@@ -331,19 +341,19 @@ def unconfirm_order(
     enquiry = Enquiry.objects.filter(id=enquiry_id).first()
     if not enquiry:
         raise not_found("Enquiry")
-        
+
     enquiry.status = EnquiryStatus.PENDING
     enquiry.confirmed_quote_id = None
     enquiry.oc_number = ""
     enquiry.updated_by_user_id = actor_user_id
     enquiry.save(update_fields=["status", "confirmed_quote_id", "oc_number", "updated_by_user_id"])
-    
+
     # Cascade delete ConfirmedSite if needed, but for now we just mark inactive
     site = ConfirmedSite.objects.filter(enquiry=enquiry).first()
     if site:
         site.is_active = False
         site.save(update_fields=["is_active"])
-        
+
     return enquiry
 
 
@@ -357,14 +367,17 @@ def confirm_amc_quote(
     enquiry = Enquiry.objects.filter(id=enquiry_id).first()
     if not enquiry:
         raise not_found('Enquiry')
-        
+
     quote = Quotation.objects.filter(id=quote_id, enquiry=enquiry).first()
     if not quote:
         raise not_found('Quotation')
 
     if quote.quote_type != QuoteType.AMC:
-        raise ConflictError(code='not_amc', message='Only AMC quotes can be confirmed via this endpoint.')
-        
+        raise ConflictError(
+            code='not_amc',
+            message='Only AMC quotes can be confirmed via this endpoint.',
+        )
+
     if quote.status == QuotationStatus.CONFIRMED:
         raise ConflictError(code='already_confirmed', message='Quotation is already confirmed.')
 
@@ -397,7 +410,7 @@ def create_bank_account(
 ) -> BankAccount:
     if is_default:
         BankAccount.objects.filter(unit_id=unit_id, is_default=True).update(is_default=False)
-        
+
     bank = BankAccount.objects.create(
         unit_id=unit_id,
         created_by_user_id=actor_user_id,
@@ -420,13 +433,16 @@ def update_bank_account(
     bank = BankAccount.objects.filter(id=bank_id).first()
     if not bank:
         raise not_found("Bank Account")
-        
+
     if updates.get("is_default"):
-        BankAccount.objects.filter(unit_id=bank.unit_id, is_default=True).exclude(id=bank_id).update(is_default=False)
+        BankAccount.objects.filter(
+            unit_id=bank.unit_id,
+            is_default=True).exclude(id=bank_id).update(is_default=False,
+        )
 
     for key, value in updates.items():
         setattr(bank, key, value)
-        
+
     bank.updated_by_user_id = actor_user_id
     bank.save()
     return bank
@@ -457,7 +473,7 @@ def create_product_catalog(
 ) -> ProductCatalog:
     if not name and description:
         name = description[:255]
-        
+
     product = ProductCatalog.objects.create(
         unit_id=unit_id,
         created_by_user_id=actor_user_id,
@@ -470,7 +486,7 @@ def create_product_catalog(
         gst_rate=gst_rate,
         category=category,
     )
-    
+
     if image:
         product.image = image
         product.save()
@@ -507,15 +523,15 @@ def update_product_catalog(
 
     for key, value in updates.items():
         setattr(product, key, value)
-        
+
     product.updated_by_user_id = actor_user_id
-    
+
     if image is not None:
         if image:
             product.image = image
         else:
             product.image = ""
-            
+
     product.save()
 
     if specs is not None:

@@ -1,6 +1,9 @@
 from __future__ import annotations
+
 from django.db.models import QuerySet
-from .models import UserManual, MachineVideo, CallRequest
+
+from .models import CallRequest, MachineVideo, UserManual
+
 
 def get_user_manuals() -> QuerySet[UserManual]:
     return UserManual.objects.all().order_by("-created_at")

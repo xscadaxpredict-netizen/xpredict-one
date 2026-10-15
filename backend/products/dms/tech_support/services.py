@@ -1,9 +1,17 @@
 from __future__ import annotations
-from typing import Any
-from django.core.files.uploadedfile import UploadedFile
-from .models import UserManual, MachineVideo, CallRequest, CallStatus
 
-def create_user_manual(*, title: str, category: str = "", description: str = "", file: UploadedFile) -> UserManual:
+from django.core.files.uploadedfile import UploadedFile
+
+from .models import CallRequest, CallStatus, MachineVideo, UserManual
+
+
+def create_user_manual(
+    *,
+    title: str,
+    category: str = "",
+    description: str = "",
+    file: UploadedFile,
+) -> UserManual:
     manual = UserManual(
         title=title,
         category=category,
@@ -18,7 +26,15 @@ def create_user_manual(*, title: str, category: str = "", description: str = "",
 def delete_user_manual(manual_id: str) -> None:
     UserManual.objects.filter(id=manual_id).delete()
 
-def create_machine_video(*, title: str, category: str = "", description: str = "", file: UploadedFile, duration: str = "", resolution: str = "") -> MachineVideo:
+def create_machine_video(
+    *,
+    title: str,
+    category: str = "",
+    description: str = "",
+    file: UploadedFile,
+    duration: str = "",
+    resolution: str = "",
+) -> MachineVideo:
     video = MachineVideo(
         title=title,
         category=category,
@@ -34,7 +50,17 @@ def create_machine_video(*, title: str, category: str = "", description: str = "
 def delete_machine_video(video_id: str) -> None:
     MachineVideo.objects.filter(id=video_id).delete()
 
-def create_call_request(*, unit_id: str, name: str, phone: str = "", email: str = "", subject: str, message: str, requester_user_id: str | None = None, attachment: UploadedFile | None = None) -> CallRequest:
+def create_call_request(
+    *,
+    unit_id: str,
+    name: str,
+    phone: str = "",
+    email: str = "",
+    subject: str,
+    message: str,
+    requester_user_id: str | None = None,
+    attachment: UploadedFile | None = None,
+) -> CallRequest:
     call = CallRequest(
         unit_id=unit_id,
         name=name,

@@ -1,14 +1,15 @@
 from __future__ import annotations
 
 import uuid
+
 import pytest
-from django.db import connection
 from rest_framework import status
 from rest_framework.test import APIClient
 
-from conftest import TEST_TENANT_ALIAS
 from config.routers import current_tenant_db
+from conftest import TEST_TENANT_ALIAS
 from core.accounts.models import User
+from core.billing.models import AppSubscription, SubscriptionStatus
 from core.organizations.models import (
     BusinessUnit,
     Membership,
@@ -17,10 +18,9 @@ from core.organizations.models import (
     Organization,
     OrganizationStatus,
 )
-from core.billing.models import AppSubscription, SubscriptionStatus
 from core.permissions.models import AppAccess, AppCode, Role
-from products.dms.sales.models import Customer, Enquiry, EnquiryStatus
 from products.dms.sales import selectors
+from products.dms.sales.models import Enquiry
 from shared.base_models import allowed_units
 
 pytestmark = pytest.mark.django_db(databases=["default", TEST_TENANT_ALIAS])
@@ -133,20 +133,34 @@ class TestDealerAndColleagueIsolation:
             )
 
             # Rep 1 only sees their own enquiry
-            rep1_enquiries = list(selectors.list_enquiries(actor_user_id=user_rep1, is_manager_or_admin=False))
+            rep1_enquiries = list(
+                selectors.list_enquiries(actor_user_id=user_rep1, is_manager_or_admin=False)
+            )
             rep1_ids = [e.id for e in rep1_enquiries]
             assert enq1.id in rep1_ids
             assert enq2.id not in rep1_ids
 
             # Rep 2 only sees their own enquiry
-            rep2_enquiries = list(selectors.list_enquiries(actor_user_id=user_rep2, is_manager_or_admin=False))
+            rep2_enquiries = list(
+                selectors.list_enquiries(actor_user_id=user_rep2, is_manager_or_admin=False)
+            )
             rep2_ids = [e.id for e in rep2_enquiries]
             assert enq2.id in rep2_ids
             assert enq1.id not in rep2_ids
 
             # get_enquiry for Rep 1 on Rep 2's lead returns None (404)
-            assert selectors.get_enquiry(enquiry_id=enq2.id, actor_user_id=user_rep1, is_manager_or_admin=False) is None
-            assert selectors.get_enquiry(enquiry_id=enq1.id, actor_user_id=user_rep1, is_manager_or_admin=False) is not None
+            assert (
+                selectors.get_enquiry(
+                    enquiry_id=enq2.id, actor_user_id=user_rep1, is_manager_or_admin=False
+                )
+                is None
+            )
+            assert (
+                selectors.get_enquiry(
+                    enquiry_id=enq1.id, actor_user_id=user_rep1, is_manager_or_admin=False
+                )
+                is not None
+            )
 
             # Manager sees both
             mgr_enquiries = list(selectors.list_enquiries(is_manager_or_admin=True))
@@ -165,10 +179,25 @@ class TestDealerAndColleagueIsolation:
         unit_a = BusinessUnit.objects.create(organization=org, name="Unit A")
         unit_b = BusinessUnit.objects.create(organization=org, name="Unit B")
 
-        user_rep1, _ = create_dealer_user(org, unit_a, "rep1@unit-a.test", "dms.sales_representative")
-        user_rep2, _ = create_dealer_user(org, unit_a, "rep2@unit-a.test", "dms.sales_representative")
+        user_rep1, _ = create_dealer_user(
+            org,
+            unit_a,
+            "rep1@unit-a.test",
+            "dms.sales_representative",
+        )
+        user_rep2, _ = create_dealer_user(
+            org,
+            unit_a,
+            "rep2@unit-a.test",
+            "dms.sales_representative",
+        )
         user_mgr, _ = create_dealer_user(org, unit_a, "mgr@unit-a.test", "dms.manager")
-        user_rep_b, _ = create_dealer_user(org, unit_b, "rep@unit-b.test", "dms.sales_representative")
+        user_rep_b, _ = create_dealer_user(
+            org,
+            unit_b,
+            "rep@unit-b.test",
+            "dms.sales_representative",
+        )
         user_tech, _ = create_dealer_user(org, unit_a, "tech@unit-a.test", "dms.technician")
 
         url = f"/api/v1/orgs/{org.slug}/dms/sales/enquiries/"
@@ -226,7 +255,11 @@ class TestDealerAndColleagueIsolation:
         assert resp_rep1_get_other.status_code == status.HTTP_404_NOT_FOUND
 
         # Rep 1 tries to PATCH Rep 2's enquiry -> 404
-        resp_rep1_patch_other = client.patch(f"{url}{enq2_id}/", {"priority": "URGENT"}, format="json")
+        resp_rep1_patch_other = client.patch(
+            f"{url}{enq2_id}/",
+            {"priority": "URGENT"},
+            format="json",
+        )
         assert resp_rep1_patch_other.status_code == status.HTTP_404_NOT_FOUND
 
         # 5. MANAGER VISIBILITY: Manager at Unit A sees BOTH enquiries

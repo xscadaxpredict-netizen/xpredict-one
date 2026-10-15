@@ -17,7 +17,7 @@ from typing import TYPE_CHECKING
 
 from django.db.models import Prefetch, Q
 
-from .models import Enquiry, BankAccount, ProductCatalog, Quotation, Followup
+from .models import BankAccount, Enquiry, Followup, ProductCatalog, Quotation
 
 if TYPE_CHECKING:
     from django.db.models import QuerySet
@@ -35,7 +35,10 @@ def list_enquiries(
     """
     qs = Enquiry.objects.prefetch_related(
         Prefetch("followups", queryset=Followup.objects.order_by("-created_at")),
-        Prefetch("quotations", queryset=Quotation.objects.prefetch_related("items").order_by("-created_at"))
+        Prefetch(
+            "quotations",
+            queryset=Quotation.objects.prefetch_related("items").order_by("-created_at"),
+        )
     )
     if not is_manager_or_admin and actor_user_id:
         qs = qs.filter(Q(created_by_user_id=actor_user_id) | Q(assigned_to_user_id=actor_user_id))

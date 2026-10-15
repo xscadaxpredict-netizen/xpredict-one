@@ -1,20 +1,27 @@
-from rest_framework.views import APIView
-from rest_framework.response import Response
+from typing import ClassVar
+
 from rest_framework import status
-from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
+from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
+from rest_framework.response import Response
 
 from core.api import TenantAPIView
-from ..selectors import get_user_manuals, get_machine_videos, get_call_requests
-from ..services import (
-    create_user_manual, delete_user_manual,
-    create_machine_video, delete_machine_video,
-    create_call_request, update_call_request_status, delete_call_request
-)
+
 from ..models import CallRequest
-from .serializers import UserManualSerializer, MachineVideoSerializer, CallRequestSerializer
+from ..selectors import get_call_requests, get_machine_videos, get_user_manuals
+from ..services import (
+    create_call_request,
+    create_machine_video,
+    create_user_manual,
+    delete_call_request,
+    delete_machine_video,
+    delete_user_manual,
+    update_call_request_status,
+)
+from .serializers import CallRequestSerializer, MachineVideoSerializer, UserManualSerializer
+
 
 class UserManualListView(TenantAPIView):
-    parser_classes = [MultiPartParser, FormParser]
+    parser_classes: ClassVar[list] = [MultiPartParser, FormParser]
 
     def get(self, request, org_slug: str):
         manuals = get_user_manuals()
@@ -26,7 +33,7 @@ class UserManualListView(TenantAPIView):
         if serializer.is_valid():
             if "file" not in request.FILES:
                 return Response({"detail": "File is required"}, status=status.HTTP_400_BAD_REQUEST)
-            
+
             manual = create_user_manual(
                 title=serializer.validated_data["title"],
                 category=serializer.validated_data.get("category", ""),
@@ -42,7 +49,7 @@ class UserManualDetailView(TenantAPIView):
         return Response(status=status.HTTP_204_NO_CONTENT)
 
 class MachineVideoListView(TenantAPIView):
-    parser_classes = [MultiPartParser, FormParser]
+    parser_classes: ClassVar[list] = [MultiPartParser, FormParser]
 
     def get(self, request, org_slug: str):
         videos = get_machine_videos()
@@ -54,7 +61,7 @@ class MachineVideoListView(TenantAPIView):
         if serializer.is_valid():
             if "file" not in request.FILES:
                 return Response({"detail": "File is required"}, status=status.HTTP_400_BAD_REQUEST)
-            
+
             video = create_machine_video(
                 title=serializer.validated_data["title"],
                 category=serializer.validated_data.get("category", ""),
@@ -73,9 +80,9 @@ class MachineVideoDetailView(TenantAPIView):
 
 
 class CallRequestListView(TenantAPIView):
-    parser_classes = [MultiPartParser, FormParser, JSONParser]
-    required_permissions = ["dms.ticket.view"]
-    method_permissions = {"POST": ["dms.ticket.create"]}
+    parser_classes: ClassVar[list] = [MultiPartParser, FormParser, JSONParser]
+    required_permissions: ClassVar[list[str]] = ["dms.ticket.view"]
+    method_permissions: ClassVar[dict[str, list[str]]] = {"POST": ["dms.ticket.create"]}
 
     def get(self, request, org_slug: str):
         calls = get_call_requests()
@@ -100,8 +107,8 @@ class CallRequestListView(TenantAPIView):
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 class CallRequestDetailView(TenantAPIView):
-    required_permissions = ["dms.ticket.view"]
-    method_permissions = {
+    required_permissions: ClassVar[list[str]] = ["dms.ticket.view"]
+    method_permissions: ClassVar[dict[str, list[str]]] = {
         "PATCH": ["dms.ticket.update"],
         "DELETE": ["dms.ticket.close"],
     }

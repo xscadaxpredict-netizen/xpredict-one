@@ -1,12 +1,24 @@
 from rest_framework import serializers
-from ..models import MarketingAsset, TimerCalculation
-from ..models import CalculatorSettings
+
+from ..models import CalculatorSettings, MarketingAsset, TimerCalculation
 
 
 class MarketingAssetSerializer(serializers.ModelSerializer):
     class Meta:
         model = MarketingAsset
-        fields = ["id", "title", "material_type", "category", "description", "file", "file_name", "file_size", "duration", "resolution", "format"]
+        fields = [
+            "id",
+            "title",
+            "material_type",
+            "category",
+            "description",
+            "file",
+            "file_name",
+            "file_size",
+            "duration",
+            "resolution",
+            "format",
+        ]
         read_only_fields = ["id", "file", "file_name", "file_size"]
 
 class TimerCalculationSerializer(serializers.ModelSerializer):

@@ -1,3 +1,5 @@
+from typing import ClassVar
+
 from core.organizations.api.base import OrgScopedAPIView
 from core.organizations.models import BusinessUnit
 from core.organizations.selectors import permissions_for, resolve_allowed_units
@@ -23,14 +25,15 @@ class TenantAPIView(OrgScopedAPIView):
     """
 
     app_code: str = AppCode.DMS
-    required_permissions: list[str] = []
+    required_permissions: ClassVar[list[str]] = []
 
     def initial(self, request, *args, **kwargs):
         super().initial(request, *args, **kwargs)
         request.membership = self.membership
         request.unit_id = self._resolve_unit_id(request, self.organization)
 
-        # Enforce dealer isolation for all unit-scoped models (Enquiries, Quotations, Job cards, etc.)
+        # Enforce dealer isolation for all unit-scoped models (Enquiries, Quotations, Job cards,
+        # etc.)
         allowed = resolve_allowed_units(self.membership, self.app_code)
         allowed_units.set(allowed)
 

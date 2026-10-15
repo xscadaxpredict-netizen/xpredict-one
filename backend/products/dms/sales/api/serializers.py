@@ -10,8 +10,7 @@ from __future__ import annotations
 
 from rest_framework import serializers
 
-from ..models import Enquiry, Followup, Quotation, QuotationItem, BankAccount, ProductCatalog
-
+from ..models import BankAccount, Enquiry, Followup, ProductCatalog, Quotation, QuotationItem
 
 # ---- Read Serializers (Outgoing) --------------------------------------------
 
@@ -25,7 +24,11 @@ class FollowupReadSerializer(serializers.ModelSerializer):
 
 
 class QuotationItemReadSerializer(serializers.ModelSerializer):
-    base_price = serializers.DecimalField(source="locked_base_price", max_digits=12, decimal_places=2)
+    base_price = serializers.DecimalField(
+        source="locked_base_price",
+        max_digits=12,
+        decimal_places=2,
+    )
     margin = serializers.DecimalField(source="locked_margin", max_digits=5, decimal_places=2)
     gst_rate = serializers.DecimalField(source="locked_gst_rate", max_digits=5, decimal_places=2)
     hsn = serializers.CharField(source="hsn_code")
@@ -177,11 +180,18 @@ class BankAccountWriteSerializer(serializers.Serializer):
 
 class ProductCatalogWriteSerializer(serializers.Serializer):
     type = serializers.CharField(max_length=10, source="product_type")
-    name = serializers.CharField(max_length=255, required=False, allow_blank=True) # Usually matches description in frontend
+    # Usually matches description in frontend
+    name = serializers.CharField(max_length=255, required=False, allow_blank=True)
     description = serializers.CharField(required=False, allow_blank=True)
     hsn = serializers.CharField(max_length=20, source="hsn_code", required=False, allow_blank=True)
     base_price = serializers.DecimalField(max_digits=12, decimal_places=2)
-    margin = serializers.DecimalField(max_digits=5, decimal_places=2, source="margin_percent", allow_null=True, required=False)
+    margin = serializers.DecimalField(
+        max_digits=5,
+        decimal_places=2,
+        source="margin_percent",
+        allow_null=True,
+        required=False,
+    )
     gst_rate = serializers.DecimalField(max_digits=5, decimal_places=2, required=False, default=18)
     category = serializers.CharField(max_length=100, required=False, allow_blank=True)
     specs = serializers.CharField(required=False, allow_blank=True)
@@ -190,12 +200,22 @@ class ProductCatalogWriteSerializer(serializers.Serializer):
 
 class EnquiryCreateSerializer(serializers.Serializer):
     customer_name = serializers.CharField(max_length=255)
-    contact_person = serializers.CharField(max_length=255, required=False, allow_blank=True, default="")
+    contact_person = serializers.CharField(
+        max_length=255,
+        required=False,
+        allow_blank=True,
+        default="",
+    )
     address = serializers.CharField(required=False, allow_blank=True, default="")
     pincode = serializers.CharField(max_length=10, required=False, allow_blank=True, default="")
     phone = serializers.CharField(max_length=20, required=False, allow_blank=True, default="")
     remarks = serializers.CharField(required=False, allow_blank=True, default="")
-    followup_remarks = serializers.CharField(required=False, allow_blank=True, allow_null=True, default="")
+    followup_remarks = serializers.CharField(
+        required=False,
+        allow_blank=True,
+        allow_null=True,
+        default="",
+    )
     followup_next_date = serializers.DateField(required=False, allow_null=True, default=None)
 
 
@@ -238,8 +258,18 @@ class QuotationCreateSerializer(serializers.Serializer):
     title = serializers.CharField(max_length=255)
     quote_no = serializers.CharField(max_length=50)
     type = serializers.CharField(max_length=10)
-    amc_type = serializers.CharField(max_length=20, required=False, allow_null=True, allow_blank=True)
-    service_interval = serializers.CharField(max_length=50, required=False, allow_null=True, allow_blank=True)
+    amc_type = serializers.CharField(
+        max_length=20,
+        required=False,
+        allow_null=True,
+        allow_blank=True,
+    )
+    service_interval = serializers.CharField(
+        max_length=50,
+        required=False,
+        allow_null=True,
+        allow_blank=True,
+    )
     status = serializers.CharField(max_length=20)
     from_details = AddressDetailsSerializer()
     to_details = AddressDetailsSerializer()

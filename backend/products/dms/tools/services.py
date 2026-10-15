@@ -1,7 +1,9 @@
 from __future__ import annotations
-from typing import Any
+
 from django.core.files.uploadedfile import UploadedFile
+
 from .models import MarketingAsset, TimerCalculation
+
 
 def create_marketing_asset(
     *, title: str, material_type: str, category: str = "", description: str = "",
@@ -25,7 +27,12 @@ def create_marketing_asset(
 def delete_marketing_asset(asset_id: str) -> None:
     MarketingAsset.objects.filter(id=asset_id).delete()
 
-def create_timer_calculation(*, site_id: str, input_data: dict, output_data: dict) -> TimerCalculation:
+def create_timer_calculation(
+    *,
+    site_id: str,
+    input_data: dict,
+    output_data: dict,
+) -> TimerCalculation:
     calc = TimerCalculation(
         site_id=site_id,
         input_data=input_data,

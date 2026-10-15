@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { PlusIcon, SearchIcon } from "lucide-react";
+import { SearchIcon } from "lucide-react";
 import { useMarketingKit } from "../hooks/useMarketingKit";
 import { MaterialAccordion } from "../components/MaterialAccordion";
 import type { MaterialType } from "../api/types";

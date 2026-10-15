@@ -32,9 +32,15 @@ urlpatterns = [
     path("api/v1/orgs/<slug:org_slug>/", include("core.organizations.api.urls")),
     # DMS product routes (organization-scoped).
     path("api/v1/orgs/<str:org_slug>/dms/sales/", include("products.dms.sales.api.urls")),
-    path("api/v1/orgs/<str:org_slug>/dms/site-services/", include("products.dms.site_services.api.urls")),
+    path(
+        "api/v1/orgs/<str:org_slug>/dms/site-services/",
+        include("products.dms.site_services.api.urls"),
+    ),
     path("api/v1/orgs/<str:org_slug>/dms/ecommerce/", include("products.dms.ecommerce.api.urls")),
-    path("api/v1/orgs/<str:org_slug>/dms/tech-support/", include("products.dms.tech_support.api.urls")),
+    path(
+        "api/v1/orgs/<str:org_slug>/dms/tech-support/",
+        include("products.dms.tech_support.api.urls"),
+    ),
     path("api/v1/orgs/<str:org_slug>/dms/tools/", include("products.dms.tools.api.urls")),
     # No schema or docs routes. drf-spectacular was removed on 2026-10-02:
     # it had been in the scaffold since Phase 1 and the owner had never been

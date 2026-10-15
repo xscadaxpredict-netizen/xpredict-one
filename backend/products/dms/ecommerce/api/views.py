@@ -1,22 +1,24 @@
 from rest_framework import status
 from rest_framework.request import Request
 from rest_framework.response import Response
-from rest_framework.views import APIView
+
 from core.api import TenantAPIView
 
 from .. import selectors, services
 from .serializers import (
-    SpareProductSerializer,
-    OrderReadSerializer,
     OrderCreateSerializer,
+    OrderReadSerializer,
     OrderStatusUpdateSerializer,
+    SpareProductSerializer,
 )
 
 
 class CatalogListView(TenantAPIView):
     def get(self, request: Request, org_slug: str) -> Response:
         products = selectors.list_spares_catalog()
-        return Response(SpareProductSerializer(products, many=True, context={'request': request}).data)
+        return Response(
+            SpareProductSerializer(products, many=True, context={'request': request}).data
+        )
 
 
 class OrderListCreateView(TenantAPIView):

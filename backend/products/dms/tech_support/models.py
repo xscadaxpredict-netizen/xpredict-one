@@ -14,7 +14,6 @@ from django.db import models
 
 from shared.base_models import BaseModel, UnitScopedModel
 
-
 # ============================================================================
 # UserManual
 # ============================================================================
