@@ -74,6 +74,8 @@ class MachineVideoDetailView(TenantAPIView):
 
 class CallRequestListView(TenantAPIView):
     parser_classes = [MultiPartParser, FormParser, JSONParser]
+    required_permissions = ["dms.ticket.view"]
+    method_permissions = {"POST": ["dms.ticket.create"]}
 
     def get(self, request, org_slug: str):
         calls = get_call_requests()
@@ -98,6 +100,11 @@ class CallRequestListView(TenantAPIView):
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 class CallRequestDetailView(TenantAPIView):
+    required_permissions = ["dms.ticket.view"]
+    method_permissions = {
+        "PATCH": ["dms.ticket.update"],
+        "DELETE": ["dms.ticket.close"],
+    }
     def patch(self, request, org_slug: str, pk: str):
         call = CallRequest.objects.get(id=pk)
         serializer = CallRequestSerializer(call, data=request.data, partial=True)

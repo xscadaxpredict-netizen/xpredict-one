@@ -18,12 +18,16 @@ from .serializers import (
 
 
 class SiteListView(TenantAPIView):
+    required_permissions = ["dms.jobcard.view"]
+
     def get(self, request: Request, org_slug: str) -> Response:
         sites = selectors.list_sites()
         return Response(SiteReadSerializer(sites, many=True).data)
 
 
 class SiteProfileUpdateView(TenantAPIView):
+    required_permissions = ["dms.jobcard.update"]
+
     def patch(self, request: Request, org_slug: str, pk: str) -> Response:
         payload = SiteProfileUpdateSerializer(data=request.data)
         payload.is_valid(raise_exception=True)
@@ -37,6 +41,9 @@ class SiteProfileUpdateView(TenantAPIView):
 
 
 class ScheduleListCreateView(TenantAPIView):
+    required_permissions = ["dms.appointment.view"]
+    method_permissions = {"POST": ["dms.appointment.create"]}
+
     def get(self, request: Request, org_slug: str) -> Response:
         site_id = request.query_params.get("site_id")
         schedules = selectors.list_schedules(site_id=site_id)
@@ -53,6 +60,12 @@ class ScheduleListCreateView(TenantAPIView):
 
 
 class ScheduleDetailView(TenantAPIView):
+    required_permissions = ["dms.appointment.view"]
+    method_permissions = {
+        "PATCH": ["dms.appointment.update"],
+        "DELETE": ["dms.appointment.cancel"],
+    }
+
     def patch(self, request: Request, org_slug: str, pk: str) -> Response:
         payload = ScheduleCreateUpdateSerializer(data=request.data)
         payload.is_valid(raise_exception=True)
@@ -69,6 +82,8 @@ class ScheduleDetailView(TenantAPIView):
 
 class ServiceReportListCreateView(TenantAPIView):
     parser_classes = [MultiPartParser, FormParser, JSONParser]
+    required_permissions = ["dms.jobcard.view"]
+    method_permissions = {"POST": ["dms.jobcard.create"]}
 
     def get(self, request: Request, org_slug: str) -> Response:
         site_id = request.query_params.get("site_id")
@@ -90,6 +105,11 @@ class ServiceReportListCreateView(TenantAPIView):
 
 class ServiceReportDetailView(TenantAPIView):
     parser_classes = [MultiPartParser, FormParser, JSONParser]
+    required_permissions = ["dms.jobcard.view"]
+    method_permissions = {
+        "PATCH": ["dms.jobcard.update"],
+        "DELETE": ["dms.jobcard.close"],
+    }
 
     def patch(self, request: Request, org_slug: str, pk: str) -> Response:
         data = request.data.dict() if hasattr(request.data, "dict") else request.data.copy()
@@ -110,6 +130,8 @@ class ServiceReportDetailView(TenantAPIView):
 
 class WaterReportListCreateView(TenantAPIView):
     parser_classes = [MultiPartParser, FormParser, JSONParser]
+    required_permissions = ["dms.jobcard.view"]
+    method_permissions = {"POST": ["dms.jobcard.create"]}
 
     def get(self, request: Request, org_slug: str) -> Response:
         site_id = request.query_params.get("site_id")
@@ -139,6 +161,11 @@ class WaterReportListCreateView(TenantAPIView):
 
 class WaterReportDetailView(TenantAPIView):
     parser_classes = [MultiPartParser, FormParser, JSONParser]
+    required_permissions = ["dms.jobcard.view"]
+    method_permissions = {
+        "PATCH": ["dms.jobcard.update"],
+        "DELETE": ["dms.jobcard.close"],
+    }
 
     def patch(self, request: Request, org_slug: str, pk: str) -> Response:
         data = request.data.dict() if hasattr(request.data, "dict") else request.data.copy()
@@ -166,6 +193,8 @@ class WaterReportDetailView(TenantAPIView):
 
 class ComplaintListCreateView(TenantAPIView):
     parser_classes = [MultiPartParser, FormParser, JSONParser]
+    required_permissions = ["dms.ticket.view"]
+    method_permissions = {"POST": ["dms.ticket.create"]}
 
     def get(self, request: Request, org_slug: str) -> Response:
         site_id = request.query_params.get("site_id")
@@ -196,6 +225,11 @@ class ComplaintListCreateView(TenantAPIView):
 
 class ComplaintDetailView(TenantAPIView):
     parser_classes = [MultiPartParser, FormParser, JSONParser]
+    required_permissions = ["dms.ticket.view"]
+    method_permissions = {
+        "PATCH": ["dms.ticket.update"],
+        "DELETE": ["dms.ticket.close"],
+    }
 
     def patch(self, request: Request, org_slug: str, pk: str) -> Response:
         data = request.data.dict() if hasattr(request.data, "dict") else request.data.copy()

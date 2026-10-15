@@ -1,5 +1,8 @@
 from core.organizations.api.base import OrgScopedAPIView
 from core.organizations.models import BusinessUnit
+from core.organizations.selectors import permissions_for, resolve_allowed_units
+from core.permissions.models import AppCode
+from shared.base_models import allowed_units
 
 
 class TenantAPIView(OrgScopedAPIView):
@@ -19,16 +22,30 @@ class TenantAPIView(OrgScopedAPIView):
     `X-Unit-Id` header; otherwise the organization's first unit is used.
     """
 
-    # Membership alone is enough for DMS endpoints for now: the permission
-    # catalogue has no codes for site-services, e-commerce, tools or settings
-    # yet. Tighten per view with `required_permissions` / `method_permissions`
-    # once those codes exist.
+    app_code: str = AppCode.DMS
     required_permissions: list[str] = []
 
     def initial(self, request, *args, **kwargs):
         super().initial(request, *args, **kwargs)
         request.membership = self.membership
         request.unit_id = self._resolve_unit_id(request, self.organization)
+
+        # Enforce dealer isolation for all unit-scoped models (Enquiries, Quotations, Job cards, etc.)
+        allowed = resolve_allowed_units(self.membership, self.app_code)
+        allowed_units.set(allowed)
+
+    @property
+    def is_manager_or_admin(self) -> bool:
+        if self.membership.role in ("owner", "admin"):
+            return True
+        held = permissions_for(self.membership)
+        return bool(
+            held.intersection({
+                "dms.enquiry.close",
+                "dms.order.confirm",
+                "admin.person.invite",
+            })
+        )
 
     @staticmethod
     def _resolve_unit_id(request, organization):
