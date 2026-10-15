@@ -1,6 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { request } from "../../shared/api/request";
-import type { Brochure, Video, AdBanner, CapacityInput, CapacityResult } from "./types";
+import type { Brochure, Video, AdBanner } from "./types";
 
 export function useTools(orgSlug: string) {
   const queryClient = useQueryClient();

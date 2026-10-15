@@ -1,3 +1,13 @@
+/**
+ * The catalog as the Store screen groups it: category name -> its products.
+ *
+ * Not a server shape. `StoreCatalogScreen` builds it with
+ * `Record<string, SpareProduct[]>` and `ProductCatalog` consumes it, so this
+ * names the thing those two already pass between them rather than inventing
+ * one. The server sends a flat `SpareProduct[]`.
+ */
+export type CatalogData = Record<string, SpareProduct[]>;
+
 export interface SpareProduct {
   id: string;
   name: string;

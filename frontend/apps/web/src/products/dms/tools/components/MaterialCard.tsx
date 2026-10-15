@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Edit2Icon, Trash2Icon, DownloadIcon, FileTextIcon, PlayCircleIcon, ImageIcon } from "lucide-react";
+import { Edit2Icon, Trash2Icon, DownloadIcon, FileTextIcon, PlayCircleIcon } from "lucide-react";
 import { PreviewModal } from "../../../../shared/components/PreviewModal";
 import styles from "./MaterialCard.module.css";
 

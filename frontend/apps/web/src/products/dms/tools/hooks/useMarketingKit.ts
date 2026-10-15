@@ -6,17 +6,17 @@ export function useMarketingKit() {
   const { orgSlug } = useParams<{ orgSlug: string }>();
   const tools = useTools(orgSlug!);
 
-  const addMaterial = (type: MaterialType, item: any) => {
+  const addMaterial = (_type: MaterialType, item: any) => {
     // Expected to be a FormData object from the UI
     tools.uploadMaterial(item);
   };
 
-  const updateMaterial = (type: MaterialType, id: string, updates: any) => {
+  const updateMaterial = (_type: MaterialType, _id: string, _updates: any) => {
     // Currently API doesn't support PATCH for materials, so we'll just ignore for now or implement later
     console.warn("Update material not implemented yet via API");
   };
 
-  const deleteMaterial = (type: MaterialType | string, id: string) => {
+  const deleteMaterial = (_type: MaterialType | string, id: string) => {
     tools.deleteMaterial(id);
   };
 

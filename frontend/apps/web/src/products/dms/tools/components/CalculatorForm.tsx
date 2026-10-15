@@ -1,4 +1,4 @@
-import { DropletIcon, ActivityIcon, Settings2Icon, BuildingIcon, UsersIcon, CheckSquareIcon } from 'lucide-react';
+import { ActivityIcon, Settings2Icon, BuildingIcon, UsersIcon } from 'lucide-react';
 import type { ApplicationType } from '../api/capacityMath';
 import styles from './CalculatorForm.module.css';
 

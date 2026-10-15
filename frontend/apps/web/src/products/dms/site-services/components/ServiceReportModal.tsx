@@ -48,7 +48,11 @@ export function ServiceReportModal({ isOpen, isEditing, form, confirmedSites, on
     setPhotoPreviews(updated);
     
     // Also remove from form.attachments
-    const updatedAttachments = (form?.attachments || []).filter((_, i) => i !== index);
+    // Typed at the call site because the `form` prop is `any`; without these
+    // annotations both parameters are implicitly `any` and tsc refuses.
+    const updatedAttachments = (form?.attachments || []).filter(
+      (_: unknown, i: number) => i !== index,
+    );
     onFormChange({ attachments: updatedAttachments });
   };
 

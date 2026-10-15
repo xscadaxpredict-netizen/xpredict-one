@@ -30,7 +30,7 @@ export function SettingsManualsTab() {
     setIsModalOpen(true);
   };
 
-  const handleSubmit = (e: React.FormEvent, files?: FileList | null) => {
+  const handleSubmit = (e: React.FormEvent, _files?: FileList | null) => {
     e.preventDefault();
     const formDataObj = new FormData();
     Object.keys(formData).forEach(key => {

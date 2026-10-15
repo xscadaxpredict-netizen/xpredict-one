@@ -282,3 +282,55 @@ class TestDealerAndColleagueIsolation:
         )
         assert resp_tech_post.status_code == status.HTTP_403_FORBIDDEN
 
+
+    def test_a_manager_at_another_dealer_cannot_see_this_one(self):
+        """
+        THE ONLY TEST HERE THAT FAILS WHEN DEALER SCOPING IS REMOVED, and it
+        exists because a revert showed the other three do not.
+
+        The two selector tests above set `allowed_units` by hand and never
+        reach a view, so they exercise `UnitScopedManager` rather than the
+        wiring in `TenantAPIView.initial()` that was the actual bug. And
+        `test_api_dealer_and_colleague_isolation` does go through the API, but
+        its reader is a REP at the other dealership -- colleague privacy hides
+        other people's enquiries from a rep whether or not dealer scoping runs,
+        so the assertion holds for the wrong reason.
+
+        A MANAGER is the reader colleague privacy does not filter for. Dealer
+        scoping is then the only thing left that can hide another dealership's
+        work, which makes this the one assertion that moves when it is removed.
+        """
+        org = create_test_org("dms-manager-cross-dealer-org")
+        unit_a = BusinessUnit.objects.create(organization=org, name="Unit A")
+        unit_b = BusinessUnit.objects.create(organization=org, name="Unit B")
+
+        rep_a, _ = create_dealer_user(org, unit_a, "rep@unit-a-cross.test")
+        manager_b, _ = create_dealer_user(
+            org, unit_b, "manager@unit-b-cross.test", role_code="dms.manager"
+        )
+
+        url = f"/api/v1/orgs/{org.slug}/dms/sales/enquiries/"
+        client = APIClient()
+
+        client.force_authenticate(user=rep_a)
+        created = client.post(
+            url,
+            {"customer_name": "Unit A Customer", "phone": "9999999999"},
+            format="json",
+        )
+        assert created.status_code == status.HTTP_201_CREATED, created.data
+        enquiry_id = str(created.data["id"])
+
+        # The manager at Unit B sees their own dealership and no other.
+        client.force_authenticate(user=manager_b)
+        listed = client.get(url)
+        assert listed.status_code == status.HTTP_200_OK, listed.data
+        assert enquiry_id not in [str(e["id"]) for e in listed.data], (
+            "Dealer isolation is not active: a manager at Unit B can see Unit A's enquiry."
+        )
+
+        # And not by guessing the id either -- cross-dealer access is 404, never
+        # 403, so a record you may not see is indistinguishable from one that
+        # does not exist.
+        detail = client.get(f"{url}{enquiry_id}/")
+        assert detail.status_code == status.HTTP_404_NOT_FOUND

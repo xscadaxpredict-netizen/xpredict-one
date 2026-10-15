@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
 import { SignaturePad } from "../components/SignaturePad";
 import { useDialog } from "../../shared/hooks/useDialog";

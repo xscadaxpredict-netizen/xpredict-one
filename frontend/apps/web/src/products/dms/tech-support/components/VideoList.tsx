@@ -16,7 +16,7 @@ export function VideoList({ videos, onEdit, onDelete }: Props) {
   const handleDownload = (video: MachineVideo) => {
     const a = document.createElement("a");
     a.href = video.file || "";
-    a.download = video.fileName || "video.mp4";
+    a.download = video.file_name || "video.mp4";
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
@@ -79,7 +79,7 @@ export function VideoList({ videos, onEdit, onDelete }: Props) {
         isOpen={!!previewVideo}
         url={previewVideo?.file || null}
         type="video"
-        title={previewVideo?.title || previewVideo?.fileName}
+        title={previewVideo?.title ?? previewVideo?.file_name}
         onClose={() => setPreviewVideo(null)}
       />
     </div>

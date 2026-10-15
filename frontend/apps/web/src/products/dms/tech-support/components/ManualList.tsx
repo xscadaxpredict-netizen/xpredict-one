@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { FileTextIcon, Edit2Icon, Trash2Icon, DownloadIcon, EyeIcon } from "lucide-react";
+import { FileTextIcon, Edit2Icon, Trash2Icon, DownloadIcon } from "lucide-react";
 import type { UserManual } from "../api/types";
 import { PreviewModal } from "../../../../shared/components/PreviewModal";
 import styles from "./ManualList.module.css";
@@ -16,7 +16,7 @@ export function ManualList({ manuals, onEdit, onDelete }: Props) {
   const handleDownload = (manual: UserManual) => {
     const a = document.createElement("a");
     a.href = manual.file || "";
-    a.download = manual.fileName || "manual.pdf";
+    a.download = manual.file_name || "manual.pdf";
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
@@ -66,7 +66,7 @@ export function ManualList({ manuals, onEdit, onDelete }: Props) {
           <div className={styles.title} onClick={() => setPreviewManual(manual)} style={{ cursor: "pointer", color: "var(--color-primary)" }}>
             {manual.title}
           </div>
-          <div className={styles.meta}>{manual.category} • {manual.fileSize || (manual as any).file_size}</div>
+          <div className={styles.meta}>{manual.category} • {manual.file_size}</div>
           <div className={styles.desc}>{manual.description}</div>
           <div style={{ display: 'flex', gap: '0.5rem', marginTop: 'auto', paddingTop: '1rem' }}>
             <button type="button" className={styles.btnSecondary} onClick={() => handleDownload(manual)} style={{ flex: 1 }}>
@@ -79,7 +79,7 @@ export function ManualList({ manuals, onEdit, onDelete }: Props) {
         isOpen={!!previewManual}
         url={previewManual?.file || null}
         type="pdf"
-        title={previewManual?.title || previewManual?.fileName}
+        title={previewManual?.title ?? previewManual?.file_name}
         onClose={() => setPreviewManual(null)}
       />
     </div>

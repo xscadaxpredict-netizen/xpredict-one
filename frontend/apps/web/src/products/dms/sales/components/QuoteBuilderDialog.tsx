@@ -66,7 +66,10 @@ export function QuoteBuilderDialog({
   const [items, setItems] = useState<QuotationItem[]>([]);
   const [bankId, setBankId] = useState("");
   const [terms, setTerms] = useState("");
-  const [submitStatus, setSubmitStatus] = useState<"DRAFT" | "QUOTE_SENT">("QUOTE_SENT");
+  // The VALUE is never read -- `submitStatusRef` below is what the submit
+  // handler reads, because a state update is not visible to the handler that
+  // triggered it. Only the setter is kept, so the state still drives renders.
+  const [, setSubmitStatus] = useState<"DRAFT" | "QUOTE_SENT">("QUOTE_SENT");
   const submitStatusRef = useRef<"DRAFT" | "QUOTE_SENT">("QUOTE_SENT");
 
   // Initialize form
