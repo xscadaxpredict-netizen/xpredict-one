@@ -231,7 +231,17 @@ class TestProvisioning:
 
         provision_tenant(str(organization.pk))
 
-        assert tables_in(register_tenant_connection(organization)) == set()
+        tables = tables_in(register_tenant_connection(organization))
+        assert "django_migrations" in tables
+        assert "dms_sales_enquiry" in tables
+        for forbidden in (
+            "accounts_user",
+            "organizations_organization",
+            "permissions_role",
+            "billing_appsubscription",
+            "django_admin_log",
+        ):
+            assert forbidden not in tables, forbidden
 
     def test_running_it_twice_is_safe(self):
         """
@@ -332,21 +342,24 @@ class TestWhatGetsMigratedIntoATenant:
             "audit",
             "contacts",
             "crm",
+            "dms_ecommerce",
             "dms_sales",
-            "dms_service",
+            "dms_site_services",
             "dms_tech_support",
+            "dms_tools",
             "events",
             "notifications",
         }
 
     def test_nothing_is_migratable_yet(self):
         """
-        No tenant app has a migration, which is why provisioning leaves an
-        empty database. The first DMS model changes this, and it should --
-        this test is here so that change is deliberate rather than noticed
-        months later.
+        The first DMS models landed, so tenant apps now have migrations.
+        Verify that all migration targets belong strictly to tenant apps.
         """
-        assert tenant_migration_targets() == []
+        targets = tenant_migration_targets()
+        assert len(targets) > 0
+        for target in targets:
+            assert target in tenant_app_labels()
 
 
 class TestSignupSchedulesIt:
@@ -365,7 +378,9 @@ class TestSignupSchedulesIt:
         organization.refresh_from_db()
         assert organization.db_name == TEST_TENANT_ALIAS
         assert organization.provisioned_at is not None
-        assert tables_in(register_tenant_connection(organization)) == set()
+        tables = tables_in(register_tenant_connection(organization))
+        assert "django_migrations" in tables
+        assert "dms_sales_enquiry" in tables
 
     def test_it_is_scheduled_on_commit_and_not_called_inline(self):
         """

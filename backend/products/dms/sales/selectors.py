@@ -15,47 +15,53 @@ from __future__ import annotations
 import uuid
 from typing import TYPE_CHECKING
 
-from .models import Enquiry
+from django.db.models import Prefetch, Q
+
+from .models import BankAccount, Enquiry, Followup, ProductCatalog, Quotation
 
 if TYPE_CHECKING:
     from django.db.models import QuerySet
 
 
-def list_enquiries(*, status: str | None = None) -> QuerySet[Enquiry]:
-    """Enquiries the caller may see, newest first. Already dealer-scoped."""
-    qs = Enquiry.objects.all()
-    if status:
-        qs = qs.filter(status=status)
-    return qs
-
-
-def get_enquiry(*, enquiry_id: uuid.UUID) -> Enquiry | None:
+def list_enquiries(
+    *,
+    actor_user_id: uuid.UUID | None = None,
+    is_manager_or_admin: bool = True,
+) -> QuerySet[Enquiry]:
     """
-    One enquiry, or None if it is not the caller's to see.
-
-    Another dealer's enquiry is indistinguishable from one that does not exist
-    --- the manager filtered it out before this query ran. The view turns None
-    into 404, which is what stops record existence leaking across dealers.
+    Enquiries the caller may see, newest first. Already dealer-scoped by UnitScopedModel.
+    If the caller is not a manager or admin, only their own assigned or created
+    enquiries are returned (peers cannot see each other's deals).
     """
-    return Enquiry.objects.filter(pk=enquiry_id).first()
-
-
-def count_open_by_unit() -> dict[uuid.UUID, int]:
-    """
-    Open enquiries per dealer, for the fleet dashboard.
-
-    A deliberate `all_units` use: the fleet dashboard is org-level reporting and
-    is only reachable by a caller with org-wide scope. The permission check
-    belongs at the endpoint --- this function trusts its caller, so do not call
-    it from a dealer-scoped view.
-    """
-    from django.db.models import Count
-
-    rows = (
-        Enquiry.all_units.exclude(
-            status__in=[Enquiry.Status.WON, Enquiry.Status.LOST],
+    qs = Enquiry.objects.prefetch_related(
+        Prefetch("followups", queryset=Followup.objects.order_by("-created_at")),
+        Prefetch(
+            "quotations",
+            queryset=Quotation.objects.prefetch_related("items").order_by("-created_at"),
         )
-        .values("unit_id")
-        .annotate(total=Count("id"))
     )
-    return {row["unit_id"]: row["total"] for row in rows}
+    if not is_manager_or_admin and actor_user_id:
+        qs = qs.filter(Q(created_by_user_id=actor_user_id) | Q(assigned_to_user_id=actor_user_id))
+    return qs.order_by("-created_at")
+
+
+def get_enquiry(
+    *,
+    enquiry_id: uuid.UUID | str,
+    actor_user_id: uuid.UUID | None = None,
+    is_manager_or_admin: bool = False,
+) -> Enquiry | None:
+    return list_enquiries(
+        actor_user_id=actor_user_id,
+        is_manager_or_admin=is_manager_or_admin,
+    ).filter(pk=enquiry_id).first()
+
+
+def list_banks() -> QuerySet[BankAccount]:
+    """Bank accounts for the dealer."""
+    return BankAccount.objects.filter(is_active=True).order_by("-is_default")
+
+
+def list_products() -> QuerySet[ProductCatalog]:
+    """Product catalog (presets) for the dealer."""
+    return ProductCatalog.objects.filter(is_active=True)

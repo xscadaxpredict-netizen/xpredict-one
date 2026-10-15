@@ -1,0 +1,328 @@
+.bellButton {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 38px;
+  height: 38px;
+  border-radius: var(--radius-md, 6px);
+  border: 1px solid var(--color-border, #dde2e8);
+  background: var(--color-surface, #ffffff);
+  color: var(--color-text-2, #4e5a67);
+  cursor: pointer;
+  transition: all 0.15s ease;
+  padding: 0;
+}
+
+.bellButton:hover,
+.bellButton[data-state="open"] {
+  background: var(--color-surface-alt, #ebeef2);
+  color: var(--color-text, #10161d);
+  border-color: var(--color-border-strong, #c3cbd5);
+}
+
+.badge {
+  position: absolute;
+  top: -4px;
+  right: -4px;
+  background: var(--color-danger, #b3261e);
+  color: #ffffff;
+  font-size: 0.7rem;
+  font-weight: 700;
+  line-height: 1;
+  padding: 2px 5px;
+  border-radius: 10px;
+  border: 2px solid var(--color-surface, #ffffff);
+  min-width: 18px;
+  text-align: center;
+}
+
+/* The portaled Radix Popover panel */
+.panel {
+  width: 390px;
+  max-width: calc(100vw - 24px);
+  max-height: calc(100vh - var(--topbar-height, 56px) - 20px);
+  display: flex;
+  flex-direction: column;
+  background: var(--color-surface, #ffffff);
+  border: 1px solid var(--color-border, #dde2e8);
+  border-radius: var(--radius-lg, 8px);
+  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.15), 0 8px 10px -6px rgba(0, 0, 0, 0.1);
+  z-index: 1000;
+  overflow: hidden;
+  outline: none;
+  animation: popoverFadeIn 0.15s ease-out;
+}
+
+@keyframes popoverFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--color-border, #dde2e8);
+  background: var(--color-canvas, #f4f6f8);
+  flex-shrink: 0;
+}
+
+.headerTitle {
+  font-size: var(--text-sm, 0.875rem);
+  font-weight: 600;
+  color: var(--color-text, #10161d);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.headerCountBadge {
+  font-size: 0.75rem;
+  font-weight: 600;
+  background: var(--color-primary-050, #eff4fe);
+  color: var(--color-primary, #2450b5);
+  padding: 2px 7px;
+  border-radius: 10px;
+}
+
+.headerActions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.markAllBtn {
+  background: transparent;
+  border: none;
+  font-size: var(--text-xs, 0.75rem);
+  color: var(--color-primary, #2450b5);
+  cursor: pointer;
+  padding: 4px 6px;
+  font-weight: 500;
+  border-radius: 4px;
+  display: inline-flex;
+  align-items: center;
+}
+
+.markAllBtn:hover {
+  text-decoration: underline;
+}
+
+.closeBtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: none;
+  border-radius: var(--radius-md, 4px);
+  background: transparent;
+  color: var(--color-text-3, #6f7b89);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.closeBtn:hover {
+  background: var(--color-surface-alt, #ebeef2);
+  color: var(--color-text, #10161d);
+}
+
+.tabsRow {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 8px 12px;
+  background: var(--color-surface, #ffffff);
+  border-bottom: 1px solid var(--color-border, #dde2e8);
+  overflow-x: auto;
+  scrollbar-width: none;
+  flex-shrink: 0;
+  -webkit-overflow-scrolling: touch;
+}
+
+.tabsRow::-webkit-scrollbar {
+  display: none;
+}
+
+.tabBtn {
+  background: transparent;
+  border: none;
+  padding: 4px 10px;
+  border-radius: 14px;
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: var(--color-text-2, #4e5a67);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 0.15s ease;
+  flex-shrink: 0;
+}
+
+.tabBtn:hover {
+  background: var(--color-surface-alt, #ebeef2);
+  color: var(--color-text, #10161d);
+}
+
+.tabBtnActive {
+  background: var(--color-primary, #2450b5);
+  color: #ffffff !important;
+}
+
+.listWrapper {
+  overflow-y: auto;
+  max-height: 400px;
+  display: flex;
+  flex-direction: column;
+  -webkit-overflow-scrolling: touch;
+}
+
+.notificationItem {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--color-border, #dde2e8);
+  cursor: pointer;
+  transition: background 0.15s ease;
+  position: relative;
+  text-decoration: none;
+  color: inherit;
+  outline: none;
+}
+
+.notificationItem:hover,
+.notificationItem:focus-visible {
+  background: var(--color-canvas, #f4f6f8);
+}
+
+.unreadItem {
+  background: #fdfefe;
+}
+
+.unreadDot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--color-primary, #2450b5);
+  position: absolute;
+  top: 14px;
+  right: 12px;
+}
+
+.iconWrapper {
+  width: 32px;
+  height: 32px;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+
+.iconFollowup {
+  background: #eff6ff;
+  color: #2563eb;
+}
+
+.iconService {
+  background: #fef3c7;
+  color: #d97706;
+}
+
+.iconComplaint {
+  background: #fee2e2;
+  color: #dc2626;
+}
+
+.iconCall {
+  background: #f3e8ff;
+  color: #7e22ce;
+}
+
+.itemContent {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.itemHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.itemTitle {
+  font-size: var(--text-sm, 0.875rem);
+  font-weight: 600;
+  color: var(--color-text, #10161d);
+  line-height: 1.3;
+}
+
+.dueBadge {
+  font-size: 0.7rem;
+  font-weight: 600;
+  padding: 2px 6px;
+  border-radius: 4px;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.badgeUrgent {
+  background: var(--color-danger-100, #fbe4e2);
+  color: var(--color-danger-700, #8f1d17);
+}
+
+.badgeWarning {
+  background: var(--color-attention-100, #fcebd4);
+  color: var(--color-attention-700, #8a4b06);
+}
+
+.badgeInfo {
+  background: var(--color-primary-050, #eff4fe);
+  color: var(--color-primary, #2450b5);
+}
+
+.itemSubtitle {
+  font-size: var(--text-xs, 0.75rem);
+  color: var(--color-text-2, #4e5a67);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.itemDetails {
+  font-size: 0.7rem;
+  color: var(--color-text-3, #6f7b89);
+  margin-top: 2px;
+}
+
+.emptyState {
+  padding: 32px 16px;
+  text-align: center;
+  color: var(--color-text-3, #6f7b89);
+  font-size: var(--text-sm, 0.875rem);
+}
+
+@media (max-width: 640px) {
+  .panel {
+    width: calc(100vw - 24px);
+    max-height: calc(100vh - var(--topbar-height, 56px) - 16px);
+  }
+
+  .itemSubtitle {
+    white-space: normal;
+  }
+}

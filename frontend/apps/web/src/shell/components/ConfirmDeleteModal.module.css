@@ -1,0 +1,34 @@
+.overlay {
+  position: fixed; inset: 0; background-color: rgba(0,0,0,0.5); z-index: 9999;
+  display: flex; align-items: center; justify-content: center;
+}
+.content {
+  background: var(--color-surface); border-radius: var(--radius-lg);
+  width: 420px; max-width: 95%; box-shadow: 0 10px 25px rgba(0,0,0,0.2);
+  display: flex; flex-direction: column; overflow: hidden;
+}
+.header {
+  padding: var(--space-4) var(--space-5); border-bottom: 1px solid var(--color-border);
+  display: flex; justify-content: space-between; align-items: center; background: #FEF2F2;
+}
+.title {
+  font-size: 1.05rem; font-weight: 700; color: #B91C1C; margin: 0; display: flex; align-items: center; gap: 8px;
+}
+.body {
+  padding: var(--space-5); font-size: 0.95rem; color: var(--color-text); line-height: 1.5;
+}
+.footer {
+  padding: var(--space-4) var(--space-5); border-top: 1px solid var(--color-border);
+  display: flex; justify-content: flex-end; gap: var(--space-3); background: var(--color-surface-alt);
+}
+.btnCancel {
+  padding: 8px 16px; border-radius: var(--radius-md); font-weight: 600; font-size: 0.9rem;
+  background: var(--color-surface); border: 1px solid var(--color-border-strong); color: var(--color-text);
+  cursor: pointer;
+}
+.btnCancel:hover { background: var(--color-surface-alt); }
+.btnDelete {
+  padding: 8px 16px; border-radius: var(--radius-md); font-weight: 600; font-size: 0.9rem;
+  background: #DC2626; border: none; color: white; cursor: pointer;
+}
+.btnDelete:hover { background: #B91C1C; }

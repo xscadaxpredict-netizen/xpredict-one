@@ -18,3 +18,5 @@ export { DetailPanel } from "./DetailPanel";
 // the same way — so it starts here rather than in one screen (the rule of two).
 export { InfoHint } from "./InfoHint";
 export type { InfoHintProps } from "./InfoHint";
+export { ConfirmDialog } from "./ConfirmDialog";
+export type { ConfirmDialogProps } from "./ConfirmDialog";

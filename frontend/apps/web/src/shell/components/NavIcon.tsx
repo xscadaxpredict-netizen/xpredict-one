@@ -25,7 +25,8 @@ export type NavIconName =
   | "store"
   | "key"
   | "card"
-  | "history";
+  | "history"
+  | "grid";
 
 interface NavIconProps {
   name: NavIconName;
@@ -132,6 +133,17 @@ function glyph(name: NavIconName) {
           <path d="M3.9 12a8.1 8.1 0 1 0 2.4-5.8" />
           <path d="M3.5 3.6v3.4h3.4" />
           <path d="M12 7.8V12l3 1.8" />
+        </>
+      );
+
+    // Dashboard — 4 tiles / grid layout
+    case "grid":
+      return (
+        <>
+          <rect x="3" y="3" width="7" height="7" rx="1.5" />
+          <rect x="14" y="3" width="7" height="7" rx="1.5" />
+          <rect x="14" y="14" width="7" height="7" rx="1.5" />
+          <rect x="3" y="14" width="7" height="7" rx="1.5" />
         </>
       );
   }

@@ -83,8 +83,21 @@ export function accessFor(membership: Membership, appKey: string | undefined): A
   const modules = new Set(app.modules);
   const permissions = new Set(app.permissions);
 
+  const isDealerAdmin = membership.apps.some((a) =>
+    a.permissions.includes("admin.person.invite")
+  );
+
+  const isManagerOrAdmin =
+    membership.role === "owner" ||
+    membership.role === "admin" ||
+    permissions.has("dms.enquiry.close") ||
+    permissions.has("admin.person.invite") ||
+    isDealerAdmin;
+
   return {
-    hasModule: (moduleKey) => modules.has(moduleKey),
+    hasModule: (moduleKey) =>
+      modules.has(moduleKey) ||
+      (isManagerOrAdmin && (moduleKey === "ecommerce" || moduleKey === "tools")),
     can: (permission) => permissions.has(permission),
     modules: app.modules,
     permissions: app.permissions,

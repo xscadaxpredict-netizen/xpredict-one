@@ -71,8 +71,10 @@ TENANT_APPS = [
     "core.events",
     # DMS --- the only unit-aware product (C5).
     "products.dms.sales",
-    "products.dms.service",
+    "products.dms.site_services",
     "products.dms.tech_support",
+    "products.dms.ecommerce",
+    "products.dms.tools",
     # CRM --- organization level, no business units.
     "products.crm",
 ]
@@ -338,9 +340,9 @@ TIME_ZONE = "UTC"
 USE_I18N = True
 USE_TZ = True
 
-STATIC_URL = "static/"
+STATIC_URL = "/static/"
 STATIC_ROOT = BASE_DIR / "staticfiles"
-MEDIA_URL = "media/"
+MEDIA_URL = "/media/"
 MEDIA_ROOT = BASE_DIR / "media"
 # File storage paths are prefixed by org ID --- see shared.storage (Phase 2).
 
@@ -355,3 +357,6 @@ LOGGING = {
     },
     "root": {"handlers": ["console"], "level": env("LOG_LEVEL", default="INFO")},
 }
+
+# Lets the in-app preview modal embed uploaded PDFs in an iframe.
+X_FRAME_OPTIONS = "SAMEORIGIN"

@@ -126,6 +126,13 @@ describe("accessFor", () => {
     it("is distinguishable from an organisation admin by exactly that", () => {
       expect(ownerMembership().unit_id).toBeNull();
     });
+
+    it("can see ecommerce and tools in DMS", () => {
+      const access = accessFor(dealerAdminMembership(), "dms");
+
+      expect(access.hasModule("ecommerce")).toBe(true);
+      expect(access.hasModule("tools")).toBe(true);
+    });
   });
 
   it("gives an owner their whole app", () => {

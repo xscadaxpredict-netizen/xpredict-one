@@ -56,3 +56,13 @@ frontend/**/node_modules/
 frontend/**/dist/
 frontend/openapi.yaml
 frontend/packages/api-client/src/generated/
+
+# Scratch & temporary files
+scratch/
+backend/error_log*.txt
+backend/serialize_test.txt
+patch.py
+strip_fields.py
+frontend/script.py
+frontend/fixLabels.ts
+frontend/replace_modal.cjs

@@ -1,3 +1,5 @@
+from django.conf import settings
+from django.conf.urls.static import static
 from django.contrib import admin
 from django.urls import include, path
 
@@ -28,11 +30,24 @@ urlpatterns = [
     # the organization from `OrgScopedAPIView` rather than taking a slug
     # argument (C49).
     path("api/v1/orgs/<slug:org_slug>/", include("core.organizations.api.urls")),
+    # DMS product routes (organization-scoped).
+    path("api/v1/orgs/<str:org_slug>/dms/sales/", include("products.dms.sales.api.urls")),
+    path(
+        "api/v1/orgs/<str:org_slug>/dms/site-services/",
+        include("products.dms.site_services.api.urls"),
+    ),
+    path("api/v1/orgs/<str:org_slug>/dms/ecommerce/", include("products.dms.ecommerce.api.urls")),
+    path(
+        "api/v1/orgs/<str:org_slug>/dms/tech-support/",
+        include("products.dms.tech_support.api.urls"),
+    ),
+    path("api/v1/orgs/<str:org_slug>/dms/tools/", include("products.dms.tools.api.urls")),
     # No schema or docs routes. drf-spectacular was removed on 2026-10-02:
     # it had been in the scaffold since Phase 1 and the owner had never been
     # asked for it. Plain DRF until after the first public release.
-    # Organization-scoped app routes are added in Phase 2:
-    #   /api/v1/orgs/<org_slug>/<app>/...
-    # The org slug lives in the path, not in the token, so switching
-    # organizations needs no new token.
 ]
+
+# Uploaded attachments (call requests, reports, manuals) are served from
+# MEDIA_ROOT in development only.
+if settings.DEBUG:
+    urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
