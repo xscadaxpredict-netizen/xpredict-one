@@ -400,6 +400,13 @@ cd /srv/xpredict && sudo -u xpredict git pull --ff-only
 cd /srv/xpredict/backend && sudo -u xpredict ./.venv/bin/pip install -r requirements.lock.txt && sudo -u xpredict ./.venv/bin/python manage.py migrate --settings=config.settings.prod && sudo -u xpredict ./.venv/bin/python manage.py collectstatic --noinput --settings=config.settings.prod
 ```
 
+If any tenant app gained a migration, roll it out to the customers too —
+`migrate` above did not:
+
+```bash
+cd /srv/xpredict/backend && sudo -u xpredict ./.venv/bin/python manage.py migrate_all_tenants --settings=config.settings.prod
+```
+
 ```bash
 sudo systemctl reload xpredict-gunicorn && sudo systemctl restart xpredict-celery
 ```
@@ -417,10 +424,29 @@ Rebuild and re-upload the frontend (step 11) when it changed.
 > like it works and does nothing. Gunicorn and Celery are unaffected: systemd
 > sets a real environment variable before the process starts.
 
-> **`migrate` only touches the control database.** When a tenant app gains its
-> first migration, every provisioned tenant database needs it too — and the
-> command for that, `migrate_all_tenants`, **does not exist yet**. Until it
-> does, a tenant-app migration cannot be deployed safely.
+> **`migrate` ONLY TOUCHES THE CONTROL DATABASE.** The router confines it
+> there. Every organisation's own database (C1) is migrated in two places and
+> neither is that command: `provision_tenant` when the organisation is created,
+> and `migrate_all_tenants` afterwards.
+>
+> So when a tenant app gains a migration, the deploy needs a second step:
+>
+> ```bash
+> cd /srv/xpredict/backend && sudo -u xpredict ./.venv/bin/python manage.py migrate_all_tenants --plan --settings=config.settings.prod
+> ```
+>
+> ```bash
+> cd /srv/xpredict/backend && sudo -u xpredict ./.venv/bin/python manage.py migrate_all_tenants --settings=config.settings.prod
+> ```
+>
+> Run `--plan` first: it reports which organisations are behind without
+> touching anything, so "12 of 30 need work" is known before you start. The
+> real run **stops at the first failure** — MySQL cannot roll back DDL, so
+> carrying on past a broken migration would leave every database half-applied
+> instead of one. Re-running skips organisations already done.
+>
+> **While no tenant app has migrations it prints exactly that and does
+> nothing**, which is the honest answer rather than a success that implies work.
 
 ---
 
@@ -458,5 +484,6 @@ Stated plainly, because each is a real gap rather than an oversight:
 - **No staging environment.** This is the first and only deployment target.
 - **No zero-downtime deploy.** `reload` is graceful for in-flight requests, but
   a migration that changes a column is applied while the old code is serving.
-- **`migrate_all_tenants` does not exist**, so tenant-app migrations cannot be
-  rolled out — see above.
+- **Tenant migrations are not proven end to end.** `migrate_all_tenants` exists
+  and is tested, but no tenant app has a migration yet — so the first real run
+  of it will be the first time it applies anything. Use `--plan` first.
