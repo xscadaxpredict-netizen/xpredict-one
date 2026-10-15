@@ -157,16 +157,31 @@ class TestTheOwner:
         assert not AppSubscription.objects.filter(app=AppCode.ADMIN).exists()
         assert app_of(me(result.user), "acme-motors", AppCode.ADMIN).subscribed is True
 
-    def test_dms_is_group_operations_across_all_three_modules(self):
-        """C41 seeds the owner at Group operations, which is Manager's set at
-        organization scope -- 33 permissions, all three modules."""
+    def test_dms_is_group_operations_across_all_five_modules(self):
+        """
+        C41 seeds the owner at Group operations. It WAS Manager's set at
+        organization scope -- 33 permissions across three modules -- and C67
+        made it Manager's set plus the four organisation-wide codes, which
+        brings two more modules with them.
+
+        THE MODULE LIST IS DERIVED, NOT STORED (C42), which is why seven new
+        permissions changed it: a module shows when the role holds at least one
+        permission inside it. `tools` and `ecommerce` appear here for the first
+        time, through the real mechanism.
+
+        Worth knowing while reading the frontend: `shell/access.ts` has a
+        hardcoded `isManagerOrAdmin && (moduleKey === "ecommerce" || moduleKey
+        === "tools")` fallback, written when no permission could produce those
+        two modules. It is now redundant for anybody holding these codes, and
+        removing it is Q47's business rather than this test's.
+        """
         result = found()
 
         dms = app_of(me(result.user), "acme-motors", AppCode.DMS)
 
         assert dms.accessible is True
-        assert dms.modules == ["sales", "service", "tech-support"]
-        assert len(dms.permissions) == 33
+        assert dms.modules == ["ecommerce", "sales", "service", "tech-support", "tools"]
+        assert len(dms.permissions) == 40
 
     def test_unbought_apps_are_shown_but_not_accessible(self):
         """

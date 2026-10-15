@@ -22,13 +22,25 @@ pytestmark = pytest.mark.django_db
 
 
 class TestPermissions:
-    def test_there_are_48(self):
-        """C42 settled on 48. A number that drifts is a decision nobody made."""
-        assert Permission.objects.count() == 48
+    def test_there_are_55(self):
+        """
+        C42 settled on 48 and C67 added seven. A number that drifts is a
+        decision nobody made -- which is exactly what this assertion is for,
+        and it did its job: the seven codes were added with a comment saying
+        the catalogue had grown and this test was not updated with them.
+        """
+        assert Permission.objects.count() == 55
 
     def test_split_by_app_as_decided(self):
+        """
+        DMS went 36 -> 43 with C67's seven: two for the reference library
+        (manuals, videos), three for tools (marketing material, the calculator
+        constants, deleting a saved calculation) and two for store orders.
+        Administration and CRM are untouched, which is the point of asserting
+        them separately -- a DMS change must not quietly reach either.
+        """
         assert Permission.objects.filter(app=AppCode.ADMIN).count() == 11
-        assert Permission.objects.filter(app=AppCode.DMS).count() == 36
+        assert Permission.objects.filter(app=AppCode.DMS).count() == 43
         assert Permission.objects.filter(app=AppCode.CRM).count() == 1
 
     def test_every_code_is_app_resource_action(self):
@@ -121,18 +133,39 @@ class TestRoles:
 
         assert not manager.permissions.filter(app=AppCode.ADMIN).exists()
 
-    def test_group_operations_is_managers_set_exactly(self):
+    def test_group_operations_is_managers_set_plus_the_organisation_wide_four(self):
         """
-        The clearest proof the two axes are separate: identical permissions,
-        different `unit_id`, completely different reach. One works at a
-        dealership, the other acts across all of them at once.
+        IT USED TO BE MANAGER'S SET EXACTLY, and that was the clearest proof the
+        two axes are separate: identical permissions, different `unit_id`,
+        completely different reach. C67 ended that equality deliberately.
+
+        The four resources in the difference have no dealership. `UserManual`,
+        `MachineVideo`, `MarketingAsset` and `CalculatorSettings` inherit
+        `BaseModel`, so there is one copy per organisation and `allowed_units`
+        does not confine them -- a unit-level grant would let one dealership's
+        Manager change what every other dealership sees.
+
+        THE ASSERTION IS THE DIFFERENCE, NOT THE COUNTS, which is what makes it
+        worth keeping. Adding an organisation-wide code to `_MANAGER` by mistake
+        fails here, and so does granting Group operations a dealership-level
+        capability Manager does not have. The two numbers would both still add
+        up.
         """
         manager = Role.objects.get(code="dms.manager")
         group_ops = Role.objects.get(code="dms.group_operations")
 
-        assert set(manager.permissions.values_list("code", flat=True)) == set(
-            group_ops.permissions.values_list("code", flat=True)
-        )
+        manager_codes = set(manager.permissions.values_list("code", flat=True))
+        group_ops_codes = set(group_ops.permissions.values_list("code", flat=True))
+
+        assert group_ops_codes - manager_codes == {
+            "dms.manual.manage",
+            "dms.video.manage",
+            "dms.marketing_asset.manage",
+            "dms.calculator.manage",
+        }
+        # Nothing the other way: a dealership can do everything the group can,
+        # within its own dealership.
+        assert manager_codes - group_ops_codes == set()
         assert manager.level == "unit"
         assert group_ops.level == "org"
 
