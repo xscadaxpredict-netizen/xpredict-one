@@ -22,6 +22,13 @@ from .serializers import (
 
 
 class MarketingAssetListView(TenantAPIView):
+    # Organisation-wide material (`BaseModel`, no unit_id): any member may
+    # read it, only the organisation-level role may add to it.
+    required_permissions: ClassVar[list[str]] = []
+    method_permissions: ClassVar[dict[str, list[str]]] = {
+        "POST": ["dms.marketing_asset.manage"]
+    }
+
     parser_classes: ClassVar[list] = [MultiPartParser, FormParser]
 
     def get(self, request, org_slug: str):
@@ -49,12 +56,19 @@ class MarketingAssetListView(TenantAPIView):
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 class MarketingAssetDetailView(TenantAPIView):
+    required_permissions: ClassVar[list[str]] = ["dms.marketing_asset.manage"]
+
     def delete(self, request, org_slug: str, pk: str):
         delete_marketing_asset(pk)
         return Response(status=status.HTTP_204_NO_CONTENT)
 
 
 class TimerCalculationListView(TenantAPIView):
+    # SAVING A CALCULATION IS USING THE TOOL, so POST needs nothing: the row
+    # inherits `UnitScopedModel` and lands at the caller's own dealership.
+    # Removing somebody's saved work is the Manager's call, below.
+    required_permissions: ClassVar[list[str]] = []
+
     def get(self, request, org_slug: str):
         calcs = get_timer_calculations()
         serializer = TimerCalculationSerializer(calcs, many=True)
@@ -72,6 +86,8 @@ class TimerCalculationListView(TenantAPIView):
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 class TimerCalculationDetailView(TenantAPIView):
+    required_permissions: ClassVar[list[str]] = ["dms.timer_calculation.delete"]
+
     def delete(self, request, org_slug: str, pk: str):
         delete_timer_calculation(pk)
         return Response(status=status.HTTP_204_NO_CONTENT)
@@ -79,6 +95,14 @@ class TimerCalculationDetailView(TenantAPIView):
 
 
 class CalculatorSettingsView(TenantAPIView):
+    # THE MOST DANGEROUS WRITE IN THIS MODULE, and it looked like the dullest.
+    # These constants decide how every capacity calculation in the
+    # organisation is sized, there is one row for the whole organisation
+    # (`BaseModel`), and nothing records who changed them. Reading them is
+    # open because the calculator screen needs them.
+    required_permissions: ClassVar[list[str]] = []
+    method_permissions: ClassVar[dict[str, list[str]]] = {"PUT": ["dms.calculator.manage"]}
+
     def get(self, request, org_slug: str):
         try:
             settings = CalculatorSettings.objects.first()

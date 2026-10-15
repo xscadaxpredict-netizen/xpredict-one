@@ -21,6 +21,14 @@ from .serializers import CallRequestSerializer, MachineVideoSerializer, UserManu
 
 
 class UserManualListView(TenantAPIView):
+    # READING THE LIBRARY IS THE JOB; CHANGING IT REACHES EVERY DEALERSHIP.
+    # `UserManual` inherits `BaseModel`, so there is one copy per organisation
+    # and `allowed_units` does not confine it -- an upload or a deletion here
+    # changes what every dealership sees, which is why the write is granted at
+    # organisation level only.
+    required_permissions: ClassVar[list[str]] = []
+    method_permissions: ClassVar[dict[str, list[str]]] = {"POST": ["dms.manual.manage"]}
+
     parser_classes: ClassVar[list] = [MultiPartParser, FormParser]
 
     def get(self, request, org_slug: str):
@@ -44,11 +52,20 @@ class UserManualListView(TenantAPIView):
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 class UserManualDetailView(TenantAPIView):
+    # Organisation-wide, so deleting it is an organisation-level act. See
+    # UserManualListView.
+    required_permissions: ClassVar[list[str]] = ["dms.manual.manage"]
+
     def delete(self, request, org_slug: str, pk: str):
         delete_user_manual(pk)
         return Response(status=status.HTTP_204_NO_CONTENT)
 
 class MachineVideoListView(TenantAPIView):
+    # Same shape as the manuals above, and the same reason: one copy per
+    # organisation, read by every dealership.
+    required_permissions: ClassVar[list[str]] = []
+    method_permissions: ClassVar[dict[str, list[str]]] = {"POST": ["dms.video.manage"]}
+
     parser_classes: ClassVar[list] = [MultiPartParser, FormParser]
 
     def get(self, request, org_slug: str):
@@ -74,6 +91,8 @@ class MachineVideoListView(TenantAPIView):
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 class MachineVideoDetailView(TenantAPIView):
+    required_permissions: ClassVar[list[str]] = ["dms.video.manage"]
+
     def delete(self, request, org_slug: str, pk: str):
         delete_machine_video(pk)
         return Response(status=status.HTTP_204_NO_CONTENT)

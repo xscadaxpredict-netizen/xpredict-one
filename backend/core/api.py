@@ -1,5 +1,3 @@
-from typing import ClassVar
-
 from core.organizations.api.base import OrgScopedAPIView
 from core.organizations.models import BusinessUnit
 from core.organizations.selectors import permissions_for, resolve_allowed_units
@@ -25,7 +23,25 @@ class TenantAPIView(OrgScopedAPIView):
     """
 
     app_code: str = AppCode.DMS
-    required_permissions: ClassVar[list[str]] = []
+
+    # NO `required_permissions` DEFAULT HERE, AND THAT IS THE POINT.
+    #
+    # This class used to set `= []`, which reads as a harmless convenience and
+    # is the opposite. `OrgScopedAPIView` leaves it `None` so that a view
+    # nobody finished raises ImproperlyConfigured on its FIRST request --
+    # loudly, to whoever is building it -- instead of quietly permitting every
+    # member of the organisation. Setting `[]` on the base class means nothing
+    # is ever unanswered, so the check can never fire and "we decided this
+    # needs nothing" becomes indistinguishable from "nobody got round to it".
+    #
+    # Thirteen DMS views were in the second state for the life of this branch,
+    # nine of them writing: deleting a user manual, cancelling a store order,
+    # rewriting the capacity calculator's constants. None of them looked
+    # wrong, because a missing declaration looked exactly like a deliberate
+    # one.
+    #
+    # An endpoint that genuinely needs no permission says `[]` ITSELF, with a
+    # sentence saying why -- a thing somebody wrote on purpose.
 
     def initial(self, request, *args, **kwargs):
         super().initial(request, *args, **kwargs)
