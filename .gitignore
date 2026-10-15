@@ -30,9 +30,14 @@ dist/
 *.tsbuildinfo
 
 # Environment
+#
+# The two `.example` files are TEMPLATES and hold no secrets, so they are
+# committed; everything else matching `.env.*` is a filled-in file and must
+# never be, because this repository is public (C45).
 .env
 .env.*
 !.env.example
+!.env.production.example
 
 # OS / editor
 .DS_Store

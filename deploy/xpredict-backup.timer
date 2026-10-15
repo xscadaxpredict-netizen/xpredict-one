@@ -1,0 +1,17 @@
+[Unit]
+Description=Xpredict One - nightly database backup
+Documentation=https://github.com/xscadaxpredict-netizen/xpredict-one
+
+[Timer]
+# 02:30 UTC. The instance is UTC unless somebody changed it; pick a time that
+# is quiet for the customers rather than for whoever set this up.
+OnCalendar=*-*-* 02:30:00
+# IF THE BOX WAS OFF AT 02:30, run on the next boot rather than skipping a
+# night. Without this a stopped instance silently has no backup for that day.
+Persistent=true
+# Spread the start so a backup never begins at the exact second as anything
+# else scheduled on the hour.
+RandomizedDelaySec=300
+
+[Install]
+WantedBy=timers.target

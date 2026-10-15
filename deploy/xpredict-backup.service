@@ -1,0 +1,17 @@
+[Unit]
+Description=Xpredict One - database backup
+Documentation=https://github.com/xscadaxpredict-netizen/xpredict-one
+After=mysql.service
+Requires=mysql.service
+
+[Service]
+Type=oneshot
+# ROOT, because it reads the app's .env (owned by xpredict, mode 600) and
+# writes to /var/backups. Narrowing this means a second credential for the
+# backup user, which is a real improvement and a decision to make on purpose.
+User=root
+ExecStart=/usr/local/bin/xpredict-backup
+
+# A failure here must be noisy. The default is a log line nobody reads; this
+# at least makes `systemctl list-units --failed` tell the truth.
+Restart=no
