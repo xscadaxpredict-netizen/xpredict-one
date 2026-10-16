@@ -359,4 +359,22 @@ LOGGING = {
 }
 
 # Lets the in-app preview modal embed uploaded PDFs in an iframe.
+#
+# THIS MATTERS IN DEVELOPMENT ONLY, and the asymmetry is worth knowing before
+# somebody "fixes" the apparent disagreement with `prod.py`, which sets DENY.
+#
+# Django's XFrameOptionsMiddleware stamps this on DJANGO's responses. In
+# development Django serves the uploads itself -- `config/urls.py` serves
+# MEDIA_URL `if settings.DEBUG` -- so the PDF the preview modal iframes carries
+# this header and SAMEORIGIN is what makes the preview work.
+#
+# IN PRODUCTION NGINX SERVES /media/ BY ALIAS, so Django is not in that request
+# and neither value reaches the file. `prod.py` tightening this to DENY is
+# therefore correct and costs the preview nothing: it governs the API and the
+# admin, none of which is ever framed. The framing header for uploads lives in
+# `deploy/nginx-xpredict.conf`, which sets SAMEORIGIN on the /media/ block --
+# without it those responses carry no X-Frame-Options at all.
+#
+# Verified rather than reasoned: a dev request to /media/ comes back
+# `X-Frame-Options: SAMEORIGIN`, and the Nginx config sets none.
 X_FRAME_OPTIONS = "SAMEORIGIN"

@@ -195,6 +195,19 @@ cd /srv/xpredict/backend && sudo -u xpredict ./.venv/bin/python manage.py migrat
 cd /srv/xpredict/backend && sudo -u xpredict ./.venv/bin/python manage.py collectstatic --noinput --settings=config.settings.prod
 ```
 
+**The upload directory, which nothing creates for you.** `MEDIA_ROOT` is
+`backend/media` and Django only makes it on the first upload --- as whichever
+user Gunicorn runs as. Creating it now, owned correctly, is the difference
+between an upload working and a 500 nobody expects:
+
+```bash
+sudo -u xpredict mkdir -p /srv/xpredict/backend/media && sudo chown xpredict:xpredict /srv/xpredict/backend/media && sudo chmod 755 /srv/xpredict/backend/media
+```
+
+`755` and not `750`: **Nginx serves this directory by alias** (see step 13), and
+`www-data` has to be able to read it. Group-only would give you files that
+upload fine and 403 on the way back out.
+
 **`Applying … OK` does not mean tables were created.** Django prints it whether
 it built them or the router refused every operation. Check:
 
@@ -211,7 +224,9 @@ Then confirm the catalogue seeded (C44 — permissions are rows):
 cd /srv/xpredict/backend && sudo -u xpredict ./.venv/bin/python manage.py shell --settings=config.settings.prod -c "from core.permissions.models import Permission, Role; print(Permission.objects.count(), 'permissions,', Role.objects.count(), 'roles')"
 ```
 
-Expect **48 permissions, 9 roles**.
+Expect **55 permissions, 9 roles**. It was 48 until the DMS modules landed;
+seven more came with `permissions/0004` (C67). If you see 48, the new migration
+has not run.
 
 ## 11. The frontend
 
@@ -343,6 +358,47 @@ systemctl list-timers certbot.timer --no-pager && sudo certbot renew --dry-run
 > header alone, so without it Django believes every request is plain HTTP and
 > `SECURE_SSL_REDIRECT` sends it back to the URL it just received. The header is
 > in the proxy blocks of the shipped config — check certbot did not disturb them.
+
+**Prove `/media/` is actually served, because the failure mode is a 200.**
+Without the `/media/` block, that path falls through to the SPA's
+`try_files … /index.html` and every uploaded file comes back as HTML with a
+**200 status** — broken images everywhere and nothing in any log. This check
+exists because that is what the shipped config did until it was fixed:
+
+```bash
+sudo -u xpredict sh -c 'echo served-from-media > /srv/xpredict/backend/media/_probe.txt'
+```
+
+```bash
+curl -sS -D- -o/dev/null https://YOUR_REAL_DOMAIN/media/_probe.txt | head -1 && curl -sS https://YOUR_REAL_DOMAIN/media/_probe.txt
+```
+
+Expect `200` and the words `served-from-media`. **If you get HTML back, the
+`/media/` location is missing or misordered** — the body is the answer here, not
+the status code, which is 200 either way.
+
+Check the headers while you are there:
+
+```bash
+curl -sSI https://YOUR_REAL_DOMAIN/media/_probe.txt | grep -i "x-frame-options\|cache-control\|content-type-options"
+```
+
+Expect `X-Frame-Options: SAMEORIGIN` and `Cache-Control: private`. Django's own
+`X_FRAME_OPTIONS` does **not** apply here — Nginx serves this by alias, so
+Django is not in the request — which is why the header is set in the Nginx
+block. Then remove the probe:
+
+```bash
+sudo -u xpredict rm /srv/xpredict/backend/media/_probe.txt
+```
+
+> **These files are readable by anyone who has the URL.** That is what the
+> application already assumes — the serializers hand out `FileField.url` and the
+> frontend fetches it with no credentials — and the public service-report sign
+> links depend on it. But `upload_to` carries no tenant segment, so every
+> organisation's uploads share one directory tree and a forwarded link is enough
+> to read a customer's signed report. **Q48** is whether that is acceptable
+> before real customers are on this box.
 
 ## 14. Backups
 
@@ -484,6 +540,18 @@ Stated plainly, because each is a real gap rather than an oversight:
 - **No staging environment.** This is the first and only deployment target.
 - **No zero-downtime deploy.** `reload` is graceful for in-flight requests, but
   a migration that changes a column is applied while the old code is serving.
-- **Tenant migrations are not proven end to end.** `migrate_all_tenants` exists
-  and is tested, but no tenant app has a migration yet — so the first real run
-  of it will be the first time it applies anything. Use `--plan` first.
+- **Tenant migrations are not proven end to end.** `migrate_all_tenants` is
+  tested, and the DMS modules now give it 19 migrations across five apps to
+  apply — so the first real run on this box is the first time it has ever
+  applied anything anywhere. Use `--plan` first. (A fresh instance has no
+  organisations yet, so this bites an EXISTING deployment, not the first one.)
+- **Uploaded files are public to anyone with the URL (Q48).** The serializers
+  hand out `FileField.url` and the frontend fetches it with no credentials, and
+  the public sign links need exactly that — but `upload_to` has no tenant
+  segment, so every organisation's files share one tree and a forwarded link
+  reads a customer's signed service report. The fix is an authorised endpoint
+  plus `X-Accel-Redirect` to an `internal;` `/media/`, and it is a decision
+  rather than a patch: it changes the download path in the frontend too.
+- **Uploads are backed up, but only onto the same volume.** `media.tar.gz`
+  joins the database dumps in step 14 — which still does not leave the
+  instance.

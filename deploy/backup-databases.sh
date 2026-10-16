@@ -1,6 +1,12 @@
 #!/usr/bin/env bash
 #
-# Nightly backup of the control database and every tenant database.
+# Nightly backup of the control database, every tenant database, and the
+# uploaded files.
+#
+# THE FILENAME SAYS "databases" AND IT COVERS MORE THAN THAT. It is kept
+# because `deploy/README.md` installs it by this path and the installed name is
+# already the generic `xpredict-backup`; renaming the source would be churn in
+# a file somebody follows line by line on a server.
 #
 # WHY THIS IS NOT ONE `mysqldump xpredict_control`. Database-per-tenant (C1)
 # means the customers' data is NOT in the control database -- that holds
@@ -78,16 +84,55 @@ for db in "${DATABASES[@]}"; do
         "${db}" | gzip -9 > "${DEST}/${db}.sql.gz"
 done
 
+# --------------------------------------------------------------------------
+# UPLOADED FILES, WHICH THIS SCRIPT DID NOT TOUCH UNTIL NOW.
+#
+# The databases store a FileField's PATH, not its bytes. So a restore from a
+# database-only backup brings back every service report with its signature
+# fields populated and every one of those files missing -- the rows say the
+# evidence exists and the disk does not have it. There are ten FileFields:
+# client and technician signatures, service-report attachments, water reports,
+# complaint attachments, product images, manuals, videos and marketing
+# material.
+#
+# A signed service report is the kind of thing somebody needs a year later, and
+# it is the one piece of this system that cannot be recomputed from anything
+# else.
+#
+# NOT A FAILURE WHEN IT IS EMPTY, but never silent either: before the first
+# upload there is nothing to archive, and a backup that quietly skipped a
+# 2 GB media directory would look identical.
+# --------------------------------------------------------------------------
+MEDIA_ROOT="${XPREDICT_MEDIA_ROOT:-/srv/xpredict/backend/media}"
+MEDIA_STATUS="absent"
+MEDIA_FILES=0
+
+if [[ -d "${MEDIA_ROOT}" ]]; then
+    MEDIA_FILES="$(find "${MEDIA_ROOT}" -type f | wc -l)"
+
+    if [[ "${MEDIA_FILES}" -gt 0 ]]; then
+        # -C so the archive holds relative paths and can be restored to a
+        # different prefix; MEDIA_ROOT moves if the deployment layout does.
+        tar -czf "${DEST}/media.tar.gz" -C "${MEDIA_ROOT}" .
+        MEDIA_STATUS="archived"
+    else
+        MEDIA_STATUS="empty"
+    fi
+fi
+
 # A manifest, so a restore does not have to guess what a complete backup looks
 # like. A directory with a missing tenant and no manifest looks exactly like a
 # directory with nothing missing.
 {
     echo "taken_at=${STAMP}"
     echo "database_count=${#DATABASES[@]}"
+    echo "media_status=${MEDIA_STATUS}"
+    echo "media_file_count=${MEDIA_FILES}"
     printf '%s\n' "${DATABASES[@]}"
 } > "${DEST}/MANIFEST"
 
 echo "Backed up ${#DATABASES[@]} database(s) to ${DEST}"
+echo "Uploaded files: ${MEDIA_STATUS} (${MEDIA_FILES} file(s))"
 
 # RETENTION, AND THE REASON IT MATTERS ON THIS BOX: the volume is 27 GB and
 # shared with MySQL's own data. Backups that are never pruned fill the disk,
