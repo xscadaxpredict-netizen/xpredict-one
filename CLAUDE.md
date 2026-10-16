@@ -295,22 +295,37 @@ applies no CSS Modules, so no test in `apps/web` can catch a stacking mistake** 
 every `z-index` reads 0 there. It was found by clicking, and if it bites again the fix
 is to move the ladder into design tokens.
 
-**Blocked on:** nothing in development. **TWO THINGS BLOCK PRODUCTION, and both
-work perfectly on a laptop**, which is why they are written here rather than left to
-be found on the server:
+**Blocked on:** nothing. **UPLOADS IN PRODUCTION ARE FIXED**, and the fix is four
+parts because any one alone still looks broken: the `/media/` location in
+`deploy/nginx-xpredict.conf`, `MEDIA_ROOT` created in the runbook at **755 not 750**
+(Nginx reads it as `www-data`), uploads added to `backup-databases.sh`, and a
+verification step that reads the response BODY because the status is 200 either way.
 
-- **UPLOADED FILES ARE UNREACHABLE IN PRODUCTION, AND RETURN 200 WHILE BROKEN.** Ten
-  `FileField`s --- client signatures, report attachments, product images, manuals,
-  videos. Uploads SAVE. Serving them does not: `config/urls.py` serves media only
-  `if settings.DEBUG`, `prod.py` hardcodes `DEBUG = False`, and
-  `deploy/nginx-xpredict.conf` has no `/media/` location --- so `/media/x.png` falls
-  into `location /` and its `try_files ... /index.html`, and the browser asking for a
-  signature gets the SPA's HTML **with a 200 status**. Nothing logs anything.
-  `backup-databases.sh` dumps databases only, so uploads are not backed up either,
-  and the runbook never creates `MEDIA_ROOT`.
-- **THE PDF PREVIEW IS BLOCKED IN PRODUCTION.** `base.py` sets
-  `X_FRAME_OPTIONS = "SAMEORIGIN"` for the preview iframe; `prod.py` sets `DENY`
-  after the star import, so production wins and the feature silently fails.
+> **The old bug, kept because the failure mode is the lesson.** With no `/media/`
+> block, `/media/signature.png` fell through to the SPA's `try_files ...
+> /index.html` and returned index.html **with a 200**. Broken images everywhere and
+> nothing in any log.
+
+**`X_FRAME_OPTIONS` WAS A FALSE ALARM, and this file said otherwise for one day.**
+It claimed `prod.py`'s `DENY` silently breaks the PDF preview in production. It does
+not. In production **Nginx serves `/media/` by alias, so Django is not in that
+request** and neither `DENY` nor `SAMEORIGIN` ever reaches the file. Measured both
+ways: a dev request to `/media/` (where Django DOES serve it) returns
+`X-Frame-Options: SAMEORIGIN`, and the Nginx config set no such header anywhere.
+
+The real gap was the opposite --- those responses had **no framing protection at
+all**, so any site could embed a customer's signed report. The `/media/` block sets
+`SAMEORIGIN` itself; `prod.py` keeps `DENY`, which is correct for the API and the
+admin and costs the preview nothing.
+
+**WHAT IS STILL OPEN IS Q48: uploaded files are public to anyone with the URL.**
+`upload_to` carries no tenant segment --- `"reports/signatures/client/"`, not
+`"<org>/reports/..."` --- so every organisation's files share one tree, and a
+forwarded link reads a customer's signed service report. That is what the
+application already assumes (the serializers hand out `FileField.url`, the frontend
+fetches it with no credentials, and the public sign links depend on it), so the fix
+is an authorised endpoint plus `X-Accel-Redirect` --- a design change across both
+halves, not a patch.
 
 **Redis is still missing**, which leaves the Celery broker
 round-trip unverified — and now also means the throttle counter and cache are

@@ -31,7 +31,6 @@ from pathlib import Path
 
 import pytest
 from django.conf import settings
-from django.urls import get_resolver
 
 NGINX_CONF = Path(settings.BASE_DIR).parent / "deploy" / "nginx-xpredict.conf"
 
@@ -134,22 +133,30 @@ class TestDjangoDoesNotServeMediaInProduction:
         which works and then serves every file through a Python worker. The
         route is deliberately DEBUG-only; Nginx is the answer.
 
-        Asserted through the resolver rather than by reading the file, so it
-        follows what Django actually routes.
-        """
-        patterns = [str(p.pattern) for p in get_resolver().url_patterns]
-        media_routes = [p for p in patterns if "media" in p]
+        READ FROM THE SOURCE, NOT FROM THE RESOLVER, and the first version of
+        this test got that wrong in a way worth recording. It asked
+        `get_resolver()` what Django actually routes and compared it against
+        `settings.DEBUG` --- which passed alone and FAILED in the full suite.
 
-        if settings.DEBUG:
-            assert media_routes, (
-                "DEBUG is on, so Django should be serving MEDIA_URL --- the "
-                "development preview iframe depends on it"
-            )
-        else:
-            assert not media_routes, (
-                "DEBUG is off and Django is still routing MEDIA_URL; in "
-                "production Nginx serves it by alias"
-            )
+        `dev.py` sets DEBUG True, pytest-django forces it False for tests, and
+        `config/urls.py` evaluates `if settings.DEBUG:` at IMPORT time. So
+        whether the media route exists depends on whether some earlier test
+        imported the URLconf before pytest-django flipped the flag --- an
+        order-dependent test, which is worse than no test: it fails on an
+        unrelated change and teaches people to re-run the suite until it
+        passes.
+        """
+        urls = (Path(settings.BASE_DIR) / "config" / "urls.py").read_text(encoding="utf-8")
+
+        guard = re.search(r"^if settings\.DEBUG:\s*$", urls, re.M)
+        assert guard, "config/urls.py no longer guards the media route on DEBUG"
+
+        after_guard = urls[guard.end() :]
+        assert re.match(r"\s*\n?\s+urlpatterns \+= static\(\s*settings\.MEDIA_URL", after_guard), (
+            "the media route is no longer the first thing inside the DEBUG "
+            "guard --- check it has not been moved out and made unconditional, "
+            "which would serve every upload through a Python worker"
+        )
 
     def test_media_root_is_under_the_backend_directory(self):
         """
