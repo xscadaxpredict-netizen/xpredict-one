@@ -70,7 +70,7 @@ roles, permissions or models until it is explicitly picked up.
 each dealer's users are managed at the **dealer** level. An org admin reaching into a
 dealer's users is an audited override, not the normal path.
 
-Full rationale: `context/02-DECISIONS.md` C1–C55 — all `[Decided]`. Don't reopen them.
+Full rationale: `context/02-DECISIONS.md` C1–C67 — all `[Decided]`. Don't reopen them.
 
 ## Status
 
@@ -79,16 +79,20 @@ Keep this section current — it is the first thing a new developer reads.
 
 **Frontend — built, merged, and running on Django.** Sign-in, the app launcher, the
 shell and Administration (Users, Dealers, Roles) all work in a browser against the
-real backend. **ONE FAKE IS STILL SWITCHED ON**: `USE_FAKE_DEALER_STATUS` in
-`admin/api/dealers.ts`, because closing a dealership has no endpoint and will not get
-one until **Q21** is answered (C52). Administration's three fakes were deleted
-outright (PR #20); `USE_FAKE_AUTH` and `USE_FAKE_SIGNUP` still EXIST as `false`
-constants with their blocks intact, which this file claimed for several sessions were
-gone.
+real backend. **NO `USE_FAKE_*` FLAG IS SWITCHED ON ANYWHERE.** Administration's
+three went in PR #20 and `USE_FAKE_DEALER_STATUS` went with **C63**, which answered
+**Q21** and gave closing a dealership a real endpoint. `USE_FAKE_AUTH` and
+`USE_FAKE_SIGNUP` still EXIST as `false` constants with their blocks intact --- which
+this file claimed for several sessions were gone, so they are named here rather than
+described as deleted.
+
+**The five DMS modules are merged** --- sales, site-services, tech support, tools and
+the `ecommerce` MODULE (C64, not the deferred suite app). Their screens are live and
+their endpoints authorise properly (C66, C67).
 
 **Backend — it runs on a database now.** Django 5.2.17 on **MySQL 8.0** (C39), split
-settings, the fail-closed `TenantRouter`, `shared/base_models.py`, Celery wiring and 10
-apps with unique labels. **Plain DRF** — drf-spectacular was removed (C43), so there is
+settings, the fail-closed `TenantRouter`, `shared/base_models.py`, Celery wiring and 15
+apps with unique labels (5 control-plane, 10 tenant). **Plain DRF** — drf-spectacular was removed (C43), so there is
 no schema endpoint and no generated client. **`migrate` has run** and `xpredict_control`
 holds **23 tables**, and each organisation gets its own database beside it.
 
@@ -187,8 +191,19 @@ because Redis is still not installed.
 `migrate` records all 39 control-plane migrations as applied — Django records a
 migration whether or not the router allowed one of its operations — which is a
 trap for whoever first moves an app between `CONTROL_PLANE_APPS` and
-`TENANT_APPS`. No tenant app has models yet, so **a fresh tenant database has no
-tables at all**, and that is correct rather than broken.
+`TENANT_APPS`.
+
+**TENANT APPS HAVE MODELS NOW, AND THIS FILE SAID OTHERWISE FOR MONTHS.** The five
+DMS modules bring **23 model classes and 19 tenant migrations**, so a freshly
+provisioned organisation gets real tables --- it is no longer true that "a fresh
+tenant database has no tables at all", and a test that asserted exactly that had to
+be rewritten when the modules landed.
+
+**WHICH MEANS EVERY ORGANISATION PROVISIONED BEFORE THE MERGE IS EMPTY AND ITS DMS
+PAGES WILL 500.** `provision_tenant` only runs at signup, so existing tenant
+databases do not gain the new tables by themselves. Run **`manage.py
+migrate_all_tenants --plan`** first, then without `--plan`. This is the first time
+that command has ever had anything to apply.
 
 **A provision that failed for good is repaired with
 `manage.py reprovision_tenant <slug>`** (C50). The launcher refuses to open an
@@ -280,7 +295,24 @@ applies no CSS Modules, so no test in `apps/web` can catch a stacking mistake** 
 every `z-index` reads 0 there. It was found by clicking, and if it bites again the fix
 is to move the ladder into design tokens.
 
-**Blocked on:** nothing. **Redis is still missing**, which leaves the Celery broker
+**Blocked on:** nothing in development. **TWO THINGS BLOCK PRODUCTION, and both
+work perfectly on a laptop**, which is why they are written here rather than left to
+be found on the server:
+
+- **UPLOADED FILES ARE UNREACHABLE IN PRODUCTION, AND RETURN 200 WHILE BROKEN.** Ten
+  `FileField`s --- client signatures, report attachments, product images, manuals,
+  videos. Uploads SAVE. Serving them does not: `config/urls.py` serves media only
+  `if settings.DEBUG`, `prod.py` hardcodes `DEBUG = False`, and
+  `deploy/nginx-xpredict.conf` has no `/media/` location --- so `/media/x.png` falls
+  into `location /` and its `try_files ... /index.html`, and the browser asking for a
+  signature gets the SPA's HTML **with a 200 status**. Nothing logs anything.
+  `backup-databases.sh` dumps databases only, so uploads are not backed up either,
+  and the runbook never creates `MEDIA_ROOT`.
+- **THE PDF PREVIEW IS BLOCKED IN PRODUCTION.** `base.py` sets
+  `X_FRAME_OPTIONS = "SAMEORIGIN"` for the preview iframe; `prod.py` sets `DENY`
+  after the star import, so production wins and the feature silently fails.
+
+**Redis is still missing**, which leaves the Celery broker
 round-trip unverified — and now also means the throttle counter and cache are
 per-process in development. **An unreachable cache is not a missing rate limit, it
 is a 500:** DRF keeps throttle history there, which is how nine sessions of
@@ -291,8 +323,8 @@ user row on every request and refuses an inactive one, so **disabling somebody t
 effect on their next request**, not after a token expires. The 15-minute access
 lifetime is how long a STOLEN token survives a logout.
 
-**Gates, all green:** `npm run test -w web` (160), `npm run typecheck -w web`,
-`npm run lint`, and in `backend/`: `pytest` (327), `ruff check .`, and
+**Gates, all green:** `npm run test -w web` (194), `npm run typecheck -w web`,
+`npm run lint`, and in `backend/`: `pytest` (447), `ruff check .`, and
 `.venv/Scripts/lint-imports.exe` — **not** `python -m importlinter.cli`, which exits 0
 without running. Run them before pushing.
 
