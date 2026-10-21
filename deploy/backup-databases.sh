@@ -37,9 +37,26 @@ if [[ ! -r "${ENV_FILE}" ]]; then
     exit 1
 fi
 
-MYSQL_USER="$(grep -E '^MYSQL_USER=' "${ENV_FILE}" | cut -d= -f2-)"
-MYSQL_PASSWORD="$(grep -E '^MYSQL_PASSWORD=' "${ENV_FILE}" | cut -d= -f2-)"
-MYSQL_HOST="$(grep -E '^MYSQL_HOST=' "${ENV_FILE}" | cut -d= -f2-)"
+# `|| true` IS LOAD-BEARING, BECAUSE OF `pipefail` ABOVE. grep exits 1 when the
+# key is absent, pipefail propagates that out of the pipe, and `set -e` then
+# kills the script on that line -- so the `${MYSQL_HOST:-127.0.0.1}` default
+# below could never be reached, and a .env written by hand without that key
+# meant a 02:30 exit 1, no backup, and nothing in the journal naming the cause.
+env_value() {
+    grep -E "^$1=" "${ENV_FILE}" | cut -d= -f2- || true
+}
+
+MYSQL_USER="$(env_value MYSQL_USER)"
+MYSQL_PASSWORD="$(env_value MYSQL_PASSWORD)"
+MYSQL_HOST="$(env_value MYSQL_HOST)"
+
+# The two that have no sensible default. Without this the missing value reaches
+# mysqldump and comes back as an access-denied error about a user named "",
+# which reads like a password problem rather than a .env problem.
+if [[ -z "${MYSQL_USER}" || -z "${MYSQL_PASSWORD}" ]]; then
+    echo "MYSQL_USER or MYSQL_PASSWORD is missing from ${ENV_FILE}" >&2
+    exit 1
+fi
 
 # A DEFAULTS FILE, NOT `-p` ON THE COMMAND LINE. A password in argv is visible
 # to every user on the box via `ps`, and mysqldump warns about it on stderr

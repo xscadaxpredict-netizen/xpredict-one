@@ -11,12 +11,28 @@ Wants=mysql.service redis-server.service
 [Service]
 Type=notify
 User=xpredict
-Group=xpredict
+
+# GROUP IS www-data, NOT xpredict, AND THE FIRST DEPLOYMENT TURNS ON IT.
+#
+# systemd gives RuntimeDirectory the unit's OWN User and Group. This said
+# `Group=xpredict` for four sessions while the comment two lines down claimed
+# www-data, so /run/xpredict came out xpredict:xpredict 0750 -- and www-data has
+# no search permission on a directory it does not own and is not in the group
+# of. It cannot reach the socket inside, so EVERY request to /api/ is a 502 with
+# "permission denied" in the Nginx error log. Nothing in deploy/README.md adds
+# www-data to the xpredict group, so there was no second mechanism saving it;
+# the troubleshooting table listed the symptom and nothing prevented the cause.
+#
+# This costs nothing elsewhere. The process still runs as User=xpredict, so
+# OWNER permissions carry staticfiles, media and the 600-mode .env regardless of
+# the group. Uploads it writes come out group www-data, which is what Nginx
+# needs to read them back out anyway.
+Group=www-data
 WorkingDirectory=/srv/xpredict/backend
 
 # The socket lives in /run/xpredict, created by systemd on each start and
-# removed on stop. 0750 with Group=www-data lets Nginx connect and nothing
-# else -- see RuntimeDirectoryMode below.
+# removed on stop. 0750 with the group above lets Nginx connect and nothing
+# else.
 RuntimeDirectory=xpredict
 RuntimeDirectoryMode=0750
 
