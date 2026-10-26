@@ -1,0 +1,43 @@
+name: Production Deployment
+
+on:
+  push:
+    branches: [ main ]
+
+jobs:
+  deploy:
+    name: Deploy to Production Server
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Connect and Deploy over SSH
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.PROD_SERVER_IP }}
+          username: ${{ secrets.PROD_SSH_USER }}
+          key: ${{ secrets.PROD_SSH_PRIVATE_KEY }}
+          port: 22
+          script_stop: true
+          script: |
+            echo "🚀 1. Pulling latest commit..."
+            cd /srv/xpredict
+            git pull origin main
+
+            echo "📦 2. Updating Backend..."
+            cd /srv/xpredict/backend
+            source .venv/bin/activate
+            pip install -r requirements.lock.txt
+            python manage.py migrate --database=default --settings=config.settings.prod
+            python manage.py collectstatic --no-input --settings=config.settings.prod
+
+            echo "⚛️ 3. Building Frontend..."
+            cd /srv/xpredict/frontend
+            npm ci
+            npm run build -w web
+
+            echo "🔄 4. Reloading Services (Zero-Downtime)..."
+            sudo systemctl reload xpredict-gunicorn
+            sudo systemctl restart xpredict-celery
+            sudo systemctl reload nginx
+
+            echo "✨ Deployment Complete!"
