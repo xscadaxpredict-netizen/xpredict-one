@@ -61,20 +61,23 @@ export function ModuleRoutes({ routes }: ModuleRoutesProps) {
   const permitted = routes.filter((route) => route.module === null || access.hasModule(route.module));
 
   /*
-   * Where the bare app URL goes. The first module they actually have, not a
-   * hardcoded "sales" — that would send a service-only user to a screen they
-   * cannot open, which is the exact bug the launcher was built to avoid one
-   * level up.
+   * If there is an explicit app-root/overview route (`path === ""`), render it at index.
+   * Otherwise, go to the first module they have access to. Strip any wildcard suffix
+   * (e.g. `/*`) so navigation never directs to an asterisk string.
    */
-  const first = permitted.find((route) => route.module !== null) ?? permitted[0];
+  const rootRoute = permitted.find((route) => route.path === "");
+  const first = permitted.find((route) => route.path !== "" && (route.module !== null ? access.hasModule(route.module) : true)) ?? permitted[0];
+  const targetPath = first ? first.path.replace(/\/\*$/, "") : "";
 
   return (
     <Routes>
       <Route
         index
         element={
-          first ? (
-            <Navigate to={first.path} replace />
+          rootRoute ? (
+            rootRoute.element
+          ) : first ? (
+            <Navigate to={targetPath} replace />
           ) : (
             /*
              * Reachable: the app is accessible but every module inside it is
@@ -86,9 +89,11 @@ export function ModuleRoutes({ routes }: ModuleRoutesProps) {
         }
       />
 
-      {permitted.map((route) => (
-        <Route key={route.path} path={route.path} element={route.element} />
-      ))}
+      {permitted
+        .filter((route) => route.path !== "")
+        .map((route) => (
+          <Route key={route.path} path={route.path} element={route.element} />
+        ))}
 
       {/*
         Everything else inside this app, INCLUDING the screens filtered out

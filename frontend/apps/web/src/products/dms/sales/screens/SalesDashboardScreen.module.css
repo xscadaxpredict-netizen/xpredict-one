@@ -390,3 +390,17 @@
   color: var(--color-text-3, #6f7b89);
   font-size: var(--text-sm, 0.875rem);
 }
+
+@media (max-width: 768px) {
+  .dualGrid {
+    grid-template-columns: 1fr;
+  }
+  .headerRow {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+  .actionButtons {
+    width: 100%;
+    flex-wrap: wrap;
+  }
+}

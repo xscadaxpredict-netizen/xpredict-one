@@ -113,6 +113,12 @@ export const APP_CATALOG: AppDefinition[] = [
        * backend's answer, never hidden by a check written here.
        */
       {
+        label: "Overview",
+        items: [
+          { label: "Welcome Hub", path: "", icon: "grid", module: null },
+        ],
+      },
+      {
         label: "Sales",
         items: [
           { label: "Dashboard", path: "sales/dashboard", icon: "grid", module: "sales" },

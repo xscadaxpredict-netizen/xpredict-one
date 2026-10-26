@@ -14,7 +14,9 @@ export default function SalesRoutes() {
         <Route path="enquiries" element={<EnquiryListScreen />} />
         <Route path="orders" element={<ConfirmedOrdersScreen />} />
         <Route path="quotations" element={<QuotationsScreen />} />
+        <Route path="*" element={<Navigate to="dashboard" replace />} />
       </Route>
+      <Route path="*" element={<Navigate to="dashboard" replace />} />
     </Routes>
   );
 }

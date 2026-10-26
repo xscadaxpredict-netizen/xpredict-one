@@ -65,9 +65,26 @@
 
 /* The brand text is the first thing worth dropping on a narrow screen: the
    logo mark already says where you are. */
+@media (max-width: 768px) {
+  .center {
+    display: none;
+  }
+}
+
 @media (max-width: 640px) {
   .brandName,
   .divider {
+    display: none;
+  }
+  .appName {
+    max-width: 130px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+}
+
+@media (max-width: 480px) {
+  .appName {
     display: none;
   }
 }

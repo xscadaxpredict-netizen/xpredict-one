@@ -89,3 +89,9 @@
   text-align: center; color: var(--color-text-3);
 }
 .emptyIcon { margin: 0 auto 0.75rem auto; opacity: 0.4; display: block; }
+
+@media (max-width: 640px) {
+  .grid {
+    grid-template-columns: 1fr;
+  }
+}
