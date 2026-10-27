@@ -27,11 +27,11 @@ CREATE USER IF NOT EXISTS 'xpredict'@'localhost' IDENTIFIED BY 'xpredict';
 -- pattern below reads "xpredict_ followed by anything", which covers
 -- `xpredict_control` and every `xpredict_<org>` created later.
 GRANT ALL PRIVILEGES ON `xpredict\_%`.* TO 'xpredict'@'localhost';
-
--- Django builds its test databases by prefixing `test_`, which does not match
--- the pattern above. Without this, `pytest --create-db` fails on a permission
--- error that reads like a configuration problem.
 GRANT ALL PRIVILEGES ON `test\_xpredict\_%`.* TO 'xpredict'@'localhost';
+
+CREATE USER IF NOT EXISTS 'xpredict'@'%' IDENTIFIED BY 'xpredict';
+GRANT ALL PRIVILEGES ON `xpredict\_%`.* TO 'xpredict'@'%';
+GRANT ALL PRIVILEGES ON `test\_xpredict\_%`.* TO 'xpredict'@'%';
 
 FLUSH PRIVILEGES;
 
