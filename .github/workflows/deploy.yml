@@ -21,6 +21,7 @@ jobs:
           script: |
             echo "🚀 1. Pulling latest commit..."
             cd /srv/xpredict
+            git config --global --add safe.directory /srv/xpredict
             git pull origin main
 
             echo "📦 2. Updating Backend..."
