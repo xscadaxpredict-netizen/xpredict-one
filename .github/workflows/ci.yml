@@ -37,6 +37,11 @@ jobs:
         run: |
           ruff check .
 
+      - name: Start MySQL and setup test database
+        run: |
+          sudo systemctl start mysql.service
+          sudo mysql < backend/scripts/create_dev_db.sql
+
       - name: Run Pytest
         working-directory: backend
         env:
