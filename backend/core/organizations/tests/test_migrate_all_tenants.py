@@ -163,6 +163,70 @@ class TestNowThatTenantAppsHaveMigrations:
             run("nope-not-real")
 
 
+class TestThePlanTellsTheTruth:
+    """
+    `--plan` SAID "up to date" FOR SIX EMPTY DATABASES (found 2026-11-04).
+
+    It ran Django's `migrate --plan` and counted lines starting with `[ ]` ---
+    which is `showmigrations`' format, not `migrate --plan`'s. So it counted
+    zero every time and called every organisation current. Nobody saw it while
+    there were no tenant migrations, because then "up to date" was true; the
+    first time it had something to report, it hid all of it.
+
+    These run against the suite's real tenant database and change only what
+    that database RECORDS as applied, which is all a plan reads.
+    """
+
+    @staticmethod
+    def _recorded(recorder, apps: set[str]) -> set[tuple[str, str]]:
+        return {key for key in recorder.applied_migrations() if key[0] in apps}
+
+    def test_a_database_with_nothing_recorded_is_behind(self):
+        from django.db import connections
+        from django.db.migrations.recorder import MigrationRecorder
+
+        from core.organizations.tenancy import tenant_migration_targets
+
+        make_org(slug="acme-motors", real=True)
+        recorder = MigrationRecorder(connections[TEST_TENANT_ALIAS])
+        if recorder.has_table():
+            recorder.migration_qs.filter(app__in=tenant_migration_targets()).delete()
+
+        output = run("--plan")
+
+        assert "acme-motors: up to date" not in output
+        assert "dms_sales.0001_initial" in output
+        assert "1 organisation(s) need migrating: acme-motors" in output
+
+    def test_a_database_with_everything_recorded_is_current(self):
+        from django.db import connections
+        from django.db.migrations.loader import MigrationLoader
+        from django.db.migrations.recorder import MigrationRecorder
+
+        from core.organizations.tenancy import tenant_migration_targets
+
+        make_org(slug="acme-motors", real=True)
+        targets = set(tenant_migration_targets())
+        recorder = MigrationRecorder(connections[TEST_TENANT_ALIAS])
+        loader = MigrationLoader(None, load=False)
+        loader.load_disk()
+        every = {key for key in loader.disk_migrations if key[0] in targets}
+        already = self._recorded(recorder, targets)
+
+        for app, name in every - already:
+            recorder.record_applied(app, name)
+        try:
+            output = run("--plan")
+        finally:
+            # Put the bookkeeping back as it was: the rest of the suite builds
+            # these tables without recording them, and expects that.
+            for app, name in every - already:
+                recorder.record_unapplied(app, name)
+
+        assert "acme-motors: up to date" in output
+        assert "Every organisation is up to date." in output
+
+
 class TestSelection:
     def test_every_organisation_by_default(self):
         for _ in range(3):
