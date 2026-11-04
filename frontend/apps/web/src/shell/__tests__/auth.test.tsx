@@ -44,8 +44,7 @@ function serverError() {
  * polyfill.
  */
 async function openAccountMenu() {
-  const trigger = await screen.findByRole("button", { name: /Account:/ });
-  fireEvent.keyDown(trigger, { key: "Enter" });
+  fireEvent.click(await screen.findByRole("button", { name: /Account:/ }));
 }
 
 beforeEach(() => {
@@ -67,7 +66,7 @@ describe("signing out", () => {
     renderRoute({ path: "/acme-motors" });
 
     await openAccountMenu();
-    fireEvent.click(await screen.findByRole("menuitem", { name: "Sign out" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Sign out" }));
 
     expect(await screen.findByRole("alert")).toHaveTextContent(/still signed in/i);
 
@@ -82,7 +81,7 @@ describe("signing out", () => {
     renderRoute({ path: "/acme-motors" });
 
     await openAccountMenu();
-    fireEvent.click(await screen.findByRole("menuitem", { name: "Sign out" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Sign out" }));
 
     expect(await screen.findByRole("heading", { name: "Sign in" })).toBeInTheDocument();
   });
