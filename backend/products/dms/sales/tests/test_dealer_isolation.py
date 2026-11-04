@@ -37,7 +37,7 @@ def create_test_org(slug="test-dealers-org") -> Organization:
     )
     AppSubscription.objects.create(
         organization=org,
-        app=AppCode.DMS,
+        app_id=AppCode.DMS,
         status=SubscriptionStatus.ACTIVE,
     )
     return org
@@ -52,10 +52,10 @@ def create_dealer_user(org, unit, email, role_code="dms.sales_representative"):
         role=MembershipRole.MEMBER,
         status=MembershipStatus.ACTIVE,
     )
-    role = Role.objects.get(app=AppCode.DMS, code=role_code)
+    role = Role.objects.get(app_id=AppCode.DMS, code=role_code)
     AppAccess.objects.create(
         membership=membership,
-        app=AppCode.DMS,
+        app_id=AppCode.DMS,
         role=role,
     )
     return user, membership

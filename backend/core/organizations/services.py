@@ -336,12 +336,12 @@ def _subscribe_and_grant(
         ) from exc
 
     AppSubscription.objects.create(
-        organization=organization, app=app, created_by_user_id=actor_id
+        organization=organization, app_id=app, created_by_user_id=actor_id
     )
 
     AppAccess.objects.create(
         membership=membership,
-        app=app,
+        app_id=app,
         role=Role.objects.get(app=app, code=role_code),
         created_by_user_id=actor_id,
     )
@@ -782,7 +782,7 @@ def invite_person(
     )
 
     for app, granted_role in grants:
-        InvitationAppGrant.objects.create(invitation=invitation, app=app, role=granted_role)
+        InvitationAppGrant.objects.create(invitation=invitation, app_id=app, role=granted_role)
 
     return invitation
 
@@ -865,7 +865,7 @@ def _update_membership(
     # C16 already had to catch once in billing.
     membership.app_access.all().delete()
     for app, granted_role in grants:
-        AppAccess.objects.create(membership=membership, app=app, role=granted_role)
+        AppAccess.objects.create(membership=membership, app_id=app, role=granted_role)
 
 
 def _update_invitation(
@@ -893,7 +893,7 @@ def _update_invitation(
 
     invitation.app_grants.all().delete()
     for app, granted_role in grants:
-        InvitationAppGrant.objects.create(invitation=invitation, app=app, role=granted_role)
+        InvitationAppGrant.objects.create(invitation=invitation, app_id=app, role=granted_role)
 
 
 @transaction.atomic
@@ -1136,7 +1136,7 @@ def accept_invitation(
     _assert_email_free(organization, email, excluding_invitation=invitation.id)
 
     grants = [
-        (grant.app, grant.role)
+        (grant.app_id, grant.role)
         for grant in invitation.app_grants.select_related("role").all()
     ]
     _assert_grants_are_legal(organization, invitation.unit_id, grants)
@@ -1193,7 +1193,7 @@ def accept_invitation(
     for app, role in grants:
         AppAccess.objects.create(
             membership=membership,
-            app=app,
+            app_id=app,
             role=role,
             created_by_user_id=invitation.invited_by_id,
         )

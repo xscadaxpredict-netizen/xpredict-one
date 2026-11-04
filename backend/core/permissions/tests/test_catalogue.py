@@ -39,9 +39,9 @@ class TestPermissions:
         Administration and CRM are untouched, which is the point of asserting
         them separately -- a DMS change must not quietly reach either.
         """
-        assert Permission.objects.filter(app=AppCode.ADMIN).count() == 11
-        assert Permission.objects.filter(app=AppCode.DMS).count() == 43
-        assert Permission.objects.filter(app=AppCode.CRM).count() == 1
+        assert Permission.objects.filter(app_id=AppCode.ADMIN).count() == 11
+        assert Permission.objects.filter(app_id=AppCode.DMS).count() == 43
+        assert Permission.objects.filter(app_id=AppCode.CRM).count() == 1
 
     def test_every_code_is_app_resource_action(self):
         """
@@ -52,7 +52,7 @@ class TestPermissions:
         for permission in Permission.objects.all():
             segments = permission.code.split(".")
             assert len(segments) == 3, permission.code
-            assert segments[0] == permission.app, permission.code
+            assert segments[0] == permission.app_id, permission.code
 
     def test_export_is_its_own_action_on_five_resources(self):
         """
@@ -131,7 +131,7 @@ class TestRoles:
         """
         manager = Role.objects.get(code="dms.manager")
 
-        assert not manager.permissions.filter(app=AppCode.ADMIN).exists()
+        assert not manager.permissions.filter(app_id=AppCode.ADMIN).exists()
 
     def test_group_operations_is_managers_set_plus_the_organisation_wide_four(self):
         """
@@ -247,7 +247,7 @@ class TestModulesAreDerived:
             for module in role.permissions.values_list("module", flat=True)
         }
         by_standing = set(
-            Permission.objects.filter(app=AppCode.ADMIN).values_list("module", flat=True)
+            Permission.objects.filter(app_id=AppCode.ADMIN).values_list("module", flat=True)
         )
 
         assert all_modules == by_role | by_standing
@@ -277,13 +277,23 @@ class TestTheSeedCanBeRunAgain:
 
     @staticmethod
     def _seed():
-        """Call the migration's own function, not a copy of it."""
+        """
+        Call the migration's own function, not a copy of it --- with the models
+        AS THEY WERE AT 0002, which is what Django hands a migration.
+
+        Passing today's registry instead worked until C71 made `app` a foreign
+        key: 0002 writes `app="admin"`, which the historical CharField takes and
+        today's ForeignKey refuses. Re-running a migration means re-running it
+        against its own schema, so that is what this does.
+        """
         import importlib
 
-        from django.apps import apps as django_apps
+        from django.db import connection
+        from django.db.migrations.loader import MigrationLoader
 
+        state = MigrationLoader(connection).project_state(("permissions", "0002_seed_catalogue"))
         module = importlib.import_module("core.permissions.migrations.0002_seed_catalogue")
-        module.seed(django_apps, None)
+        module.seed(state.apps, None)
 
     def test_running_it_again_changes_nothing(self):
         before = (Permission.objects.count(), Role.objects.count())

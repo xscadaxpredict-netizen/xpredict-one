@@ -140,7 +140,7 @@ class TestWhatTheOwnerIsGiven:
 
         membership = do_sign_up().membership
 
-        access = AppAccess.objects.get(membership=membership, app=AppCode.DMS)
+        access = AppAccess.objects.get(membership=membership, app_id=AppCode.DMS)
         assert access.role.code == "dms.group_operations"
         assert access.role.level == "org"
 
@@ -155,9 +155,9 @@ class TestWhatTheOwnerIsGiven:
         organization = do_sign_up().organization
 
         assert AppSubscription.objects.filter(
-            organization=organization, app=AppCode.DMS, status=SubscriptionStatus.ACTIVE
+            organization=organization, app_id=AppCode.DMS, status=SubscriptionStatus.ACTIVE
         ).exists()
-        assert AppAccess.objects.filter(app=AppCode.DMS).exists()
+        assert AppAccess.objects.filter(app_id=AppCode.DMS).exists()
 
     def test_only_dms_is_bought(self):
         """
@@ -397,6 +397,6 @@ class TestTheDatabaseRefusesWhatC40Forbids:
         ):
             AppAccess.objects.create(
                 membership=result.membership,
-                app=AppCode.ADMIN,
-                role=Role.objects.get(app=AppCode.DMS, code="dms.group_operations"),
+                app_id=AppCode.ADMIN,
+                role=Role.objects.get(app_id=AppCode.DMS, code="dms.group_operations"),
             )

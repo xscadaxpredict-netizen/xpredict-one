@@ -70,7 +70,7 @@ def found(name="Acme Motors", email="owner@acme.test", code="CODE-ACME"):
 
 
 def dms_role(code):
-    return Role.objects.get(app=AppCode.DMS, code=code)
+    return Role.objects.get(app_id=AppCode.DMS, code=code)
 
 
 # THE ROLE HAS TO MATCH THE SCOPE, and accepting is where that gets checked
@@ -108,7 +108,7 @@ def invite(
         invited_by=invited_by,
     )
     if role_code:
-        invitation.app_grants.create(app=AppCode.DMS, role=dms_role(role_code))
+        invitation.app_grants.create(app_id=AppCode.DMS, role=dms_role(role_code))
     return invitation
 
 
@@ -494,7 +494,7 @@ class TestTheWorldMayHaveMovedOn:
         """
         result = found()
         invite(result.organization)
-        AppSubscription.objects.filter(organization=result.organization, app=AppCode.DMS).update(
+        AppSubscription.objects.filter(organization=result.organization, app_id=AppCode.DMS).update(
             status=SubscriptionStatus.CANCELLED
         )
 
@@ -621,7 +621,7 @@ class TestTheLinkAnAdminCopies:
         )
         AppAccess.objects.create(
             membership=admin_membership,
-            app=AppCode.DMS,
+            app_id=AppCode.DMS,
             role=dms_role("dms.system_admin"),
         )
 
@@ -659,7 +659,7 @@ class TestTheLinkAnAdminCopies:
             status=MembershipStatus.ACTIVE,
         )
         AppAccess.objects.create(
-            membership=viewer_membership, app=AppCode.DMS, role=dms_role("dms.fleet_viewer")
+            membership=viewer_membership, app_id=AppCode.DMS, role=dms_role("dms.fleet_viewer")
         )
         client.force_authenticate(user=viewer)
 

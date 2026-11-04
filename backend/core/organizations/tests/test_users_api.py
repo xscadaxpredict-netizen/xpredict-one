@@ -67,7 +67,7 @@ def found(name="Acme Motors", email="owner@acme.test", code="CODE-ACME"):
 
 
 def dms_role(code):
-    return Role.objects.get(app=AppCode.DMS, code=code)
+    return Role.objects.get(app_id=AppCode.DMS, code=code)
 
 
 def add_person(organization, *, unit=None, role_code="dms.sales_representative", email, standing=
@@ -77,7 +77,9 @@ def add_person(organization, *, unit=None, role_code="dms.sales_representative",
         user=user, organization=organization, unit=unit, role=standing, status=status
     )
     if role_code:
-        AppAccess.objects.create(membership=membership, app=AppCode.DMS, role=dms_role(role_code))
+        AppAccess.objects.create(
+            membership=membership, app_id=AppCode.DMS, role=dms_role(role_code)
+        )
     return membership
 
 
@@ -92,7 +94,7 @@ def add_invitation(organization, *, unit=None, email, role_code="dms.sales_repre
         expires_at=timezone.now() + timezone.timedelta(days=7),
     )
     if role_code:
-        invitation.app_grants.create(app=AppCode.DMS, role=dms_role(role_code))
+        invitation.app_grants.create(app_id=AppCode.DMS, role=dms_role(role_code))
     return invitation
 
 
@@ -556,7 +558,7 @@ class TestSubscriptionIsRequired:
         stale grant must simply open nothing — but no NEW one may be made.
         """
         result = found()
-        AppSubscription.objects.filter(organization=result.organization, app=AppCode.DMS).update(
+        AppSubscription.objects.filter(organization=result.organization, app_id=AppCode.DMS).update(
             status=SubscriptionStatus.CANCELLED
         )
         client.force_authenticate(user=result.user)
@@ -607,7 +609,7 @@ class TestSubscriptionIsRequired:
         )
 
         assert response.status_code == 200
-        assert [a.app for a in owner.app_access.all()] == ["dms"]
+        assert [a.app_id for a in owner.app_access.all()] == ["dms"]
 
 
 class TestC27DealerScopedGrants:
@@ -625,7 +627,7 @@ class TestC27DealerScopedGrants:
         result = found()
         AppSubscription.objects.create(
             organization=result.organization,
-            app=AppCode.CRM,
+            app_id=AppCode.CRM,
             status=SubscriptionStatus.ACTIVE,
         )
         unit = BusinessUnit.objects.create(organization=result.organization, name="Whitefield")

@@ -64,8 +64,8 @@ def add_dealer_admin(organization, unit, email="dealeradmin@acme.test"):
     )
     AppAccess.objects.create(
         membership=membership,
-        app=AppCode.DMS,
-        role=Role.objects.get(app=AppCode.DMS, code="dms.system_admin"),
+        app_id=AppCode.DMS,
+        role=Role.objects.get(app_id=AppCode.DMS, code="dms.system_admin"),
     )
     return user, membership
 
@@ -154,7 +154,7 @@ class TestTheOwner:
         """
         result = found()
 
-        assert not AppSubscription.objects.filter(app=AppCode.ADMIN).exists()
+        assert not AppSubscription.objects.filter(app_id=AppCode.ADMIN).exists()
         assert app_of(me(result.user), "acme-motors", AppCode.ADMIN).subscribed is True
 
     def test_dms_is_group_operations_across_all_five_modules(self):
@@ -365,8 +365,8 @@ class TestSomebodyWithNoAdministration:
         )
         AppAccess.objects.create(
             membership=membership,
-            app=AppCode.DMS,
-            role=Role.objects.get(app=AppCode.DMS, code="dms.sales_representative"),
+            app_id=AppCode.DMS,
+            role=Role.objects.get(app_id=AppCode.DMS, code="dms.sales_representative"),
         )
 
         payload = me(user)
@@ -387,12 +387,12 @@ class TestASubscriptionThatLapsed:
         """
         result = found()
         AppSubscription.objects.filter(
-            organization=result.organization, app=AppCode.DMS
+            organization=result.organization, app_id=AppCode.DMS
         ).update(status=SubscriptionStatus.CANCELLED)
 
         dms = app_of(me(result.user), "acme-motors", AppCode.DMS)
 
-        assert AppAccess.objects.filter(app=AppCode.DMS).exists()
+        assert AppAccess.objects.filter(app_id=AppCode.DMS).exists()
         assert dms.subscribed is False
         assert dms.accessible is False
         assert dms.modules == []

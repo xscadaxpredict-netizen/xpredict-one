@@ -208,9 +208,9 @@ def _membership_data(
 
     granted_apps: set[str] = set()
     for access in membership.app_access.all():
-        granted_apps.add(access.app)
+        granted_apps.add(access.app_id)
         for permission in access.role.permissions.all():
-            held.setdefault(permission.app, set()).add(permission)
+            held.setdefault(permission.app_id, set()).add(permission)
 
     # `unit` is select_related in `me()`, so this costs no query.
     unit_closed = membership.unit_id is not None and membership.unit.status == UnitStatus.DISABLED
@@ -581,7 +581,7 @@ def _membership_row(membership: Membership) -> OrgUserData:
         # `invited` is not reachable here: C51 put pending people in the other
         # table, and `MembershipStatus.INVITED` went with it.
         status=membership.status,
-        apps=[_grant(g.app, g.role) for g in grants],
+        apps=[_grant(g.app_id, g.role) for g in grants],
         created_at=membership.created_at,
         administers=_administers(
             membership.role, membership.unit_id, [g.role for g in grants]
@@ -601,7 +601,7 @@ def _invitation_row(invitation: Invitation) -> OrgUserData:
         unit_name=invitation.unit.name if invitation.unit_id else None,
         role=invitation.role,
         status="invited",
-        apps=[_grant(g.app, g.role) for g in grants],
+        apps=[_grant(g.app_id, g.role) for g in grants],
         created_at=invitation.created_at,
         administers=_administers(
             invitation.role, invitation.unit_id, [g.role for g in grants]

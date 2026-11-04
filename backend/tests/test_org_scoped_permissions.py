@@ -150,8 +150,8 @@ def add_dealer_admin(organization, unit, email="dealeradmin@acme.test"):
     )
     AppAccess.objects.create(
         membership=membership,
-        app=AppCode.DMS,
-        role=Role.objects.get(app=AppCode.DMS, code="dms.system_admin"),
+        app_id=AppCode.DMS,
+        role=Role.objects.get(app_id=AppCode.DMS, code="dms.system_admin"),
     )
     return user, membership
 
@@ -164,8 +164,8 @@ def add_plain_member(organization, unit=None, email="sales@acme.test"):
     )
     AppAccess.objects.create(
         membership=membership,
-        app=AppCode.DMS,
-        role=Role.objects.get(app=AppCode.DMS, code="dms.sales_representative"),
+        app_id=AppCode.DMS,
+        role=Role.objects.get(app_id=AppCode.DMS, code="dms.sales_representative"),
     )
     return user, membership
 

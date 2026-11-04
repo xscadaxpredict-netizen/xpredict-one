@@ -52,7 +52,13 @@ class AppSubscription(BaseModel):
         on_delete=models.CASCADE,
         related_name="subscriptions",
     )
-    app = models.CharField(max_length=20, choices=AppCode.choices)
+    app = models.ForeignKey(
+        "permissions.App",
+        to_field="code",
+        db_column="app",
+        on_delete=models.PROTECT,
+        related_name="+",
+    )
     status = models.CharField(
         max_length=20, choices=SubscriptionStatus.choices, default=SubscriptionStatus.ACTIVE
     )
@@ -67,7 +73,7 @@ class AppSubscription(BaseModel):
                 name="subscription_never_administration",
             ),
         ]
-        ordering = ["app"]
+        ordering = ["app_id"]
 
     def __str__(self) -> str:
-        return f"{self.organization_id}: {self.app} ({self.status})"
+        return f"{self.organization_id}: {self.app_id} ({self.status})"

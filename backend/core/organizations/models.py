@@ -16,7 +16,6 @@ from __future__ import annotations
 from django.conf import settings
 from django.db import models
 
-from core.permissions.models import AppCode
 from shared.base_models import BaseModel
 
 
@@ -416,7 +415,13 @@ class InvitationAppGrant(BaseModel):
     """
 
     invitation = models.ForeignKey(Invitation, on_delete=models.CASCADE, related_name="app_grants")
-    app = models.CharField(max_length=20, choices=AppCode.choices)
+    app = models.ForeignKey(
+        "permissions.App",
+        to_field="code",
+        db_column="app",
+        on_delete=models.PROTECT,
+        related_name="+",
+    )
     role = models.ForeignKey("permissions.Role", on_delete=models.PROTECT, related_name="+")
 
     class Meta:
@@ -427,4 +432,4 @@ class InvitationAppGrant(BaseModel):
         ]
 
     def __str__(self) -> str:
-        return f"{self.invitation_id} -> {self.app}"
+        return f"{self.invitation_id} -> {self.app_id}"

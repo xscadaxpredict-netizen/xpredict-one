@@ -64,8 +64,8 @@ def add_with_role(organization, role_code, unit=None, email="person@acme.test"):
     )
     AppAccess.objects.create(
         membership=membership,
-        app=AppCode.DMS,
-        role=Role.objects.get(app=AppCode.DMS, code=role_code),
+        app_id=AppCode.DMS,
+        role=Role.objects.get(app_id=AppCode.DMS, code=role_code),
     )
     return user
 

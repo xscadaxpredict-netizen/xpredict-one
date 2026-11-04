@@ -87,7 +87,7 @@ def make_org(slug="dms-authz-org") -> Organization:
         status=OrganizationStatus.ACTIVE,
     )
     AppSubscription.objects.create(
-        organization=org, app=AppCode.DMS, status=SubscriptionStatus.ACTIVE
+        organization=org, app_id=AppCode.DMS, status=SubscriptionStatus.ACTIVE
     )
     return org
 
@@ -111,8 +111,8 @@ def add_member(org, role_code, email, unit=None):
     )
     AppAccess.objects.create(
         membership=membership,
-        app=AppCode.DMS,
-        role=Role.objects.get(app=AppCode.DMS, code=role_code),
+        app_id=AppCode.DMS,
+        role=Role.objects.get(app_id=AppCode.DMS, code=role_code),
     )
     return user
 
