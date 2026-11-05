@@ -14,18 +14,22 @@ readable in Workbench rather than only by somebody who opens `catalogue.py`.
 
 Idempotent and reversible, like `0002`, and for the same reasons -- MySQL
 cannot roll a failed migration back (C39), so re-running has to be safe.
+
+It reads the same frozen catalogue as `0002`, for `0002`'s reason: the role
+order as it stood when this ran on 2026-10-06, not whatever `catalogue.py`
+says later.
 """
 
 from __future__ import annotations
 
 from django.db import migrations, models
 
-from core.permissions.catalogue import ROLES
+from core.permissions.migrations._catalogue_2026_10_03 import ROLES
 
 
 def set_display_order(apps, schema_editor):
     """
-    Number the roles in the order `catalogue.py` declares them.
+    Number the roles in the order the frozen catalogue declares them.
 
     ONE GLOBAL SEQUENCE rather than restarting per app and level. `ordering` is
     `app, level, display_order`, so only the order WITHIN a group is ever read

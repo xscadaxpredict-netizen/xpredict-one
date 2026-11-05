@@ -7,22 +7,20 @@ cannot roll a failed migration back (C39) -- so "run it again" has to be safe.
 Reversible because a migration that cannot be undone pins every environment at
 this version the moment anything goes wrong.
 
-IT READS `catalogue.py` AT THE VERSION THIS MIGRATION RUNS, which is the one
-compromise here. A migration is supposed to be frozen history, and importing a
-module that will keep changing breaks that: re-running this after somebody edits
-the catalogue applies the NEW list, not the one this migration described.
-
-That is accepted for the first seed, where the two are the same thing, and it is
-why the module docstring says a later change needs its OWN migration rather than
-an edit to the catalogue plus a re-run. The alternative -- 48 permissions and
-nine roles copied inline -- is 200 lines nobody will read or keep correct.
+IT READS A FROZEN COPY OF THE CATALOGUE, `_catalogue_2026_10_03.py`, not the
+live `catalogue.py` it used to import. Importing a module that keeps changing
+meant every database built from scratch replayed TODAY's catalogue here, and
+after `c87b376` that handed the dealership-level Tech support role two
+organisation-library permissions that production never had. The frozen file is
+the list this migration actually ran against on 2026-10-03; its docstring has
+the whole story.
 """
 
 from __future__ import annotations
 
 from django.db import migrations
 
-from core.permissions.catalogue import PERMISSIONS, ROLES
+from core.permissions.migrations._catalogue_2026_10_03 import PERMISSIONS, ROLES
 
 
 def seed(apps, schema_editor):

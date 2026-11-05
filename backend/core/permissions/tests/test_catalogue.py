@@ -203,6 +203,32 @@ class TestRoles:
             granted = set(role.permissions.values_list("code", flat=True))
             assert not {code for code in granted if code.startswith("admin.dealer.")}, role.code
 
+    def test_no_dealer_role_can_edit_the_organisations_shared_library(self):
+        """
+        C67: the four library resources have no `unit_id`, so one copy serves
+        every dealership and `allowed_units` cannot confine an edit to one. A
+        unit-level grant lets one dealership change what all of them see.
+
+        THIS FAILED ON EVERY DATABASE BUILT FROM SCRATCH until 2026-11-05, and
+        nothing noticed. `0002` imported the live `catalogue.py`, where the
+        library codes sit in the `tech-support` module that Tech support's
+        `_TICKETS` gathers whole -- so the test database, CI and any new
+        machine gave the dealership-level Tech support role
+        `dms.manual.manage` and `dms.video.manage`, while production (which ran
+        `0002` before those codes existed) did not. Every other test here
+        passed throughout: none of them asked this question of Tech support.
+        """
+        library = {
+            "dms.manual.manage",
+            "dms.video.manage",
+            "dms.marketing_asset.manage",
+            "dms.calculator.manage",
+        }
+
+        for role in Role.objects.filter(level="unit"):
+            granted = set(role.permissions.values_list("code", flat=True))
+            assert not granted & library, role.code
+
 
 class TestModulesAreDerived:
     def test_a_role_sees_exactly_the_modules_it_has_permissions_in(self):

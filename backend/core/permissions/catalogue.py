@@ -2,15 +2,21 @@
 The permission catalogue, and which role grants what (C42).
 
 THIS IS DATA, NOT A REGISTRY. Permissions live in the database (C44); this
-module is only the source the seeding migration reads, kept beside the models
-rather than buried inside a migration file so it can be read, diffed and
-reviewed like anything else. Changing it changes nothing until a migration
-applies it.
+module is the readable statement of what they should be, kept beside the models
+so it can be read, diffed and reviewed like anything else. Changing it changes
+nothing until a migration applies it.
+
+NO MIGRATION READS THIS FILE ANY MORE (2026-11-05). `0002` and `0003` used to
+import it, which made every database built from scratch replay TODAY's lists
+inside a migration dated 2026-10-03; they read the frozen
+`migrations/_catalogue_2026_10_03.py` now, and a test refuses any migration that
+imports this module again.
 
 ADDING A CAPABILITY IS TWO STEPS, and that is the cost C44 accepted: edit the
-lists here, then write a migration that applies the difference. A new migration
-rather than editing the old one -- an applied migration is history, and rewriting
-it leaves every environment that already ran it silently out of step.
+lists here, then write a NEW migration that carries its own data and applies
+the difference, as `0004` does -- never one that imports this file, and never an
+edit to an old one. An applied migration is history, and rewriting it leaves
+every environment that already ran it silently out of step.
 
 The strings themselves, and the reasoning behind them, are C42.
 """
