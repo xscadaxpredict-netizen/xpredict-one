@@ -158,7 +158,12 @@ PERMISSIONS: list[tuple[str, str, str, str, str]] = [
 
 _SALES = [code for code, _app, module, *_ in PERMISSIONS if module == "sales"]
 _SERVICE = [code for code, _app, module, *_ in PERMISSIONS if module == "service"]
-_TICKETS = [code for code, _app, module, *_ in PERMISSIONS if module == "tech-support"]
+# THE TICKET CODES, NOT THE WHOLE `tech-support` MODULE. This read
+# `module == "tech-support"` until 2026-11-05, and the module also holds the
+# organisation library (`dms.manual.manage`, `dms.video.manage`, above) -- so
+# Tech support, a dealership role, was quietly handed the cross-dealership
+# edits C67 forbids. A module is a screen, not a job.
+_TICKETS = [code for code, *_rest in PERMISSIONS if code.startswith("dms.ticket.")]
 _ADMIN_PEOPLE = [code for code, _app, module, *_ in PERMISSIONS if module == "users"]
 
 _DMS_READS = [code for code, app, *_rest in PERMISSIONS if app == "dms" and code.endswith(".view")]
