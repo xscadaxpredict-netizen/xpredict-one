@@ -70,7 +70,13 @@ roles, permissions or models until it is explicitly picked up.
 each dealer's users are managed at the **dealer** level. An org admin reaching into a
 dealer's users is an audited override, not the normal path.
 
-Full rationale: `context/02-DECISIONS.md` C1–C67 — all `[Decided]`. Don't reopen them.
+Full rationale: `context/02-DECISIONS.md` C1–C71 — all `[Decided]`. Don't reopen them.
+
+**C71 IS BEING BUILT on `feat/app-access-model`, piece by piece:** access becomes a
+per-app grant (`App` table — built; roles without level; `is_owner` instead of
+standing; each app with its own Users & roles). Until it merges, the code below
+still describes standing and `AppAccess`. **`main` is production: never commit or
+push to it** --- work on the working branch.
 
 ## Status
 
@@ -203,7 +209,9 @@ be rewritten when the modules landed.
 PAGES WILL 500.** `provision_tenant` only runs at signup, so existing tenant
 databases do not gain the new tables by themselves. Run **`manage.py
 migrate_all_tenants --plan`** first, then without `--plan`. This is the first time
-that command has ever had anything to apply.
+that command has ever had anything to apply. **Until `304fe60`, `--plan` said "up to
+date" for every database whatever its state** --- check for `dms_*` tables rather
+than trusting an older run.
 
 **A provision that failed for good is repaired with
 `manage.py reprovision_tenant <slug>`** (C50). The launcher refuses to open an
@@ -338,8 +346,8 @@ user row on every request and refuses an inactive one, so **disabling somebody t
 effect on their next request**, not after a token expires. The 15-minute access
 lifetime is how long a STOLEN token survives a logout.
 
-**Gates, all green:** `npm run test -w web` (194), `npm run typecheck -w web`,
-`npm run lint`, and in `backend/`: `pytest` (447), `ruff check .`, and
+**Gates, all green:** `npm run test -w web` (228), `npm run typecheck -w web`,
+`npm run lint`, and in `backend/`: `pytest` (467), `ruff check .`, and
 `.venv/Scripts/lint-imports.exe` — **not** `python -m importlinter.cli`, which exits 0
 without running. Run them before pushing.
 

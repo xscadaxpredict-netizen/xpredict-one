@@ -42,7 +42,6 @@ export function AppShell() {
   const { orgSlug } = useParams<{ orgSlug: string }>();
   const location = useLocation();
   const { data: me, isPending, isError } = useMe();
-
   /*
    * Which app is open, read from the URL: `/:orgSlug/<appKey>/...`.
    *
