@@ -127,8 +127,11 @@ the shared library (`permissions/0008` took it back). A change to roles or permi
 is a NEW migration carrying its own data, plus the same edit to `catalogue.py` so people
 can read it. `tests/test_migration_history.py` enforces it.
 
-**`Territory` IS A django-treebeard TREE** (C72, Q56). Use the MANAGER:
-`Territory.objects.create(...)` adds a top-level territory, `.add_child(parent, {...})`,
+**`Territory` IS A django-treebeard TREE WITH THE ORGANISATION AT ITS ROOT** (C72, Q56).
+Each organisation has exactly one root box of kind `organisation` — the database refuses
+a second, and refuses anything else at the top — and the root shows the organisation's
+name, storing none of its own. Use the MANAGER: `root_for(org)` is the root,
+`Territory.objects.create(...)` adds directly under it, `.add_child(parent, {...})`,
 `.move(...)`, `.get_descendants(...)` — never the per-node methods treebeard 8 removes.
 `save()` refuses a territory with no `path`. The manager sorts by `path`, so ask for
 `.order_by("name")` when you want names. **Every tree query filters by `organization`**:
@@ -369,7 +372,7 @@ effect on their next request**, not after a token expires. The 15-minute access
 lifetime is how long a STOLEN token survives a logout.
 
 **Gates:** `npm run test -w web` (228), `npm run typecheck -w web`, and in `backend/`:
-`pytest` (542), `ruff check .`, `manage.py makemigrations --check`, and
+`pytest` (564), `ruff check .`, `manage.py makemigrations --check`, and
 `.venv/Scripts/lint-imports.exe` — **not** `python -m importlinter.cli`, which exits 0
 without running. Run them before pushing. **`npm run lint` is NOT green and never has
 been on this code:** 139 errors in `apps/web`, inherited with the DMS modules and
