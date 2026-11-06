@@ -641,3 +641,107 @@ class InvitationAppGrant(BaseModel):
 
     def __str__(self) -> str:
         return f"{self.invitation_id} -> {self.app_id}"
+
+
+# ---------------------------------------------------------------------------
+# THE PER-APP GRANT (C72 piece 2). One person's access to one app, and
+# everything about it: the role (WHAT), the territories (WHERE) and -- from
+# piece 4 -- their position on that app's reporting chart (WHOSE).
+#
+# WRITTEN ONLY BY `services.grant_app_access()` / `revoke_app_access()`. The
+# database can say "at most one grant per app" and "at most one role per
+# grant"; it cannot say "every grant HAS a role and at least one territory".
+# Writing all of it in one function, in one transaction, is what makes that
+# true.
+#
+# STEP 2a: these tables are kept in step with the old ones (`AppAccess`,
+# `Membership.unit`) by every service that writes those, and NOTHING READS
+# THEM YET. Step 2b switches the readers; step 2d retires the old columns.
+# ---------------------------------------------------------------------------
+
+
+class MembershipAppAccess(BaseModel):
+    """
+    "This membership may use this app." One row per person per app.
+
+    Deleting it takes the role and the territories with it (cascade), so
+    removing somebody's access to an app can never leave a role or a placement
+    behind. Subscription stays a separate fact (C16, C55): a grant on an app
+    the organisation no longer pays for opens nothing.
+    """
+
+    membership = models.ForeignKey(Membership, on_delete=models.CASCADE, related_name="grants")
+    app = models.ForeignKey(
+        "permissions.App",
+        to_field="code",
+        db_column="app",
+        on_delete=models.PROTECT,
+        related_name="+",
+    )
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["membership", "app"], name="grant_unique_membership_app"
+            ),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.membership_id} may use {self.app_id}"
+
+
+class MembershipAppRole(BaseModel):
+    """
+    The role held in that app (WHAT).
+
+    ONE ROLE PER GRANT, FOR NOW (C71): the unique constraint is on the grant
+    alone. Allowing "Sales executive AND Service advisor" later is relaxing it
+    to (app_access, role) -- a constraint change, not a reshaping -- and then
+    permissions are the union.
+
+    The role must belong to the grant's app. The database cannot compare two
+    rows' `app` columns, so `grant_app_access()` enforces it.
+    """
+
+    app_access = models.ForeignKey(
+        MembershipAppAccess, on_delete=models.CASCADE, related_name="roles"
+    )
+    role = models.ForeignKey("permissions.Role", on_delete=models.PROTECT, related_name="+")
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(fields=["app_access"], name="grant_one_role_per_grant"),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.app_access_id} as {self.role_id}"
+
+
+class MembershipAppTerritory(BaseModel):
+    """
+    One place this person sits in that app (WHERE).
+
+    SEVERAL PER GRANT (the owner, 2026-11-06, answering Q10 and Q57): they see
+    the union of the subtrees. AT LEAST ONE, always -- an organisation-wide
+    person is placed AT the organisation's root, never "nowhere" (the owner's
+    root decision), so a missing placement fails closed.
+
+    PROTECT, not cascade, on the territory: a territory people are placed at
+    cannot be deleted out from under them. (There is no delete for territories
+    anyway -- C63 closes a dealership, it never removes one.)
+    """
+
+    app_access = models.ForeignKey(
+        MembershipAppAccess, on_delete=models.CASCADE, related_name="territories"
+    )
+    territory = models.ForeignKey(Territory, on_delete=models.PROTECT, related_name="placements")
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["app_access", "territory"], name="grant_unique_territory_per_grant"
+            ),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.app_access_id} at {self.territory_id}"

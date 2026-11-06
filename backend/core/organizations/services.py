@@ -44,6 +44,7 @@ from core.organizations.exceptions import (
     DealerNameTakenError,
     DealerScopedAppError,
     EmailAlreadyRegisteredError,
+    GrantNeedsTerritoryError,
     InvitationAlreadyAcceptedError,
     InvitationExpiredError,
     InvitationNeedsSignInError,
@@ -52,6 +53,7 @@ from core.organizations.exceptions import (
     OrganizationNameUnusableError,
     OwnerProtectedError,
     PersonEmailTakenError,
+    RoleNotInAppError,
     RoleScopeMismatchError,
     SignInAddressLockedError,
     TerritoryIsTheOrganisationError,
@@ -65,6 +67,9 @@ from core.organizations.models import (
     Invitation,
     InvitationAppGrant,
     Membership,
+    MembershipAppAccess,
+    MembershipAppRole,
+    MembershipAppTerritory,
     MembershipRole,
     MembershipStatus,
     Organization,
@@ -74,7 +79,7 @@ from core.organizations.models import (
 )
 from core.organizations.selectors import can_manage
 from core.organizations.tasks import schedule_provisioning
-from core.permissions.models import AppAccess, AppCode, Role, RoleLevel
+from core.permissions.models import App, AppAccess, AppCode, Role, RoleLevel
 from shared.exceptions import AuthorizationError, FieldError, InvalidInputError, not_found
 
 # WHAT A NEW ORGANIZATION IS SUBSCRIBED TO. DMS only, because DMS is the
@@ -350,11 +355,18 @@ def _subscribe_and_grant(
         organization=organization, app_id=app, created_by_user_id=actor_id
     )
 
+    role = Role.objects.get(app=app, code=role_code)
     AppAccess.objects.create(
+        membership=membership, app_id=app, role=role, created_by_user_id=actor_id
+    )
+    # C72 STEP 2a: the same grant in the new tables. The owner is
+    # organisation-wide, so they are placed at the organisation's root.
+    grant_app_access(
         membership=membership,
-        app_id=app,
-        role=Role.objects.get(app=app, code=role_code),
-        created_by_user_id=actor_id,
+        app=app,
+        role=role,
+        territories=[Territory.objects.root_for(organization)],
+        actor_id=actor_id,
     )
 
 
@@ -527,6 +539,110 @@ def move_territory(*, territory: Territory, parent_id: uuid.UUID | None) -> Terr
         raise TerritoryMoveIntoItselfError from None
 
     return Territory.objects.get(pk=territory.pk)
+
+
+# ---------------------------------------------------------------------------
+# Per-app grants (C72 piece 2).
+#
+# `grant_app_access()` IS THE ONLY WRITER of `MembershipAppAccess`,
+# `MembershipAppRole` and `MembershipAppTerritory`. The rules it enforces are
+# the ones the database cannot: the role belongs to the app; there is at least
+# one territory; every territory is in the person's own organisation; and a
+# dealership person holds only apps that use territories (C27, Q53).
+#
+# STEP 2a: called alongside the old `AppAccess` writes, so the two stay in
+# step; nothing reads the new tables until step 2b.
+# ---------------------------------------------------------------------------
+
+
+def _is_dealership_place(territory: Territory) -> bool:
+    """
+    Is this a place that belongs to a dealership -- a dealer, a branch, or
+    anything (a warehouse) inside a dealer?
+
+    Somebody placed at one is a dealership's person, and Q53 says a
+    dealership's people get DMS and nothing else.
+    """
+    if territory.kind in (TerritoryKind.DEALER, TerritoryKind.BRANCH):
+        return True
+    step = Territory.steplen
+    ancestors = [territory.path[:end] for end in range(step, len(territory.path), step)]
+    return Territory.objects.filter(
+        organization_id=territory.organization_id, path__in=ancestors, kind=TerritoryKind.DEALER
+    ).exists()
+
+
+@transaction.atomic
+def grant_app_access(
+    *,
+    membership: Membership,
+    app: str,
+    role: Role,
+    territories: list[Territory],
+    actor_id: uuid.UUID | None = None,
+) -> MembershipAppAccess:
+    """
+    Give this membership `app`, as `role`, placed at `territories` -- or replace
+    what they had in that app. One user action, one transaction (CLAUDE.md).
+
+    REPLACES, NEVER MERGES. Calling it again for the same app sets the role and
+    the territories to exactly what is passed; a territory left out is a
+    territory removed. Merging would mean a placement could only ever grow.
+    """
+    if role.app_id != app:
+        raise RoleNotInAppError
+    if not territories:
+        raise GrantNeedsTerritoryError
+    if any(t.organization_id != membership.organization_id for t in territories):
+        # Another organisation's territory is one the caller cannot see (C49).
+        raise not_found("Territory")
+
+    app_uses_territories = App.objects.filter(code=app, unit_aware=True).exists()
+    placed_at_a_dealership = any(_is_dealership_place(t) for t in territories)
+
+    # C27 / Q53, BOTH WAYS ROUND, across the person's other grants: a
+    # dealership's person may not hold an app that ignores territories, and a
+    # person holding such an app may not be placed at a dealership elsewhere.
+    others = MembershipAppAccess.objects.filter(membership=membership).exclude(app_id=app)
+    if placed_at_a_dealership and (
+        not app_uses_territories or others.filter(app__unit_aware=False).exists()
+    ):
+        raise DealerScopedAppError
+    if not app_uses_territories and any(
+        _is_dealership_place(placement.territory)
+        for placement in MembershipAppTerritory.objects.filter(
+            app_access__in=others
+        ).select_related("territory")
+    ):
+        raise DealerScopedAppError
+
+    grant, _ = MembershipAppAccess.objects.get_or_create(
+        membership=membership, app_id=app, defaults={"created_by_user_id": actor_id}
+    )
+    MembershipAppRole.objects.update_or_create(app_access=grant, defaults={"role": role})
+    grant.territories.all().delete()
+    for territory in {t.pk: t for t in territories}.values():
+        MembershipAppTerritory.objects.create(
+            app_access=grant, territory=territory, created_by_user_id=actor_id
+        )
+    return grant
+
+
+@transaction.atomic
+def revoke_app_access(*, membership: Membership, app: str) -> None:
+    """Take an app away. The role and the territories go with it (cascade)."""
+    MembershipAppAccess.objects.filter(membership=membership, app_id=app).delete()
+
+
+def _legacy_placement(membership: Membership) -> list[Territory]:
+    """
+    STEP 2a's bridge: where today's data says this person sits -- their one
+    dealership, or the organisation's root if they have none. Goes in step 2d
+    with `Membership.unit`.
+    """
+    if membership.unit_id is not None:
+        return [membership.unit]
+    return [Territory.objects.root_for(membership.organization)]
 
 
 @transaction.atomic
@@ -1046,6 +1162,17 @@ def _update_membership(
     for app, granted_role in grants:
         AppAccess.objects.create(membership=membership, app_id=app, role=granted_role)
 
+    # C72 STEP 2a: the same grants in the new tables, delete-then-create for the
+    # same reason, each placed where today's data puts the person.
+    membership.grants.all().delete()
+    for app, granted_role in grants:
+        grant_app_access(
+            membership=membership,
+            app=app,
+            role=granted_role,
+            territories=_legacy_placement(membership),
+        )
+
 
 def _update_invitation(
     invitation: Invitation,
@@ -1375,6 +1502,14 @@ def accept_invitation(
             app_id=app,
             role=role,
             created_by_user_id=invitation.invited_by_id,
+        )
+        # C72 STEP 2a: the same grant in the new tables.
+        grant_app_access(
+            membership=membership,
+            app=app,
+            role=role,
+            territories=_legacy_placement(membership),
+            actor_id=invitation.invited_by_id,
         )
 
     invitation.accepted_at = timezone.now()

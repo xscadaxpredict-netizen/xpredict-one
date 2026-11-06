@@ -165,6 +165,29 @@ class TerritoryPlacementError(ConflictError):
     message = "That kind of territory cannot be placed there."
 
 
+class RoleNotInAppError(ConflictError):
+    """
+    A grant's role must belong to the grant's app (C72): no DMS role on a CRM
+    grant. The database cannot compare the role row's app with the grant row's,
+    so `grant_app_access()` refuses it.
+    """
+
+    code = "role_not_in_app"
+    message = "That role does not belong to that app."
+
+
+class GrantNeedsTerritoryError(ConflictError):
+    """
+    Every grant places its holder somewhere -- at least one territory (C72;
+    the owner's root decision, 2026-11-06). An organisation-wide person is
+    placed AT the organisation's root; "no territory" is never read as
+    "everywhere", so a missing placement fails closed.
+    """
+
+    code = "grant_needs_territory"
+    message = "Choose at least one place in the organisation for this person."
+
+
 class TerritoryIsTheOrganisationError(ConflictError):
     """
     The root of the tree is the organisation itself, and is not arranged.
