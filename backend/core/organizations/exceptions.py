@@ -165,6 +165,20 @@ class TerritoryPlacementError(ConflictError):
     message = "That kind of territory cannot be placed there."
 
 
+class TerritoryIsTheOrganisationError(ConflictError):
+    """
+    The root of the tree is the organisation itself, and is not arranged.
+
+    It cannot be moved -- there is nothing above it -- and it is not renamed
+    here: it shows the organisation's name and stores none of its own, so
+    renaming the organisation is the only way its name changes. 409, the state
+    answer: the caller may arrange territories, just not this one.
+    """
+
+    code = "territory_is_the_organisation"
+    message = "That is the organisation itself; it cannot be moved or renamed here."
+
+
 class TerritoryMoveIntoItselfError(ConflictError):
     """
     A territory cannot be moved inside itself or anything under it.

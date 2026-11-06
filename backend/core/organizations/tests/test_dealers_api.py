@@ -29,6 +29,7 @@ from core.organizations.models import (
     MembershipRole,
     MembershipStatus,
     Territory,
+    TerritoryKind,
     UnitStatus,
 )
 from core.organizations.services import sign_up
@@ -267,7 +268,14 @@ class TestCreating:
         # Annotated, so a create that returned the raw row would be missing it.
         assert response.json()["user_count"] == 0
         assert response.json()["status"] == UnitStatus.ACTIVE
-        assert Territory.objects.filter(organization=result.organization).count() == 1
+        # DEALERSHIPS, not territories: the organisation's root box is a
+        # territory too (C72), and counting every territory counted it.
+        assert (
+            Territory.objects.filter(
+                organization=result.organization, kind=TerritoryKind.DEALER
+            ).count()
+            == 1
+        )
 
     def test_the_code_is_optional_and_several_may_go_without_one(self, client):
         """

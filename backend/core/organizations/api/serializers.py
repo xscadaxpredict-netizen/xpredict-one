@@ -170,7 +170,8 @@ class TerritorySerializer(serializers.Serializer):
 
     id = serializers.UUIDField(read_only=True)
     kind = serializers.CharField(read_only=True)
-    name = serializers.CharField(read_only=True)
+    # The root's name is the organisation's -- it stores none of its own.
+    name = serializers.CharField(source="display_name", read_only=True)
     code = serializers.CharField(read_only=True, allow_null=True)
     parent_id = serializers.UUIDField(read_only=True, allow_null=True)
     depth = serializers.IntegerField(read_only=True)

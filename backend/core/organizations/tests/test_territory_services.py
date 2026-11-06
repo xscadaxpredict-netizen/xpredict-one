@@ -4,23 +4,26 @@ that create, rename and move territories, and the guards that stop a region
 being mistaken for a dealership before C72 piece 2 can place people at one.
 
 THE TENANCY TEST TO READ FIRST is `test_a_parent_in_another_organization_is_a_404`.
-Paths are unique across the WHOLE table and every organisation's roots are
-siblings, so a service that looked a parent up by id alone would graft one
+Paths are unique across the WHOLE table and every organisation's root is a
+treebeard root, so a service that looked a parent up by id alone would graft one
 customer's dealership into another customer's tree. Scope fails with 404.
+
+THE ORGANISATION IS THE ROOT (the owner, 2026-11-06): "no parent" means
+"directly under the organisation", and the root itself is never moved, renamed
+or created by these services.
 """
 
 from __future__ import annotations
 
 from types import SimpleNamespace
-from unittest.mock import patch
 
 import pytest
-from django.db import IntegrityError
 from rest_framework.test import APIClient
 
 from conftest import TEST_TENANT_ALIAS
 from core.api import TenantAPIView
 from core.organizations.exceptions import (
+    TerritoryIsTheOrganisationError,
     TerritoryMoveIntoItselfError,
     TerritoryNameTakenError,
     TerritoryPlacementError,
@@ -41,7 +44,8 @@ from shared.exceptions import NotFoundError
 
 pytestmark = [pytest.mark.django_db(databases=["default", TEST_TENANT_ALIAS])]
 
-REGION, DEALER, BRANCH, WAREHOUSE = (
+ORG, REGION, DEALER, BRANCH, WAREHOUSE = (
+    TerritoryKind.ORGANISATION,
     TerritoryKind.REGION,
     TerritoryKind.DEALER,
     TerritoryKind.BRANCH,
@@ -64,25 +68,24 @@ def fresh(territory: Territory) -> Territory:
 
 
 class TestThePlacementRule:
-    """C72's version-1 tree, as a table. `None` is "at the top level"."""
+    """C72's version-1 tree, as a table. ORG is "directly under the organisation"."""
 
     @pytest.mark.parametrize(
         ("kind", "parent_kind"),
         [
-            (REGION, None),
+            (REGION, ORG),
             (REGION, REGION),
-            (DEALER, None),
+            (DEALER, ORG),
             (DEALER, REGION),
             (BRANCH, DEALER),
-            (WAREHOUSE, None),
+            (WAREHOUSE, ORG),
             (WAREHOUSE, REGION),
             (WAREHOUSE, DEALER),
             (WAREHOUSE, BRANCH),
         ],
     )
     def test_allowed(self, kind, parent_kind):
-        parent = Territory(kind=parent_kind) if parent_kind else None
-        assert_placement_allowed(kind, parent)
+        assert_placement_allowed(kind, Territory(kind=parent_kind))
 
     @pytest.mark.parametrize(
         ("kind", "parent_kind"),
@@ -93,17 +96,55 @@ class TestThePlacementRule:
             (DEALER, DEALER),  # no sub-dealers until Q57 says so
             (DEALER, BRANCH),
             (DEALER, WAREHOUSE),
-            (BRANCH, None),
+            (BRANCH, ORG),
             (BRANCH, REGION),
             (BRANCH, BRANCH),
             (BRANCH, WAREHOUSE),
             (WAREHOUSE, WAREHOUSE),
+            # Nothing is ever placed AS an organisation: there is one, and
+            # sign-up made it.
+            (ORG, ORG),
+            (ORG, REGION),
+            (ORG, DEALER),
         ],
     )
     def test_refused(self, kind, parent_kind):
-        parent = Territory(kind=parent_kind) if parent_kind else None
         with pytest.raises(TerritoryPlacementError):
-            assert_placement_allowed(kind, parent)
+            assert_placement_allowed(kind, Territory(kind=parent_kind))
+
+
+class TestTheRoot:
+    def test_sign_up_gives_the_organisation_its_root(self):
+        org = found().organization
+
+        roots = Territory.objects.filter(organization=org, is_root=True)
+
+        assert [(r.kind, r.depth, r.display_name) for r in roots] == [(ORG, 1, "Apex Motors")]
+
+    def test_the_root_cannot_be_moved(self):
+        result = found()
+        root = Territory.objects.root_for(result.organization)
+        north = create_territory(organization=result.organization, kind=REGION, name="North")
+
+        with pytest.raises(TerritoryIsTheOrganisationError):
+            move_territory(territory=root, parent_id=north.pk)
+
+    def test_the_root_cannot_be_renamed_here(self):
+        """It shows the organisation's name; renaming the organisation renames it."""
+        root = Territory.objects.root_for(found().organization)
+
+        with pytest.raises(TerritoryIsTheOrganisationError):
+            rename_territory(territory=root, name="Something else")
+
+        assert fresh(root).name == ""
+
+    def test_no_parent_means_directly_under_the_organisation(self):
+        org = found().organization
+
+        north = create_territory(organization=org, kind=REGION, name="North")
+
+        assert fresh(north).depth == 2
+        assert fresh(north).path.startswith(Territory.objects.root_for(org).path)
 
 
 class TestCreating:
@@ -117,10 +158,10 @@ class TestCreating:
         )
 
         assert fresh(delhi).path.startswith(fresh(north).path)
-        assert fresh(branch).depth == 3
+        assert fresh(branch).depth == 4
         assert Territory.objects.find_problems() == ([], [], [], [], [])
 
-    def test_a_branch_at_the_top_level_is_refused(self):
+    def test_a_branch_directly_under_the_organisation_is_refused(self):
         org = found().organization
 
         with pytest.raises(TerritoryPlacementError):
@@ -173,8 +214,9 @@ class TestRenamingAndMoving:
 
     def test_an_existing_dealership_moves_into_a_new_region_with_its_branches(self):
         """
-        The first thing every organisation will do: every dealership arrived
-        at the top level (`0011`), and regions are drawn around them afterwards.
+        The first thing every organisation will do: every dealership sits
+        directly under the organisation (`0014`), and regions are drawn around
+        them afterwards.
         """
         org = found().organization
         delhi = create_dealer(organization=org, name="Delhi Motors")
@@ -184,18 +226,19 @@ class TestRenamingAndMoving:
         moved = move_territory(territory=fresh(delhi), parent_id=north.pk)
 
         assert moved.pk == delhi.pk  # the id every membership and record points at
-        assert moved.depth == 2
+        assert moved.depth == 3
         assert Territory.objects.get(name="Karol Bagh").path.startswith(fresh(north).path)
         assert Territory.objects.find_problems() == ([], [], [], [], [])
 
-    def test_and_back_out_to_the_top_level(self):
+    def test_and_back_out_to_directly_under_the_organisation(self):
         org = found().organization
         north = create_territory(organization=org, kind=REGION, name="North")
         delhi = create_dealer(organization=org, name="Delhi Motors", parent_id=north.pk)
 
         moved = move_territory(territory=fresh(delhi), parent_id=None)
 
-        assert moved.depth == 1
+        assert moved.depth == 2
+        assert moved.path.startswith(Territory.objects.root_for(org).path)
         assert fresh(north).numchild == 0
         assert Territory.objects.find_problems() == ([], [], [], [], [])
 
@@ -226,64 +269,7 @@ class TestRenamingAndMoving:
         with pytest.raises(NotFoundError):
             move_territory(territory=fresh(delhi), parent_id=theirs.pk)
 
-        assert fresh(delhi).depth == 1
-
-
-class TestTwoTopLevelTerritoriesAtOnce:
-    def test_mysql_names_the_path_index_in_the_error_the_retry_looks_for(self):
-        """
-        The retry recognises a root-path collision by the path index's name in
-        MySQL's message. This pins that against the real server -- AND IT HAS
-        ALREADY EARNED ITS PLACE: the first version looked for `.path'`, which
-        MySQL never prints (it names the index, not the column), so the retry
-        could never fire while the mocked test below passed happily.
-        """
-        org = found().organization
-        a = create_dealer(organization=org, name="Delhi Motors")
-        b = create_dealer(organization=org, name="Jaipur Auto")
-
-        with pytest.raises(IntegrityError) as caught:
-            Territory.objects.filter(pk=b.pk).update(path=a.path)
-
-        assert f"{Territory._meta.db_table}_path_" in str(caught.value)
-
-    def test_a_collision_on_the_root_path_is_retried(self):
-        org = found().organization
-        real_add_root = Territory.objects.add_root
-        calls = []
-
-        def collide_once(create_kwargs=None, **kwargs):
-            calls.append(1)
-            if len(calls) == 1:
-                # MySQL's real wording, as the test above pins it.
-                raise IntegrityError(
-                    "(1062, \"Duplicate entry '00001' for key "
-                    "'organizations_territory.organizations_territory_path_be21f7d1_uniq'\")"
-                )
-            return real_add_root(create_kwargs, **kwargs)
-
-        with patch.object(Territory.objects, "add_root", side_effect=collide_once):
-            region = create_territory(organization=org, kind=REGION, name="North")
-
-        assert len(calls) == 2
-        assert fresh(region).depth == 1
-
-    def test_any_other_integrity_error_is_not_retried(self):
-        org = found().organization
-        calls = []
-
-        def name_clash(create_kwargs=None, **kwargs):
-            calls.append(1)
-            raise IntegrityError(
-                "(1062, \"Duplicate entry 'x' for key "
-                "'organizations_territory.territory_unique_org_name'\")"
-            )
-
-        with patch.object(Territory.objects, "add_root", side_effect=name_clash):
-            with pytest.raises(IntegrityError):
-                create_territory(organization=org, kind=REGION, name="North")
-
-        assert len(calls) == 1
+        assert fresh(delhi).depth == 2
 
 
 class TestARegionIsNeverTakenForADealership:

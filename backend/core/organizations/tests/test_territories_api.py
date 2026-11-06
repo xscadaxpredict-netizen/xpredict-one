@@ -98,9 +98,12 @@ class TestTheTree:
         response = signed_in(result.user).get(LIST_URL.format(slug=org.slug))
 
         assert response.status_code == 200
+        root = Territory.objects.root_for(org)
+        # The organisation is the root, shown under its own name (it stores none).
         assert [(t["name"], t["kind"], t["parent_id"], t["depth"]) for t in response.json()] == [
-            ("North", "region", None, 1),
-            ("Delhi Motors", "dealer", str(north.pk), 2),
+            ("Apex Motors", "organisation", None, 1),
+            ("North", "region", str(root.pk), 2),
+            ("Delhi Motors", "dealer", str(north.pk), 3),
         ]
         assert "path" not in response.json()[0]
 
@@ -166,7 +169,13 @@ class TestTheTree:
         back = client.post(MOVE_URL.format(slug=org.slug, id=delhi.pk), {"parent_id": None}, "json")
 
         assert (renamed.json()["name"], moved.json()["parent_id"]) == ("North India", str(north.pk))
-        assert (back.status_code, back.json()["parent_id"], back.json()["depth"]) == (200, None, 1)
+        # "No parent" means directly under the organisation -- its root.
+        root_id = str(Territory.objects.root_for(org).pk)
+        assert (back.status_code, back.json()["parent_id"], back.json()["depth"]) == (
+            200,
+            root_id,
+            2,
+        )
 
     def test_a_move_must_say_where_to(self):
         """An omitted `parent_id` must not be read as "the top level" by accident."""
@@ -186,7 +195,7 @@ class TestTheTree:
         )
 
         assert response.status_code == 422  # this project answers 422 to failed validation
-        assert Territory.objects.get(pk=punjab.pk).depth == 2
+        assert Territory.objects.get(pk=punjab.pk).depth == 3  # organisation > North > Punjab
 
 
 class TestADealerAdminCannotRedrawTheTree:
@@ -208,7 +217,7 @@ class TestADealerAdminCannotRedrawTheTree:
         codes = tuple(r.status_code for r in (listed, created, renamed, moved))
 
         assert codes == (403, 403, 403, 403)
-        assert Territory.objects.get(pk=delhi.pk).depth == 1
+        assert Territory.objects.get(pk=delhi.pk).depth == 2
 
 
 class TestAnotherOrganizationsTreeDoesNotExist:
@@ -226,7 +235,7 @@ class TestAnotherOrganizationsTreeDoesNotExist:
         renamed = client.patch(DETAIL_URL.format(slug=slug, id=theirs.pk), {"name": "Mine"}, "json")
         moved = client.post(MOVE_URL.format(slug=slug, id=theirs.pk), {"parent_id": None}, "json")
 
-        assert [t["name"] for t in listed] == ["Delhi Motors"]
+        assert [t["name"] for t in listed] == ["Apex Motors", "Delhi Motors"]
         assert (renamed.status_code, moved.status_code) == (404, 404)
         assert Territory.objects.get(pk=theirs.pk).name == "West"
 
@@ -249,3 +258,33 @@ class TestAnotherOrganizationsTreeDoesNotExist:
 
         assert response.status_code == 404
         assert not Territory.objects.filter(name="Pune Wheels").exists()
+
+
+class TestTheRootOverTheAPI:
+    def test_the_root_cannot_be_moved_or_renamed(self):
+        result = found()
+        org = result.organization
+        root = Territory.objects.root_for(org)
+        north = create_territory(organization=org, kind=TerritoryKind.REGION, name="North")
+        client = signed_in(result.user)
+
+        renamed = client.patch(DETAIL_URL.format(slug=org.slug, id=root.pk), {"name": "X"}, "json")
+        moved = client.post(
+            MOVE_URL.format(slug=org.slug, id=root.pk), {"parent_id": str(north.pk)}, "json"
+        )
+
+        assert (renamed.status_code, moved.status_code) == (409, 409)
+        assert renamed.json()["code"] == "territory_is_the_organisation"
+        assert Territory.objects.get(pk=root.pk).depth == 1
+
+    def test_an_organisation_cannot_be_created_through_the_api(self):
+        result = found()
+
+        response = signed_in(result.user).post(
+            LIST_URL.format(slug=result.organization.slug),
+            {"kind": "organisation", "name": "Second Apex"},
+            "json",
+        )
+
+        assert response.status_code == 422  # not one of the kinds this door accepts
+        assert Territory.objects.filter(organization=result.organization, is_root=True).count() == 1

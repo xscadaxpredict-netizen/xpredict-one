@@ -25,7 +25,7 @@ from datetime import timedelta
 from django.conf import settings
 from django.core.exceptions import ImproperlyConfigured
 from django.core.exceptions import ValidationError as DjangoValidationError
-from django.db import IntegrityError, transaction
+from django.db import transaction
 from django.utils import timezone
 from django.utils.text import slugify
 from treebeard.exceptions import InvalidMoveToDescendant
@@ -54,6 +54,7 @@ from core.organizations.exceptions import (
     PersonEmailTakenError,
     RoleScopeMismatchError,
     SignInAddressLockedError,
+    TerritoryIsTheOrganisationError,
     TerritoryMoveIntoItselfError,
     TerritoryNameTakenError,
     TerritoryPlacementError,
@@ -165,6 +166,11 @@ def sign_up(
         db_host=settings.DATABASES["default"]["HOST"],
         db_port=int(settings.DATABASES["default"]["PORT"] or 3306),
     )
+
+    # THE ORGANISATION'S TERRITORY TREE STARTS HERE (C72): its root box, kind
+    # `organisation`. Created with the organisation, in the same transaction,
+    # so no organisation ever exists without one.
+    Territory.objects.root_for(organization)
 
     membership = Membership.objects.create(
         user=user,
@@ -373,44 +379,46 @@ def _subscribe_and_grant(
 # ---------------------------------------------------------------------------
 # The territory tree (C72 piece 1).
 #
-# WHAT MAY SIT UNDER WHAT, in one place. `None` is "at the top level", which is
-# also "directly under the organisation" -- there is no box for the
-# organisation itself (see `TerritoryKind`). Every write that places a
-# territory -- creating one, moving one -- asks `assert_placement_allowed`, so
-# the rule cannot be honoured by one door and forgotten by another.
+# THE ORGANISATION IS THE ROOT (the owner, 2026-11-06). Every organisation has
+# one root box of kind `organisation` (`Territory.objects.root_for`), and every
+# other territory sits under it. A `parent_id` of None means "directly under
+# the organisation", which is the root.
 #
-# Version 1, the owner's tree from C72: regions may nest; a dealer sits at the
-# top or in a region; a branch only inside a dealer; a warehouse anywhere. No
-# dealer inside a dealer until Q57 says sub-dealers exist.
+# WHAT MAY SIT UNDER WHAT, in one place. Every write that places a territory --
+# creating one, moving one -- asks `assert_placement_allowed`, so the rule
+# cannot be honoured by one door and forgotten by another.
+#
+# Version 1, the owner's tree from C72: regions may nest; a dealer sits under
+# the organisation or in a region; a branch only inside a dealer; a warehouse
+# anywhere. No dealer inside a dealer until Q57 says sub-dealers exist. Nothing
+# is ever placed AS an organisation: there is one, and sign-up made it.
 # ---------------------------------------------------------------------------
 
-_ALLOWED_PARENTS: dict[str, frozenset[str | None]] = {
-    TerritoryKind.REGION: frozenset({None, TerritoryKind.REGION}),
-    TerritoryKind.DEALER: frozenset({None, TerritoryKind.REGION}),
+_ALLOWED_PARENTS: dict[str, frozenset[str]] = {
+    TerritoryKind.ORGANISATION: frozenset(),
+    TerritoryKind.REGION: frozenset({TerritoryKind.ORGANISATION, TerritoryKind.REGION}),
+    TerritoryKind.DEALER: frozenset({TerritoryKind.ORGANISATION, TerritoryKind.REGION}),
     TerritoryKind.BRANCH: frozenset({TerritoryKind.DEALER}),
     TerritoryKind.WAREHOUSE: frozenset(
-        {None, TerritoryKind.REGION, TerritoryKind.DEALER, TerritoryKind.BRANCH}
+        {
+            TerritoryKind.ORGANISATION,
+            TerritoryKind.REGION,
+            TerritoryKind.DEALER,
+            TerritoryKind.BRANCH,
+        }
     ),
 }
 
-# Two top-level territories added at the same instant -- by two organisations,
-# since roots share one sequence -- both read the same "last root" and compute
-# the same path. The second insert then fails the unique index on `path`.
-# Retrying computes a fresh one. Three attempts is generous for a collision
-# that needs two admins to click within the same few milliseconds.
-_ROOT_PATH_ATTEMPTS = 3
 
-
-def assert_placement_allowed(kind: str, parent: Territory | None) -> None:
+def assert_placement_allowed(kind: str, parent: Territory) -> None:
     """Refuse a territory of this kind under this parent (C72). 409."""
-    parent_kind = parent.kind if parent is not None else None
-    if parent_kind not in _ALLOWED_PARENTS[kind]:
+    if parent.kind not in _ALLOWED_PARENTS[kind]:
         raise TerritoryPlacementError
 
 
-def _resolve_parent(organization: Organization, parent_id: uuid.UUID | None) -> Territory | None:
+def _resolve_parent(organization: Organization, parent_id: uuid.UUID | None) -> Territory:
     """
-    The parent territory, or None for the top level.
+    The parent territory -- the organisation's root when `parent_id` is None.
 
     FILTERED BY ORGANIZATION, and another organization's territory is a 404,
     not a placement error: a box the caller cannot see must look like one that
@@ -419,48 +427,32 @@ def _resolve_parent(organization: Organization, parent_id: uuid.UUID | None) -> 
     customer's tree.
     """
     if parent_id is None:
-        return None
+        return Territory.objects.root_for(organization)
     try:
         return Territory.objects.get(id=parent_id, organization=organization)
     except (Territory.DoesNotExist, DjangoValidationError, ValueError):
         raise not_found("Territory") from None
 
 
-def _with_root_path_retry(operation):
+def _assert_not_the_root(territory: Territory) -> None:
     """
-    Run a tree write that may compute a new ROOT path, retrying on a collision.
-
-    Each attempt is its own savepoint, so a failed insert is rolled back
-    without taking the caller's transaction with it. Only a collision on `path`
-    is retried; a name or code collision under the same race is a real
-    conflict and is raised at once.
-
-    RECOGNISED BY THE INDEX NAME, because that is what MySQL reports -- "for
-    key 'organizations_territory.organizations_territory_path_be21f7d1_uniq'",
-    not the column. Django names a `unique=True` field's index
-    `<table>_<column>_<hash>_uniq`, so the prefix is stable. The first version
-    of this looked for `.path'`, which MySQL never prints: the retry would never
-    have fired, and only a test against the real server noticed.
+    The root IS the organisation: it is renamed by renaming the organisation,
+    it has nowhere to move to, and nothing may be moved into its place.
     """
-    path_index = f"{Territory._meta.db_table}_path_"
-    for attempt in range(_ROOT_PATH_ATTEMPTS):
-        try:
-            with transaction.atomic():
-                return operation()
-        except IntegrityError as exc:
-            if path_index not in str(exc) or attempt == _ROOT_PATH_ATTEMPTS - 1:
-                raise
-    raise AssertionError("unreachable")  # pragma: no cover
+    if territory.is_root:
+        raise TerritoryIsTheOrganisationError
 
 
-def _add_territory(organization: Organization, parent: Territory | None, fields: dict) -> Territory:
-    """Insert a territory at its place in the tree. The caller has checked the rules."""
-    create_kwargs = {"organization": organization, **fields}
-    if parent is not None:
-        # `add_child` locks the parent row first, so two children added under
-        # one parent at once queue rather than colliding.
-        return Territory.objects.add_child(parent, create_kwargs)
-    return _with_root_path_retry(lambda: Territory.objects.add_root(create_kwargs))
+def _add_territory(organization: Organization, parent: Territory, fields: dict) -> Territory:
+    """
+    Insert a territory under its parent. The caller has checked the rules.
+
+    `add_child` locks the parent row first, so two territories added under one
+    parent at once queue rather than computing the same path. Under the root,
+    that serialises one organisation's own additions -- and no other
+    organisation's, since each has its own root.
+    """
+    return Territory.objects.add_child(parent, {"organization": organization, **fields})
 
 
 def _assert_territory_name_free(
@@ -497,7 +489,8 @@ def create_territory(
 
 @transaction.atomic
 def rename_territory(*, territory: Territory, name: str) -> Territory:
-    """Change a territory's name -- any kind. Unique across the organization's tree."""
+    """Change a territory's name -- any kind but the root. Unique across the tree."""
+    _assert_not_the_root(territory)
     _assert_territory_name_free(territory.organization, name, excluding=territory.pk)
     territory.name = name
     territory.save(update_fields=["name", "updated_at"])
@@ -509,9 +502,9 @@ def move_territory(*, territory: Territory, parent_id: uuid.UUID | None) -> Terr
     """
     Put a territory -- and everything under it -- somewhere else in the tree.
 
-    `parent_id` None moves it to the top level. This is how the dealerships
-    that existed before the tree get organised: every one of them arrived as a
-    top-level box (`organizations/0011`).
+    `parent_id` None moves it directly under the organisation. This is how the
+    dealerships that existed before regions get organised: every one of them
+    sits directly under the organisation (`organizations/0014`).
 
     EVERYTHING UNDER IT MOVES TOO, and nothing under it needs checking: the
     rules depend only on a box and its own parent, and those pairs do not
@@ -521,23 +514,15 @@ def move_territory(*, territory: Territory, parent_id: uuid.UUID | None) -> Terr
     points at a territory by id, so moving a dealership into a region moves
     nothing else.
     """
+    _assert_not_the_root(territory)
     parent = _resolve_parent(territory.organization, parent_id)
     assert_placement_allowed(territory.kind, parent)
 
-    if parent is not None and (parent.pk == territory.pk or parent.path.startswith(territory.path)):
+    if parent.pk == territory.pk or parent.path.startswith(territory.path):
         raise TerritoryMoveIntoItselfError
 
     try:
-        if parent is not None:
-            Territory.objects.move(territory, parent, "last-child")
-        else:
-            # Roots of every organisation are siblings (see `Territory`), so
-            # "last root" is a position, not a statement about whose it is.
-            _with_root_path_retry(
-                lambda: Territory.objects.move(
-                    territory, Territory.objects.get_last_root_node(), "last-sibling"
-                )
-            )
+        Territory.objects.move(territory, parent, "last-child")
     except InvalidMoveToDescendant:
         raise TerritoryMoveIntoItselfError from None
 

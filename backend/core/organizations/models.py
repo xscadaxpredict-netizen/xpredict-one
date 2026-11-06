@@ -14,7 +14,7 @@ are all in the same database.
 from __future__ import annotations
 
 from django.conf import settings
-from django.db import models
+from django.db import IntegrityError, models, transaction
 from treebeard.mp_tree import MP_Node, MP_NodeManager
 
 from shared.base_models import BaseModel
@@ -34,40 +34,100 @@ class TerritoryKind(models.TextChoices):
     """
     What a box in the territory tree is (C72).
 
-    THE ORGANISATION IS NOT A KIND. Its top-level territories are the tree's
-    roots, and "placed at organisation level" means "placed at no territory" --
-    as it always has. A box for the organisation would store its name a second
-    time, and the owner rejected exactly that duplication for per-app trees.
+    THE ORGANISATION IS THE ROOT, one per organisation (the owner, 2026-11-06,
+    reversing piece 1's first design, which had no box for it). Every other
+    territory sits somewhere under it, and from C72 piece 2 a person placed
+    "organisation-wide" is placed AT the root -- so a missing placement can be
+    refused instead of silently meaning "everything".
+
+    The root does not store the organisation's name: `display_name` reads it
+    from the organisation, so there is one copy and nothing to drift.
 
     Which kind may sit under which is one rule in `services.py`, not here.
     """
 
+    ORGANISATION = "organisation", "Organisation"
     REGION = "region", "Region"
     DEALER = "dealer", "Dealer"
     BRANCH = "branch", "Branch"
     WAREHOUSE = "warehouse", "Warehouse"
 
 
+# Two organisations signing up in the same instant can compute the same root
+# path -- every organisation's root is a treebeard root, and roots share one
+# sequence. The second insert fails the unique index on `path`; retrying
+# computes a fresh one. This is now the ONLY place a root is made.
+_ROOT_PATH_ATTEMPTS = 3
+
+
 class TerritoryManager(MP_NodeManager):
     """
     Treebeard's manager -- which since treebeard 6.0 a tree model's default
-    manager MUST be -- with one change.
+    manager MUST be -- plus the organisation's root.
 
-    `create()` ADDS A TOP-LEVEL TERRITORY. A box in a materialised-path tree
-    cannot simply be inserted: it needs a `path` saying where it sits, and a
-    plain `create()` would save it without one. So `create()` goes through
-    treebeard's `add_root()`, and a territory under a parent goes through
+    `root_for(organization)` IS THE ORGANISATION'S BOX, created on first use.
+    Sign-up creates it; the lazy path exists for organisations made any other
+    way (tests, the shell) and is serialised by a lock on the organisation row,
+    so two first uses cannot make two roots -- and the database refuses a
+    second one anyway (`territory_one_root_per_org`).
+
+    `create()` ADDS A TERRITORY DIRECTLY UNDER THE ORGANISATION. A box in a
+    materialised-path tree cannot simply be inserted: it needs a `path` saying
+    where it sits. So `create()` goes through treebeard's `add_child()` on the
+    root, and a territory under any other parent goes through
     `add_child(parent, {...})`. Every existing caller -- `create_dealer()` and
     roughly a hundred test lines that make a dealership -- meant "a dealership
-    with nothing above it", which is exactly a root.
+    with nothing above it but the organisation", which is exactly that.
 
     TREEBEARD SORTS BY `path`, NOT BY NAME. Anything that needs alphabetical
     order says `.order_by("name")`; the model's `Meta.ordering` is overridden
     by this manager and must not be relied on.
     """
 
+    def root_for(self, organization) -> Territory:
+        root = self.filter(organization=organization, is_root=True).first()
+        if root is not None:
+            return root
+
+        with transaction.atomic():
+            # Lock the organisation, then look again: whoever waited behind the
+            # lock finds the root the first caller made.
+            type(organization).objects.select_for_update().get(pk=organization.pk)
+            root = self.filter(organization=organization, is_root=True).first()
+            if root is not None:
+                return root
+            return self._add_root_with_retry(
+                {
+                    "organization": organization,
+                    "kind": TerritoryKind.ORGANISATION,
+                    "name": "",
+                    "is_root": True,
+                }
+            )
+
     def create(self, **kwargs):
-        return self.add_root(kwargs)
+        return self.add_child(self.root_for(kwargs["organization"]), kwargs)
+
+    def _add_root_with_retry(self, create_kwargs: dict) -> Territory:
+        """
+        Add a root, retrying a collision on `path` in a savepoint.
+
+        RECOGNISED BY THE INDEX NAME, which is what MySQL reports -- "for key
+        'organizations_territory.organizations_territory_path_<hash>_uniq'",
+        never the column. Django names a `unique=True` field's index
+        `<table>_<column>_<hash>_uniq`, so the prefix is stable; a test pins it
+        against the real server, because the first version looked for `.path'`
+        and could never have fired.
+        """
+        path_index = f"{self.model._meta.db_table}_path_"
+        for attempt in range(_ROOT_PATH_ATTEMPTS):
+            try:
+                with transaction.atomic():
+                    return self.add_root(create_kwargs)
+            except IntegrityError as exc:
+                if path_index not in str(exc) or attempt == _ROOT_PATH_ATTEMPTS - 1:
+                    raise
+        raise AssertionError("unreachable")  # pragma: no cover
 
 
 class MembershipRole(models.TextChoices):
@@ -241,11 +301,12 @@ class Territory(MP_Node, BaseModel):
     `.move(...)`, `.get_descendants(...)` -- never the per-box methods, which
     treebeard 7 deprecates and 8 removes.
 
-    ONE TREE PER ORGANISATION, EVERY ORGANISATION'S ROOTS SIDE BY SIDE. Paths
-    are unique across the whole table, so organisation A's top-level boxes and
-    organisation B's share one sequence of roots. Every query filters by
-    `organization`, as every query here always has; a tree question asked
-    without it is a cross-tenant leak.
+    ONE TREE PER ORGANISATION, WITH THE ORGANISATION AT ITS ROOT. Each
+    organisation has exactly one root box (kind `organisation`) and everything
+    else sits under it, so an organisation's whole tree is one path prefix.
+    Paths are still unique across the whole table -- the roots themselves are
+    one sequence -- so every query filters by `organization`, as every query
+    here always has; a tree question asked without it is a cross-tenant leak.
 
     RENAMED FROM `BusinessUnit` ON 2026-11-06, because the owner asked for the
     name to match the idea. The table moved with it; the rows, their ids and
@@ -269,7 +330,7 @@ class Territory(MP_Node, BaseModel):
 
     # FIVE CHARACTERS PER LEVEL, not treebeard's four: about 60 million boxes
     # per level instead of 1.7 million, and up to 51 levels in the 255-character
-    # path. Every organisation's roots share one sequence (see above), and the
+    # path. Every organisation's root shares one sequence (see above), and the
     # owner chose treebeard so this can scale -- changing it later means
     # rewriting every path, so it is chosen generously now.
     steplen = 5
@@ -320,6 +381,20 @@ class Territory(MP_Node, BaseModel):
 
     status = models.CharField(max_length=20, choices=UnitStatus.choices, default=UnitStatus.ACTIVE)
 
+    is_root = models.BooleanField(
+        null=True,
+        blank=True,
+        editable=False,
+        help_text="True for the organisation's root box, NULL for every other. Never set by hand.",
+    )
+    """
+    THE ONE-ROOT-PER-ORGANISATION MARKER, shaped like `Membership.owner_marker`
+    and for the same reason: MySQL has no partial unique index (C39). True for
+    the root and NULL for everything else, and a unique index on
+    (organization, is_root) lets any number of NULLs coexist while refusing a
+    second True. The check constraint below keeps it in step with `kind`.
+    """
+
     objects = TerritoryManager()
 
     class Meta:
@@ -327,6 +402,26 @@ class Territory(MP_Node, BaseModel):
         # that reads `_meta` (the admin, `latest()`). Order by name explicitly.
         ordering = ["name"]
         constraints = [
+            # EXACTLY ONE ROOT PER ORGANISATION -- "at most one" here, and "at
+            # least one" because sign-up creates it and `root_for()` creates
+            # it on first use for anything made another way.
+            models.UniqueConstraint(
+                fields=["organization", "is_root"], name="territory_one_root_per_org"
+            ),
+            # THE ROOT IS THE ORGANISATION, AT THE TOP, AND NOTHING ELSE IS.
+            # A root that is not kind `organisation`, an `organisation` box
+            # below the top, or a region left at the top level beside the root
+            # are all refused by the database, not just by the services.
+            models.CheckConstraint(
+                condition=(
+                    models.Q(kind=TerritoryKind.ORGANISATION, is_root=True, depth=1)
+                    | (
+                        ~models.Q(kind=TerritoryKind.ORGANISATION)
+                        & models.Q(is_root__isnull=True, depth__gte=2)
+                    )
+                ),
+                name="territory_root_is_the_organisation",
+            ),
             models.UniqueConstraint(
                 fields=["organization", "code"], name="territory_unique_org_code"
             ),
@@ -344,7 +439,16 @@ class Territory(MP_Node, BaseModel):
         ]
 
     def __str__(self) -> str:
-        return self.name
+        return self.display_name
+
+    @property
+    def display_name(self) -> str:
+        """
+        The root shows the organisation's name; it stores none of its own.
+        One copy of the name, so renaming the organisation renames its tree's
+        top without anything to keep in step.
+        """
+        return self.organization.name if self.is_root else self.name
 
     def save(self, *args, **kwargs) -> None:
         """
@@ -360,7 +464,7 @@ class Territory(MP_Node, BaseModel):
         if not self.path:
             raise ValueError(
                 "A Territory needs a place in the tree: create it with "
-                "Territory.objects.create() (top level) or "
+                "Territory.objects.create() (directly under the organisation) or "
                 "Territory.objects.add_child(parent, {...})."
             )
         super().save(*args, **kwargs)
