@@ -1,5 +1,5 @@
 from core.organizations.api.base import OrgScopedAPIView
-from core.organizations.models import BusinessUnit
+from core.organizations.models import Territory
 from core.organizations.selectors import permissions_for, resolve_allowed_units
 from core.permissions.models import AppCode
 from shared.base_models import allowed_units
@@ -72,7 +72,7 @@ class TenantAPIView(OrgScopedAPIView):
         if membership.unit_id:
             return membership.unit_id
 
-        units = BusinessUnit.objects.filter(organization=organization)
+        units = Territory.objects.filter(organization=organization)
         requested = request.headers.get("X-Unit-Id")
         if requested:
             unit = units.filter(id=requested).first()

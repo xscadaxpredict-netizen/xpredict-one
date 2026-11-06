@@ -24,11 +24,11 @@ from conftest import TEST_TENANT_ALIAS
 from core.accounts.models import User
 from core.organizations.models import (
     ActivationCode,
-    BusinessUnit,
     Invitation,
     Membership,
     MembershipRole,
     MembershipStatus,
+    Territory,
     UnitStatus,
 )
 from core.organizations.services import sign_up
@@ -121,8 +121,8 @@ def details(**overrides) -> dict:
 class TestListing:
     def test_an_owner_sees_the_organizations_dealerships(self, client):
         result = found()
-        BusinessUnit.objects.create(organization=result.organization, name="Whitefield")
-        BusinessUnit.objects.create(organization=result.organization, name="Guindy")
+        Territory.objects.create(organization=result.organization, name="Whitefield")
+        Territory.objects.create(organization=result.organization, name="Guindy")
         client.force_authenticate(user=result.user)
 
         response = client.get(LIST_URL.format(slug=result.organization.slug))
@@ -132,7 +132,7 @@ class TestListing:
 
     def test_the_fields_are_exactly_what_dealers_ts_declares(self, client):
         result = found()
-        BusinessUnit.objects.create(organization=result.organization, name="Whitefield")
+        Territory.objects.create(organization=result.organization, name="Whitefield")
         client.force_authenticate(user=result.user)
 
         response = client.get(LIST_URL.format(slug=result.organization.slug))
@@ -162,8 +162,8 @@ class TestListing:
         """
         mine = found()
         theirs = found(name="Northway", email="owner@northway.test", code="CODE-N")
-        BusinessUnit.objects.create(organization=mine.organization, name="Mine")
-        BusinessUnit.objects.create(organization=theirs.organization, name="Theirs")
+        Territory.objects.create(organization=mine.organization, name="Mine")
+        Territory.objects.create(organization=theirs.organization, name="Theirs")
         client.force_authenticate(user=mine.user)
 
         response = client.get(LIST_URL.format(slug=mine.organization.slug))
@@ -180,7 +180,7 @@ class TestUserCount:
 
     def test_it_counts_memberships_and_outstanding_invitations_together(self, client):
         result = found()
-        unit = BusinessUnit.objects.create(organization=result.organization, name="Whitefield")
+        unit = Territory.objects.create(organization=result.organization, name="Whitefield")
 
         for index in range(2):
             user = User.objects.create_user(email=f"person{index}@acme.test", password="x")
@@ -212,7 +212,7 @@ class TestUserCount:
         counted once as a membership and once as the invitation they came from.
         """
         result = found()
-        unit = BusinessUnit.objects.create(organization=result.organization, name="Whitefield")
+        unit = Territory.objects.create(organization=result.organization, name="Whitefield")
         user = User.objects.create_user(email="joined@acme.test", password="x")
         Membership.objects.create(
             user=user, organization=result.organization, unit=unit, role=MembershipRole.MEMBER
@@ -237,7 +237,7 @@ class TestUserCount:
         (C24) -- so a dealership with a disabled person still has that person.
         """
         result = found()
-        unit = BusinessUnit.objects.create(organization=result.organization, name="Whitefield")
+        unit = Territory.objects.create(organization=result.organization, name="Whitefield")
         user = User.objects.create_user(email="off@acme.test", password="x")
         Membership.objects.create(
             user=user,
@@ -267,7 +267,7 @@ class TestCreating:
         # Annotated, so a create that returned the raw row would be missing it.
         assert response.json()["user_count"] == 0
         assert response.json()["status"] == UnitStatus.ACTIVE
-        assert BusinessUnit.objects.filter(organization=result.organization).count() == 1
+        assert Territory.objects.filter(organization=result.organization).count() == 1
 
     def test_the_code_is_optional_and_several_may_go_without_one(self, client):
         """
@@ -338,7 +338,7 @@ class TestCreating:
         """
         mine = found()
         theirs = found(name="Northway", email="owner@northway.test", code="CODE-N")
-        BusinessUnit.objects.create(organization=theirs.organization, name="Chennai - Guindy")
+        Territory.objects.create(organization=theirs.organization, name="Chennai - Guindy")
         client.force_authenticate(user=mine.user)
 
         response = client.post(
@@ -381,7 +381,7 @@ class TestGstinAndPan:
         assert response.status_code == 201
         assert response.json()["gstin"] == GSTIN
         assert response.json()["pan"] == GSTIN_PAN
-        assert BusinessUnit.objects.get(gstin=GSTIN).pan == GSTIN_PAN
+        assert Territory.objects.get(gstin=GSTIN).pan == GSTIN_PAN
 
     def test_a_dealership_cannot_be_created_without_a_gstin(self, client):
         result = found()
@@ -395,7 +395,7 @@ class TestGstinAndPan:
         )
 
         assert response.status_code == 422
-        assert not BusinessUnit.objects.filter(name="Chennai - Guindy").exists()
+        assert not Territory.objects.filter(name="Chennai - Guindy").exists()
 
     def test_a_blank_gstin_is_refused_too(self, client):
         """
@@ -430,7 +430,7 @@ class TestGstinAndPan:
         )
 
         assert response.status_code == 422
-        assert not BusinessUnit.objects.filter(name="Chennai - Guindy").exists()
+        assert not Territory.objects.filter(name="Chennai - Guindy").exists()
 
     def test_a_malformed_gstin_is_refused(self, client):
         result = found()
@@ -522,11 +522,11 @@ class TestGstinAndPan:
 
         assert first.status_code == 201
         assert second.status_code == 201
-        assert BusinessUnit.objects.filter(gstin=GSTIN).count() == 2
+        assert Territory.objects.filter(gstin=GSTIN).count() == 2
 
     def test_changing_the_gstin_rederives_the_pan(self, client):
         result = found()
-        unit = BusinessUnit.objects.create(
+        unit = Territory.objects.create(
             organization=result.organization, name="Guindy", gstin=GSTIN, pan=GSTIN_PAN
         )
         client.force_authenticate(user=result.user)
@@ -550,7 +550,7 @@ class TestGstinAndPan:
         default means retyping ten characters.
         """
         result = found()
-        unit = BusinessUnit.objects.create(
+        unit = Territory.objects.create(
             organization=result.organization, name="Guindy", gstin=GSTIN, pan="ZZZPK1234Q"
         )
         client.force_authenticate(user=result.user)
@@ -567,7 +567,7 @@ class TestGstinAndPan:
 
     def test_the_list_carries_both_identifiers(self, client):
         result = found()
-        BusinessUnit.objects.create(
+        Territory.objects.create(
             organization=result.organization, name="Guindy", gstin=GSTIN, pan=GSTIN_PAN
         )
         client.force_authenticate(user=result.user)
@@ -588,7 +588,7 @@ class TestGstinAndPan:
         screen nobody changed.
         """
         result = found()
-        BusinessUnit.objects.create(organization=result.organization, name="Legacy")
+        Territory.objects.create(organization=result.organization, name="Legacy")
         client.force_authenticate(user=result.user)
 
         response = client.get(LIST_URL.format(slug=result.organization.slug))
@@ -602,7 +602,7 @@ class TestGstinAndPan:
 class TestEditing:
     def test_an_owner_can_edit_a_dealership(self, client):
         result = found()
-        unit = BusinessUnit.objects.create(organization=result.organization, name="Old name")
+        unit = Territory.objects.create(organization=result.organization, name="Old name")
         client.force_authenticate(user=result.user)
 
         response = client.put(
@@ -623,7 +623,7 @@ class TestEditing:
         somebody edits a field that is not the name.
         """
         result = found()
-        unit = BusinessUnit.objects.create(
+        unit = Territory.objects.create(
             organization=result.organization, name="Chennai - Guindy", code="CHN-GUI"
         )
         client.force_authenticate(user=result.user)
@@ -645,7 +645,7 @@ class TestEditing:
         """
         mine = found()
         theirs = found(name="Northway", email="owner@northway.test", code="CODE-N")
-        unit = BusinessUnit.objects.create(organization=theirs.organization, name="Theirs")
+        unit = Territory.objects.create(organization=theirs.organization, name="Theirs")
         client.force_authenticate(user=mine.user)
 
         response = client.put(
@@ -687,7 +687,7 @@ class TestWhoMayManageDealerships:
         every `admin.person.*` permission and none of `admin.dealer.*`.
         """
         result = found()
-        unit = BusinessUnit.objects.create(organization=result.organization, name="Whitefield")
+        unit = Territory.objects.create(organization=result.organization, name="Whitefield")
         client.force_authenticate(user=add_dealer_admin(result.organization, unit))
 
         response = client.post(
@@ -695,11 +695,11 @@ class TestWhoMayManageDealerships:
         )
 
         assert response.status_code == 403
-        assert BusinessUnit.objects.filter(name="Chennai - Guindy").count() == 0
+        assert Territory.objects.filter(name="Chennai - Guindy").count() == 0
 
     def test_a_dealer_admin_cannot_even_list_them(self, client):
         result = found()
-        unit = BusinessUnit.objects.create(organization=result.organization, name="Whitefield")
+        unit = Territory.objects.create(organization=result.organization, name="Whitefield")
         client.force_authenticate(user=add_dealer_admin(result.organization, unit))
 
         response = client.get(LIST_URL.format(slug=result.organization.slug))
@@ -708,7 +708,7 @@ class TestWhoMayManageDealerships:
 
     def test_a_dealer_admin_cannot_edit_one(self, client):
         result = found()
-        unit = BusinessUnit.objects.create(organization=result.organization, name="Whitefield")
+        unit = Territory.objects.create(organization=result.organization, name="Whitefield")
         client.force_authenticate(user=add_dealer_admin(result.organization, unit))
 
         response = client.put(
@@ -734,7 +734,7 @@ class TestStatusIsNotWritableThroughTheEditPayload:
         which is the intent: it should be a decision, not a field.
         """
         result = found()
-        unit = BusinessUnit.objects.create(organization=result.organization, name="Whitefield")
+        unit = Territory.objects.create(organization=result.organization, name="Whitefield")
         client.force_authenticate(user=result.user)
 
         response = client.put(
@@ -764,7 +764,7 @@ class TestClosingAndReopening:
 
     def test_an_owner_can_close_a_dealership(self, client):
         result = found()
-        unit = BusinessUnit.objects.create(organization=result.organization, name="Whitefield")
+        unit = Territory.objects.create(organization=result.organization, name="Whitefield")
         client.force_authenticate(user=result.user)
 
         response = client.post(
@@ -778,7 +778,7 @@ class TestClosingAndReopening:
 
     def test_and_reopen_it(self, client):
         result = found()
-        unit = BusinessUnit.objects.create(
+        unit = Territory.objects.create(
             organization=result.organization, name="Whitefield", status=UnitStatus.DISABLED
         )
         client.force_authenticate(user=result.user)
@@ -799,7 +799,7 @@ class TestClosingAndReopening:
         proves matters.
         """
         result = found()
-        unit = BusinessUnit.objects.create(organization=result.organization, name="Whitefield")
+        unit = Territory.objects.create(organization=result.organization, name="Whitefield")
         person = add_person(result.organization, unit=unit, email="sales@acme.test")
         client.force_authenticate(user=result.user)
 
@@ -819,7 +819,7 @@ class TestClosingAndReopening:
         close cannot tell them apart on the way back, so it returns both.
         """
         result = found()
-        unit = BusinessUnit.objects.create(organization=result.organization, name="Whitefield")
+        unit = Territory.objects.create(organization=result.organization, name="Whitefield")
         working = add_person(result.organization, unit=unit, email="working@acme.test")
         switched_off = add_person(
             result.organization,
@@ -840,7 +840,7 @@ class TestClosingAndReopening:
 
     def test_closing_a_closed_dealership_is_a_conflict(self, client):
         result = found()
-        unit = BusinessUnit.objects.create(
+        unit = Territory.objects.create(
             organization=result.organization, name="Whitefield", status=UnitStatus.DISABLED
         )
         client.force_authenticate(user=result.user)
@@ -854,7 +854,7 @@ class TestClosingAndReopening:
 
     def test_reopening_an_open_dealership_is_a_conflict(self, client):
         result = found()
-        unit = BusinessUnit.objects.create(organization=result.organization, name="Whitefield")
+        unit = Territory.objects.create(organization=result.organization, name="Whitefield")
         client.force_authenticate(user=result.user)
 
         response = client.post(
@@ -870,7 +870,7 @@ class TestClosingAndReopening:
         closing a branch by misspelling a word is not a mistake worth allowing.
         """
         result = found()
-        unit = BusinessUnit.objects.create(organization=result.organization, name="Whitefield")
+        unit = Territory.objects.create(organization=result.organization, name="Whitefield")
         client.force_authenticate(user=result.user)
 
         response = client.post(
@@ -884,7 +884,7 @@ class TestClosingAndReopening:
     def test_another_organizations_dealership_cannot_be_closed(self, client):
         mine = found()
         theirs = found(name="Northway", email="owner@northway.test", code="CODE-N")
-        unit = BusinessUnit.objects.create(organization=theirs.organization, name="Theirs")
+        unit = Territory.objects.create(organization=theirs.organization, name="Theirs")
         client.force_authenticate(user=mine.user)
 
         response = client.post(
@@ -902,7 +902,7 @@ class TestClosingAndReopening:
         a colleague, and dealerships are managed by the ORGANISATION (C3, C23).
         """
         result = found()
-        unit = BusinessUnit.objects.create(organization=result.organization, name="Whitefield")
+        unit = Territory.objects.create(organization=result.organization, name="Whitefield")
         admin = add_dealer_admin(result.organization, unit)
         client.force_authenticate(user=admin)
 
@@ -921,7 +921,7 @@ class TestClosingAndReopening:
         fix, and its GSTIN can still be added.
         """
         result = found()
-        unit = BusinessUnit.objects.create(
+        unit = Territory.objects.create(
             organization=result.organization, name="Whitefield", status=UnitStatus.DISABLED
         )
         client.force_authenticate(user=result.user)
@@ -951,7 +951,7 @@ class TestAClosedDealershipsPeopleAreLockedOut:
 
     def test_a_dealer_admin_is_refused_once_their_dealership_closes(self, client):
         result = found()
-        unit = BusinessUnit.objects.create(organization=result.organization, name="Whitefield")
+        unit = Territory.objects.create(organization=result.organization, name="Whitefield")
         admin = add_dealer_admin(result.organization, unit)
         client.force_authenticate(user=admin)
         url = LIST_URL.format(slug=result.organization.slug)
@@ -977,7 +977,7 @@ class TestAClosedDealershipsPeopleAreLockedOut:
         saying their access was removed when it was not.
         """
         result = found()
-        unit = BusinessUnit.objects.create(
+        unit = Territory.objects.create(
             organization=result.organization, name="Whitefield", status=UnitStatus.DISABLED
         )
         person = add_person(result.organization, unit=unit, email="sales@acme.test")
@@ -995,7 +995,7 @@ class TestAClosedDealershipsPeopleAreLockedOut:
         deleting -- and `unit_id is None` is the entire test for it.
         """
         result = found()
-        BusinessUnit.objects.create(
+        Territory.objects.create(
             organization=result.organization, name="Whitefield", status=UnitStatus.DISABLED
         )
         client.force_authenticate(user=result.user)
@@ -1020,7 +1020,7 @@ class TestAClosedDealershipsPeopleAreLockedOut:
         Remove the guard and this is the one that fails.
         """
         result = found()
-        unit = BusinessUnit.objects.create(
+        unit = Territory.objects.create(
             organization=result.organization, name="Whitefield", status=UnitStatus.DISABLED
         )
         person = add_person(result.organization, unit=unit, email="sales@acme.test")
@@ -1042,7 +1042,7 @@ class TestAClosedDealershipsPeopleAreLockedOut:
         is the one above.
         """
         result = found()
-        unit = BusinessUnit.objects.create(
+        unit = Territory.objects.create(
             organization=result.organization, name="Whitefield", status=UnitStatus.DISABLED
         )
         admin = add_dealer_admin(result.organization, unit)

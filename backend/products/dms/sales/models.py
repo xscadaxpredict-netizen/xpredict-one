@@ -5,7 +5,7 @@ ProductCatalog, ProductSpec, Quotation, QuotationItem, ConfirmedSite.
 Every model that a dealer owns inherits ``UnitScopedModel``, which supplies
 ``unit_id`` and a default manager that filters by the caller's dealer.
 
-Cross-database references (to users, business units) are **plain UUIDs**,
+Cross-database references (to users, territories) are **plain UUIDs**,
 never a ForeignKey — the router refuses cross-database relations.
 
 Generated columns (Django 5.0+ ``GeneratedField``) are used for computed

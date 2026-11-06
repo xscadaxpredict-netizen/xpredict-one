@@ -3,7 +3,7 @@ Database routing for the organization-per-database tenancy model (C1).
 
 Two kinds of app exist, and they must never share a database:
 
-- Control-plane apps (users, organizations, business units, memberships, roles,
+- Control-plane apps (users, organizations, territories, memberships, roles,
   app access, subscriptions) always use the `default` connection.
 - Tenant apps (all business data) use the database named by the
   `current_tenant_db` contextvar, which the tenant middleware sets per request.

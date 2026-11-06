@@ -27,7 +27,7 @@ from core.organizations.api.serializers import (
     OrgUserSerializer,
     PersonDetailsSerializer,
 )
-from core.organizations.models import BusinessUnit, MembershipStatus
+from core.organizations.models import MembershipStatus, Territory
 from core.organizations.selectors import dealers_for, org_users
 from core.organizations.services import (
     close_dealer,
@@ -139,7 +139,7 @@ class DealerDetailView(OrgScopedAPIView):
         updated = next(d for d in dealers_for(self.organization) if d.pk == dealer.pk)
         return Response(DealerSerializer(updated).data)
 
-    def _get_dealer(self, dealer_id: str) -> BusinessUnit:
+    def _get_dealer(self, dealer_id: str) -> Territory:
         """
         FILTERED BY ORGANIZATION, which is the isolation. A bare
         `get(pk=dealer_id)` would happily return another customer's dealership
@@ -152,8 +152,8 @@ class DealerDetailView(OrgScopedAPIView):
         would confirm that a well-formed id is the thing being looked up.
         """
         try:
-            return BusinessUnit.objects.get(id=dealer_id, organization=self.organization)
-        except (BusinessUnit.DoesNotExist, ValidationError, ValueError):
+            return Territory.objects.get(id=dealer_id, organization=self.organization)
+        except (Territory.DoesNotExist, ValidationError, ValueError):
             raise not_found("Dealer") from None
 
 
@@ -214,11 +214,11 @@ class DealerStatusView(OrgScopedAPIView):
         updated = next(d for d in dealers_for(self.organization) if d.pk == dealer.pk)
         return Response(DealerSerializer(updated).data)
 
-    def _get_dealer(self, dealer_id: str) -> BusinessUnit:
+    def _get_dealer(self, dealer_id: str) -> Territory:
         """The same filter-by-organization isolation as `DealerDetailView`."""
         try:
-            return BusinessUnit.objects.get(id=dealer_id, organization=self.organization)
-        except (BusinessUnit.DoesNotExist, ValidationError, ValueError):
+            return Territory.objects.get(id=dealer_id, organization=self.organization)
+        except (Territory.DoesNotExist, ValidationError, ValueError):
             raise not_found("Dealer") from None
 
 

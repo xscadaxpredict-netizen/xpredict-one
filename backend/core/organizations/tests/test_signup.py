@@ -32,11 +32,11 @@ from core.organizations.exceptions import (
 )
 from core.organizations.models import (
     ActivationCode,
-    BusinessUnit,
     Membership,
     MembershipRole,
     MembershipStatus,
     Organization,
+    Territory,
 )
 from core.organizations.services import sign_up
 from core.permissions.models import AppAccess, AppCode, Role
@@ -351,7 +351,7 @@ class TestTheDatabaseRefusesWhatC40Forbids:
         """
         make_code()
         result = do_sign_up()
-        unit = BusinessUnit.objects.create(
+        unit = Territory.objects.create(
             organization=result.organization, name="Bangalore - Whitefield"
         )
         other = User.objects.create_user(email="dealeradmin@example.com", password="x")
@@ -371,7 +371,7 @@ class TestTheDatabaseRefusesWhatC40Forbids:
         """The other half: `member` plus a dealership is the normal case."""
         make_code()
         result = do_sign_up()
-        unit = BusinessUnit.objects.create(
+        unit = Territory.objects.create(
             organization=result.organization, name="Bangalore - Whitefield"
         )
         other = User.objects.create_user(email="salesrep@example.com", password="x")

@@ -31,11 +31,11 @@ from core.accounts.models import User
 from core.billing.models import AppSubscription, SubscriptionStatus
 from core.organizations.models import (
     ActivationCode,
-    BusinessUnit,
     Invitation,
     Membership,
     MembershipRole,
     MembershipStatus,
+    Territory,
 )
 from core.organizations.selectors import org_users
 from core.organizations.services import INVITATION_LIFETIME, sign_up
@@ -167,7 +167,7 @@ class TestTheList:
 
     def test_a_dealership_is_named_and_not_only_referenced(self, client):
         result = found()
-        unit = BusinessUnit.objects.create(organization=result.organization, name="Whitefield")
+        unit = Territory.objects.create(organization=result.organization, name="Whitefield")
         add_person(result.organization, unit=unit, email="dealer@acme.test")
         client.force_authenticate(user=result.user)
 
@@ -238,7 +238,7 @@ class TestAdministersIsAFactNotAName:
         what makes them an admin is the DMS System administrator role.
         """
         result = found()
-        unit = BusinessUnit.objects.create(organization=result.organization, name="Whitefield")
+        unit = Territory.objects.create(organization=result.organization, name="Whitefield")
         add_person(
             result.organization, unit=unit, email="da@acme.test", role_code="dms.system_admin"
         )
@@ -252,7 +252,7 @@ class TestAdministersIsAFactNotAName:
 
     def test_a_salesperson_administers_nothing(self, client):
         result = found()
-        unit = BusinessUnit.objects.create(organization=result.organization, name="Whitefield")
+        unit = Territory.objects.create(organization=result.organization, name="Whitefield")
         add_person(result.organization, unit=unit, email="sales@acme.test")
         client.force_authenticate(user=result.user)
 
@@ -272,8 +272,8 @@ class TestDealerIsolation:
     @pytest.fixture
     def two_dealers(self):
         result = found()
-        mine = BusinessUnit.objects.create(organization=result.organization, name="Whitefield")
-        theirs = BusinessUnit.objects.create(organization=result.organization, name="Guindy")
+        mine = Territory.objects.create(organization=result.organization, name="Whitefield")
+        theirs = Territory.objects.create(organization=result.organization, name="Guindy")
         admin = add_person(
             result.organization, unit=mine, email="da@acme.test", role_code="dms.system_admin"
         )
@@ -630,7 +630,7 @@ class TestC27DealerScopedGrants:
             app_id=AppCode.CRM,
             status=SubscriptionStatus.ACTIVE,
         )
-        unit = BusinessUnit.objects.create(organization=result.organization, name="Whitefield")
+        unit = Territory.objects.create(organization=result.organization, name="Whitefield")
         client.force_authenticate(user=result.user)
 
         response = client.post(
@@ -651,7 +651,7 @@ class TestC27DealerScopedGrants:
 
     def test_a_dealer_scoped_person_cannot_hold_an_org_level_role(self, client):
         result = found()
-        unit = BusinessUnit.objects.create(organization=result.organization, name="Whitefield")
+        unit = Territory.objects.create(organization=result.organization, name="Whitefield")
         client.force_authenticate(user=result.user)
 
         response = client.post(
@@ -993,7 +993,7 @@ class TestCapabilityRefusals:
 
     def test_a_salesperson_cannot_read_the_users_list(self, client):
         result = found()
-        unit = BusinessUnit.objects.create(organization=result.organization, name="Whitefield")
+        unit = Territory.objects.create(organization=result.organization, name="Whitefield")
         person = add_person(result.organization, unit=unit, email="sales@acme.test")
         client.force_authenticate(user=person.user)
 
@@ -1004,7 +1004,7 @@ class TestCapabilityRefusals:
 
     def test_a_salesperson_cannot_invite_anybody(self, client):
         result = found()
-        unit = BusinessUnit.objects.create(organization=result.organization, name="Whitefield")
+        unit = Territory.objects.create(organization=result.organization, name="Whitefield")
         person = add_person(result.organization, unit=unit, email="sales@acme.test")
         client.force_authenticate(user=person.user)
 

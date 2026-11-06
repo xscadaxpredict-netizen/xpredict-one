@@ -5,7 +5,7 @@ Rules these encode, from CLAUDE.md:
 
 - UUID primary keys everywhere.
 - No foreign keys across databases. Tenant rows reference control-plane rows
-  (users, business units) with plain UUID fields, never a ForeignKey.
+  (users, territories) with plain UUID fields, never a ForeignKey.
 - Unit-scoped models filter by the `allowed_units` contextvar, which is
   resolved per app --- meaningless in CRM, load-bearing in DMS (C5, C7).
 
@@ -64,7 +64,7 @@ class BaseModel(TimestampMixin, AuditMixin, models.Model):
 
 class UnitScopedManager(models.Manager):
     """
-    Manager for models belonging to a business unit (dealer).
+    Manager for models belonging to a territory (a dealership, today).
 
     Only used by unit-aware apps. `allowed_units` of None means unrestricted,
     which is the correct value both for an org-level person and for any request
@@ -83,7 +83,7 @@ class UnitScopedModel(BaseModel):
     """
     Base for operational records owned by a dealer.
 
-    `unit_id` is a plain UUID referencing BusinessUnit in the control database.
+    `unit_id` is a plain UUID referencing Territory in the control database.
 
     Accessing another dealer's record must return 404, not 403 --- the default
     manager filtering the row out of existence is what produces that, so views

@@ -22,9 +22,9 @@ from conftest import TEST_TENANT_ALIAS
 from core.accounts.models import User
 from core.organizations.models import (
     ActivationCode,
-    BusinessUnit,
     Membership,
     MembershipRole,
+    Territory,
 )
 from core.organizations.services import sign_up
 from core.permissions.models import AppAccess, AppCode, Role
@@ -185,7 +185,7 @@ class TestWhoMayAsk:
         page. `admin.person.invite` is what lets them through.
         """
         result = found()
-        unit = BusinessUnit.objects.create(organization=result.organization, name="Whitefield")
+        unit = Territory.objects.create(organization=result.organization, name="Whitefield")
         user = add_with_role(
             result.organization, "dms.system_admin", unit=unit, email="da@acme.test"
         )
@@ -198,7 +198,7 @@ class TestWhoMayAsk:
 
     def test_a_sales_representative_is_refused_with_403(self, client):
         result = found()
-        unit = BusinessUnit.objects.create(organization=result.organization, name="Whitefield")
+        unit = Territory.objects.create(organization=result.organization, name="Whitefield")
         user = add_with_role(
             result.organization, "dms.sales_representative", unit=unit, email="sales@acme.test"
         )

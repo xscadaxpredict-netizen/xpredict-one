@@ -11,12 +11,12 @@ from conftest import TEST_TENANT_ALIAS
 from core.accounts.models import User
 from core.billing.models import AppSubscription, SubscriptionStatus
 from core.organizations.models import (
-    BusinessUnit,
     Membership,
     MembershipRole,
     MembershipStatus,
     Organization,
     OrganizationStatus,
+    Territory,
 )
 from core.permissions.models import AppAccess, AppCode, Role
 from products.dms.sales import selectors
@@ -176,8 +176,8 @@ class TestDealerAndColleagueIsolation:
         """API endpoints enforce dealer isolation, colleague privacy, and permissions."""
         client = APIClient()
         org = create_test_org("dms-isolation-org")
-        unit_a = BusinessUnit.objects.create(organization=org, name="Unit A")
-        unit_b = BusinessUnit.objects.create(organization=org, name="Unit B")
+        unit_a = Territory.objects.create(organization=org, name="Unit A")
+        unit_b = Territory.objects.create(organization=org, name="Unit B")
 
         user_rep1, _ = create_dealer_user(
             org,
@@ -301,8 +301,8 @@ class TestDealerAndColleagueIsolation:
         work, which makes this the one assertion that moves when it is removed.
         """
         org = create_test_org("dms-manager-cross-dealer-org")
-        unit_a = BusinessUnit.objects.create(organization=org, name="Unit A")
-        unit_b = BusinessUnit.objects.create(organization=org, name="Unit B")
+        unit_a = Territory.objects.create(organization=org, name="Unit A")
+        unit_b = Territory.objects.create(organization=org, name="Unit B")
 
         rep_a, _ = create_dealer_user(org, unit_a, "rep@unit-a-cross.test")
         manager_b, _ = create_dealer_user(

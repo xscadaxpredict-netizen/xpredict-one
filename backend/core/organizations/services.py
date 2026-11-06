@@ -57,13 +57,13 @@ from core.organizations.exceptions import (
 from core.organizations.identifiers import extract_pan
 from core.organizations.models import (
     ActivationCode,
-    BusinessUnit,
     Invitation,
     InvitationAppGrant,
     Membership,
     MembershipRole,
     MembershipStatus,
     Organization,
+    Territory,
     UnitStatus,
 )
 from core.organizations.selectors import can_manage
@@ -379,7 +379,7 @@ def create_dealer(
     city: str = "",
     state: str = "",
     postal_code: str = "",
-) -> BusinessUnit:
+) -> Territory:
     """
     Add a dealership to this organization.
 
@@ -402,7 +402,7 @@ def create_dealer(
     _assert_dealer_name_free(organization, name)
     _assert_dealer_code_free(organization, code)
 
-    return BusinessUnit.objects.create(
+    return Territory.objects.create(
         organization=organization,
         name=name,
         # NULL, never "", and the model comment explains why: MySQL treats
@@ -426,7 +426,7 @@ def create_dealer(
 
 
 @transaction.atomic
-def update_dealer(*, dealer: BusinessUnit, **fields: str | None) -> BusinessUnit:
+def update_dealer(*, dealer: Territory, **fields: str | None) -> Territory:
     """
     Change a dealership's details.
 
@@ -459,7 +459,7 @@ def update_dealer(*, dealer: BusinessUnit, **fields: str | None) -> BusinessUnit
 
 
 @transaction.atomic
-def close_dealer(*, dealer: BusinessUnit) -> BusinessUnit:
+def close_dealer(*, dealer: Territory) -> Territory:
     """
     Shut a dealership (C63, answering Q21).
 
@@ -494,7 +494,7 @@ def close_dealer(*, dealer: BusinessUnit) -> BusinessUnit:
 
 
 @transaction.atomic
-def reopen_dealer(*, dealer: BusinessUnit) -> BusinessUnit:
+def reopen_dealer(*, dealer: Territory) -> Territory:
     """
     Open a dealership again.
 
@@ -519,7 +519,7 @@ def reopen_dealer(*, dealer: BusinessUnit) -> BusinessUnit:
 def _assert_dealer_name_free(
     organization: Organization, name: str, excluding: uuid.UUID | None = None
 ) -> None:
-    existing = BusinessUnit.objects.filter(organization=organization, name=name)
+    existing = Territory.objects.filter(organization=organization, name=name)
     # EXCLUDE THE ROW BEING EDITED, or saving a dealership without touching its
     # name collides with itself -- the bug the frontend fake had to fix twice.
     if excluding is not None:
@@ -537,7 +537,7 @@ def _assert_dealer_code_free(
     if not code:
         return
 
-    existing = BusinessUnit.objects.filter(organization=organization, code=code)
+    existing = Territory.objects.filter(organization=organization, code=code)
     if excluding is not None:
         existing = existing.exclude(pk=excluding)
 
@@ -650,12 +650,12 @@ def _assert_email_free(
         raise PersonEmailTakenError
 
 
-def _resolve_unit(organization: Organization, unit_id: uuid.UUID | None) -> BusinessUnit | None:
+def _resolve_unit(organization: Organization, unit_id: uuid.UUID | None) -> Territory | None:
     if unit_id is None:
         return None
     try:
-        return BusinessUnit.objects.get(id=unit_id, organization=organization)
-    except (BusinessUnit.DoesNotExist, DjangoValidationError, ValueError):
+        return Territory.objects.get(id=unit_id, organization=organization)
+    except (Territory.DoesNotExist, DjangoValidationError, ValueError):
         # Another organization's dealership is not bad input to report back, it
         # is a dealership this caller cannot see.
         raise not_found("Dealer") from None
@@ -836,7 +836,7 @@ def _update_membership(
     first_name: str,
     last_name: str,
     email: str,
-    unit: BusinessUnit | None,
+    unit: Territory | None,
     role: str,
     grants: list[tuple[str, Role]],
 ) -> None:
@@ -874,7 +874,7 @@ def _update_invitation(
     first_name: str,
     last_name: str,
     email: str,
-    unit: BusinessUnit | None,
+    unit: Territory | None,
     role: str,
     grants: list[tuple[str, Role]],
 ) -> None:

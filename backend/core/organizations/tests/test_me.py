@@ -25,11 +25,11 @@ from core.accounts.models import User
 from core.billing.models import AppSubscription, SubscriptionStatus
 from core.organizations.models import (
     ActivationCode,
-    BusinessUnit,
     Membership,
     MembershipRole,
     MembershipStatus,
     Organization,
+    Territory,
     UnitStatus,
 )
 from core.organizations.selectors import me, resolve_allowed_units
@@ -82,7 +82,7 @@ class TestResolveAllowedUnits:
 
     def test_a_dealer_scoped_person_gets_their_own_dealership_in_dms(self):
         result = found()
-        unit = BusinessUnit.objects.create(organization=result.organization, name="Whitefield")
+        unit = Territory.objects.create(organization=result.organization, name="Whitefield")
         _, membership = add_dealer_admin(result.organization, unit)
 
         assert resolve_allowed_units(membership, AppCode.DMS) == frozenset({unit.id})
@@ -101,7 +101,7 @@ class TestResolveAllowedUnits:
         unrestricted here even though they are restricted in DMS.
         """
         result = found()
-        unit = BusinessUnit.objects.create(organization=result.organization, name="Whitefield")
+        unit = Territory.objects.create(organization=result.organization, name="Whitefield")
         _, membership = add_dealer_admin(result.organization, unit)
 
         assert resolve_allowed_units(membership, AppCode.CRM) is None
@@ -205,14 +205,14 @@ class TestTheOwner:
         module names in the fake's version were copy the frontend already has.
         """
         result = found()
-        BusinessUnit.objects.create(organization=result.organization, name="Whitefield")
-        BusinessUnit.objects.create(organization=result.organization, name="Indiranagar")
+        Territory.objects.create(organization=result.organization, name="Whitefield")
+        Territory.objects.create(organization=result.organization, name="Indiranagar")
 
         assert app_of(me(result.user), "acme-motors", AppCode.DMS).summary == "2 dealerships"
 
     def test_one_dealership_is_singular(self):
         result = found()
-        BusinessUnit.objects.create(organization=result.organization, name="Whitefield")
+        Territory.objects.create(organization=result.organization, name="Whitefield")
 
         assert app_of(me(result.user), "acme-motors", AppCode.DMS).summary == "1 dealership"
 
@@ -275,7 +275,7 @@ class TestTheDealerAdmin:
         standing really is `member`, and the database refuses anything else.
         """
         result = found()
-        unit = BusinessUnit.objects.create(organization=result.organization, name="Whitefield")
+        unit = Territory.objects.create(organization=result.organization, name="Whitefield")
         user, _ = add_dealer_admin(result.organization, unit)
 
         membership = me(user).memberships[0]
@@ -291,7 +291,7 @@ class TestTheDealerAdmin:
         modules are reachable only through standing, which they do not have.
         """
         result = found()
-        unit = BusinessUnit.objects.create(organization=result.organization, name="Whitefield")
+        unit = Territory.objects.create(organization=result.organization, name="Whitefield")
         user, _ = add_dealer_admin(result.organization, unit)
 
         admin = app_of(me(user), "acme-motors", AppCode.ADMIN)
@@ -314,7 +314,7 @@ class TestTheDealerAdmin:
         job (C3, C23).
         """
         result = found()
-        unit = BusinessUnit.objects.create(organization=result.organization, name="Whitefield")
+        unit = Territory.objects.create(organization=result.organization, name="Whitefield")
         user, _ = add_dealer_admin(result.organization, unit)
 
         admin = app_of(me(user), "acme-motors", AppCode.ADMIN)
@@ -329,7 +329,7 @@ class TestTheDealerAdmin:
         you cannot see is not a job.
         """
         result = found()
-        unit = BusinessUnit.objects.create(organization=result.organization, name="Whitefield")
+        unit = Territory.objects.create(organization=result.organization, name="Whitefield")
         user, _ = add_dealer_admin(result.organization, unit)
 
         dms = app_of(me(user), "acme-motors", AppCode.DMS)
@@ -343,8 +343,8 @@ class TestTheDealerAdmin:
 
     def test_their_dms_summary_is_their_own_dealership(self):
         result = found()
-        unit = BusinessUnit.objects.create(organization=result.organization, name="Whitefield")
-        BusinessUnit.objects.create(organization=result.organization, name="Indiranagar")
+        unit = Territory.objects.create(organization=result.organization, name="Whitefield")
+        Territory.objects.create(organization=result.organization, name="Indiranagar")
         user, _ = add_dealer_admin(result.organization, unit)
 
         assert app_of(me(user), "acme-motors", AppCode.DMS).summary == "Whitefield"
@@ -358,7 +358,7 @@ class TestSomebodyWithNoAdministration:
         have it gives away what the hiding was for.
         """
         result = found()
-        unit = BusinessUnit.objects.create(organization=result.organization, name="Whitefield")
+        unit = Territory.objects.create(organization=result.organization, name="Whitefield")
         user = User.objects.create_user(email="rep@acme.test", password="x")
         membership = Membership.objects.create(
             user=user, organization=result.organization, unit=unit, role=MembershipRole.MEMBER
@@ -422,7 +422,7 @@ class TestOrganizationIsolation:
         acme = found("Acme Motors", "owner@acme.test", "CODE-ACME")
         northway = found("Northway Auto Group", "owner@northway.test", "CODE-NORTH")
 
-        unit = BusinessUnit.objects.create(organization=northway.organization, name="Whitefield")
+        unit = Territory.objects.create(organization=northway.organization, name="Whitefield")
         Membership.objects.create(
             user=acme.user,
             organization=northway.organization,
@@ -456,7 +456,7 @@ class TestAClosedDealership:
 
     def test_the_membership_is_still_returned(self):
         result = found()
-        unit = BusinessUnit.objects.create(
+        unit = Territory.objects.create(
             organization=result.organization, name="Whitefield", status=UnitStatus.DISABLED
         )
         user, _ = add_dealer_admin(result.organization, unit)
@@ -468,7 +468,7 @@ class TestAClosedDealership:
 
     def test_it_is_marked_closed(self):
         result = found()
-        unit = BusinessUnit.objects.create(
+        unit = Territory.objects.create(
             organization=result.organization, name="Whitefield", status=UnitStatus.DISABLED
         )
         user, _ = add_dealer_admin(result.organization, unit)
@@ -484,7 +484,7 @@ class TestAClosedDealership:
         tile clickable, and it would lead straight to a 403.
         """
         result = found()
-        unit = BusinessUnit.objects.create(
+        unit = Territory.objects.create(
             organization=result.organization, name="Whitefield", status=UnitStatus.DISABLED
         )
         user, _ = add_dealer_admin(result.organization, unit)
@@ -502,7 +502,7 @@ class TestAClosedDealership:
         would tell the browser what they would have been able to do.
         """
         result = found()
-        unit = BusinessUnit.objects.create(
+        unit = Territory.objects.create(
             organization=result.organization, name="Whitefield", status=UnitStatus.DISABLED
         )
         user, _ = add_dealer_admin(result.organization, unit)
@@ -517,7 +517,7 @@ class TestAClosedDealership:
         an organisation whose every branch is shut still runs the place.
         """
         result = found()
-        BusinessUnit.objects.create(
+        Territory.objects.create(
             organization=result.organization, name="Whitefield", status=UnitStatus.DISABLED
         )
 
@@ -532,7 +532,7 @@ class TestAClosedDealership:
         the dealership is open again the payload is what it always was.
         """
         result = found()
-        unit = BusinessUnit.objects.create(
+        unit = Territory.objects.create(
             organization=result.organization, name="Whitefield", status=UnitStatus.DISABLED
         )
         user, _ = add_dealer_admin(result.organization, unit)

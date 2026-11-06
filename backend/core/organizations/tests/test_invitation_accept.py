@@ -33,11 +33,11 @@ from core.accounts.models import User
 from core.billing.models import AppSubscription, SubscriptionStatus
 from core.organizations.models import (
     ActivationCode,
-    BusinessUnit,
     Invitation,
     Membership,
     MembershipRole,
     MembershipStatus,
+    Territory,
 )
 from core.organizations.services import accept_invitation, invitation_link, sign_up
 from core.permissions.models import AppAccess, AppCode, Role
@@ -162,7 +162,7 @@ class TestThePreview:
         of them are somebody's staffing arrangement.
         """
         result = found()
-        unit = BusinessUnit.objects.create(organization=result.organization, name="Chennai North")
+        unit = Territory.objects.create(organization=result.organization, name="Chennai North")
         invite(result.organization, unit=unit)
 
         body = client.get(PREVIEW_URL.format(token=TOKEN)).json()
@@ -268,7 +268,7 @@ class TestAcceptingAsSomebodyNew:
 
     def test_the_dealership_comes_across(self, client):
         result = found()
-        unit = BusinessUnit.objects.create(organization=result.organization, name="Chennai North")
+        unit = Territory.objects.create(organization=result.organization, name="Chennai North")
         invite(result.organization, unit=unit)
 
         client.post(ACCEPT_URL.format(token=TOKEN), {"password": PASSWORD}, format="json")
@@ -608,8 +608,8 @@ class TestTheLinkAnAdminCopies:
         get the answer they would get for an id that was never minted.
         """
         result = found()
-        mine = BusinessUnit.objects.create(organization=result.organization, name="Mine")
-        theirs = BusinessUnit.objects.create(organization=result.organization, name="Theirs")
+        mine = Territory.objects.create(organization=result.organization, name="Mine")
+        theirs = Territory.objects.create(organization=result.organization, name="Theirs")
 
         admin_user = User.objects.create_user(email="dealeradmin@acme.test", password=PASSWORD)
         admin_membership = Membership.objects.create(

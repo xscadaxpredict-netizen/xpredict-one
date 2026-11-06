@@ -27,12 +27,12 @@ from django.utils import timezone
 from core.accounts.models import User
 from core.billing.models import AppSubscription, SubscriptionStatus
 from core.organizations.models import (
-    BusinessUnit,
     Invitation,
     Membership,
     MembershipRole,
     MembershipStatus,
     Organization,
+    Territory,
     UnitStatus,
 )
 from core.permissions.models import AppCode, Permission
@@ -317,7 +317,7 @@ def _summary(app: str, membership: Membership) -> str | None:
     if membership.unit_id is not None:
         return membership.unit.name
 
-    count = BusinessUnit.objects.filter(
+    count = Territory.objects.filter(
         organization_id=membership.organization_id, status=UnitStatus.ACTIVE
     ).count()
     return f"{count} dealership" if count == 1 else f"{count} dealerships"
@@ -409,7 +409,7 @@ def can_manage(membership: Membership, target_unit_id: uuid.UUID | None) -> bool
     return target_unit_id == membership.unit_id
 
 
-def dealers_for(organization: Organization) -> list[BusinessUnit]:
+def dealers_for(organization: Organization) -> list[Territory]:
     """
     Every dealership in this organization, with `user_count` annotated.
 
@@ -448,7 +448,7 @@ def dealers_for(organization: Organization) -> list[BusinessUnit]:
     )
 
     return list(
-        BusinessUnit.objects.filter(organization=organization).annotate(
+        Territory.objects.filter(organization=organization).annotate(
             user_count=Coalesce(Subquery(memberships, output_field=IntegerField()), Value(0))
             + Coalesce(Subquery(pending, output_field=IntegerField()), Value(0))
         )

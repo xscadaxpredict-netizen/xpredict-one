@@ -187,14 +187,21 @@ class ActivationCode(BaseModel):
         state = "spent" if self.spent_at else "unspent"
         return f"{self.label or self.pk} ({state})"
 
-class BusinessUnit(BaseModel):
+class Territory(BaseModel):
     """
-    A dealership.
+    One box in the organisation's territory tree (C72) -- today, always a
+    dealership.
 
-    FLAT, NOT A TREE (C29). There is no `parent` field: the question of what a
-    parent dealership would actually confer was never answered, and a field that
-    is stored and displayed and means nothing is decoration. It was removed
-    rather than hidden.
+    RENAMED FROM `BusinessUnit` ON 2026-11-06, because the owner asked for the
+    name to match the idea: under C72 a territory can be a region, a dealer, a
+    branch or a warehouse. The table moved with it; the rows, their ids and
+    everything pointing at them did not change.
+
+    "UNIT" STILL APPEARS ELSEWHERE, ON PURPOSE AND FOR NOW. `unit_id` on every
+    tenant table, `Membership.unit`, `allowed_units` and `resolve_allowed_units()`
+    all mean "territory". They are renamed in C72 piece 3 (the tenant column
+    needs a tenant migration, run by hand on the server) and piece 7 (the API
+    fields the frontend reads); `Membership.unit` goes away in piece 2.
 
     Only DMS is unit-aware (C5). CRM and E-commerce ignore these entirely, which
     is why unit scope lives on `Membership` and is read through one resolver
@@ -202,7 +209,7 @@ class BusinessUnit(BaseModel):
     """
 
     organization = models.ForeignKey(
-        Organization, on_delete=models.CASCADE, related_name="business_units"
+        Organization, on_delete=models.CASCADE, related_name="territories"
     )
 
     name = models.CharField(max_length=200)
@@ -246,7 +253,9 @@ class BusinessUnit(BaseModel):
     class Meta:
         ordering = ["name"]
         constraints = [
-            models.UniqueConstraint(fields=["organization", "code"], name="unit_unique_org_code"),
+            models.UniqueConstraint(
+                fields=["organization", "code"], name="territory_unique_org_code"
+            ),
             # NAME IS UNIQUE TOO, and case-insensitively, which costs nothing
             # here: MySQL's `utf8mb4_0900_ai_ci` collation compares that way, so
             # this refuses "Chennai - Guindy" and "chennai - guindy" as the same
@@ -255,7 +264,9 @@ class BusinessUnit(BaseModel):
             #
             # Unlike `code` this is NOT nullable, so there is no NULL-is-distinct
             # subtlety -- every dealership has a name and every name is checked.
-            models.UniqueConstraint(fields=["organization", "name"], name="unit_unique_org_name"),
+            models.UniqueConstraint(
+                fields=["organization", "name"], name="territory_unique_org_name"
+            ),
         ]
 
     def __str__(self) -> str:
@@ -280,7 +291,7 @@ class Membership(BaseModel):
         Organization, on_delete=models.CASCADE, related_name="memberships"
     )
     unit = models.ForeignKey(
-        BusinessUnit,
+        Territory,
         on_delete=models.PROTECT,
         null=True,
         blank=True,
@@ -366,7 +377,7 @@ class Invitation(BaseModel):
         Organization, on_delete=models.CASCADE, related_name="invitations"
     )
     unit = models.ForeignKey(
-        BusinessUnit,
+        Territory,
         on_delete=models.CASCADE,
         null=True,
         blank=True,
