@@ -28,7 +28,7 @@ from django.core.exceptions import ImproperlyConfigured
 from django.utils import timezone
 from rest_framework.test import APIClient
 
-from conftest import TEST_TENANT_ALIAS
+from conftest import TEST_TENANT_ALIAS, give_app_access
 from core.accounts.models import User
 from core.billing.models import AppSubscription, SubscriptionStatus
 from core.organizations.models import (
@@ -40,7 +40,7 @@ from core.organizations.models import (
     Territory,
 )
 from core.organizations.services import accept_invitation, invitation_link, sign_up
-from core.permissions.models import AppAccess, AppCode, Role
+from core.permissions.models import AppCode, Role
 
 pytestmark = [
     pytest.mark.django_db(databases=["default", TEST_TENANT_ALIAS]),
@@ -619,7 +619,7 @@ class TestTheLinkAnAdminCopies:
             role=MembershipRole.MEMBER,
             status=MembershipStatus.ACTIVE,
         )
-        AppAccess.objects.create(
+        give_app_access(
             membership=admin_membership,
             app_id=AppCode.DMS,
             role=dms_role("dms.system_admin"),
@@ -658,7 +658,7 @@ class TestTheLinkAnAdminCopies:
             role=MembershipRole.MEMBER,
             status=MembershipStatus.ACTIVE,
         )
-        AppAccess.objects.create(
+        give_app_access(
             membership=viewer_membership, app_id=AppCode.DMS, role=dms_role("dms.fleet_viewer")
         )
         client.force_authenticate(user=viewer)

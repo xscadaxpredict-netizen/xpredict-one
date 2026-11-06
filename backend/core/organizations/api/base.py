@@ -29,7 +29,7 @@ from rest_framework.views import APIView
 
 from core.organizations.exceptions import UnitClosedError
 from core.organizations.models import Membership, MembershipStatus, Organization, UnitStatus
-from core.organizations.selectors import permissions_for
+from core.organizations.selectors import GRANTS_PREFETCH, permissions_for
 from shared.exceptions import AuthorizationError, not_found
 
 # Where `config.middleware.TenantMiddleware` leaves the resolved organization.
@@ -205,7 +205,7 @@ class OrgScopedAPIView(APIView):
             # decisions are made against, and `permissions_for()` walks these
             # relations on every request that declares a required permission.
             .select_related("organization", "unit")
-            .prefetch_related("app_access__role__permissions")
+            .prefetch_related(*GRANTS_PREFETCH)
             .first()
         )
 

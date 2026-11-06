@@ -32,7 +32,7 @@ from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework.test import APIClient
 
-from conftest import TEST_TENANT_ALIAS
+from conftest import TEST_TENANT_ALIAS, give_app_access
 from core.accounts.models import User
 from core.organizations.api.base import OrgScopedAPIView
 from core.organizations.models import (
@@ -43,7 +43,7 @@ from core.organizations.models import (
 )
 from core.organizations.selectors import can_manage, permissions_for
 from core.organizations.services import sign_up
-from core.permissions.models import AppAccess, AppCode, Role
+from core.permissions.models import AppCode, Role
 
 pytestmark = [
     pytest.mark.django_db(databases=["default", TEST_TENANT_ALIAS]),
@@ -148,7 +148,7 @@ def add_dealer_admin(organization, unit, email="dealeradmin@acme.test"):
     membership = Membership.objects.create(
         user=user, organization=organization, unit=unit, role=MembershipRole.MEMBER
     )
-    AppAccess.objects.create(
+    give_app_access(
         membership=membership,
         app_id=AppCode.DMS,
         role=Role.objects.get(app_id=AppCode.DMS, code="dms.system_admin"),
@@ -162,7 +162,7 @@ def add_plain_member(organization, unit=None, email="sales@acme.test"):
     membership = Membership.objects.create(
         user=user, organization=organization, unit=unit, role=MembershipRole.MEMBER
     )
-    AppAccess.objects.create(
+    give_app_access(
         membership=membership,
         app_id=AppCode.DMS,
         role=Role.objects.get(app_id=AppCode.DMS, code="dms.sales_representative"),

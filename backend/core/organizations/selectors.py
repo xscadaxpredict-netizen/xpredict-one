@@ -18,9 +18,10 @@ from __future__ import annotations
 import uuid
 from dataclasses import dataclass
 from datetime import datetime
+from types import SimpleNamespace
 
 from django.core.exceptions import ValidationError as DjangoValidationError
-from django.db.models import Count, IntegerField, OuterRef, Subquery, Value
+from django.db.models import Count, IntegerField, OuterRef, Prefetch, Subquery, Value
 from django.db.models.functions import Coalesce
 from django.utils import timezone
 
@@ -29,6 +30,8 @@ from core.billing.models import AppSubscription, SubscriptionStatus
 from core.organizations.models import (
     Invitation,
     Membership,
+    MembershipAppRole,
+    MembershipAppTerritory,
     MembershipRole,
     MembershipStatus,
     Organization,
@@ -39,6 +42,24 @@ from core.organizations.models import (
 from core.permissions.models import AppCode, Permission
 from core.permissions.registry import is_unit_aware
 from shared.exceptions import not_found
+
+# WHAT EVERY READER OF A MEMBERSHIP'S ACCESS PREFETCHES (C72 step 2b): its
+# per-app grants, each grant's role with that role's permissions, and each
+# grant's territories. One definition, so `/me`, the permission check and the
+# users list cannot drift into fetching different things.
+#
+# FOUR QUERIES, WHATEVER THE NUMBER OF GRANTS: the grants; their roles WITH the
+# role row joined in; those roles' permissions; their territories WITH the
+# territory row joined in. Plain lookups ("grants__roles__role") would spend a
+# query on each join, on every request that checks a permission.
+GRANTS_PREFETCH: tuple[str | Prefetch, ...] = (
+    Prefetch("grants__roles", queryset=MembershipAppRole.objects.select_related("role")),
+    "grants__roles__role__permissions",
+    Prefetch(
+        "grants__territories",
+        queryset=MembershipAppTerritory.objects.select_related("territory"),
+    ),
+)
 
 
 def resolve_allowed_units(membership: Membership, app: str) -> frozenset[uuid.UUID] | None:
@@ -55,20 +76,30 @@ def resolve_allowed_units(membership: Membership, app: str) -> frozenset[uuid.UU
 
     - **The app has no dealerships** (CRM, E-commerce). A unit-scoped person's
       CRM queries must not be filtered by a column CRM does not have (C5).
-    - **The person is organization-wide** (`unit_id IS NULL`), which is every
-      owner and every org admin (C40), plus org-level roles like Fleet viewer.
+    - **The person is organization-wide**: their grant for this app places
+      them AT the organisation's root (C72) -- every owner, and org-level roles
+      like Fleet viewer.
 
-    A unit-scoped person gets exactly their own dealership. C29 made
-    dealerships a FLAT list, so there is no subtree to walk --- and C7's
-    wording, "the membership's subtree", stays true because the subtree of a
-    flat node is that node. If Q22 is ever answered and parents come back,
-    this function is the only place that has to learn to recurse.
+    READ FROM THE PER-APP GRANT SINCE C72 STEP 2b, not `Membership.unit`. The
+    grant's territories are where this person sits in this app: the root means
+    everything; otherwise exactly those territories. Expanding each one to its
+    subtree (a region covering its dealers) is C72 piece 3 -- until then a
+    placement is a dealership or the root, as it always was, so the answer is
+    unchanged.
+
+    NO GRANT FOR THIS APP IS AN EMPTY SET, never None: restricted to nothing,
+    so a missing grant fails closed. (The permission layer refuses such a
+    request first; this is the second lock.)
     """
     if not is_unit_aware(app):
         return None
-    if membership.unit_id is None:
+    grant = next((g for g in membership.grants.all() if g.app_id == app), None)
+    if grant is None:
+        return frozenset()
+    placed = [placement.territory for placement in grant.territories.all()]
+    if any(territory.is_root for territory in placed):
         return None
-    return frozenset({membership.unit_id})
+    return frozenset(territory.id for territory in placed)
 
 
 @dataclass(frozen=True)
@@ -165,7 +196,7 @@ def me(user) -> MeData:
     memberships = list(
         Membership.objects.filter(user=user, status=MembershipStatus.ACTIVE)
         .select_related("organization", "unit")
-        .prefetch_related("app_access__role__permissions")
+        .prefetch_related(*GRANTS_PREFETCH)
         .order_by("organization__name")
     )
 
@@ -207,11 +238,14 @@ def _membership_data(
     if _standing_grants_administration(membership.role):
         held.setdefault(AppCode.ADMIN, set()).update(admin_permissions)
 
+    # FROM THE PER-APP GRANTS (C72 step 2b), not `AppAccess`. Callers prefetch
+    # `GRANTS_PREFETCH`, so this walks memory rather than the database.
     granted_apps: set[str] = set()
-    for access in membership.app_access.all():
-        granted_apps.add(access.app_id)
-        for permission in access.role.permissions.all():
-            held.setdefault(permission.app_id, set()).add(permission)
+    for grant in membership.grants.all():
+        granted_apps.add(grant.app_id)
+        for held_role in grant.roles.all():
+            for permission in held_role.role.permissions.all():
+                held.setdefault(permission.app_id, set()).add(permission)
 
     # `unit` is select_related in `me()`, so this costs no query.
     unit_closed = membership.unit_id is not None and membership.unit.status == UnitStatus.DISABLED
@@ -584,7 +618,7 @@ def org_users(organization: Organization, viewer: Membership) -> list[OrgUserDat
     memberships = (
         Membership.objects.filter(organization=organization)
         .select_related("user", "unit")
-        .prefetch_related("app_access__role__permissions")
+        .prefetch_related(*GRANTS_PREFETCH)
     )
     invitations = (
         Invitation.objects.filter(organization=organization, accepted_at__isnull=True)
@@ -615,7 +649,13 @@ def org_users(organization: Organization, viewer: Membership) -> list[OrgUserDat
 
 
 def _membership_row(membership: Membership) -> OrgUserData:
-    grants = list(membership.app_access.all())
+    # FROM THE PER-APP GRANTS (C72 step 2b): each grant's app and its role, as
+    # `(app_id, role)` pairs -- the same shape `AppAccess` rows gave.
+    grants = [
+        SimpleNamespace(app_id=grant.app_id, role=held_role.role)
+        for grant in membership.grants.all()
+        for held_role in grant.roles.all()
+    ]
     return OrgUserData(
         id=membership.id,
         first_name=membership.user.first_name,

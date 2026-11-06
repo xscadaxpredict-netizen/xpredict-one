@@ -7,7 +7,7 @@ from rest_framework import status
 from rest_framework.test import APIClient
 
 from config.routers import current_tenant_db
-from conftest import TEST_TENANT_ALIAS
+from conftest import TEST_TENANT_ALIAS, give_app_access
 from core.accounts.models import User
 from core.billing.models import AppSubscription, SubscriptionStatus
 from core.organizations.models import (
@@ -18,7 +18,7 @@ from core.organizations.models import (
     OrganizationStatus,
     Territory,
 )
-from core.permissions.models import AppAccess, AppCode, Role
+from core.permissions.models import AppCode, Role
 from products.dms.sales import selectors
 from products.dms.sales.models import Enquiry
 from shared.base_models import allowed_units
@@ -53,7 +53,7 @@ def create_dealer_user(org, unit, email, role_code="dms.sales_representative"):
         status=MembershipStatus.ACTIVE,
     )
     role = Role.objects.get(app_id=AppCode.DMS, code=role_code)
-    AppAccess.objects.create(
+    give_app_access(
         membership=membership,
         app_id=AppCode.DMS,
         role=role,

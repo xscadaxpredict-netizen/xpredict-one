@@ -26,7 +26,7 @@ import pytest
 from django.utils import timezone
 from rest_framework.test import APIClient
 
-from conftest import TEST_TENANT_ALIAS
+from conftest import TEST_TENANT_ALIAS, give_app_access
 from core.accounts.models import User
 from core.billing.models import AppSubscription, SubscriptionStatus
 from core.organizations.models import (
@@ -39,7 +39,7 @@ from core.organizations.models import (
 )
 from core.organizations.selectors import org_users
 from core.organizations.services import INVITATION_LIFETIME, sign_up
-from core.permissions.models import AppAccess, AppCode, Role
+from core.permissions.models import AppCode, Role
 
 pytestmark = [
     pytest.mark.django_db(databases=["default", TEST_TENANT_ALIAS]),
@@ -77,7 +77,7 @@ def add_person(organization, *, unit=None, role_code="dms.sales_representative",
         user=user, organization=organization, unit=unit, role=standing, status=status
     )
     if role_code:
-        AppAccess.objects.create(
+        give_app_access(
             membership=membership, app_id=AppCode.DMS, role=dms_role(role_code)
         )
     return membership

@@ -80,3 +80,27 @@ def _declare_test_tenant_database() -> None:
 # collection, after pytest-django has configured settings and before any test
 # class is constructed, which is the window the allowlist is built in.
 _declare_test_tenant_database()
+
+
+def give_app_access(*, membership, app_id, role, **extra):
+    """
+    Give a hand-built test membership an app, the way the services do.
+
+    C72 STEPS 2a-2c BRIDGE. The services write a person's access to BOTH the
+    old `AppAccess` table and the per-app grant tables, and since step 2b the
+    readers use the grant tables. Tests that build people by hand used to
+    write `AppAccess` alone -- which now opens nothing -- so they call this
+    instead, which writes both, placing the person where today's data says:
+    their one dealership, or the organisation's root. It goes in step 2d with
+    `AppAccess` and `Membership.unit`.
+
+    Imported lazily: this module is loaded before Django is configured.
+    """
+    from core.organizations.services import _legacy_placement, grant_app_access
+    from core.permissions.models import AppAccess
+
+    access = AppAccess.objects.create(membership=membership, app_id=app_id, role=role, **extra)
+    grant_app_access(
+        membership=membership, app=app_id, role=role, territories=_legacy_placement(membership)
+    )
+    return access

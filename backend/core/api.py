@@ -14,12 +14,8 @@ class TenantAPIView(OrgScopedAPIView):
     declaration below, all before the handler runs.
 
     On top of that it sets `request.membership` and `request.unit_id` -- the
-    dealership new unit-scoped rows are written to.
-
-    Unit-level members always write to their own unit. Org-level members
-    (owner/admin) have no unit on their membership by design (DB constraint
-    `membership_org_standing_has_no_unit`), so they may pick one with the
-    `X-Unit-Id` header; otherwise the organization's first unit is used.
+    dealership new unit-scoped rows are written to -- both read from the
+    person's DMS grant (C72 step 2b; see `_resolve_unit_id`).
     """
 
     app_code: str = AppCode.DMS
@@ -67,17 +63,31 @@ class TenantAPIView(OrgScopedAPIView):
         )
 
     @staticmethod
-    def _resolve_unit_id(request, organization):
-        membership = request.membership
-        if membership.unit_id:
-            return membership.unit_id
+    def _resolve_unit_id(request, organization, app: str = AppCode.DMS):
+        """
+        The dealership this request writes new records to.
 
-        units = Territory.objects.filter(organization=organization, kind=TerritoryKind.DEALER)
+        CHOSEN AMONG THE DEALERSHIPS THE PERSON'S GRANT ALLOWS (C72 step 2b),
+        read through `resolve_allowed_units()` rather than `Membership.unit`.
+        Placed at one dealership, that is the only candidate -- the answer it
+        always was. Placed at the root, every dealership is a candidate, and
+        `X-Unit-Id` picks one, else the first created -- as before. Placed at
+        several (C72, Q10), the header picks among those.
+
+        A header naming a dealership outside the candidates is ignored, never
+        honoured: it is how a person would otherwise file a record somewhere
+        they cannot see.
+        """
+        allowed = resolve_allowed_units(request.membership, app)
+        dealers = Territory.objects.filter(organization=organization, kind=TerritoryKind.DEALER)
+        if allowed is not None:
+            dealers = dealers.filter(id__in=allowed)
+
         requested = request.headers.get("X-Unit-Id")
         if requested:
-            unit = units.filter(id=requested).first()
-            if unit:
-                return unit.id
+            chosen = dealers.filter(id=requested).first()
+            if chosen:
+                return chosen.id
 
-        first = units.order_by("created_at").first()
+        first = dealers.order_by("created_at").first()
         return first.id if first else None

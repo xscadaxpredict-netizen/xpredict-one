@@ -21,6 +21,7 @@ from __future__ import annotations
 import pytest
 from django.utils import timezone
 
+from conftest import give_app_access
 from core.accounts.models import User
 from core.billing.models import AppSubscription, SubscriptionStatus
 from core.organizations.models import (
@@ -62,7 +63,7 @@ def add_dealer_admin(organization, unit, email="dealeradmin@acme.test"):
         unit=unit,
         role=MembershipRole.MEMBER,
     )
-    AppAccess.objects.create(
+    give_app_access(
         membership=membership,
         app_id=AppCode.DMS,
         role=Role.objects.get(app_id=AppCode.DMS, code="dms.system_admin"),
@@ -366,7 +367,7 @@ class TestSomebodyWithNoAdministration:
         membership = Membership.objects.create(
             user=user, organization=result.organization, unit=unit, role=MembershipRole.MEMBER
         )
-        AppAccess.objects.create(
+        give_app_access(
             membership=membership,
             app_id=AppCode.DMS,
             role=Role.objects.get(app_id=AppCode.DMS, code="dms.sales_representative"),
