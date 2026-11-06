@@ -15,6 +15,7 @@ from __future__ import annotations
 
 from django.conf import settings
 from django.db import models
+from treebeard.mp_tree import MP_Node, MP_NodeManager
 
 from shared.base_models import BaseModel
 
@@ -27,6 +28,46 @@ class OrganizationStatus(models.TextChoices):
 class UnitStatus(models.TextChoices):
     ACTIVE = "active", "Active"
     DISABLED = "disabled", "Closed"
+
+
+class TerritoryKind(models.TextChoices):
+    """
+    What a box in the territory tree is (C72).
+
+    THE ORGANISATION IS NOT A KIND. Its top-level territories are the tree's
+    roots, and "placed at organisation level" means "placed at no territory" --
+    as it always has. A box for the organisation would store its name a second
+    time, and the owner rejected exactly that duplication for per-app trees.
+
+    Which kind may sit under which is one rule in `services.py`, not here.
+    """
+
+    REGION = "region", "Region"
+    DEALER = "dealer", "Dealer"
+    BRANCH = "branch", "Branch"
+    WAREHOUSE = "warehouse", "Warehouse"
+
+
+class TerritoryManager(MP_NodeManager):
+    """
+    Treebeard's manager -- which since treebeard 6.0 a tree model's default
+    manager MUST be -- with one change.
+
+    `create()` ADDS A TOP-LEVEL TERRITORY. A box in a materialised-path tree
+    cannot simply be inserted: it needs a `path` saying where it sits, and a
+    plain `create()` would save it without one. So `create()` goes through
+    treebeard's `add_root()`, and a territory under a parent goes through
+    `add_child(parent, {...})`. Every existing caller -- `create_dealer()` and
+    roughly a hundred test lines that make a dealership -- meant "a dealership
+    with nothing above it", which is exactly a root.
+
+    TREEBEARD SORTS BY `path`, NOT BY NAME. Anything that needs alphabetical
+    order says `.order_by("name")`; the model's `Meta.ordering` is overridden
+    by this manager and must not be relied on.
+    """
+
+    def create(self, **kwargs):
+        return self.add_root(kwargs)
 
 
 class MembershipRole(models.TextChoices):
@@ -187,14 +228,27 @@ class ActivationCode(BaseModel):
         state = "spent" if self.spent_at else "unspent"
         return f"{self.label or self.pk} ({state})"
 
-class Territory(BaseModel):
+class Territory(MP_Node, BaseModel):
     """
-    One box in the organisation's territory tree (C72) -- today, always a
-    dealership.
+    One box in the organisation's territory tree (C72): a region, a dealer, a
+    branch or a warehouse.
+
+    A TREE SINCE 2026-11-06, reversing C29. Built on django-treebeard's
+    materialised path (Q56): every box stores `path`, its position from the
+    top, so "this box and everything under it" is `path LIKE 'prefix%'`.
+    Treebeard keeps `path`, `depth` and `numchild` correct; nothing else
+    writes them. Use the manager -- `Territory.objects.add_child(parent, {...})`,
+    `.move(...)`, `.get_descendants(...)` -- never the per-box methods, which
+    treebeard 7 deprecates and 8 removes.
+
+    ONE TREE PER ORGANISATION, EVERY ORGANISATION'S ROOTS SIDE BY SIDE. Paths
+    are unique across the whole table, so organisation A's top-level boxes and
+    organisation B's share one sequence of roots. Every query filters by
+    `organization`, as every query here always has; a tree question asked
+    without it is a cross-tenant leak.
 
     RENAMED FROM `BusinessUnit` ON 2026-11-06, because the owner asked for the
-    name to match the idea: under C72 a territory can be a region, a dealer, a
-    branch or a warehouse. The table moved with it; the rows, their ids and
+    name to match the idea. The table moved with it; the rows, their ids and
     everything pointing at them did not change.
 
     "UNIT" STILL APPEARS ELSEWHERE, ON PURPOSE AND FOR NOW. `unit_id` on every
@@ -206,7 +260,23 @@ class Territory(BaseModel):
     Only DMS is unit-aware (C5). CRM and E-commerce ignore these entirely, which
     is why unit scope lives on `Membership` and is read through one resolver
     rather than being assumed everywhere.
+
+    THE DEALER-ONLY COLUMNS -- code, GSTIN, PAN, contact and address -- stay on
+    every kind and are simply blank on a region. One table rather than one per
+    kind is the point of C72's single tree; a warehouse may well want an
+    address too.
     """
+
+    # FIVE CHARACTERS PER LEVEL, not treebeard's four: about 60 million boxes
+    # per level instead of 1.7 million, and up to 51 levels in the 255-character
+    # path. Every organisation's roots share one sequence (see above), and the
+    # owner chose treebeard so this can scale -- changing it later means
+    # rewriting every path, so it is chosen generously now.
+    steplen = 5
+
+    kind = models.CharField(
+        max_length=20, choices=TerritoryKind.choices, default=TerritoryKind.DEALER
+    )
 
     organization = models.ForeignKey(
         Organization, on_delete=models.CASCADE, related_name="territories"
@@ -250,7 +320,11 @@ class Territory(BaseModel):
 
     status = models.CharField(max_length=20, choices=UnitStatus.choices, default=UnitStatus.ACTIVE)
 
+    objects = TerritoryManager()
+
     class Meta:
+        # OVERRIDDEN BY THE MANAGER, which sorts by `path`; kept for anything
+        # that reads `_meta` (the admin, `latest()`). Order by name explicitly.
         ordering = ["name"]
         constraints = [
             models.UniqueConstraint(
@@ -271,6 +345,25 @@ class Territory(BaseModel):
 
     def __str__(self) -> str:
         return self.name
+
+    def save(self, *args, **kwargs) -> None:
+        """
+        REFUSE A BOX WITH NO PLACE IN THE TREE.
+
+        `QuerySet.create()` and `get_or_create()` bypass the manager's
+        `create()` and would save a territory with an empty `path` -- the first
+        one succeeding, the second colliding on the unique index as a 500, and
+        the tree quietly corrupt in between. Treebeard sets `path` before it
+        saves, so this only ever fires on a caller who went round it: loudly,
+        at the line that did it.
+        """
+        if not self.path:
+            raise ValueError(
+                "A Territory needs a place in the tree: create it with "
+                "Territory.objects.create() (top level) or "
+                "Territory.objects.add_child(parent, {...})."
+            )
+        super().save(*args, **kwargs)
 
 
 class Membership(BaseModel):

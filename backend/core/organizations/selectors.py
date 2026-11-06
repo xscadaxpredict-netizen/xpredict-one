@@ -447,11 +447,16 @@ def dealers_for(organization: Organization) -> list[Territory]:
         .values("total")
     )
 
+    # ORDERED BY NAME EXPLICITLY. This used to come from `Meta.ordering`; the
+    # territory manager now sorts by tree position, so alphabetical order has
+    # to be asked for.
     return list(
-        Territory.objects.filter(organization=organization).annotate(
+        Territory.objects.filter(organization=organization)
+        .annotate(
             user_count=Coalesce(Subquery(memberships, output_field=IntegerField()), Value(0))
             + Coalesce(Subquery(pending, output_field=IntegerField()), Value(0))
         )
+        .order_by("name")
     )
 
 
