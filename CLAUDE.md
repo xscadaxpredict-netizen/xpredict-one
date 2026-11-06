@@ -59,9 +59,15 @@ separate apps: **DMS** (dealership management), **CRM**, and **E-commerce**. The
 is the **Organization**, and each organization gets its **own MySQL database** (C39
 replaced PostgreSQL; nothing else about the tenancy model changed).
 Authentication is **JWT, issued by the platform layer (`core/`) — never by the apps.**
-DMS is **unit-aware**: an organization's dealerships are `BusinessUnit` rows, and
-dealers manage their own scoped users. CRM and E-commerce have no business units;
-their users belong to the organization directly.
+DMS is **unit-aware**: an organization's dealerships are **`Territory`** rows of kind
+`dealer`, in the organisation's one **territory tree** (regions, dealers, branches,
+warehouses — C72), and dealers manage their own scoped users. CRM and E-commerce have
+no territories yet; their users belong to the organization directly.
+
+**SAY "TERRITORY", NEVER "BUSINESS UNIT"** (the owner, 2026-11-06). The model was
+renamed from `BusinessUnit`. Where "unit" survives — tenant `unit_id` columns,
+`Membership.unit`, `allowed_units`, `resolve_allowed_units()` — it means territory and
+is renamed in C72 pieces 2, 3 and 7.
 
 **Build order: DMS first.** CRM later. **E-commerce is deferred** — do not design its
 roles, permissions or models until it is explicitly picked up.
@@ -70,13 +76,16 @@ roles, permissions or models until it is explicitly picked up.
 each dealer's users are managed at the **dealer** level. An org admin reaching into a
 dealer's users is an audited override, not the normal path.
 
-Full rationale: `context/02-DECISIONS.md` C1–C71 — all `[Decided]`. Don't reopen them.
+Full rationale: `context/02-DECISIONS.md` C1–C72 — all `[Decided]`. Don't reopen them.
 
-**C71 IS BEING BUILT on `feat/app-access-model`, piece by piece:** access becomes a
-per-app grant (`App` table — built; roles without level; `is_owner` instead of
-standing; each app with its own Users & roles). Until it merges, the code below
-still describes standing and `AppAccess`. **`main` is production: never commit or
-push to it** --- work on the working branch.
+**C72 IS BEING BUILT on `feat/app-access-model`, piece by piece** (it amends C71 and
+replaces its build list). Every person, in every app, has a **role** (WHAT — per app),
+a place in the **territory tree** (WHERE — one tree per organisation) and a position on
+that app's **reporting chart** (WHOSE). Built so far: the `App` table and **the
+territory tree** (piece 1 — `Territory` on django-treebeard, `/admin/territories/`).
+Until the rest merges, the code below still describes standing, `AppAccess` and a
+person placed at one dealership. **`main` is production: never commit or push to it**
+--- work on the working branch.
 
 ## Status
 
@@ -104,14 +113,27 @@ holds **23 tables**, and each organisation gets its own database beside it.
 
 Set the database up once, as a MySQL admin: `mysql -u root -p < backend/scripts/create_dev_db.sql`.
 
-**The control plane is BUILT and MIGRATED.** Eleven models: `Organization`,
-`BusinessUnit`, `Membership`, `Invitation`, `InvitationAppGrant` in `core/organizations`;
-`Permission`, `Role`, `RolePermission`, `AppAccess` in `core/permissions`;
-`AppSubscription` in `core/billing`; and `User`, which was already there. **55 permissions
-and nine roles are seeded** — 48 by `core/permissions/migrations/0002_seed_catalogue.py`
-from `core/permissions/catalogue.py`, and seven more by `0004` for the DMS reference
-library, tools and store orders (C67). Both are idempotent and reversible, and 0002
-withdraws a grant the catalogue no longer makes.
+**The control plane is BUILT and MIGRATED.** Models: `Organization`,
+`Territory` (was `BusinessUnit`), `Membership`, `Invitation`, `InvitationAppGrant` in
+`core/organizations`; `App`, `Permission`, `Role`, `RolePermission`, `AppAccess` in
+`core/permissions`; `AppSubscription` in `core/billing`; and `User`. **58 permissions and
+nine roles are seeded** — 48 by `permissions/0002`, seven by `0004` (C67), three by
+`0009` (`admin.territory.*`, C72).
+
+**NO MIGRATION READS `catalogue.py`.** `0002` and `0003` read a frozen copy,
+`migrations/_catalogue_2026_10_03.py`; reading the live file replayed TODAY's catalogue
+on every database built from scratch, and it had already handed dealership Tech support
+the shared library (`permissions/0008` took it back). A change to roles or permissions
+is a NEW migration carrying its own data, plus the same edit to `catalogue.py` so people
+can read it. `tests/test_migration_history.py` enforces it.
+
+**`Territory` IS A django-treebeard TREE** (C72, Q56). Use the MANAGER:
+`Territory.objects.create(...)` adds a top-level territory, `.add_child(parent, {...})`,
+`.move(...)`, `.get_descendants(...)` — never the per-node methods treebeard 8 removes.
+`save()` refuses a territory with no `path`. The manager sorts by `path`, so ask for
+`.order_by("name")` when you want names. **Every tree query filters by `organization`**:
+all organisations' roots share one sequence, so an unfiltered tree question is a
+cross-tenant leak.
 
 **Permissions are ROWS, not a Python registry (C44)** — reversing the last part of C42,
 because the owner wants the list queryable in Workbench rather than readable only by
@@ -346,10 +368,17 @@ user row on every request and refuses an inactive one, so **disabling somebody t
 effect on their next request**, not after a token expires. The 15-minute access
 lifetime is how long a STOLEN token survives a logout.
 
-**Gates, all green:** `npm run test -w web` (228), `npm run typecheck -w web`,
-`npm run lint`, and in `backend/`: `pytest` (467), `ruff check .`, and
+**Gates:** `npm run test -w web` (228), `npm run typecheck -w web`, and in `backend/`:
+`pytest` (542), `ruff check .`, `manage.py makemigrations --check`, and
 `.venv/Scripts/lint-imports.exe` — **not** `python -m importlinter.cli`, which exits 0
-without running. Run them before pushing.
+without running. Run them before pushing. **`npm run lint` is NOT green and never has
+been on this code:** 139 errors in `apps/web`, inherited with the DMS modules and
+measured as deferrable in session 15. Do not quote it as passing.
+
+**RUN ONE PYTEST AT A TIME.** Two runs share one MySQL test database and produce
+phantom failures and deadlocks (it happened again in session 22). The backend venv must
+be **Python 3.13** on Windows: 3.12's clock ticks every 15.6 ms, `created_at` values
+tie, and three ordering tests turn random.
 
 **One branch per FEATURE, not per commit.** Commit as the work goes; the owner merges
 when the whole feature is done.
