@@ -53,6 +53,17 @@ PERMISSIONS: list[tuple[str, str, str, str, str]] = [
     ("admin.dealer.create", "admin", "dealers", "Dealerships", "Add a dealership"),
     ("admin.dealer.update", "admin", "dealers", "Dealerships", "Edit a dealership"),
     ("admin.dealer.set_status", "admin", "dealers", "Dealerships", "Close or reopen a dealership"),
+    # The territory tree (C72 piece 1, `permissions/0009`). In the `dealers`
+    # module because the tree is shown where dealerships are.
+    ("admin.territory.view", "admin", "dealers", "Territories", "See the territory tree"),
+    (
+        "admin.territory.create",
+        "admin",
+        "dealers",
+        "Territories",
+        "Add a region, branch or warehouse",
+    ),
+    ("admin.territory.update", "admin", "dealers", "Territories", "Rename or move a territory"),
     ("admin.role.view", "admin", "roles", "Roles", "Read what each role grants"),
     # --- DMS: Sales ---------------------------------------------------------
     ("dms.enquiry.view", "dms", "sales", "Enquiries", "See enquiries"),

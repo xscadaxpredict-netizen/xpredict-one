@@ -131,6 +131,53 @@ class DealerCodeTakenError(ConflictError):
     message = "Another dealership already uses that code."
 
 
+class TerritoryNameTakenError(ConflictError):
+    """
+    Another territory in this organization -- of any kind -- has this name.
+
+    ONE NAME PER ORGANIZATION ACROSS EVERY KIND, because the unique constraint
+    is on (organization, name) and the tree is one tree (C72). A region called
+    "Chennai" and a dealership called "Chennai" would read identically in every
+    picker that lists both, and a person placed at the wrong one sees the wrong
+    records. `DealerNameTakenError` stays for the dealers endpoints, whose
+    frontend switches on its code.
+    """
+
+    code = "territory_name_taken"
+    message = "Another territory already uses that name."
+
+
+class TerritoryPlacementError(ConflictError):
+    """
+    That kind of territory cannot sit there (C72).
+
+    The rule is one table in `services.py`: regions at the top or inside a
+    region; dealers at the top or inside a region; branches only inside a
+    dealer; warehouses anywhere. No sub-dealers yet (Q57).
+
+    409, the state answer: the request is well-formed and the caller may
+    arrange territories -- it is the TREE that refuses this arrangement. A
+    parent in another organization is not this error; it is a 404, because the
+    caller cannot see it.
+    """
+
+    code = "territory_placement_not_allowed"
+    message = "That kind of territory cannot be placed there."
+
+
+class TerritoryMoveIntoItselfError(ConflictError):
+    """
+    A territory cannot be moved inside itself or anything under it.
+
+    Moving North under Delhi, which sits under North, would make North its own
+    ancestor and cut the branch off the tree. Treebeard refuses it too; this
+    says so in our vocabulary before treebeard's exception can become a 500.
+    """
+
+    code = "territory_move_into_itself"
+    message = "A territory cannot be moved inside itself."
+
+
 class DealerAlreadyClosedError(ConflictError):
     """
     This dealership is already closed.

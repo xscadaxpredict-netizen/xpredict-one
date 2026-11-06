@@ -19,6 +19,9 @@ from core.organizations.api.views import (
     InviteLinkView,
     ProvisioningView,
     ResendInvitationView,
+    TerritoriesView,
+    TerritoryDetailView,
+    TerritoryMoveView,
     UserDetailView,
     UserStatusView,
     UsersView,
@@ -94,6 +97,20 @@ urlpatterns = [
         "admin/dealers/<str:dealer_id>/<str:action>/",
         DealerStatusView.as_view(),
         name="dealer-status",
+    ),
+    # THE TERRITORY TREE (C72 piece 1). `move/` is a fixed segment, not a
+    # generic `<str:action>`, so there is no ordering trap with the detail
+    # route; and every route ends in a slash, for the reason above.
+    path("admin/territories/", TerritoriesView.as_view(), name="territories"),
+    path(
+        "admin/territories/<str:territory_id>/",
+        TerritoryDetailView.as_view(),
+        name="territory-detail",
+    ),
+    path(
+        "admin/territories/<str:territory_id>/move/",
+        TerritoryMoveView.as_view(),
+        name="territory-move",
     ),
     path("admin/", include("core.permissions.api.urls")),
 ]

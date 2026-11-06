@@ -33,6 +33,7 @@ from core.organizations.models import (
     MembershipStatus,
     Organization,
     Territory,
+    TerritoryKind,
     UnitStatus,
 )
 from core.permissions.models import AppCode, Permission
@@ -317,8 +318,12 @@ def _summary(app: str, membership: Membership) -> str | None:
     if membership.unit_id is not None:
         return membership.unit.name
 
+    # DEALERS ONLY: regions, branches and warehouses are territories too (C72),
+    # and "4 dealerships" must not count the region they sit in.
     count = Territory.objects.filter(
-        organization_id=membership.organization_id, status=UnitStatus.ACTIVE
+        organization_id=membership.organization_id,
+        kind=TerritoryKind.DEALER,
+        status=UnitStatus.ACTIVE,
     ).count()
     return f"{count} dealership" if count == 1 else f"{count} dealerships"
 
@@ -449,15 +454,51 @@ def dealers_for(organization: Organization) -> list[Territory]:
 
     # ORDERED BY NAME EXPLICITLY. This used to come from `Meta.ordering`; the
     # territory manager now sorts by tree position, so alphabetical order has
-    # to be asked for.
+    # to be asked for. DEALERS ONLY -- the dealers screen lists dealerships, and
+    # the rest of the tree has its own endpoint (C72).
     return list(
-        Territory.objects.filter(organization=organization)
+        Territory.objects.filter(organization=organization, kind=TerritoryKind.DEALER)
         .annotate(
             user_count=Coalesce(Subquery(memberships, output_field=IntegerField()), Value(0))
             + Coalesce(Subquery(pending, output_field=IntegerField()), Value(0))
         )
         .order_by("name")
     )
+
+
+def territories_for(organization: Organization) -> list[Territory]:
+    """
+    Every territory in this organization's tree, in tree order (C72).
+
+    TREE ORDER, NOT NAME ORDER: each box comes after its parent, which is what
+    lets a client build the tree in one pass over `parent_id`. That is the
+    treebeard manager's own ordering (`path`), asked for explicitly anyway so
+    the contract does not rest on a default.
+    """
+    territories = list(Territory.objects.filter(organization=organization).order_by("path"))
+    return _with_parent_ids(organization, territories)
+
+
+def _with_parent_ids(organization: Organization, territories: list[Territory]) -> list[Territory]:
+    """
+    Set `parent_id` on each territory, from its path.
+
+    A box's parent is the box whose path is its own minus the last step --
+    that is what a materialised path means. One query for the organisation's
+    path-to-id map rather than treebeard's `get_parent()`, which would ask the
+    database once per territory.
+
+    FROM THIS ORGANIZATION ONLY. Paths are unique across the whole table, so a
+    map built without the filter could not return the wrong parent -- but it
+    would read every customer's tree to answer for one.
+    """
+    ids_by_path = dict(
+        Territory.objects.filter(organization=organization).values_list("path", "id")
+    )
+    for territory in territories:
+        parent_path = territory.path[: -Territory.steplen]
+        territory.parent_id = ids_by_path.get(parent_path) if parent_path else None
+    return territories
 
 
 # ---------------------------------------------------------------------------

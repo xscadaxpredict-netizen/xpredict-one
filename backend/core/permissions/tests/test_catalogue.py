@@ -22,24 +22,26 @@ pytestmark = pytest.mark.django_db
 
 
 class TestPermissions:
-    def test_there_are_55(self):
+    def test_there_are_58(self):
         """
-        C42 settled on 48 and C67 added seven. A number that drifts is a
-        decision nobody made -- which is exactly what this assertion is for,
-        and it did its job: the seven codes were added with a comment saying
-        the catalogue had grown and this test was not updated with them.
+        C42 settled on 48, C67 added seven, and C72 piece 1 added three
+        (`admin.territory.view/create/update`, `permissions/0009`). A number
+        that drifts is a decision nobody made -- which is exactly what this
+        assertion is for, and it did its job: the seven codes were added with a
+        comment saying the catalogue had grown and this test was not updated
+        with them.
         """
-        assert Permission.objects.count() == 55
+        assert Permission.objects.count() == 58
 
     def test_split_by_app_as_decided(self):
         """
         DMS went 36 -> 43 with C67's seven: two for the reference library
         (manuals, videos), three for tools (marketing material, the calculator
         constants, deleting a saved calculation) and two for store orders.
-        Administration and CRM are untouched, which is the point of asserting
-        them separately -- a DMS change must not quietly reach either.
+        Administration went 11 -> 14 with C72's territory three. Each app is
+        asserted separately so a change to one cannot quietly reach another.
         """
-        assert Permission.objects.filter(app_id=AppCode.ADMIN).count() == 11
+        assert Permission.objects.filter(app_id=AppCode.ADMIN).count() == 14
         assert Permission.objects.filter(app_id=AppCode.DMS).count() == 43
         assert Permission.objects.filter(app_id=AppCode.CRM).count() == 1
 

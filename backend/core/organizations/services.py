@@ -25,9 +25,10 @@ from datetime import timedelta
 from django.conf import settings
 from django.core.exceptions import ImproperlyConfigured
 from django.core.exceptions import ValidationError as DjangoValidationError
-from django.db import transaction
+from django.db import IntegrityError, transaction
 from django.utils import timezone
 from django.utils.text import slugify
+from treebeard.exceptions import InvalidMoveToDescendant
 
 from core.accounts.models import User
 from core.billing.models import AppSubscription, SubscriptionStatus
@@ -53,6 +54,9 @@ from core.organizations.exceptions import (
     PersonEmailTakenError,
     RoleScopeMismatchError,
     SignInAddressLockedError,
+    TerritoryMoveIntoItselfError,
+    TerritoryNameTakenError,
+    TerritoryPlacementError,
 )
 from core.organizations.identifiers import extract_pan
 from core.organizations.models import (
@@ -64,6 +68,7 @@ from core.organizations.models import (
     MembershipStatus,
     Organization,
     Territory,
+    TerritoryKind,
     UnitStatus,
 )
 from core.organizations.selectors import can_manage
@@ -365,11 +370,186 @@ def _subscribe_and_grant(
 # ---------------------------------------------------------------------------
 
 
+# ---------------------------------------------------------------------------
+# The territory tree (C72 piece 1).
+#
+# WHAT MAY SIT UNDER WHAT, in one place. `None` is "at the top level", which is
+# also "directly under the organisation" -- there is no box for the
+# organisation itself (see `TerritoryKind`). Every write that places a
+# territory -- creating one, moving one -- asks `assert_placement_allowed`, so
+# the rule cannot be honoured by one door and forgotten by another.
+#
+# Version 1, the owner's tree from C72: regions may nest; a dealer sits at the
+# top or in a region; a branch only inside a dealer; a warehouse anywhere. No
+# dealer inside a dealer until Q57 says sub-dealers exist.
+# ---------------------------------------------------------------------------
+
+_ALLOWED_PARENTS: dict[str, frozenset[str | None]] = {
+    TerritoryKind.REGION: frozenset({None, TerritoryKind.REGION}),
+    TerritoryKind.DEALER: frozenset({None, TerritoryKind.REGION}),
+    TerritoryKind.BRANCH: frozenset({TerritoryKind.DEALER}),
+    TerritoryKind.WAREHOUSE: frozenset(
+        {None, TerritoryKind.REGION, TerritoryKind.DEALER, TerritoryKind.BRANCH}
+    ),
+}
+
+# Two top-level territories added at the same instant -- by two organisations,
+# since roots share one sequence -- both read the same "last root" and compute
+# the same path. The second insert then fails the unique index on `path`.
+# Retrying computes a fresh one. Three attempts is generous for a collision
+# that needs two admins to click within the same few milliseconds.
+_ROOT_PATH_ATTEMPTS = 3
+
+
+def assert_placement_allowed(kind: str, parent: Territory | None) -> None:
+    """Refuse a territory of this kind under this parent (C72). 409."""
+    parent_kind = parent.kind if parent is not None else None
+    if parent_kind not in _ALLOWED_PARENTS[kind]:
+        raise TerritoryPlacementError
+
+
+def _resolve_parent(organization: Organization, parent_id: uuid.UUID | None) -> Territory | None:
+    """
+    The parent territory, or None for the top level.
+
+    FILTERED BY ORGANIZATION, and another organization's territory is a 404,
+    not a placement error: a box the caller cannot see must look like one that
+    does not exist. Paths are unique across the whole table, so without this
+    filter a guessed UUID would graft one customer's dealership into another
+    customer's tree.
+    """
+    if parent_id is None:
+        return None
+    try:
+        return Territory.objects.get(id=parent_id, organization=organization)
+    except (Territory.DoesNotExist, DjangoValidationError, ValueError):
+        raise not_found("Territory") from None
+
+
+def _with_root_path_retry(operation):
+    """
+    Run a tree write that may compute a new ROOT path, retrying on a collision.
+
+    Each attempt is its own savepoint, so a failed insert is rolled back
+    without taking the caller's transaction with it. Only a collision on `path`
+    is retried; a name or code collision under the same race is a real
+    conflict and is raised at once.
+
+    RECOGNISED BY THE INDEX NAME, because that is what MySQL reports -- "for
+    key 'organizations_territory.organizations_territory_path_be21f7d1_uniq'",
+    not the column. Django names a `unique=True` field's index
+    `<table>_<column>_<hash>_uniq`, so the prefix is stable. The first version
+    of this looked for `.path'`, which MySQL never prints: the retry would never
+    have fired, and only a test against the real server noticed.
+    """
+    path_index = f"{Territory._meta.db_table}_path_"
+    for attempt in range(_ROOT_PATH_ATTEMPTS):
+        try:
+            with transaction.atomic():
+                return operation()
+        except IntegrityError as exc:
+            if path_index not in str(exc) or attempt == _ROOT_PATH_ATTEMPTS - 1:
+                raise
+    raise AssertionError("unreachable")  # pragma: no cover
+
+
+def _add_territory(organization: Organization, parent: Territory | None, fields: dict) -> Territory:
+    """Insert a territory at its place in the tree. The caller has checked the rules."""
+    create_kwargs = {"organization": organization, **fields}
+    if parent is not None:
+        # `add_child` locks the parent row first, so two children added under
+        # one parent at once queue rather than colliding.
+        return Territory.objects.add_child(parent, create_kwargs)
+    return _with_root_path_retry(lambda: Territory.objects.add_root(create_kwargs))
+
+
+def _assert_territory_name_free(
+    organization: Organization, name: str, excluding: uuid.UUID | None = None
+) -> None:
+    existing = Territory.objects.filter(organization=organization, name=name)
+    if excluding is not None:
+        existing = existing.exclude(pk=excluding)
+    if existing.exists():
+        raise TerritoryNameTakenError
+
+
+@transaction.atomic
+def create_territory(
+    *,
+    organization: Organization,
+    kind: str,
+    name: str,
+    parent_id: uuid.UUID | None = None,
+) -> Territory:
+    """
+    Add a region, branch or warehouse to the organization's tree.
+
+    Dealerships have their own door, `create_dealer`, because they carry the
+    GSTIN and the rest of the dealer details the dealers screen edits. Both
+    doors place through the same rule.
+    """
+    parent = _resolve_parent(organization, parent_id)
+    assert_placement_allowed(kind, parent)
+    _assert_territory_name_free(organization, name)
+
+    return _add_territory(organization, parent, {"kind": kind, "name": name})
+
+
+@transaction.atomic
+def rename_territory(*, territory: Territory, name: str) -> Territory:
+    """Change a territory's name -- any kind. Unique across the organization's tree."""
+    _assert_territory_name_free(territory.organization, name, excluding=territory.pk)
+    territory.name = name
+    territory.save(update_fields=["name", "updated_at"])
+    return territory
+
+
+@transaction.atomic
+def move_territory(*, territory: Territory, parent_id: uuid.UUID | None) -> Territory:
+    """
+    Put a territory -- and everything under it -- somewhere else in the tree.
+
+    `parent_id` None moves it to the top level. This is how the dealerships
+    that existed before the tree get organised: every one of them arrived as a
+    top-level box (`organizations/0011`).
+
+    EVERYTHING UNDER IT MOVES TOO, and nothing under it needs checking: the
+    rules depend only on a box and its own parent, and those pairs do not
+    change in a move. Only the moved box's new parent is checked.
+
+    IDS DO NOT CHANGE, ONLY PATHS. Every tenant record and every membership
+    points at a territory by id, so moving a dealership into a region moves
+    nothing else.
+    """
+    parent = _resolve_parent(territory.organization, parent_id)
+    assert_placement_allowed(territory.kind, parent)
+
+    if parent is not None and (parent.pk == territory.pk or parent.path.startswith(territory.path)):
+        raise TerritoryMoveIntoItselfError
+
+    try:
+        if parent is not None:
+            Territory.objects.move(territory, parent, "last-child")
+        else:
+            # Roots of every organisation are siblings (see `Territory`), so
+            # "last root" is a position, not a statement about whose it is.
+            _with_root_path_retry(
+                lambda: Territory.objects.move(
+                    territory, Territory.objects.get_last_root_node(), "last-sibling"
+                )
+            )
+    except InvalidMoveToDescendant:
+        raise TerritoryMoveIntoItselfError from None
+
+    return Territory.objects.get(pk=territory.pk)
+
+
 @transaction.atomic
 def create_dealer(
     *,
     organization: Organization,
     name: str,
+    parent_id: uuid.UUID | None = None,
     code: str | None = None,
     gstin: str = "",
     pan: str = "",
@@ -398,30 +578,40 @@ def create_dealer(
     state as additional places of business, so refusing a duplicate would
     refuse real data. The PAN is shared across every branch of one company in
     any case.
+
+    `parent_id` PUTS IT INSIDE A REGION (C72); omitted, it sits at the top
+    level, as every dealership did before the tree existed.
     """
+    parent = _resolve_parent(organization, parent_id)
+    assert_placement_allowed(TerritoryKind.DEALER, parent)
     _assert_dealer_name_free(organization, name)
     _assert_dealer_code_free(organization, code)
 
-    return Territory.objects.create(
-        organization=organization,
-        name=name,
-        # NULL, never "", and the model comment explains why: MySQL treats
-        # every NULL in a unique index as distinct but two empty strings as a
-        # duplicate, so storing "" would let the first dealership without a
-        # code be created and refuse the second.
-        code=code or None,
-        gstin=gstin,
-        # DERIVED HERE, not in the browser. Characters 3-12 of a GSTIN are the
-        # holder's PAN, so a caller who sends one is overriding a default
-        # rather than supplying a fact we did not have -- and the default has
-        # to exist somewhere both a form and a shell session reach.
-        pan=pan or extract_pan(gstin),
-        contact_person=contact_person,
-        email=email,
-        phone=phone,
-        city=city,
-        state=state,
-        postal_code=postal_code,
+    return _add_territory(
+        organization,
+        parent,
+        {
+            "kind": TerritoryKind.DEALER,
+            "name": name,
+            # NULL, never "", and the model comment explains why: MySQL treats
+            # every NULL in a unique index as distinct but two empty strings as
+            # a duplicate, so storing "" would let the first dealership without
+            # a code be created and refuse the second.
+            "code": code or None,
+            "gstin": gstin,
+            # DERIVED HERE, not in the browser. Characters 3-12 of a GSTIN are
+            # the holder's PAN, so a caller who sends one is overriding a
+            # default rather than supplying a fact we did not have -- and the
+            # default has to exist somewhere both a form and a shell session
+            # reach.
+            "pan": pan or extract_pan(gstin),
+            "contact_person": contact_person,
+            "email": email,
+            "phone": phone,
+            "city": city,
+            "state": state,
+            "postal_code": postal_code,
+        },
     )
 
 
@@ -654,7 +844,11 @@ def _resolve_unit(organization: Organization, unit_id: uuid.UUID | None) -> Terr
     if unit_id is None:
         return None
     try:
-        return Territory.objects.get(id=unit_id, organization=organization)
+        # DEALERS ONLY until C72 piece 2: a person is placed at a dealership or
+        # at nothing. A region's id here is "no such dealer", the same 404.
+        return Territory.objects.get(
+            id=unit_id, organization=organization, kind=TerritoryKind.DEALER
+        )
     except (Territory.DoesNotExist, DjangoValidationError, ValueError):
         # Another organization's dealership is not bad input to report back, it
         # is a dealership this caller cannot see.

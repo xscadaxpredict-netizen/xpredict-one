@@ -131,11 +131,14 @@ class TestTheOwner:
         assert membership.unit_id is None
         assert membership.unit_name is None
 
-    def test_administration_comes_from_standing_with_all_eleven_permissions(self):
+    def test_administration_comes_from_standing_with_all_fourteen_permissions(self):
         """
         Owners and org admins hold every `admin.*` permission and NOT through a
         Role row (C42) -- which is also why they get the dealers and roles
-        modules and a dealer admin does not.
+        modules and a dealer admin does not. Eleven until C72 piece 1 added the
+        three `admin.territory.*` codes, which reach them by the same rule with
+        no grant written; they sit in the `dealers` module, so the modules
+        below are unchanged.
         """
         result = found()
 
@@ -143,7 +146,7 @@ class TestTheOwner:
 
         assert admin.subscribed is True
         assert admin.accessible is True
-        assert len(admin.permissions) == 11
+        assert len(admin.permissions) == 14
         assert admin.modules == ["dealers", "roles", "users"]
 
     def test_administration_is_reported_subscribed_without_being_bought(self):
