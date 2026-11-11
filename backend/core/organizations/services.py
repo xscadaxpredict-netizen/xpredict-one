@@ -648,6 +648,36 @@ def _legacy_placement(membership: Membership) -> list[Territory]:
     return [Territory.objects.root_for(membership.organization)]
 
 
+# The one built-in Administration role (Q60; `permissions/0010`).
+ORGANISATION_ADMIN_ROLE = "admin.org_admin"
+
+
+def _grant_administration_if_admin(membership: Membership, *, actor_id=None) -> None:
+    """
+    STEP 2c's bridge: standing `admin` -> an Administration grant, role
+    "Organisation admin", placed at the organisation's root. The owner is
+    `owner`, not `admin`, so they get none: they hold Administration by rule
+    (`is_owner`).
+
+    ONLY EVER ADDS, because both callers start from a person with no
+    Administration grant -- accepting creates the membership, and editing has
+    just deleted every grant it had. A demoted admin therefore loses it by that
+    delete, not here. A new caller that does NOT start clean must revoke first.
+
+    THE FORM STILL SENDS `role: "admin" | "member"`, so this is where that
+    word becomes a grant -- the frontend does not change until piece 7. Goes
+    in step 2d with the standing.
+    """
+    if membership.role == MembershipRole.ADMIN:
+        grant_app_access(
+            membership=membership,
+            app=AppCode.ADMIN,
+            role=Role.objects.get(app_id=AppCode.ADMIN, code=ORGANISATION_ADMIN_ROLE),
+            territories=[Territory.objects.root_for(membership.organization)],
+            actor_id=actor_id,
+        )
+
+
 @transaction.atomic
 def create_dealer(
     *,
@@ -1175,6 +1205,9 @@ def _update_membership(
             role=granted_role,
             territories=_legacy_placement(membership),
         )
+    # C72 STEP 2c: the delete above took any Administration grant with it, so
+    # the standing decides afresh whether there is one (a demotion ends here).
+    _grant_administration_if_admin(membership)
 
 
 def _update_invitation(
@@ -1514,6 +1547,8 @@ def accept_invitation(
             territories=_legacy_placement(membership),
             actor_id=invitation.invited_by_id,
         )
+    # C72 STEP 2c: an `admin` invitation becomes an Organisation admin grant.
+    _grant_administration_if_admin(membership, actor_id=invitation.invited_by_id)
 
     invitation.accepted_at = timezone.now()
     invitation.save(update_fields=["accepted_at", "updated_at"])

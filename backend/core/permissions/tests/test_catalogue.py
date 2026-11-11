@@ -100,8 +100,10 @@ class TestPermissions:
 
 
 class TestRoles:
-    def test_there_are_nine(self):
-        assert Role.objects.count() == 9
+    def test_there_are_ten(self):
+        """Nine app roles, plus Administration's "Organisation admin" (Q60, `0010`)."""
+        assert Role.objects.count() == 10
+        assert Role.objects.filter(app_id=AppCode.ADMIN).count() == 1
 
     def test_the_six_dealer_roles_are_the_real_jobs(self):
         """C35/C36: the roles are the jobs people actually hold at a dealership."""
@@ -116,15 +118,16 @@ class TestRoles:
             "Tech support",
         }
 
-    def test_only_system_administrator_administers(self):
+    def test_only_the_two_admin_roles_administer(self):
         """
         `administers` is derived from holding any `admin.*` permission (C40), so
         this asserts the derivation AND the grant at once. Manager runs the
-        business; System administrator runs the software (C36).
+        business; System administrator runs the software at a dealership (C36);
+        Organisation admin runs the organisation (Q60).
         """
         administering = {role.code for role in Role.objects.all() if role.administers}
 
-        assert administering == {"dms.system_admin"}
+        assert administering == {"dms.system_admin", "admin.org_admin"}
 
     def test_manager_has_no_user_management(self):
         """
@@ -280,20 +283,23 @@ class TestModulesAreDerived:
 
         assert all_modules == by_role | by_standing
 
-    def test_dealers_and_roles_belong_to_standing_alone(self):
+    def test_dealers_and_roles_belong_to_the_organisation_admin_alone(self):
         """
         Pinned explicitly, because it is the surprising half of the rule above:
-        no role may manage dealerships or read the role catalogue. Those are the
-        organisation's own jobs, and a dealer admin never gets them.
+        no APP role may manage dealerships or read the role catalogue. Those are
+        the organisation's own jobs, and a dealer admin never gets them.
+
+        This said "standing alone" until C72 step 2c: the admin standing became
+        Administration's "Organisation admin" role (Q60), which is now the one
+        role that reaches them.
         """
-        by_role = {
-            module
+        reaching = {
+            role.code
             for role in Role.objects.all()
-            for module in role.permissions.values_list("module", flat=True)
+            if role.permissions.filter(module__in=["dealers", "roles"]).exists()
         }
 
-        assert "dealers" not in by_role
-        assert "roles" not in by_role
+        assert reaching == {"admin.org_admin"}
 
 
 class TestTheSeedCanBeRunAgain:

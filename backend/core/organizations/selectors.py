@@ -695,7 +695,11 @@ def _membership_row(membership: Membership) -> OrgUserData:
         # `invited` is not reachable here: C51 put pending people in the other
         # table, and `MembershipStatus.INVITED` went with it.
         status=membership.status,
-        apps=[_grant(g.app_id, g.role) for g in grants],
+        # NOT THE ADMINISTRATION GRANT (C72 step 2c). The frontend's edit form
+        # sends this list back as `apps`, and `_resolve_grants` refuses
+        # Administration there -- it arrives through `role: "admin"` instead.
+        # Listing it would make every save of an organisation admin a 4xx.
+        apps=[_grant(g.app_id, g.role) for g in grants if g.app_id != AppCode.ADMIN],
         created_at=membership.created_at,
         administers=_administers(
             membership.role, membership.unit_id, [g.role for g in grants]

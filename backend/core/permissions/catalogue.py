@@ -348,4 +348,20 @@ ROLES: dict[str, tuple[str, str, str, str, list[str]]] = {
         "The whole organisation's contacts and deals.",
         ["crm.lead.view"],
     ),
+    "admin.org_admin": (
+        "Organisation admin",
+        "admin",
+        "org",
+        "Runs the organisation: its people, dealerships and territories.",
+        # EVERY `admin.*` PERMISSION (Q60, answered 2026-11-11: one built-in
+        # Administration role). It is today's "admin" standing as a role, so
+        # it holds exactly what that standing conferred. Granted in the
+        # Administration app, placed at the organisation's root
+        # (`permissions/0010`, `organizations/0019`).
+        #
+        # A NEW `admin.*` PERMISSION MUST BE ADDED HERE AND TO THE ROLE IN THE
+        # SAME MIGRATION, or Organisation admins quietly lack it. The owner
+        # needs nothing: they hold every permission by rule (C72).
+        [code for code, app, *_rest in PERMISSIONS if app == "admin"],
+    ),
 }

@@ -79,8 +79,12 @@ class TestTheCatalogue:
 
         assert response.status_code == 200
         body = response.json()
-        # Nine: seven DMS (C35) plus two org-level, plus CRM's single default.
-        assert len(body) == Role.objects.count() == 9
+        # Nine: the app roles -- DMS's and CRM's single default. The database
+        # holds ten: "Organisation admin" (Q60) is Administration's own role,
+        # given through the form's `role: "admin"`, and left out of this list
+        # until C72 piece 7.
+        assert len(body) == Role.objects.exclude(app_id=AppCode.ADMIN).count() == 9
+        assert Role.objects.count() == 10
 
     def test_the_fields_are_exactly_what_roles_ts_declares(self, client):
         """
