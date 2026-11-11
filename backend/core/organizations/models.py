@@ -388,7 +388,7 @@ class Territory(MP_Node, BaseModel):
         help_text="True for the organisation's root box, NULL for every other. Never set by hand.",
     )
     """
-    THE ONE-ROOT-PER-ORGANISATION MARKER, shaped like `Membership.owner_marker`
+    THE ONE-ROOT-PER-ORGANISATION MARKER, shaped like `Membership.is_owner`
     and for the same reason: MySQL has no partial unique index (C39). True for
     the root and NULL for everything else, and a unique index on
     (organization, is_root) lets any number of NULLs coexist while refusing a
@@ -502,26 +502,33 @@ class Membership(BaseModel):
         max_length=20, choices=MembershipStatus.choices, default=MembershipStatus.ACTIVE
     )
 
-    owner_marker = models.BooleanField(
+    is_owner = models.BooleanField(
         null=True,
         blank=True,
         editable=False,
         help_text="True for the owner, NULL for everyone else. Never set by hand.",
     )
     """
-    THIS COLUMN LOOKS WRONG AND IS NOT. It exists to express "exactly one owner
-    per organization" on MySQL, which has no partial unique indexes (C39).
+    WHO OWNS THIS ORGANISATION (C72 step 2c; was `owner_marker`). True for the
+    owner, NULL -- never False -- for everybody else.
 
-    On PostgreSQL this would be a unique index on `organization` with a
-    `WHERE role = 'owner'` condition. MySQL cannot do that. What it CAN do is
-    treat every NULL in a unique index as distinct --- so the marker is True for
-    the owner and NULL for everybody else, and a unique index across
-    (organization, owner_marker) lets any number of members coexist while
-    refusing a second True.
+    READ IT AS A BOOLEAN AND IT IS ONE: `if membership.is_owner` is falsy for
+    NULL. The three-valued shape exists for the database, not for callers:
+    MySQL has no partial unique indexes (C39), but it treats every NULL in a
+    unique index as distinct, so a unique index across (organization,
+    is_owner) lets any number of members coexist while refusing a second True.
+    "At most one owner" is the database's; "at least one" is the services'
+    (the owner cannot be removed, disabled or demoted).
 
-    The cost is that it must be kept in step with `role` by hand, in the same
-    transaction, including on ownership transfer. The check constraint below is
-    what stops the two drifting.
+    THE OWNER HOLDS EVERYTHING BY RULE, NOT BY ROWS (C72): every permission in
+    every app the organisation subscribes to, plus Administration, everywhere
+    in the territory tree. `_membership_data()` and `resolve_allowed_units()`
+    ask this flag first. Grant rows would need topping up whenever an app, role
+    or permission is added, and the first one forgotten leaves the one account
+    that can never be locked out short of something.
+
+    UNTIL STEP 2d it must agree with `role == owner`; the check constraint
+    below refuses the two drifting, and both are written together.
     """
 
     class Meta:
@@ -529,20 +536,20 @@ class Membership(BaseModel):
             models.UniqueConstraint(
                 fields=["user", "organization"], name="membership_unique_user_org"
             ),
-            # The one-owner rule. See owner_marker above for why it is shaped
+            # The one-owner rule. See is_owner above for why it is shaped
             # like this rather than as a conditional index.
             models.UniqueConstraint(
-                fields=["organization", "owner_marker"], name="membership_one_owner_per_org"
+                fields=["organization", "is_owner"], name="membership_one_owner_per_org"
             ),
-            # owner_marker is True exactly when role is owner, and NULL
-            # otherwise. Without this the marker is a second source of truth
-            # that nothing forces to agree with the first.
+            # is_owner is True exactly when role is owner, and NULL otherwise.
+            # Goes in step 2d with `role`; until then the two are written
+            # together and this stops them drifting.
             models.CheckConstraint(
                 condition=(
-                    models.Q(role=MembershipRole.OWNER, owner_marker=True)
-                    | (~models.Q(role=MembershipRole.OWNER) & models.Q(owner_marker__isnull=True))
+                    models.Q(role=MembershipRole.OWNER, is_owner=True)
+                    | (~models.Q(role=MembershipRole.OWNER) & models.Q(is_owner__isnull=True))
                 ),
-                name="membership_owner_marker_matches_role",
+                name="membership_is_owner_matches_role",
             ),
             # C40: an administrator of the ORGANIZATION is not scoped to one
             # dealership. Somebody who administers a single dealership holds the

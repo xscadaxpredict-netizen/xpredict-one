@@ -85,7 +85,7 @@ class TestSignupCreatesTheOrganization:
     def test_the_owner_is_organization_wide_and_marked(self):
         """
         `unit` NULL because an owner is not scoped to one dealership (C40), and
-        `owner_marker` True because that is how "exactly one owner" is
+        `is_owner` True because that is how "exactly one owner" is
         expressed on MySQL, which has no partial unique indexes (C39).
         """
         make_code()
@@ -93,7 +93,7 @@ class TestSignupCreatesTheOrganization:
         result = do_sign_up()
 
         assert result.membership.unit_id is None
-        assert result.membership.owner_marker is True
+        assert result.membership.is_owner is True
 
     def test_the_slug_and_database_name_are_derived(self):
         make_code()
@@ -337,7 +337,7 @@ class TestTheDatabaseRefusesWhatC40Forbids:
                 user=other,
                 organization=result.organization,
                 role=MembershipRole.OWNER,
-                owner_marker=True,
+                is_owner=True,
             )
 
     def test_admin_standing_cannot_be_scoped_to_a_dealership(self):
@@ -384,7 +384,7 @@ class TestTheDatabaseRefusesWhatC40Forbids:
         )
 
         assert membership.unit_id == unit.id
-        assert membership.owner_marker is None
+        assert membership.is_owner is None
 
     def test_administration_cannot_be_granted_as_app_access(self):
         """C44 moved this rule into the database rather than an enum omission."""

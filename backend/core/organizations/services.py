@@ -184,9 +184,9 @@ def sign_up(
         status=MembershipStatus.ACTIVE,
         # Exactly one owner per organization, expressed the MySQL way: True for
         # the owner and NULL for everyone else, unique on (organization,
-        # owner_marker). The check constraint refuses the two drifting apart,
+        # is_owner). The check constraint refuses the two drifting apart,
         # so this is set HERE rather than left to a signal.
-        owner_marker=True,
+        is_owner=True,
         # An owner is organization-wide. The check constraint enforces it, and
         # C40 is the reason: somebody who administers one dealership holds the
         # DMS System administrator role instead.
@@ -326,11 +326,14 @@ def _subscribe_and_grant(
     """
     Buy an app for the organization and let the owner into it (C16, C41).
 
-    TWO ROWS, NEVER ONE. `AppSubscription` says the organization pays;
-    `AppAccess` says this person may open it. The owner is not exempt from the
-    second --- C41 rejected an implicit "or is_owner" because an escape hatch
-    in every permission check is where that kind of bug lives, and because the
-    owner is the one account that cannot be deactivated.
+    `AppSubscription` says the organization pays; the grant says where the
+    owner sits in it.
+
+    C41 REJECTED AN IMPLICIT "OR is_owner" AND C72 REVERSED THAT: since step
+    2c the owner holds every permission of every subscribed app by rule
+    (`_membership_data`), so the grant written here no longer decides what the
+    owner can do. It stays until step 2d retires the old tables, and keeps the
+    owner's data shaped like everybody else's in the meantime.
     """
     if app == AppCode.ADMIN:
         # Administration is neither sold nor granted: it comes with the
@@ -339,7 +342,7 @@ def _subscribe_and_grant(
         # rather than a quiet mistake --- but failing here says why.
         raise ValueError(
             "Administration is not subscribable or grantable (C40). "
-            "The owner reaches it through standing."
+            "The owner holds it by rule, through is_owner (C72)."
         )
 
     try:
@@ -1148,7 +1151,7 @@ def _update_membership(
     # "owner" and there is exactly one per organization (C14), so taking the
     # submitted value here would quietly demote them --- and the owner marker
     # would then disagree with the role, which the check constraint refuses.
-    if membership.role != MembershipRole.OWNER:
+    if not membership.is_owner:
         membership.role = role
 
     membership.unit = unit
@@ -1219,7 +1222,7 @@ def remove_person(*, actor: Membership, organization: Organization, person_id: u
     person = find_person(organization, person_id)
     _assert_can_manage(actor, person.unit_id)
 
-    if isinstance(person, Membership) and person.role == MembershipRole.OWNER:
+    if isinstance(person, Membership) and person.is_owner:
         # Checked here as well as hidden in the UI: an organization with no
         # owner has nobody who could appoint one (C14), and a request does not
         # have to come from our menu.
@@ -1250,7 +1253,7 @@ def set_person_status(
     if isinstance(person, Invitation):
         raise NotAnInvitationError
 
-    if person.role == MembershipRole.OWNER:
+    if person.is_owner:
         # An organization whose owner is switched off has nobody who could
         # switch them back on.
         raise OwnerProtectedError
@@ -1490,9 +1493,9 @@ def accept_invitation(
         unit=invitation.unit,
         # NOT the owner. An owner is founded with the organisation and never
         # invited into it (C41) --- `invite_person` refuses the role outright,
-        # so `owner_marker` stays NULL here and the one-owner constraint is
+        # so `is_owner` stays NULL here and the one-owner constraint is
         # untouched.
-        owner_marker=None,
+        is_owner=None,
         created_by_user_id=invitation.invited_by_id,
     )
 

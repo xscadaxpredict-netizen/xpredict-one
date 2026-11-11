@@ -93,6 +93,11 @@ def resolve_allowed_units(membership: Membership, app: str) -> frozenset[uuid.UU
     """
     if not is_unit_aware(app):
         return None
+    if membership.is_owner:
+        # THE OWNER IS EVERYWHERE, BY RULE (C72), whatever their grant for this
+        # app says -- or whether they hold one at all. The permission layer
+        # still stops them at an app the organisation has not bought (C55).
+        return None
     grant = next((g for g in membership.grants.all() if g.app_id == app), None)
     if grant is None:
         return frozenset()
@@ -172,12 +177,17 @@ def _standing_grants_administration(role: str) -> bool:
     """
     Whether org standing alone confers Administration.
 
-    Owners and org admins hold all 11 `admin.*` permissions and NOT through a
-    Role row (C42). A dealer admin reaches the same app from the other
-    direction --- by holding the DMS System administrator role, which grants
-    `admin.person.*` --- and `Membership.role` stays `member` (C40).
+    Org admins hold all `admin.*` permissions and NOT through a Role row (C42).
+    A dealer admin reaches the same app from the other direction --- by
+    holding the DMS System administrator role, which grants `admin.person.*`
+    --- and `Membership.role` stays `member` (C40).
+
+    THE OWNER IS NOT HERE ANY MORE (C72 step 2c): they hold Administration,
+    with everything else, through `is_owner` in `_membership_data()`. The admin
+    standing goes later in step 2c, when "admin" becomes an Administration
+    role.
     """
-    return role in (MembershipRole.OWNER, MembershipRole.ADMIN)
+    return role == MembershipRole.ADMIN
 
 
 def me(user) -> MeData:
@@ -200,9 +210,11 @@ def me(user) -> MeData:
         .order_by("organization__name")
     )
 
-    # The 11 `admin.*` rows, fetched once rather than per membership. They are
-    # the same list for every organization: the catalogue is platform-wide (C28).
-    admin_permissions = list(Permission.objects.filter(app=AppCode.ADMIN))
+    # The whole catalogue, fetched once rather than per membership: an owner
+    # holds all of it (C72) and an org admin holds its `admin.*` rows. It is
+    # the same list for every organization, because the catalogue is
+    # platform-wide (C28).
+    catalogue = list(Permission.objects.all())
 
     active_subscriptions = set(
         AppSubscription.objects.filter(
@@ -217,7 +229,7 @@ def me(user) -> MeData:
         first_name=user.first_name,
         last_name=user.last_name,
         memberships=[
-            _membership_data(membership, admin_permissions, active_subscriptions)
+            _membership_data(membership, catalogue, active_subscriptions)
             for membership in memberships
         ],
     )
@@ -225,22 +237,38 @@ def me(user) -> MeData:
 
 def _membership_data(
     membership: Membership,
-    admin_permissions: list[Permission],
+    catalogue: list[Permission],
     active_subscriptions: set[tuple[uuid.UUID, str]],
 ) -> MembershipData:
-    # Every permission this person holds here, from BOTH sources, bucketed by
+    # Every permission this person holds here, from EVERY source, bucketed by
     # the app the permission belongs to --- which is not always the app of the
     # role that granted it. The DMS System administrator role grants
     # `admin.person.*`, and that is exactly how a dealer admin gets the
     # Administration app without any standing (C40).
     held: dict[str, set[Permission]] = {}
+    granted_apps: set[str] = set()
+
+    if membership.is_owner:
+        # THE OWNER HOLDS EVERYTHING, BY RULE (C72 step 2c) -- every permission
+        # of every app, as though granted every app. It is NOT a way round
+        # billing: `_app_data()` still requires the subscription, so an owner
+        # is not let into an app the organisation has not bought (C55).
+        #
+        # By rule rather than by rows because rows would need topping up every
+        # time an app, a role or a permission is added, and the first one
+        # forgotten leaves the one account that must never be locked out
+        # short of something.
+        for permission in catalogue:
+            held.setdefault(permission.app_id, set()).add(permission)
+        granted_apps.update(AppCode)
 
     if _standing_grants_administration(membership.role):
-        held.setdefault(AppCode.ADMIN, set()).update(admin_permissions)
+        held.setdefault(AppCode.ADMIN, set()).update(
+            permission for permission in catalogue if permission.app_id == AppCode.ADMIN
+        )
 
     # FROM THE PER-APP GRANTS (C72 step 2b), not `AppAccess`. Callers prefetch
     # `GRANTS_PREFETCH`, so this walks memory rather than the database.
-    granted_apps: set[str] = set()
     for grant in membership.grants.all():
         granted_apps.add(grant.app_id)
         for held_role in grant.roles.all():
@@ -405,7 +433,7 @@ def permissions_for(membership: Membership) -> frozenset[str]:
     Costs a few queries. Prefetch as `me()` does if you are asking for a list
     of memberships; for one caller on one request it is not worth caching.
     """
-    admin_permissions = list(Permission.objects.filter(app=AppCode.ADMIN))
+    catalogue = list(Permission.objects.all())
     active_subscriptions = set(
         AppSubscription.objects.filter(
             organization_id=membership.organization_id,
@@ -413,7 +441,7 @@ def permissions_for(membership: Membership) -> frozenset[str]:
         ).values_list("organization_id", "app")
     )
 
-    data = _membership_data(membership, admin_permissions, active_subscriptions)
+    data = _membership_data(membership, catalogue, active_subscriptions)
 
     return frozenset(code for app in data.apps if app.accessible for code in app.permissions)
 

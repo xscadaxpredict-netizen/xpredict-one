@@ -279,7 +279,7 @@ class TestAcceptingAsSomebodyNew:
     def test_the_new_member_is_not_an_owner(self, client):
         """
         An owner is founded with the organisation and never invited into one
-        (C41). `owner_marker` must stay NULL or the one-owner-per-org
+        (C41). `is_owner` must stay NULL or the one-owner-per-org
         constraint is the thing that notices.
         """
         result = found()
@@ -289,7 +289,7 @@ class TestAcceptingAsSomebodyNew:
 
         membership = Membership.objects.get(user__email="pending@acme.test")
         assert membership.role == MembershipRole.ADMIN
-        assert membership.owner_marker is None
+        assert membership.is_owner is None
         assert (
             Membership.objects.filter(
                 organization=result.organization, role=MembershipRole.OWNER

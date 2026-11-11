@@ -35,7 +35,7 @@ from core.organizations.models import (
 )
 from core.organizations.selectors import me, resolve_allowed_units
 from core.organizations.services import sign_up
-from core.permissions.models import AppAccess, AppCode, Role
+from core.permissions.models import AppAccess, AppCode, Permission, Role
 
 pytestmark = pytest.mark.django_db
 
@@ -161,17 +161,17 @@ class TestTheOwner:
         assert not AppSubscription.objects.filter(app_id=AppCode.ADMIN).exists()
         assert app_of(me(result.user), "acme-motors", AppCode.ADMIN).subscribed is True
 
-    def test_dms_is_group_operations_across_all_five_modules(self):
+    def test_dms_is_every_dms_permission_across_all_five_modules(self):
         """
-        C41 seeds the owner at Group operations. It WAS Manager's set at
-        organization scope -- 33 permissions across three modules -- and C67
-        made it Manager's set plus the four organisation-wide codes, which
-        brings two more modules with them.
+        THE OWNER HOLDS ALL OF DMS BY RULE SINCE C72 STEP 2c, not their seed
+        role. C41 seeds the owner at Group operations (40 permissions), which
+        lacks Tech support's three ticket codes; this test pinned 40 until the
+        rule arrived, and the owner now holds all 43. `test_owner_by_rule.py`
+        names the three.
 
-        THE MODULE LIST IS DERIVED, NOT STORED (C42), which is why seven new
-        permissions changed it: a module shows when the role holds at least one
-        permission inside it. `tools` and `ecommerce` appear here for the first
-        time, through the real mechanism.
+        THE MODULE LIST IS DERIVED, NOT STORED (C42): a module shows when the
+        person holds at least one permission inside it. `tools` and
+        `ecommerce` arrived through that mechanism with C67.
 
         Worth knowing while reading the frontend: `shell/access.ts` has a
         hardcoded `isManagerOrAdmin && (moduleKey === "ecommerce" || moduleKey
@@ -185,7 +185,10 @@ class TestTheOwner:
 
         assert dms.accessible is True
         assert dms.modules == ["ecommerce", "sales", "service", "tech-support", "tools"]
-        assert len(dms.permissions) == 40
+        assert dms.permissions == sorted(
+            Permission.objects.filter(app=AppCode.DMS).values_list("code", flat=True)
+        )
+        assert len(dms.permissions) == 43
 
     def test_unbought_apps_are_shown_but_not_accessible(self):
         """
