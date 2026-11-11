@@ -81,11 +81,21 @@ Full rationale: `context/02-DECISIONS.md` C1–C72 — all `[Decided]`. Don't re
 **C72 IS BEING BUILT on `feat/app-access-model`, piece by piece** (it amends C71 and
 replaces its build list). Every person, in every app, has a **role** (WHAT — per app),
 a place in the **territory tree** (WHERE — one tree per organisation) and a position on
-that app's **reporting chart** (WHOSE). Built so far: the `App` table and **the
-territory tree** (piece 1 — `Territory` on django-treebeard, `/admin/territories/`).
-Until the rest merges, the code below still describes standing, `AppAccess` and a
-person placed at one dealership. **`main` is production: never commit or push to it**
---- work on the working branch.
+that app's **reporting chart** (WHOSE). Built so far: the `App` table, **the territory
+tree** (piece 1 — `Territory` on django-treebeard, the organisation at its root,
+`/admin/territories/`), and **half of piece 2, per-app grants**:
+`MembershipAppAccess` → `MembershipAppRole` + `MembershipAppTerritory` (one or more
+places), written only by `grant_app_access()`.
+
+**THE CODE IS BETWEEN TWO MODELS, ON PURPOSE (steps 2a/2b of four).** The services write
+access to BOTH the old `AppAccess` + `Membership.unit` and the grants. Apps, roles,
+permissions, `/me`'s app list, the users list's apps and DMS dealership scoping READ
+THE GRANTS. Admin standing, `can_manage()`, the users-list scope, the closed-dealership
+refusal, `/me`'s `unit_*` fields and `is_manager_or_admin` still read the OLD fields
+until step 2c (blocked on Q60); step 2d removes the old ones. **A test that builds a
+person by hand must use `conftest.give_app_access`**, which writes both — an
+`AppAccess` row alone now opens nothing. **`main` is production: never commit or push
+to it** --- work on the working branch.
 
 ## Status
 
@@ -372,7 +382,7 @@ effect on their next request**, not after a token expires. The 15-minute access
 lifetime is how long a STOLEN token survives a logout.
 
 **Gates:** `npm run test -w web` (228), `npm run typecheck -w web`, and in `backend/`:
-`pytest` (564), `ruff check .`, `manage.py makemigrations --check`, and
+`pytest` (592), `ruff check .`, `manage.py makemigrations --check`, and
 `.venv/Scripts/lint-imports.exe` — **not** `python -m importlinter.cli`, which exits 0
 without running. Run them before pushing. **`npm run lint` is NOT green and never has
 been on this code:** 139 errors in `apps/web`, inherited with the DMS modules and
