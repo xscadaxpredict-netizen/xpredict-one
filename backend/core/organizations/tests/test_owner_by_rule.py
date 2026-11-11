@@ -139,10 +139,21 @@ class TestEverybodyElseIsUnchanged:
         assert resolve_allowed_units(member, AppCode.DMS) == frozenset()
 
     def test_an_org_admin_holds_administration_and_only_what_they_are_granted(self):
+        """
+        Built the way admins are made since step 2c commit 3: the "Organisation
+        admin" grant is what confers Administration -- the `admin` standing
+        alone confers nothing (`test_admin_reads_grants.py`).
+        """
         result = found()
         user = User.objects.create_user(email="ravi@apex.test", password="x")
         admin = Membership.objects.create(
             user=user, organization=result.organization, role=MembershipRole.ADMIN
+        )
+        grant_app_access(
+            membership=admin,
+            app=AppCode.ADMIN,
+            role=Role.objects.get(code="admin.org_admin"),
+            territories=[Territory.objects.root_for(result.organization)],
         )
         grant_app_access(
             membership=admin,

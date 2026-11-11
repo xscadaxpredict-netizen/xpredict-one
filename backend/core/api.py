@@ -51,8 +51,9 @@ class TenantAPIView(OrgScopedAPIView):
 
     @property
     def is_manager_or_admin(self) -> bool:
-        if self.membership.is_owner or self.membership.role == "admin":
-            return True
+        # PERMISSIONS ONLY since C72 step 2c: the owner holds all of them by
+        # rule, and an organisation admin holds `admin.person.invite` through
+        # their "Organisation admin" grant. `Membership.role` decides nothing.
         held = permissions_for(self.membership)
         return bool(
             held.intersection({

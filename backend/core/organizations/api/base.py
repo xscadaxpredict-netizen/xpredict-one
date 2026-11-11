@@ -28,8 +28,12 @@ from rest_framework.request import Request
 from rest_framework.views import APIView
 
 from core.organizations.exceptions import UnitClosedError
-from core.organizations.models import Membership, MembershipStatus, Organization, UnitStatus
-from core.organizations.selectors import GRANTS_PREFETCH, permissions_for
+from core.organizations.models import Membership, MembershipStatus, Organization
+from core.organizations.selectors import (
+    GRANTS_PREFETCH,
+    is_shut_out_by_closure,
+    permissions_for,
+)
 from shared.exceptions import AuthorizationError, not_found
 
 # Where `config.middleware.TenantMiddleware` leaves the resolved organization.
@@ -241,7 +245,9 @@ class OrgScopedAPIView(APIView):
         # provisioning poll -- is not covered by permissions at all, and the
         # refusal here carries `unit_closed`, which is a reason the shell can
         # act on rather than a generic no.
-        if membership.unit_id is not None and membership.unit.status == UnitStatus.DISABLED:
+        # FROM THE GRANTS SINCE C72 STEP 2c: refused when every place they sit
+        # is a closed dealership (`is_shut_out_by_closure`).
+        if is_shut_out_by_closure(membership):
             raise UnitClosedError
 
         return membership

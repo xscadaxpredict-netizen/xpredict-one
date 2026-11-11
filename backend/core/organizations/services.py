@@ -77,7 +77,7 @@ from core.organizations.models import (
     TerritoryKind,
     UnitStatus,
 )
-from core.organizations.selectors import can_manage
+from core.organizations.selectors import can_manage, reach
 from core.organizations.tasks import schedule_provisioning
 from core.permissions.models import App, AppAccess, AppCode, Role, RoleLevel
 from shared.exceptions import AuthorizationError, FieldError, InvalidInputError, not_found
@@ -1084,7 +1084,9 @@ def invite_person(
     # answers 404 for one that does not exist, would let a dealer admin
     # enumerate the organization's dealerships by watching which status comes
     # back. Both have to be the same refusal.
-    if actor.unit_id is not None:
+    # "Placed somewhere narrower than the whole organisation", from the
+    # actor's grants (C72 step 2c) -- a dealer admin.
+    if reach(actor) is not None:
         if role == MembershipRole.ADMIN:
             raise AuthorizationError
         if unit_id is None:
@@ -1144,7 +1146,7 @@ def update_person(
     _assert_can_manage(actor, person.unit_id)
     _assert_can_manage(actor, unit_id)
 
-    if role == MembershipRole.ADMIN and actor.unit_id is not None:
+    if role == MembershipRole.ADMIN and reach(actor) is not None:
         raise AuthorizationError
 
     unit = _resolve_unit(organization, unit_id)
