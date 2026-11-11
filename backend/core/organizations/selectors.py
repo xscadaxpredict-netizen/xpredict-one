@@ -558,6 +558,32 @@ def can_manage(membership: Membership, target_unit_id: uuid.UUID | None) -> bool
     return target_unit_id is not None and target_unit_id in scope
 
 
+def can_manage_person(actor: Membership, person: Membership | Invitation) -> bool:
+    """
+    May `actor` administer this person? BOTH SIDES FROM THE GRANTS (C72 step
+    2d) for a member: the person must sit somewhere, and everywhere they sit
+    must be inside the actor's reach.
+
+    - Somebody who sits everywhere (the owner, anybody at the root) is
+      managed only by somebody who also sits everywhere.
+    - Somebody placed at Delhi AND Jaipur is managed only by somebody whose
+      reach covers both -- a Delhi dealer admin does not get them.
+    - Somebody with no grants sits nowhere, and only organisation-wide admins
+      reach them. C73 requires an app for everybody new; this keeps any older
+      app-less member manageable from head office.
+
+    AN INVITATION KEEPS ITS OWN `unit` until piece 5, so it is still judged by
+    `can_manage(actor, invitation.unit_id)`.
+    """
+    if isinstance(person, Invitation):
+        return can_manage(actor, person.unit_id)
+    scope = reach(actor)
+    if scope is None:
+        return True
+    target = reach(person)
+    return target is not None and bool(target) and target <= scope
+
+
 def dealers_for(organization: Organization) -> list[Territory]:
     """
     Every dealership in this organization, with `user_count` annotated.
@@ -581,11 +607,13 @@ def dealers_for(organization: Organization) -> list[Territory]:
     inflates rather than failing, so nothing looks wrong until somebody counts
     by hand.
     """
+    # PEOPLE PLACED HERE BY A GRANT (C72 step 2d), counted once each however
+    # many of their apps place them here -- not `Membership.unit`.
     memberships = (
-        Membership.objects.filter(unit=OuterRef("pk"))
+        MembershipAppTerritory.objects.filter(territory=OuterRef("pk"))
         .order_by()
-        .values("unit")
-        .annotate(total=Count("*"))
+        .values("territory")
+        .annotate(total=Count("app_access__membership", distinct=True))
         .values("total")
     )
     pending = (
@@ -736,14 +764,15 @@ def org_users(organization: Organization, viewer: Membership) -> list[OrgUserDat
         .prefetch_related("app_grants__role__permissions")
     )
 
-    # The VIEWER's reach comes from their grants (C72 step 2c); the rows are
-    # still matched on their own `unit_id` until step 2d.
+    # BOTH SIDES FROM THE GRANTS (C72 step 2d): the same rule as managing a
+    # person, so the list never shows somebody the actions would refuse.
+    # Invitations keep their own `unit` until piece 5.
     scope = reach(viewer)
     if scope is not None:
-        memberships = memberships.filter(unit_id__in=scope)
         invitations = invitations.filter(unit_id__in=scope)
+    members = [m for m in memberships if can_manage_person(viewer, m)]
 
-    people = [_membership_row(m) for m in memberships] + [_invitation_row(i) for i in invitations]
+    people = [_membership_row(m) for m in members] + [_invitation_row(i) for i in invitations]
 
     # Sorted here rather than in the database, because two queries cannot share
     # an ORDER BY.
@@ -762,6 +791,7 @@ def org_users(organization: Organization, viewer: Membership) -> list[OrgUserDat
 
 
 def _membership_row(membership: Membership) -> OrgUserData:
+    dealership = dealership_of(membership)
     # FROM THE PER-APP GRANTS (C72 step 2b): each grant's app and its role, as
     # `(app_id, role)` pairs -- the same shape `AppAccess` rows gave.
     grants = [
@@ -774,8 +804,10 @@ def _membership_row(membership: Membership) -> OrgUserData:
         first_name=membership.user.first_name,
         last_name=membership.user.last_name,
         email=membership.user.email,
-        unit_id=membership.unit_id,
-        unit_name=membership.unit.name if membership.unit_id else None,
+        # FROM THE GRANTS (C72 step 2d), like `/me`: their one dealership, or
+        # None for head office and for somebody placed at several.
+        unit_id=dealership.id if dealership else None,
+        unit_name=dealership.name if dealership else None,
         role=standing(membership),
         # `invited` is not reachable here: C51 put pending people in the other
         # table, and `MembershipStatus.INVITED` went with it.

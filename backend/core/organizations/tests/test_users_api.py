@@ -778,7 +778,13 @@ class TestEditing:
         owner.refresh_from_db()
         assert owner.role == MembershipRole.OWNER
 
-    def test_removing_an_app_takes_the_grant_away(self, client):
+    def test_removing_their_last_app_is_refused(self, client):
+        """
+        C73 (2026-11-11, "for now"): everybody holds at least one app, because
+        a person's place comes from their grants. This used to assert the
+        opposite -- that saving with no apps left them with none. The reason
+        is a field error on `apps`, so the form can show it there.
+        """
         result = found()
         person = add_person(result.organization, email="person@acme.test")
         client.force_authenticate(user=result.user)
@@ -789,8 +795,10 @@ class TestEditing:
             format="json",
         )
 
-        assert response.status_code == 200
-        assert person.app_access.count() == 0
+        assert response.status_code == 422
+        assert response.json()["code"] == "person_needs_an_app"
+        assert [e["field"] for e in response.json()["errors"]] == ["apps"]
+        assert person.grants.count() == 1
 
 
 class TestRemoving:

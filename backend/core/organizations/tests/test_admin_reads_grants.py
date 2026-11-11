@@ -174,16 +174,17 @@ class TestWhoseAdministratorTheyAre:
         delhi = create_dealer(organization=result.organization, name="Delhi Motors")
         jaipur = create_dealer(organization=result.organization, name="Jaipur Auto")
         at_delhi = person(result, "a@apex.test", unit=delhi)
-        person(result, "b@apex.test", unit=jaipur)
+        dms_at(at_delhi, [delhi], code="dms.manager")
+        at_jaipur = person(result, "b@apex.test", unit=jaipur)
+        dms_at(at_jaipur, [jaipur], code="dms.manager")
         da = person(result, "da@apex.test")
         dms_at(da, [delhi])
 
         seen = {p.id for p in org_users(result.organization, fresh(da))}
 
-        # Delhi's person only: not Jaipur's, not the owner. The dealer admin
-        # does not see THEMSELVES here, because the ROWS are still matched on
-        # each person's own `unit` (None for this hand-built one) until 2d.
-        assert seen == {at_delhi.id}
+        # Delhi's people -- the dealer admin included, since step 2d matches
+        # the ROWS by their grants too. Not Jaipur's, not the owner.
+        assert seen == {at_delhi.id, da.id}
 
     def test_they_may_not_appoint_an_organisation_admin(self):
         result = found()

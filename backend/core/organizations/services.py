@@ -53,6 +53,7 @@ from core.organizations.exceptions import (
     OrganizationNameUnusableError,
     OwnerProtectedError,
     PersonEmailTakenError,
+    PersonNeedsAnAppError,
     RoleNotInAppError,
     RoleScopeMismatchError,
     SignInAddressLockedError,
@@ -77,7 +78,7 @@ from core.organizations.models import (
     TerritoryKind,
     UnitStatus,
 )
-from core.organizations.selectors import can_manage, reach
+from core.organizations.selectors import GRANTS_PREFETCH, can_manage, can_manage_person, reach
 from core.organizations.tasks import schedule_provisioning
 from core.permissions.models import App, AppAccess, AppCode, Role, RoleLevel
 from shared.exceptions import AuthorizationError, FieldError, InvalidInputError, not_found
@@ -903,8 +904,34 @@ INVITATION_LIFETIME = timedelta(days=7)
 
 
 def _assert_can_manage(actor: Membership, target_unit_id: uuid.UUID | None) -> None:
+    """For a PLACE the form names -- where somebody is being invited or moved to."""
     if not can_manage(actor, target_unit_id):
         raise not_found("User")
+
+
+def _assert_can_manage_person(actor: Membership, person: Membership | Invitation) -> None:
+    """For a PERSON who already exists, judged by their grants (C72 step 2d)."""
+    if not can_manage_person(actor, person):
+        raise not_found("User")
+
+
+def _assert_has_an_app(role: str, grants: list[tuple[str, Role]]) -> None:
+    """
+    C73 (the owner, 2026-11-11, "for now"): everybody holds at least one app,
+    because under C72 a person's place in the tree comes from their grants.
+    Somebody made an admin has one -- Administration. The owner never reaches
+    this: their access is not taken from the form.
+    """
+    if not grants and role != MembershipRole.ADMIN:
+        raise PersonNeedsAnAppError(
+            field_errors=[
+                FieldError(
+                    field="apps",
+                    code="required",
+                    detail="Give this person at least one app.",
+                )
+            ]
+        )
 
 
 def _assert_grants_are_legal(
@@ -1026,8 +1053,10 @@ def find_person(organization: Organization, person_id: uuid.UUID) -> Membership 
     up.
     """
     try:
-        return Membership.objects.select_related("user", "unit").get(
-            id=person_id, organization=organization
+        return (
+            Membership.objects.select_related("user", "unit")
+            .prefetch_related(*GRANTS_PREFETCH)
+            .get(id=person_id, organization=organization)
         )
     except (Membership.DoesNotExist, DjangoValidationError, ValueError):
         pass
@@ -1096,6 +1125,7 @@ def invite_person(
 
     unit = _resolve_unit(organization, unit_id)
     grants = _resolve_grants(apps)
+    _assert_has_an_app(role, grants)
     _assert_grants_are_legal(organization, unit_id, grants)
     _assert_email_free(organization, email)
 
@@ -1143,7 +1173,7 @@ def update_person(
     the source permits the second.
     """
     person = find_person(organization, person_id)
-    _assert_can_manage(actor, person.unit_id)
+    _assert_can_manage_person(actor, person)
     _assert_can_manage(actor, unit_id)
 
     if role == MembershipRole.ADMIN and reach(actor) is not None:
@@ -1151,6 +1181,8 @@ def update_person(
 
     unit = _resolve_unit(organization, unit_id)
     grants = _resolve_grants(apps)
+    if not (isinstance(person, Membership) and person.is_owner):
+        _assert_has_an_app(role, grants)
     _assert_grants_are_legal(organization, unit_id, grants)
 
     if isinstance(person, Invitation):
@@ -1255,7 +1287,7 @@ def remove_person(*, actor: Membership, organization: Organization, person_id: u
     there is no account yet and nothing references them.
     """
     person = find_person(organization, person_id)
-    _assert_can_manage(actor, person.unit_id)
+    _assert_can_manage_person(actor, person)
 
     if isinstance(person, Membership) and person.is_owner:
         # Checked here as well as hidden in the UI: an organization with no
@@ -1283,7 +1315,7 @@ def set_person_status(
     REQUEST rather than when their token expires.
     """
     person = find_person(organization, person_id)
-    _assert_can_manage(actor, person.unit_id)
+    _assert_can_manage_person(actor, person)
 
     if isinstance(person, Invitation):
         raise NotAnInvitationError
@@ -1316,7 +1348,7 @@ def _pending_invitation(
     asking one question.
     """
     person = find_person(organization, person_id)
-    _assert_can_manage(actor, person.unit_id)
+    _assert_can_manage_person(actor, person)
 
     if not isinstance(person, Invitation):
         raise NotAnInvitationError

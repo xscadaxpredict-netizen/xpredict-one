@@ -183,12 +183,10 @@ class TestUserCount:
         result = found()
         unit = Territory.objects.create(organization=result.organization, name="Whitefield")
 
+        # Through `add_person`, which gives each a DMS grant there: since C72
+        # step 2d a person counts where their GRANT places them.
         for index in range(2):
-            user = User.objects.create_user(email=f"person{index}@acme.test", password="x")
-            Membership.objects.create(
-                user=user, organization=result.organization, unit=unit,
-                role=MembershipRole.MEMBER,
-            )
+            add_person(result.organization, unit=unit, email=f"person{index}@acme.test")
         for index in range(3):
             Invitation.objects.create(
                 organization=result.organization,
@@ -214,10 +212,7 @@ class TestUserCount:
         """
         result = found()
         unit = Territory.objects.create(organization=result.organization, name="Whitefield")
-        user = User.objects.create_user(email="joined@acme.test", password="x")
-        Membership.objects.create(
-            user=user, organization=result.organization, unit=unit, role=MembershipRole.MEMBER
-        )
+        add_person(result.organization, unit=unit, email="joined@acme.test")
         Invitation.objects.create(
             organization=result.organization,
             unit=unit,
@@ -239,13 +234,9 @@ class TestUserCount:
         """
         result = found()
         unit = Territory.objects.create(organization=result.organization, name="Whitefield")
-        user = User.objects.create_user(email="off@acme.test", password="x")
-        Membership.objects.create(
-            user=user,
-            organization=result.organization,
-            unit=unit,
-            role=MembershipRole.MEMBER,
-            status=MembershipStatus.DISABLED,
+        add_person(
+            result.organization, unit=unit, email="off@acme.test",
+            standing=MembershipStatus.DISABLED,
         )
 
         client.force_authenticate(user=result.user)

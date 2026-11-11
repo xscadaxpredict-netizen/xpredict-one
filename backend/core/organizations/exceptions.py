@@ -329,6 +329,26 @@ class DealerScopedAppError(ConflictError):
     message = "Somebody at a dealership can only be given DMS."
 
 
+class PersonNeedsAnAppError(InvalidInputError):
+    """
+    Somebody was invited or saved with no app at all (C73, the owner,
+    2026-11-11 -- "for now").
+
+    UNDER C72 A PERSON'S PLACE COMES FROM THEIR APP GRANTS ("DMS, at Delhi
+    Motors"), so somebody holding none belongs nowhere: a dealership's new
+    hire would vanish from that dealership's users list. Requiring one app
+    keeps everybody somewhere. An Organisation admin already has one
+    (Administration); the owner holds everything by rule and is never refused.
+
+    422 RATHER THAN 409: it is about what was submitted, not the state of the
+    world, and the reason travels as a field error on `apps` so the form can
+    show it beside the checkboxes.
+    """
+
+    code = "person_needs_an_app"
+    message = "Give this person at least one app."
+
+
 class RoleScopeMismatchError(ConflictError):
     """
     An org-level role was given to a dealer-scoped person, or the reverse.
