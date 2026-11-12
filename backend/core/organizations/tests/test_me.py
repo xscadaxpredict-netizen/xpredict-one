@@ -27,6 +27,7 @@ from core.billing.models import AppSubscription, SubscriptionStatus
 from core.organizations.models import (
     ActivationCode,
     Membership,
+    MembershipAppAccess,
     MembershipRole,
     MembershipStatus,
     Organization,
@@ -35,7 +36,7 @@ from core.organizations.models import (
 )
 from core.organizations.selectors import me, resolve_allowed_units
 from core.organizations.services import sign_up
-from core.permissions.models import AppAccess, AppCode, Permission, Role
+from core.permissions.models import AppCode, Permission, Role
 
 pytestmark = pytest.mark.django_db
 
@@ -387,8 +388,8 @@ class TestASubscriptionThatLapsed:
     def test_a_grant_left_on_a_cancelled_subscription_opens_nothing(self):
         """
         THE RULE THAT ONLY WORKS BECAUSE THESE ARE TWO TABLES (C16). Cancelling
-        a subscription does not revoke anybody's `AppAccess` row -- there is no
-        process that walks them -- so the grant outlives the subscription. This
+        a subscription does not revoke anybody's grant -- there is no process
+        that walks them -- so the grant outlives the subscription. This
         is the place that catches it, and if it did not, a lapsed customer
         would keep working indefinitely.
         """
@@ -399,7 +400,7 @@ class TestASubscriptionThatLapsed:
 
         dms = app_of(me(result.user), "acme-motors", AppCode.DMS)
 
-        assert AppAccess.objects.filter(app_id=AppCode.DMS).exists()
+        assert MembershipAppAccess.objects.filter(app_id=AppCode.DMS).exists()
         assert dms.subscribed is False
         assert dms.accessible is False
         assert dms.modules == []

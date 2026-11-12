@@ -33,6 +33,7 @@ from core.organizations.exceptions import (
 from core.organizations.models import (
     ActivationCode,
     Membership,
+    MembershipAppAccess,
     MembershipRole,
     MembershipStatus,
     Organization,
@@ -132,17 +133,23 @@ class TestSignupCreatesTheOrganization:
 class TestWhatTheOwnerIsGiven:
     def test_dms_is_subscribed_and_granted_at_group_operations(self):
         """
-        C41: the owner holds apps through `AppAccess` like anyone else, seeded
-        at the top organization-level role, which for DMS is Group operations.
-        Not Fleet viewer -- that one reads and changes nothing.
+        C41: the owner holds apps through a grant like anyone else, seeded at
+        the top organization-level role, which for DMS is Group operations.
+        Not Fleet viewer -- that one reads and changes nothing. (Since C72 the
+        owner holds every permission by rule anyway; the grant keeps their
+        data shaped like everybody else's.)
+
+        THE GRANT ONLY since step 2d-2: no `AppAccess` row.
         """
         make_code()
 
         membership = do_sign_up().membership
 
-        access = AppAccess.objects.get(membership=membership, app_id=AppCode.DMS)
-        assert access.role.code == "dms.group_operations"
-        assert access.role.level == "org"
+        grant = MembershipAppAccess.objects.get(membership=membership, app_id=AppCode.DMS)
+        held = grant.roles.get().role
+        assert held.code == "dms.group_operations"
+        assert held.level == "org"
+        assert not AppAccess.objects.filter(membership=membership).exists()
 
     def test_subscription_and_grant_are_two_separate_rows(self):
         """
@@ -157,7 +164,7 @@ class TestWhatTheOwnerIsGiven:
         assert AppSubscription.objects.filter(
             organization=organization, app_id=AppCode.DMS, status=SubscriptionStatus.ACTIVE
         ).exists()
-        assert AppAccess.objects.filter(app_id=AppCode.DMS).exists()
+        assert MembershipAppAccess.objects.filter(app_id=AppCode.DMS).exists()
 
     def test_only_dms_is_bought(self):
         """

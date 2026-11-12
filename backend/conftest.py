@@ -94,13 +94,21 @@ def give_app_access(*, membership, app_id, role, **extra):
     their one dealership, or the organisation's root. It goes in step 2d with
     `AppAccess` and `Membership.unit`.
 
+    Step 2d-2 stopped the SERVICES writing `AppAccess`; this helper still
+    does, for the tests that build people by hand, and reads the hand-set
+    `Membership.unit` to place the grant. Its callers move to
+    `grant_app_access()` in the next commit, and this goes with them.
+
     Imported lazily: this module is loaded before Django is configured.
     """
-    from core.organizations.services import _legacy_placement, grant_app_access
+    from core.organizations.models import Territory
+    from core.organizations.services import grant_app_access
     from core.permissions.models import AppAccess
 
     access = AppAccess.objects.create(membership=membership, app_id=app_id, role=role, **extra)
-    grant_app_access(
-        membership=membership, app=app_id, role=role, territories=_legacy_placement(membership)
-    )
+    if membership.unit_id is not None:
+        placed = [membership.unit]
+    else:
+        placed = [Territory.objects.root_for(membership.organization)]
+    grant_app_access(membership=membership, app=app_id, role=role, territories=placed)
     return access

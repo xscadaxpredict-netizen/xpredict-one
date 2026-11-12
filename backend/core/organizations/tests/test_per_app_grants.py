@@ -255,17 +255,25 @@ class TestADealershipsPeopleGetDmsOnly:
         assert {g[0] for g in granted(result.membership)} == {"dms", "crm"}
 
 
-class TestTheNewTablesSayWhatTheOldOnesSay:
+def nothing_old(membership: Membership) -> bool:
+    """No `AppAccess` row and no `Membership.unit` -- the old copy unwritten."""
+    fresh = Membership.objects.get(pk=membership.pk)
+    return fresh.unit_id is None and not AppAccess.objects.filter(membership=fresh).exists()
+
+
+class TestTheGrantsAreTheWholeRecord:
     """
-    STEP 2a's PROMISE. Every flow that writes the old tables writes the new
-    ones identically; step 2b switches the readers on the strength of this.
+    STEP 2d-2. Step 2a's promise was "every flow writes the old tables and the
+    new ones identically", and these tests checked the two agreed. The old
+    copy is no longer written at all, so each now checks the grant is right
+    AND that nothing landed in `AppAccess` or `Membership.unit`.
     """
 
     def test_sign_up_places_the_owner_at_the_root(self):
         result = found()
         root = Territory.objects.root_for(result.organization)
 
-        assert granted(result.membership) == legacy(result.membership)
+        assert nothing_old(result.membership)
         assert granted(result.membership) == {
             ("dms", role("dms.group_operations").pk, frozenset({root.pk}))
         }
@@ -276,7 +284,7 @@ class TestTheNewTablesSayWhatTheOldOnesSay:
 
         member = join(result, email="ravi@apex.test", unit=delhi)
 
-        assert granted(member) == legacy(member)
+        assert nothing_old(member)
         assert granted(member) == {("dms", role("dms.manager").pk, frozenset({delhi.pk}))}
 
     def test_accepting_an_organisation_wide_invitation(self):
@@ -285,8 +293,10 @@ class TestTheNewTablesSayWhatTheOldOnesSay:
         member = join(
             result, email="anita@apex.test", apps=[{"app": "dms", "role": "dms.fleet_viewer"}]
         )
+        root = Territory.objects.root_for(result.organization)
 
-        assert granted(member) == legacy(member)
+        assert nothing_old(member)
+        assert granted(member) == {("dms", role("dms.fleet_viewer").pk, frozenset({root.pk}))}
 
     def test_editing_a_person_moves_them_and_changes_their_apps(self):
         result = found()
@@ -306,8 +316,7 @@ class TestTheNewTablesSayWhatTheOldOnesSay:
             apps=[{"app": "dms", "role": "dms.technician"}],
         )
 
-        member.refresh_from_db()
-        assert granted(member) == legacy(member)
+        assert nothing_old(member)
         assert granted(member) == {("dms", role("dms.technician").pk, frozenset({jaipur.pk}))}
 
     def test_removing_a_person_removes_their_grants(self):
@@ -322,6 +331,18 @@ class TestTheNewTablesSayWhatTheOldOnesSay:
         assert not MembershipAppAccess.objects.filter(membership_id=member_id).exists()
 
 
+def written_the_old_way(membership: Membership, code: str, unit=None) -> None:
+    """
+    An `AppAccess` row and a `Membership.unit`, as every grant was written
+    before step 2a. BY HAND since step 2d-2, when the services stopped writing
+    them -- `0017` reads history, not what is written today. Without this the
+    copy tests below compared two empty sets and passed with nothing copied.
+    """
+    if unit is not None:
+        Membership.objects.filter(pk=membership.pk).update(unit=unit)
+    AppAccess.objects.create(membership=membership, app_id="dms", role=role(code))
+
+
 class TestTheCopyMigration:
     def test_it_copies_grants_made_before_the_new_tables_existed(self):
         """
@@ -332,15 +353,24 @@ class TestTheCopyMigration:
         result = found()
         delhi = create_dealer(organization=result.organization, name="Delhi Motors")
         member = join(result, email="ravi@apex.test", unit=delhi)
+        written_the_old_way(result.membership, "dms.group_operations")
+        written_the_old_way(member, "dms.manager", unit=delhi)
         MembershipAppAccess.objects.all().delete()
 
         COPY.copy(django_apps, None)
 
-        assert granted(result.membership) == legacy(result.membership)
-        assert granted(member) == legacy(member)
+        root = Territory.objects.root_for(result.organization)
+        assert granted(result.membership) == legacy(result.membership) == {
+            ("dms", role("dms.group_operations").pk, frozenset({root.pk}))
+        }
+        member = Membership.objects.get(pk=member.pk)
+        assert granted(member) == legacy(member) == {
+            ("dms", role("dms.manager").pk, frozenset({delhi.pk}))
+        }
 
     def test_running_it_twice_changes_nothing(self):
         result = found()
+        written_the_old_way(result.membership, "dms.group_operations")
         MembershipAppAccess.objects.all().delete()
         COPY.copy(django_apps, None)
         first = granted(result.membership)

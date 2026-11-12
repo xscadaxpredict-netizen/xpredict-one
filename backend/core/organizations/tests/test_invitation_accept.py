@@ -39,6 +39,7 @@ from core.organizations.models import (
     MembershipStatus,
     Territory,
 )
+from core.organizations.selectors import reach, standing
 from core.organizations.services import accept_invitation, invitation_link, sign_up
 from core.permissions.models import AppCode, Role
 
@@ -235,8 +236,12 @@ class TestAcceptingAsSomebodyNew:
         user = User.objects.get(email="pending@acme.test")
         membership = Membership.objects.get(user=user, organization=result.organization)
         assert membership.status == MembershipStatus.ACTIVE
-        assert membership.role == MembershipRole.MEMBER
-        assert [a.role.code for a in membership.app_access.all()] == [ORG_ROLE]
+        assert standing(membership) == MembershipRole.MEMBER
+        # THE GRANT, and only the grant (C72 step 2d-2): no `AppAccess` row.
+        assert [r.role.code for g in membership.grants.all() for r in g.roles.all()] == [
+            ORG_ROLE
+        ]
+        assert not membership.app_access.exists()
 
     def test_the_name_comes_from_the_invitation(self, client):
         """
@@ -274,7 +279,9 @@ class TestAcceptingAsSomebodyNew:
         client.post(ACCEPT_URL.format(token=TOKEN), {"password": PASSWORD}, format="json")
 
         membership = Membership.objects.get(user__email="pending@acme.test")
-        assert membership.unit_id == unit.id
+        # Into the GRANT; `Membership.unit` is no longer written (step 2d-2).
+        assert reach(membership) == frozenset({unit.id})
+        assert membership.unit_id is None
 
     def test_the_new_member_is_not_an_owner(self, client):
         """
@@ -288,7 +295,7 @@ class TestAcceptingAsSomebodyNew:
         client.post(ACCEPT_URL.format(token=TOKEN), {"password": PASSWORD}, format="json")
 
         membership = Membership.objects.get(user__email="pending@acme.test")
-        assert membership.role == MembershipRole.ADMIN
+        assert standing(membership) == MembershipRole.ADMIN
         assert membership.is_owner is None
         assert (
             Membership.objects.filter(

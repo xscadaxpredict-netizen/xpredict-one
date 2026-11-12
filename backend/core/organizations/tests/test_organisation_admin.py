@@ -168,12 +168,22 @@ class TestTheOwnerGetsNone:
         assert administration(result.membership) is None
 
 
+def as_before_the_migration(membership) -> None:
+    """
+    The shape `0019` met: standing `admin` on the old field, no Administration
+    grant. Set by hand because the services stopped writing `Membership.role`
+    in step 2d-2 -- the migration reads history, not what is written today.
+    """
+    Membership.objects.filter(pk=membership.pk).update(role=MembershipRole.ADMIN)
+    MembershipAppAccess.objects.filter(membership=membership, app_id=AppCode.ADMIN).delete()
+
+
 class TestTheDataMigration:
     def test_it_grants_admins_made_before_it_existed(self):
         result = found()
         admin = join(result, role_name="admin")
         member = join(result, email="anita@apex.test")
-        MembershipAppAccess.objects.filter(app_id=AppCode.ADMIN).delete()
+        as_before_the_migration(admin)
 
         GRANT_ADMINS.grant(django_apps, None)
 
@@ -195,7 +205,7 @@ class TestTheDataMigration:
     def test_running_it_twice_changes_nothing(self):
         result = found()
         admin = join(result, role_name="admin")
-        MembershipAppAccess.objects.filter(app_id=AppCode.ADMIN).delete()
+        as_before_the_migration(admin)
         GRANT_ADMINS.grant(django_apps, None)
 
         GRANT_ADMINS.grant(django_apps, None)

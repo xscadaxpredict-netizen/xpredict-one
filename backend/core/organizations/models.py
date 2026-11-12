@@ -661,9 +661,9 @@ class InvitationAppGrant(BaseModel):
 # Writing all of it in one function, in one transaction, is what makes that
 # true.
 #
-# STEP 2a: these tables are kept in step with the old ones (`AppAccess`,
-# `Membership.unit`) by every service that writes those, and NOTHING READS
-# THEM YET. Step 2b switches the readers; step 2d retires the old columns.
+# THESE ARE THE WHOLE RECORD SINCE STEP 2d-2. Every reader moved here in steps
+# 2b-2d-1, and the services stopped writing the old copy (`AppAccess`,
+# `Membership.role`, `Membership.unit`) in 2d-2. Step 2d-3 drops it.
 # ---------------------------------------------------------------------------
 
 

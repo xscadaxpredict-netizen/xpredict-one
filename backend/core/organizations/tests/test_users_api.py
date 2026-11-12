@@ -596,7 +596,7 @@ class TestSubscriptionIsRequired:
         """
         result = found()
         owner = Membership.objects.get(user=result.user, organization=result.organization)
-        owner.app_access.all().delete()
+        owner.grants.all().delete()
         client.force_authenticate(user=result.user)
 
         response = client.put(
@@ -609,7 +609,7 @@ class TestSubscriptionIsRequired:
         )
 
         assert response.status_code == 200
-        assert [a.app_id for a in owner.app_access.all()] == ["dms"]
+        assert [g.app_id for g in owner.grants.all()] == ["dms"]
 
 
 class TestC27DealerScopedGrants:
@@ -714,7 +714,7 @@ class TestEditing:
         assert response.json()["first_name"] == "Renamed"
         person.refresh_from_db()
         assert person.user.first_name == "Renamed"
-        assert person.app_access.count() == 1
+        assert person.grants.count() == 1
 
     def test_a_members_sign_in_address_cannot_be_changed(self, client):
         """

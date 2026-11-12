@@ -80,7 +80,7 @@ from core.organizations.models import (
 )
 from core.organizations.selectors import GRANTS_PREFETCH, can_manage, can_manage_person, reach
 from core.organizations.tasks import schedule_provisioning
-from core.permissions.models import App, AppAccess, AppCode, Role, RoleLevel
+from core.permissions.models import App, AppCode, Role, RoleLevel
 from shared.exceptions import AuthorizationError, FieldError, InvalidInputError, not_found
 
 # WHAT A NEW ORGANIZATION IS SUBSCRIBED TO. DMS only, because DMS is the
@@ -188,10 +188,10 @@ def sign_up(
         # is_owner). The check constraint refuses the two drifting apart,
         # so this is set HERE rather than left to a signal.
         is_owner=True,
-        # An owner is organization-wide. The check constraint enforces it, and
-        # C40 is the reason: somebody who administers one dealership holds the
-        # DMS System administrator role instead.
-        unit=None,
+        # `role` IS STILL WRITTEN FOR THE OWNER, and only for the owner: the
+        # check constraint ties it to `is_owner`, and the two go together in
+        # step 2d-3. Nobody reads it. `unit` is no longer written at all --
+        # an owner is organisation-wide by rule (C72).
         created_by_user_id=user.id,
     )
 
@@ -360,10 +360,7 @@ def _subscribe_and_grant(
     )
 
     role = Role.objects.get(app=app, code=role_code)
-    AppAccess.objects.create(
-        membership=membership, app_id=app, role=role, created_by_user_id=actor_id
-    )
-    # C72 STEP 2a: the same grant in the new tables. The owner is
+    # THE GRANT ONLY (C72 step 2d-2) -- no `AppAccess` row. The owner is
     # organisation-wide, so they are placed at the organisation's root.
     grant_app_access(
         membership=membership,
@@ -554,8 +551,9 @@ def move_territory(*, territory: Territory, parent_id: uuid.UUID | None) -> Terr
 # one territory; every territory is in the person's own organisation; and a
 # dealership person holds only apps that use territories (C27, Q53).
 #
-# STEP 2a: called alongside the old `AppAccess` writes, so the two stay in
-# step; nothing reads the new tables until step 2b.
+# SINCE STEP 2d-2 THE GRANTS ARE THE ONLY RECORD. The services no longer write
+# `AppAccess`, `Membership.role` (except the owner's, tied to `is_owner` until
+# 2d-3) or `Membership.unit`; step 2d-3 drops them.
 # ---------------------------------------------------------------------------
 
 
@@ -638,38 +636,64 @@ def revoke_app_access(*, membership: Membership, app: str) -> None:
     MembershipAppAccess.objects.filter(membership=membership, app_id=app).delete()
 
 
-def _legacy_placement(membership: Membership) -> list[Territory]:
+def _placement(organization: Organization, unit: Territory | None) -> list[Territory]:
     """
-    STEP 2a's bridge: where today's data says this person sits -- their one
-    dealership, or the organisation's root if they have none. Goes in step 2d
-    with `Membership.unit`.
+    Where the FORM puts this person: the dealership it names, or the
+    organisation's root when it names none.
+
+    FROM THE FORM, NOT FROM `Membership.unit` (C72 step 2d-2). Until this step
+    the services saved the dealership on the membership and then read it back
+    to place the grants; now it goes straight into the grants and the old
+    field is not written at all. The form still sends one dealership --
+    several places per person is piece 7's screen.
     """
-    if membership.unit_id is not None:
-        return [membership.unit]
-    return [Territory.objects.root_for(membership.organization)]
+    if unit is not None:
+        return [unit]
+    return [Territory.objects.root_for(organization)]
+
+
+def _assert_organisation_wide(standing: str, unit_id: uuid.UUID | None) -> None:
+    """
+    An owner or an admin is never placed at one dealership.
+
+    THIS USED TO BE THE DATABASE'S JOB, and badly: the check constraint on
+    `Membership` refused `admin` with a `unit`, so an admin invitation naming
+    a dealership was accepted at invite time and blew up as a 500 when the
+    person clicked the link. Step 2d-2 stops writing `Membership.unit`, which
+    would have retired that constraint silently. So the rule lives here now,
+    as a 409, checked at invite, at edit and again at accept.
+
+    A dealership's administrator holds DMS System administrator there (C40);
+    "admin" on the form means the Organisation admin, who is at the root.
+    """
+    if unit_id is not None and standing in (MembershipRole.OWNER, MembershipRole.ADMIN):
+        raise RoleScopeMismatchError
 
 
 # The one built-in Administration role (Q60; `permissions/0010`).
 ORGANISATION_ADMIN_ROLE = "admin.org_admin"
 
 
-def _grant_administration_if_admin(membership: Membership, *, actor_id=None) -> None:
+def _grant_administration_if_admin(
+    membership: Membership, standing: str, *, actor_id=None
+) -> None:
     """
-    STEP 2c's bridge: standing `admin` -> an Administration grant, role
-    "Organisation admin", placed at the organisation's root. The owner is
-    `owner`, not `admin`, so they get none: they hold Administration by rule
-    (`is_owner`).
+    The form's `role: "admin"` -> an Administration grant, role "Organisation
+    admin", placed at the organisation's root. The owner gets none: they hold
+    Administration by rule (`is_owner`), whatever the form says.
+
+    `standing` IS THE FORM'S WORD, passed in, not `membership.role` -- which
+    step 2d-2 no longer writes. The frontend keeps sending "admin" | "member"
+    until piece 7.
 
     ONLY EVER ADDS, because both callers start from a person with no
     Administration grant -- accepting creates the membership, and editing has
     just deleted every grant it had. A demoted admin therefore loses it by that
     delete, not here. A new caller that does NOT start clean must revoke first.
-
-    THE FORM STILL SENDS `role: "admin" | "member"`, so this is where that
-    word becomes a grant -- the frontend does not change until piece 7. Goes
-    in step 2d with the standing.
     """
-    if membership.role == MembershipRole.ADMIN:
+    if membership.is_owner:
+        return
+    if standing == MembershipRole.ADMIN:
         grant_app_access(
             membership=membership,
             app=AppCode.ADMIN,
@@ -1124,6 +1148,7 @@ def invite_person(
     _assert_can_manage(actor, unit_id)
 
     unit = _resolve_unit(organization, unit_id)
+    _assert_organisation_wide(role, unit_id)
     grants = _resolve_grants(apps)
     _assert_has_an_app(role, grants)
     _assert_grants_are_legal(organization, unit_id, grants)
@@ -1180,8 +1205,10 @@ def update_person(
         raise AuthorizationError
 
     unit = _resolve_unit(organization, unit_id)
+    is_the_owner = isinstance(person, Membership) and person.is_owner
+    _assert_organisation_wide(MembershipRole.OWNER if is_the_owner else role, unit_id)
     grants = _resolve_grants(apps)
-    if not (isinstance(person, Membership) and person.is_owner):
+    if not is_the_owner:
         _assert_has_an_app(role, grants)
     _assert_grants_are_legal(organization, unit_id, grants)
 
@@ -1211,37 +1238,27 @@ def _update_membership(
     membership.user.last_name = last_name
     membership.user.save(update_fields=["first_name", "last_name"])
 
-    # THE OWNER'S STANDING SURVIVES WHATEVER IS SENT. The form never offers
-    # "owner" and there is exactly one per organization (C14), so taking the
-    # submitted value here would quietly demote them --- and the owner marker
-    # would then disagree with the role, which the check constraint refuses.
-    if not membership.is_owner:
-        membership.role = role
-
-    membership.unit = unit
-    membership.save(update_fields=["role", "unit"])
-
+    # THE GRANTS ARE THE WHOLE RECORD (C72 step 2d-2). `Membership.role`,
+    # `Membership.unit` and `AppAccess` are no longer written: nothing has
+    # read them since steps 2c and 2d-1, and they are dropped in 2d-3. The
+    # owner's standing therefore cannot be demoted by a form any more -- there
+    # is no field here for the form to overwrite.
+    #
     # DELETE THEN CREATE, inside the caller's transaction. Updating in place
     # would mean working out which grants went away, and a missed one leaves
     # somebody holding an app the form says they lost --- the stale-grant shape
     # C16 already had to catch once in billing.
-    membership.app_access.all().delete()
-    for app, granted_role in grants:
-        AppAccess.objects.create(membership=membership, app_id=app, role=granted_role)
-
-    # C72 STEP 2a: the same grants in the new tables, delete-then-create for the
-    # same reason, each placed where today's data puts the person.
     membership.grants.all().delete()
     for app, granted_role in grants:
         grant_app_access(
             membership=membership,
             app=app,
             role=granted_role,
-            territories=_legacy_placement(membership),
+            territories=_placement(membership.organization, unit),
         )
-    # C72 STEP 2c: the delete above took any Administration grant with it, so
-    # the standing decides afresh whether there is one (a demotion ends here).
-    _grant_administration_if_admin(membership)
+    # The delete above took any Administration grant with it, so the form
+    # decides afresh whether there is one (a demotion ends here).
+    _grant_administration_if_admin(membership, role)
 
 
 def _update_invitation(
@@ -1515,6 +1532,10 @@ def accept_invitation(
         (grant.app_id, grant.role)
         for grant in invitation.app_grants.select_related("role").all()
     ]
+    # Re-checked like the rest: an `admin` invitation naming a dealership could
+    # be issued before this rule moved out of the database (step 2d-2), and the
+    # constraint that used to refuse it -- as a 500 -- no longer sees a unit.
+    _assert_organisation_wide(invitation.role, invitation.unit_id)
     _assert_grants_are_legal(organization, invitation.unit_id, grants)
 
     existing = User.objects.filter(email__iexact=email).first()
@@ -1555,9 +1576,10 @@ def accept_invitation(
     membership = Membership.objects.create(
         user=account,
         organization=organization,
-        role=invitation.role,
         status=MembershipStatus.ACTIVE,
-        unit=invitation.unit,
+        # NO `role`, NO `unit` (C72 step 2d-2): where they sit and whether they
+        # administer are the grants below. `role` takes its column default.
+        #
         # NOT the owner. An owner is founded with the organisation and never
         # invited into it (C41) --- `invite_person` refuses the role outright,
         # so `is_owner` stays NULL here and the one-owner constraint is
@@ -1567,22 +1589,17 @@ def accept_invitation(
     )
 
     for app, role in grants:
-        AppAccess.objects.create(
-            membership=membership,
-            app_id=app,
-            role=role,
-            created_by_user_id=invitation.invited_by_id,
-        )
-        # C72 STEP 2a: the same grant in the new tables.
         grant_app_access(
             membership=membership,
             app=app,
             role=role,
-            territories=_legacy_placement(membership),
+            territories=_placement(organization, invitation.unit),
             actor_id=invitation.invited_by_id,
         )
-    # C72 STEP 2c: an `admin` invitation becomes an Organisation admin grant.
-    _grant_administration_if_admin(membership, actor_id=invitation.invited_by_id)
+    # An `admin` invitation becomes an Organisation admin grant.
+    _grant_administration_if_admin(
+        membership, invitation.role, actor_id=invitation.invited_by_id
+    )
 
     invitation.accepted_at = timezone.now()
     invitation.save(update_fields=["accepted_at", "updated_at"])
