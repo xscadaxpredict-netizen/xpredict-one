@@ -18,15 +18,77 @@ import-linter.
 from __future__ import annotations
 
 import uuid
+from collections.abc import Iterator
+from contextlib import contextmanager
 from contextvars import ContextVar
+from typing import Final
 
 from django.db import models
 
-# Set by the tenant middleware from resolve_allowed_units(membership, app).
-# None means "no unit restriction" --- either the person is org-level, or the
-# app is not unit-aware. It is NOT the same as an empty set, which would mean
-# "restricted to nothing".
-allowed_units: ContextVar[frozenset[uuid.UUID] | None] = ContextVar("allowed_units", default=None)
+
+class _NotSet:
+    """The type of `NOT_SET`. One instance exists; compare with `is`."""
+
+    def __repr__(self) -> str:
+        return "<allowed_units: NOT_SET>"
+
+
+NOT_SET: Final = _NotSet()
+"""
+"NOBODY HAS DECIDED WHICH DEALERSHIPS THIS CODE MAY SEE" --- the sentinel.
+
+`allowed_units` has THREE states, and the third is the point:
+
+- a frozenset: somebody decided, and it is these dealerships (empty = none);
+- None: somebody decided, and it is every dealership;
+- NOT_SET: nobody decided, and `UnitScopedManager` REFUSES to query.
+
+Before this, None meant both "everything, on purpose" and "nobody set it", so
+any code path that forgot --- a view not built on `TenantAPIView`, a Celery
+task, a management command --- silently read every dealership's records. That
+is fail-open, the one thing CLAUDE.md's tenancy rules forbid. Now forgetting is
+an exception on the first query, noticed by whoever wrote the code rather than
+by a dealer looking at another dealer's enquiries.
+"""
+
+
+class UnitScopeMissingError(RuntimeError):
+    """
+    A dealership-scoped model was queried with `allowed_units` never set.
+
+    The sibling of `config.routers.TenantContextMissingError`: that one says
+    "which DATABASE?" was never answered, this one says "which DEALERSHIPS?"
+    was not. A programming error, so a 500 --- never a guess.
+    """
+
+
+# NOT_SET until somebody decides. `TenantAPIView` decides per request from
+# `resolve_allowed_units(membership, app)`; anything else says so explicitly
+# with `unit_scope()`. The middleware resets it to NOT_SET at the start of
+# every org-scoped request and restores it in a `finally`.
+allowed_units: ContextVar[frozenset[uuid.UUID] | _NotSet | None] = ContextVar(
+    "allowed_units", default=NOT_SET
+)
+
+
+@contextmanager
+def unit_scope(units: frozenset[uuid.UUID] | None) -> Iterator[None]:
+    """
+    Decide which dealerships the code inside may see, then put it back.
+
+    `unit_scope(None)` is "every dealership, on purpose" --- a fleet-wide
+    report, a data fix, a test building rows. Writing it is the point: the
+    choice is visible in the code, the way `required_permissions = []` is,
+    instead of being what happens when nobody set anything.
+
+    Restores the previous value in a `finally`, so a nested scope or an
+    exception cannot leak a wider one outwards.
+    """
+    token = allowed_units.set(units)
+    try:
+        yield
+    finally:
+        allowed_units.reset(token)
 
 
 class TimestampMixin(models.Model):
@@ -68,12 +130,24 @@ class UnitScopedManager(models.Manager):
 
     Only used by unit-aware apps. `allowed_units` of None means unrestricted,
     which is the correct value both for an org-level person and for any request
-    into an app that has no units at all.
+    into an app that has no units at all. NOT_SET raises (see `NOT_SET`).
+
+    THIS IS ALSO THE MANAGER BEHIND `.objects.create()` AND REVERSE RELATIONS
+    (`enquiry.followups.all()`), so those refuse too when nobody has decided.
+    Following a ForeignKey upwards (`quotation.enquiry`) and `Model.save()` use
+    Django's plain base manager and are not affected.
     """
 
     def get_queryset(self):
-        qs = super().get_queryset()
         allowed = allowed_units.get()
+        if allowed is NOT_SET:
+            raise UnitScopeMissingError(
+                f"{self.model.__name__} was queried with no dealership scope decided. "
+                "Inside a DMS request `TenantAPIView` sets it; anywhere else wrap the "
+                "code in `unit_scope(...)` -- `unit_scope(None)` for every dealership, "
+                "on purpose."
+            )
+        qs = super().get_queryset()
         if allowed is None:
             return qs
         return qs.filter(unit_id__in=allowed)

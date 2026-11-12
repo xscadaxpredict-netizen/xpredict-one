@@ -8,6 +8,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from core.api import TenantAPIView
+from shared.base_models import unit_scope
 
 from .. import selectors, services
 from ..models import ServiceReport
@@ -262,12 +263,26 @@ class ComplaintDetailView(TenantAPIView):
         services.delete_complaint(complaint_id=pk)
         return Response(status=status.HTTP_204_NO_CONTENT)
 
+def _report_for_sign_link(token: str) -> ServiceReport | None:
+    """
+    The report a public sign link names, WHICHEVER DEALERSHIP FILED IT.
+
+    `all_units`, deliberately. Nobody is signed in on these two endpoints --
+    the customer signing has no membership and no grant -- so there is no
+    dealership scope to apply, and `TenantAPIView` never runs to decide one.
+    THE TOKEN IS THE CREDENTIAL: it names one report, and that is the reach.
+    Before `NOT_SET` this read `objects` and got "every dealership" by
+    accident; now it says so on purpose.
+    """
+    return ServiceReport.all_units.filter(sign_link_token=token).first()
+
+
 class PublicServiceReportView(APIView):
     authentication_classes: ClassVar[list] = []
     permission_classes: ClassVar[list] = []
 
     def get(self, request: Request, org_slug: str, token: str) -> Response:
-        report = ServiceReport.objects.filter(sign_link_token=token).first()
+        report = _report_for_sign_link(token)
         if not report:
             from .exceptions import not_found
             raise not_found("Report")
@@ -281,14 +296,19 @@ class PublicServiceReportView(APIView):
                 status=status.HTTP_403_FORBIDDEN,
             )
 
-        return Response(ServiceReportReadSerializer(report, context={"request": request}).data)
+        # The serializer reads `report.attachments`, a reverse relation through
+        # the dealership-scoped manager -- confined to THIS report's dealership,
+        # the narrowest scope that shows the page.
+        with unit_scope(frozenset({report.unit_id})):
+            data = ServiceReportReadSerializer(report, context={"request": request}).data
+        return Response(data)
 
 class PublicServiceReportSignView(APIView):
     authentication_classes: ClassVar[list] = []
     permission_classes: ClassVar[list] = []
 
     def post(self, request: Request, org_slug: str, token: str) -> Response:
-        report = ServiceReport.objects.filter(sign_link_token=token).first()
+        report = _report_for_sign_link(token)
         if not report:
             from .exceptions import not_found
             raise not_found("Report")

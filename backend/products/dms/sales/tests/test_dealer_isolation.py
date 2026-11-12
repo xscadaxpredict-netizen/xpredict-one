@@ -21,7 +21,7 @@ from core.organizations.models import (
 from core.permissions.models import AppCode, Role
 from products.dms.sales import selectors
 from products.dms.sales.models import Enquiry
-from shared.base_models import allowed_units
+from shared.base_models import allowed_units, unit_scope
 
 pytestmark = pytest.mark.django_db(databases=["default", TEST_TENANT_ALIAS])
 
@@ -72,20 +72,20 @@ class TestDealerAndColleagueIsolation:
         # Switch context to tenant db
         token_db = current_tenant_db.set(TEST_TENANT_ALIAS)
         try:
-            # Create enquiry for Dealer A
-            enq_a = Enquiry.objects.create(
-                unit_id=dealer_a,
-                customer_name="Customer A",
-                phone="1234567890",
-                created_by_user_id=user_a1,
-            )
-            # Create enquiry for Dealer B
-            enq_b = Enquiry.objects.create(
-                unit_id=dealer_b,
-                customer_name="Customer B",
-                phone="9876543210",
-                created_by_user_id=user_b1,
-            )
+            # Built at both dealerships, so said on purpose: every dealership.
+            with unit_scope(None):
+                enq_a = Enquiry.objects.create(
+                    unit_id=dealer_a,
+                    customer_name="Customer A",
+                    phone="1234567890",
+                    created_by_user_id=user_a1,
+                )
+                enq_b = Enquiry.objects.create(
+                    unit_id=dealer_b,
+                    customer_name="Customer B",
+                    phone="9876543210",
+                    created_by_user_id=user_b1,
+                )
 
             # 1. When allowed_units is scoped to Dealer A
             token_units = allowed_units.set(frozenset({dealer_a}))
