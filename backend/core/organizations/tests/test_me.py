@@ -261,7 +261,6 @@ class TestWorkspaceReadiness:
         Membership.objects.create(
             user=acme.user,
             organization=northway.organization,
-            role=MembershipRole.MEMBER,
         )
 
         by_slug = {m.org_slug: m.is_ready for m in me(acme.user).memberships}
@@ -424,13 +423,7 @@ class TestOrganizationIsolation:
         acme = found("Acme Motors", "owner@acme.test", "CODE-ACME")
         northway = found("Northway Auto Group", "owner@northway.test", "CODE-NORTH")
 
-        unit = Territory.objects.create(organization=northway.organization, name="Whitefield")
-        Membership.objects.create(
-            user=acme.user,
-            organization=northway.organization,
-            unit=unit,
-            role=MembershipRole.MEMBER,
-        )
+        Membership.objects.create(user=acme.user, organization=northway.organization)
 
         payload = me(acme.user)
 
@@ -438,7 +431,7 @@ class TestOrganizationIsolation:
             "acme-motors",
             "northway-auto-group",
         ]
-        # Owner in one, a dealer-scoped member with no grants in the other.
+        # Owner in one, a member with no grants in the other.
         assert app_of(payload, "acme-motors", AppCode.DMS).accessible is True
         assert app_of(payload, "northway-auto-group", AppCode.DMS).accessible is False
         assert app_of(payload, "northway-auto-group", AppCode.ADMIN).accessible is False

@@ -34,7 +34,6 @@ from core.accounts.models import User
 from core.organizations.api.base import REQUEST_ORGANIZATION_ATTR, OrgScopedAPIView
 from core.organizations.models import (
     Membership,
-    MembershipRole,
     MembershipStatus,
     Organization,
     OrganizationStatus,
@@ -113,7 +112,7 @@ def make_org(slug="acme-motors", status=OrganizationStatus.ACTIVE) -> Organizati
 def make_member(organization, email="person@acme.test", status=MembershipStatus.ACTIVE):
     user = User.objects.create_user(email=email, password="x")
     Membership.objects.create(
-        user=user, organization=organization, role=MembershipRole.MEMBER, status=status
+        user=user, organization=organization, status=status
     )
     return user
 

@@ -472,13 +472,17 @@ class Territory(MP_Node, BaseModel):
 
 class Membership(BaseModel):
     """
-    One person inside one organization: their standing, and their dealership.
+    One person inside one organization: that they belong, and whether they own it.
 
-    `unit_id` IS THE ONLY PLACE A PERSON'S DEALERSHIP IS STORED (C7). Null means
-    organization-wide and `resolve_allowed_units()` returns unrestricted; a value
-    means that dealership and nothing else. Nothing reads this field to make a
-    scoping decision directly --- everything goes through the resolver, so there
-    is one place to be right.
+    EVERYTHING ELSE IS IN THEIR GRANTS (C72). Which apps, with which role, at
+    which places in the territory tree: `MembershipAppAccess` ->
+    `MembershipAppRole` + `MembershipAppTerritory`, written only by
+    `grant_app_access()`. Whether they administer the organisation is an
+    "Organisation admin" grant at the root.
+
+    `unit` AND `role` WERE HERE UNTIL STEP 2d-3, which dropped them with
+    `permissions.AppAccess`. `MembershipRole` survives as the API's words
+    ("owner" / "admin" / "member"), worked out by `selectors.standing()`.
     """
 
     user = models.ForeignKey(
@@ -486,17 +490,6 @@ class Membership(BaseModel):
     )
     organization = models.ForeignKey(
         Organization, on_delete=models.CASCADE, related_name="memberships"
-    )
-    unit = models.ForeignKey(
-        Territory,
-        on_delete=models.PROTECT,
-        null=True,
-        blank=True,
-        related_name="memberships",
-    )
-
-    role = models.CharField(
-        max_length=20, choices=MembershipRole.choices, default=MembershipRole.MEMBER
     )
     status = models.CharField(
         max_length=20, choices=MembershipStatus.choices, default=MembershipStatus.ACTIVE
@@ -526,9 +519,6 @@ class Membership(BaseModel):
     ask this flag first. Grant rows would need topping up whenever an app, role
     or permission is added, and the first one forgotten leaves the one account
     that can never be locked out short of something.
-
-    UNTIL STEP 2d it must agree with `role == owner`; the check constraint
-    below refuses the two drifting, and both are written together.
     """
 
     class Meta:
@@ -541,23 +531,13 @@ class Membership(BaseModel):
             models.UniqueConstraint(
                 fields=["organization", "is_owner"], name="membership_one_owner_per_org"
             ),
-            # is_owner is True exactly when role is owner, and NULL otherwise.
-            # Goes in step 2d with `role`; until then the two are written
-            # together and this stops them drifting.
+            # TWO CHECK CONSTRAINTS WENT WITH `role` AND `unit` (step 2d-3):
+            # "is_owner matches role" has nothing left to match, and "an owner or
+            # admin has no dealership" is `_assert_organisation_wide()` in the
+            # services now -- a 409 at invite, edit and accept rather than a 500.
             models.CheckConstraint(
-                condition=(
-                    models.Q(role=MembershipRole.OWNER, is_owner=True)
-                    | (~models.Q(role=MembershipRole.OWNER) & models.Q(is_owner__isnull=True))
-                ),
-                name="membership_is_owner_matches_role",
-            ),
-            # C40: an administrator of the ORGANIZATION is not scoped to one
-            # dealership. Somebody who administers a single dealership holds the
-            # DMS System administrator role instead, and their standing stays
-            # `member`. This is what C31 used to say in prose.
-            models.CheckConstraint(
-                condition=(models.Q(role=MembershipRole.MEMBER) | models.Q(unit__isnull=True)),
-                name="membership_org_standing_has_no_unit",
+                condition=models.Q(is_owner=True) | models.Q(is_owner__isnull=True),
+                name="membership_is_owner_true_or_null",
             ),
         ]
 

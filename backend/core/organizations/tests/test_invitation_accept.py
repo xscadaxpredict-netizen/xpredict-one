@@ -242,11 +242,9 @@ class TestAcceptingAsSomebodyNew:
         membership = Membership.objects.get(user=user, organization=result.organization)
         assert membership.status == MembershipStatus.ACTIVE
         assert standing(membership) == MembershipRole.MEMBER
-        # THE GRANT, and only the grant (C72 step 2d-2): no `AppAccess` row.
         assert [r.role.code for g in membership.grants.all() for r in g.roles.all()] == [
             ORG_ROLE
         ]
-        assert not membership.app_access.exists()
 
     def test_the_name_comes_from_the_invitation(self, client):
         """
@@ -284,9 +282,7 @@ class TestAcceptingAsSomebodyNew:
         client.post(ACCEPT_URL.format(token=TOKEN), {"password": PASSWORD}, format="json")
 
         membership = Membership.objects.get(user__email="pending@acme.test")
-        # Into the GRANT; `Membership.unit` is no longer written (step 2d-2).
         assert reach(membership) == frozenset({unit.id})
-        assert membership.unit_id is None
 
     def test_the_new_member_is_not_an_owner(self, client):
         """
@@ -304,7 +300,7 @@ class TestAcceptingAsSomebodyNew:
         assert membership.is_owner is None
         assert (
             Membership.objects.filter(
-                organization=result.organization, role=MembershipRole.OWNER
+                organization=result.organization, is_owner=True
             ).count()
             == 1
         )
@@ -386,7 +382,6 @@ class TestAcceptingWhenTheAddressAlreadyHasAnAccount:
         Membership.objects.create(
             user=joiner,
             organization=second.organization,
-            role=MembershipRole.MEMBER,
             status=MembershipStatus.ACTIVE,
         )
         invite(first.organization)
@@ -542,7 +537,6 @@ class TestTheWorldMayHaveMovedOn:
         Membership.objects.create(
             user=existing,
             organization=result.organization,
-            role=MembershipRole.MEMBER,
             status=MembershipStatus.ACTIVE,
         )
         client.force_authenticate(user=existing)
@@ -603,7 +597,6 @@ class TestTheLinkAnAdminCopies:
         membership = Membership.objects.create(
             user=member,
             organization=result.organization,
-            role=MembershipRole.MEMBER,
             status=MembershipStatus.ACTIVE,
         )
         client.force_authenticate(user=result.user)

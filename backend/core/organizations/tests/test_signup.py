@@ -34,13 +34,11 @@ from core.organizations.models import (
     ActivationCode,
     Membership,
     MembershipAppAccess,
-    MembershipRole,
     MembershipStatus,
     Organization,
-    Territory,
 )
 from core.organizations.services import sign_up
-from core.permissions.models import AppAccess, AppCode, Role
+from core.permissions.models import AppCode
 
 # NOT `transaction=True`. That flag gives each test TransactionTestCase
 # semantics, which TRUNCATES every table afterwards --- including the rows
@@ -80,7 +78,7 @@ class TestSignupCreatesTheOrganization:
 
         assert result.user.email == "rahul@acmemotors.in"
         assert result.organization.name == "Acme Motors"
-        assert result.membership.role == MembershipRole.OWNER
+        assert result.membership.is_owner is True
         assert result.membership.status == MembershipStatus.ACTIVE
 
     def test_the_owner_is_organization_wide_and_marked(self):
@@ -93,7 +91,6 @@ class TestSignupCreatesTheOrganization:
 
         result = do_sign_up()
 
-        assert result.membership.unit_id is None
         assert result.membership.is_owner is True
 
     def test_the_slug_and_database_name_are_derived(self):
@@ -139,7 +136,6 @@ class TestWhatTheOwnerIsGiven:
         owner holds every permission by rule anyway; the grant keeps their
         data shaped like everybody else's.)
 
-        THE GRANT ONLY since step 2d-2: no `AppAccess` row.
         """
         make_code()
 
@@ -149,7 +145,6 @@ class TestWhatTheOwnerIsGiven:
         held = grant.roles.get().role
         assert held.code == "dms.group_operations"
         assert held.level == "org"
-        assert not AppAccess.objects.filter(membership=membership).exists()
 
     def test_subscription_and_grant_are_two_separate_rows(self):
         """
@@ -331,6 +326,25 @@ class TestTheDatabaseRefusesWhatC40Forbids:
     the constraint is what makes these tests able to fail at all.
     """
 
+    def test_is_owner_is_never_false(self):
+        """
+        `membership_is_owner_true_or_null` (step 2d-3). A False would clash on
+        the one-owner unique index the second time it appeared, because only
+        NULLs are distinct in it; the constraint this replaced refused it for
+        free by tying `is_owner` to the dropped `role`.
+        """
+        make_code()
+        result = do_sign_up()
+        other = User.objects.create_user(email="false@example.com", password="x")
+
+        with (
+            pytest.raises(IntegrityError, match="membership_is_owner_true_or_null"),
+            transaction.atomic(),
+        ):
+            Membership.objects.create(
+                user=other, organization=result.organization, is_owner=False
+            )
+
     def test_a_second_owner_in_one_organization_is_refused(self):
         make_code()
         result = do_sign_up()
@@ -341,69 +355,6 @@ class TestTheDatabaseRefusesWhatC40Forbids:
             transaction.atomic(),
         ):
             Membership.objects.create(
-                user=other,
-                organization=result.organization,
-                role=MembershipRole.OWNER,
-                is_owner=True,
+                user=other, organization=result.organization, is_owner=True
             )
 
-    def test_admin_standing_cannot_be_scoped_to_a_dealership(self):
-        """
-        C40: an administrator of the ORGANIZATION is not scoped to one
-        dealership. Somebody who administers a single dealership holds the DMS
-        System administrator role and keeps `member` standing.
-
-        This is the row the frontend's Northway fake described for three
-        sessions, and the database now refuses it outright.
-        """
-        make_code()
-        result = do_sign_up()
-        unit = Territory.objects.create(
-            organization=result.organization, name="Bangalore - Whitefield"
-        )
-        other = User.objects.create_user(email="dealeradmin@example.com", password="x")
-
-        with (
-            pytest.raises(IntegrityError, match="membership_org_standing_has_no_unit"),
-            transaction.atomic(),
-        ):
-            Membership.objects.create(
-                user=other,
-                organization=result.organization,
-                role=MembershipRole.ADMIN,
-                unit=unit,
-            )
-
-    def test_a_dealer_scoped_member_is_allowed(self):
-        """The other half: `member` plus a dealership is the normal case."""
-        make_code()
-        result = do_sign_up()
-        unit = Territory.objects.create(
-            organization=result.organization, name="Bangalore - Whitefield"
-        )
-        other = User.objects.create_user(email="salesrep@example.com", password="x")
-
-        membership = Membership.objects.create(
-            user=other,
-            organization=result.organization,
-            role=MembershipRole.MEMBER,
-            unit=unit,
-        )
-
-        assert membership.unit_id == unit.id
-        assert membership.is_owner is None
-
-    def test_administration_cannot_be_granted_as_app_access(self):
-        """C44 moved this rule into the database rather than an enum omission."""
-        make_code()
-        result = do_sign_up()
-
-        with (
-            pytest.raises(IntegrityError, match="appaccess_never_administration"),
-            transaction.atomic(),
-        ):
-            AppAccess.objects.create(
-                membership=result.membership,
-                app_id=AppCode.ADMIN,
-                role=Role.objects.get(app_id=AppCode.DMS, code="dms.group_operations"),
-            )

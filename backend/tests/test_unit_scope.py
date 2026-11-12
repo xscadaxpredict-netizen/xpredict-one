@@ -32,7 +32,6 @@ from core.accounts.models import User
 from core.organizations.api.base import OrgScopedAPIView
 from core.organizations.models import (
     Membership,
-    MembershipRole,
     MembershipStatus,
     Organization,
     OrganizationStatus,
@@ -106,7 +105,6 @@ def make_member(organization) -> User:
     Membership.objects.create(
         user=user,
         organization=organization,
-        role=MembershipRole.MEMBER,
         status=MembershipStatus.ACTIVE,
     )
     return user

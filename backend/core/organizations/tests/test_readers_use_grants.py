@@ -1,12 +1,8 @@
 """
 C72 step 2b: the readers use the per-app grants, not `AppAccess` / `Membership.unit`.
 
-THE EXISTING SUITE PASSING ONLY PROVES NOTHING BROKE -- the old and new tables say
-the same thing, so a reader on either table passes it. These tests prove WHICH
-table is read, by making the two disagree on purpose:
-
-- access written ONLY to the old `AppAccess` table must now open nothing;
-- access written ONLY to the new grant tables must open the app.
+Access written to the grant tables opens the app. (The other half -- an old
+`AppAccess` row alone opening nothing -- went with that table in step 2d-3.)
 
 And one thing the old tables could never express: a person placed at SEVERAL
 dealerships (the owner, answering Q10) sees exactly those.
@@ -24,7 +20,6 @@ from core.api import TenantAPIView
 from core.organizations.models import (
     ActivationCode,
     Membership,
-    MembershipRole,
     Territory,
 )
 from core.organizations.selectors import (
@@ -34,7 +29,7 @@ from core.organizations.selectors import (
     resolve_allowed_units,
 )
 from core.organizations.services import create_dealer, grant_app_access, sign_up
-from core.permissions.models import AppAccess, AppCode, Role
+from core.permissions.models import AppCode, Role
 
 pytestmark = [pytest.mark.django_db(databases=["default", TEST_TENANT_ALIAS])]
 
@@ -49,42 +44,15 @@ def found():
     )
 
 
-def bare_member(organization, email="meera@apex.test", unit=None) -> Membership:
-    """A membership with NO access in either table yet."""
+def bare_member(organization, email="meera@apex.test") -> Membership:
+    """A membership with no grant yet."""
     user = User.objects.create_user(email=email, password="x")
-    return Membership.objects.create(
-        user=user, organization=organization, unit=unit, role=MembershipRole.MEMBER
-    )
+    return Membership.objects.create(user=user, organization=organization)
 
 
 def dms(me_payload, slug="apex-motors"):
     membership = next(m for m in me_payload.memberships if m.org_slug == slug)
     return next(a for a in membership.apps if a.key == AppCode.DMS)
-
-
-class TestTheOldTableAloneOpensNothing:
-    def test_an_appaccess_row_with_no_grant_is_not_access(self):
-        result = found()
-        member = bare_member(result.organization)
-        AppAccess.objects.create(
-            membership=member, app_id=AppCode.DMS, role=Role.objects.get(code="dms.fleet_viewer")
-        )
-
-        assert dms(me(member.user)).accessible is False
-        assert not {p for p in permissions_for(member) if p.startswith("dms.")}
-
-    def test_it_is_not_listed_as_an_app_on_the_users_screen(self):
-        result = found()
-        member = bare_member(result.organization)
-        AppAccess.objects.create(
-            membership=member, app_id=AppCode.DMS, role=Role.objects.get(code="dms.fleet_viewer")
-        )
-
-        row = next(
-            p for p in org_users(result.organization, result.membership) if p.id == member.id
-        )
-
-        assert row.apps == []
 
 
 class TestTheNewTablesAloneOpenTheApp:
@@ -126,7 +94,7 @@ class TestWhichDealershipsADmsRequestSees:
     def test_one_dealership(self):
         result = found()
         delhi = create_dealer(organization=result.organization, name="Delhi Motors")
-        member = bare_member(result.organization, unit=delhi)
+        member = bare_member(result.organization)
         grant_app_access(
             membership=member,
             app=AppCode.DMS,
@@ -142,7 +110,7 @@ class TestWhichDealershipsADmsRequestSees:
         delhi = create_dealer(organization=result.organization, name="Delhi Motors")
         jaipur = create_dealer(organization=result.organization, name="Jaipur Auto")
         create_dealer(organization=result.organization, name="Pune Wheels")
-        member = bare_member(result.organization, unit=delhi)
+        member = bare_member(result.organization)
         grant_app_access(
             membership=member,
             app=AppCode.DMS,
@@ -166,7 +134,7 @@ class TestWhichDealershipARequestWritesTo:
         delhi = create_dealer(organization=result.organization, name="Delhi Motors")
         jaipur = create_dealer(organization=result.organization, name="Jaipur Auto")
         pune = create_dealer(organization=result.organization, name="Pune Wheels")
-        member = bare_member(result.organization, unit=delhi)
+        member = bare_member(result.organization)
         grant_app_access(
             membership=member,
             app=AppCode.DMS,

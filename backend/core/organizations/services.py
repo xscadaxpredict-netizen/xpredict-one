@@ -181,17 +181,12 @@ def sign_up(
     membership = Membership.objects.create(
         user=user,
         organization=organization,
-        role=MembershipRole.OWNER,
         status=MembershipStatus.ACTIVE,
         # Exactly one owner per organization, expressed the MySQL way: True for
         # the owner and NULL for everyone else, unique on (organization,
-        # is_owner). The check constraint refuses the two drifting apart,
-        # so this is set HERE rather than left to a signal.
+        # is_owner). Set HERE rather than left to a signal.
         is_owner=True,
-        # `role` IS STILL WRITTEN FOR THE OWNER, and only for the owner: the
-        # check constraint ties it to `is_owner`, and the two go together in
-        # step 2d-3. Nobody reads it. `unit` is no longer written at all --
-        # an owner is organisation-wide by rule (C72).
+        # An owner is organisation-wide by rule (C72): no place to record.
         created_by_user_id=user.id,
     )
 
@@ -551,9 +546,8 @@ def move_territory(*, territory: Territory, parent_id: uuid.UUID | None) -> Terr
 # one territory; every territory is in the person's own organisation; and a
 # dealership person holds only apps that use territories (C27, Q53).
 #
-# SINCE STEP 2d-2 THE GRANTS ARE THE ONLY RECORD. The services no longer write
-# `AppAccess`, `Membership.role` (except the owner's, tied to `is_owner` until
-# 2d-3) or `Membership.unit`; step 2d-3 drops them.
+# THE GRANTS ARE THE ONLY RECORD. `AppAccess`, `Membership.role` and
+# `Membership.unit` stopped being written in step 2d-2 and were dropped in 2d-3.
 # ---------------------------------------------------------------------------
 
 
@@ -1078,7 +1072,7 @@ def find_person(organization: Organization, person_id: uuid.UUID) -> Membership 
     """
     try:
         return (
-            Membership.objects.select_related("user", "unit")
+            Membership.objects.select_related("user")
             .prefetch_related(*GRANTS_PREFETCH)
             .get(id=person_id, organization=organization)
         )
@@ -1238,11 +1232,8 @@ def _update_membership(
     membership.user.last_name = last_name
     membership.user.save(update_fields=["first_name", "last_name"])
 
-    # THE GRANTS ARE THE WHOLE RECORD (C72 step 2d-2). `Membership.role`,
-    # `Membership.unit` and `AppAccess` are no longer written: nothing has
-    # read them since steps 2c and 2d-1, and they are dropped in 2d-3. The
-    # owner's standing therefore cannot be demoted by a form any more -- there
-    # is no field here for the form to overwrite.
+    # THE GRANTS ARE THE WHOLE RECORD (C72 step 2d). There is no standing
+    # field for the form to overwrite, so the owner cannot be demoted by one.
     #
     # DELETE THEN CREATE, inside the caller's transaction. Updating in place
     # would mean working out which grants went away, and a missed one leaves

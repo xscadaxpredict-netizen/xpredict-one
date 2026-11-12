@@ -37,7 +37,7 @@ from core.organizations.models import (
     MembershipStatus,
     Territory,
 )
-from core.organizations.selectors import org_users, reach
+from core.organizations.selectors import org_users, reach, standing
 from core.organizations.services import INVITATION_LIFETIME, grant_app_access, sign_up
 from core.permissions.models import AppCode, Role
 
@@ -769,9 +769,8 @@ class TestEditing:
     def test_an_owners_standing_survives_whatever_is_sent(self, client):
         """
         The form never offers "owner", so a payload saying `member` is a stale
-        screen rather than an instruction. Taking it would demote the owner and
-        leave the owner marker disagreeing with the role, which the check
-        constraint refuses outright.
+        screen rather than an instruction. Ownership is `is_owner`, which no
+        form writes.
         """
         result = found()
         owner = Membership.objects.get(user=result.user, organization=result.organization)
@@ -785,7 +784,8 @@ class TestEditing:
 
         assert response.status_code == 200
         owner.refresh_from_db()
-        assert owner.role == MembershipRole.OWNER
+        assert owner.is_owner is True
+        assert standing(owner) == MembershipRole.OWNER
 
     def test_removing_their_last_app_is_refused(self, client):
         """

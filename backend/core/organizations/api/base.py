@@ -208,7 +208,7 @@ class OrgScopedAPIView(APIView):
             # The row itself, not `.exists()`: `self.membership` is what scope
             # decisions are made against, and `permissions_for()` walks these
             # relations on every request that declares a required permission.
-            .select_related("organization", "unit")
+            .select_related("organization")
             .prefetch_related(*GRANTS_PREFETCH)
             .first()
         )

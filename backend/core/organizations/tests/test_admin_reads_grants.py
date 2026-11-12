@@ -2,15 +2,13 @@
 C72 step 2c, commit 3: the ADMIN questions read the grants, not `Membership.role`
 and `Membership.unit`.
 
-THE EXISTING SUITE PASSING ONLY PROVES NOTHING BROKE -- the services write the
-old fields and the grants together, so a reader on either passes it. Every test
-here builds a person whose old fields and grants DISAGREE, and asserts the grant
-wins:
+Written while the old fields still existed, each test built a person whose old
+fields and grants DISAGREED and asserted the grant won. Step 2d-3 dropped
+`Membership.role` and `Membership.unit`, so what is left is the grant half:
 
-- `role = admin` with no Administration grant is NOT an admin;
-- `role = member` with an "Organisation admin" grant IS one;
-- `unit = None` with a DMS grant at Delhi Motors sits at Delhi Motors -- for
-  whose people they manage, what `/me` says, and a closure;
+- an "Organisation admin" grant makes somebody an admin;
+- a DMS grant at Delhi Motors places them at Delhi Motors -- for whose people
+  they manage, what `/me` says, and a closure;
 - and a person placed at two dealerships is shut out only when both close.
 """
 
@@ -61,12 +59,10 @@ def found():
     )
 
 
-def person(result, email, *, role=MembershipRole.MEMBER, unit=None) -> Membership:
-    """A membership with NO grants, whatever its old fields say."""
+def person(result, email) -> Membership:
+    """A membership with NO grants."""
     user = User.objects.create_user(email=email, password="x")
-    return Membership.objects.create(
-        user=user, organization=result.organization, role=role, unit=unit
-    )
+    return Membership.objects.create(user=user, organization=result.organization)
 
 
 def org_admin_grant(result, membership) -> None:
@@ -102,14 +98,6 @@ def mine(user):
 
 
 class TestAdminIsTheGrantNotTheStanding:
-    def test_an_admin_standing_with_no_grant_is_not_an_admin(self):
-        result = found()
-        old = person(result, "old@apex.test", role=MembershipRole.ADMIN)
-
-        assert not admin_codes() & permissions_for(old)
-        assert standing(old) == MembershipRole.MEMBER
-        assert mine(old.user).role == MembershipRole.MEMBER
-
     def test_a_member_standing_with_the_grant_is_an_admin(self):
         result = found()
         new = person(result, "new@apex.test")
@@ -135,7 +123,7 @@ class TestAdminIsTheGrantNotTheStanding:
         result = found()
         new = person(result, "new@apex.test")
         org_admin_grant(result, new)
-        old = person(result, "old@apex.test", role=MembershipRole.ADMIN)
+        old = person(result, "old@apex.test")
 
         def flag(membership):
             view = TenantAPIView()
@@ -147,7 +135,7 @@ class TestAdminIsTheGrantNotTheStanding:
 
 
 class TestWhoseAdministratorTheyAre:
-    """`unit = None` on the old field; the grant says Delhi Motors."""
+    """The grant says Delhi Motors."""
 
     def test_reach_is_the_grants_dealership(self):
         result = found()
@@ -173,9 +161,9 @@ class TestWhoseAdministratorTheyAre:
         result = found()
         delhi = create_dealer(organization=result.organization, name="Delhi Motors")
         jaipur = create_dealer(organization=result.organization, name="Jaipur Auto")
-        at_delhi = person(result, "a@apex.test", unit=delhi)
+        at_delhi = person(result, "a@apex.test")
         dms_at(at_delhi, [delhi], code="dms.manager")
-        at_jaipur = person(result, "b@apex.test", unit=jaipur)
+        at_jaipur = person(result, "b@apex.test")
         dms_at(at_jaipur, [jaipur], code="dms.manager")
         da = person(result, "da@apex.test")
         dms_at(da, [delhi])
@@ -204,12 +192,10 @@ class TestWhoseAdministratorTheyAre:
                 apps=[],
             )
 
-    def test_the_old_field_at_a_dealership_no_longer_narrows_them(self):
-        """The reverse disagreement: `unit` says Delhi, the grant says the root."""
+    def test_placed_at_the_root_they_reach_every_dealership(self):
         result = found()
-        delhi = create_dealer(organization=result.organization, name="Delhi Motors")
         jaipur = create_dealer(organization=result.organization, name="Jaipur Auto")
-        wide = person(result, "wide@apex.test", unit=delhi)
+        wide = person(result, "wide@apex.test")
         dms_at(wide, [Territory.objects.root_for(result.organization)], code="dms.fleet_viewer")
         wide = fresh(wide)
 
@@ -233,7 +219,7 @@ class TestWhatMeSays:
         result = found()
         delhi = create_dealer(organization=result.organization, name="Delhi Motors")
         jaipur = create_dealer(organization=result.organization, name="Jaipur Auto")
-        rep = person(result, "rep@apex.test", unit=delhi)
+        rep = person(result, "rep@apex.test")
         dms_at(rep, [delhi, jaipur], code="dms.manager")
 
         data = mine(rep.user)
@@ -247,7 +233,7 @@ class TestAClosure:
         Territory.objects.filter(pk=territory.pk).update(status=UnitStatus.DISABLED)
 
     def test_shuts_out_somebody_the_grant_places_there(self, client):
-        """`unit = None` on the old field would have let them straight in."""
+        """Placed at Delhi Motors by their grant, so its closure shuts them out."""
         result = found()
         delhi = create_dealer(organization=result.organization, name="Delhi Motors")
         da = person(result, "da@apex.test")
@@ -263,10 +249,10 @@ class TestAClosure:
         assert response.json()["code"] == "unit_closed"
 
     def test_does_not_shut_out_somebody_the_grant_places_elsewhere(self, client):
-        """The reverse: `unit` says closed Delhi, the grant says the root."""
+        """Placed at the root, so one dealership closing does not shut them out."""
         result = found()
         delhi = create_dealer(organization=result.organization, name="Delhi Motors")
-        wide = person(result, "wide@apex.test", unit=delhi)
+        wide = person(result, "wide@apex.test")
         dms_at(wide, [Territory.objects.root_for(result.organization)], code="dms.fleet_viewer")
         self.close(delhi)
         client.force_authenticate(user=wide.user)

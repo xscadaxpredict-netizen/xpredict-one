@@ -41,7 +41,7 @@ from core.organizations.services import (
     sign_up,
     update_person,
 )
-from core.permissions.models import AppAccess, AppCode, Role
+from core.permissions.models import AppCode, Role
 
 pytestmark = [pytest.mark.django_db(databases=["default", TEST_TENANT_ALIAS])]
 
@@ -94,16 +94,6 @@ def edit(result, person, *, unit=None, role=MembershipRole.MEMBER, apps=None, em
     )
 
 
-def old_copy(membership) -> tuple[str, object, bool]:
-    """What the OLD fields say, re-read from the database."""
-    fresh = Membership.objects.get(pk=membership.pk)
-    return (
-        fresh.role,
-        fresh.unit_id,
-        AppAccess.objects.filter(membership=fresh).exists(),
-    )
-
-
 def administration_grant(membership) -> MembershipAppAccess | None:
     return MembershipAppAccess.objects.filter(
         membership=membership, app_id=AppCode.ADMIN
@@ -115,7 +105,6 @@ class TestNothingLandsInTheOldCopy:
         """`role` stays "owner" -- the check constraint ties it to `is_owner` until 2d-3."""
         result = found()
 
-        assert old_copy(result.membership) == (MembershipRole.OWNER, None, False)
         assert result.membership.grants.filter(app_id=AppCode.DMS).exists()
 
     def test_joining_at_a_dealership(self):
@@ -124,7 +113,6 @@ class TestNothingLandsInTheOldCopy:
 
         member = join(result, unit=delhi)
 
-        assert old_copy(member) == (MembershipRole.MEMBER, None, False)
         assert reach(member) == frozenset({delhi.pk})
 
     def test_joining_as_an_admin(self):
@@ -133,7 +121,6 @@ class TestNothingLandsInTheOldCopy:
 
         admin = join(result, role=MembershipRole.ADMIN)
 
-        assert old_copy(admin) == (MembershipRole.MEMBER, None, False)
         assert standing(admin) == MembershipRole.ADMIN
         assert administration_grant(admin) is not None
 
@@ -145,7 +132,6 @@ class TestNothingLandsInTheOldCopy:
 
         edit(result, member, unit=jaipur)
 
-        assert old_copy(member) == (MembershipRole.MEMBER, None, False)
         assert reach(Membership.objects.get(pk=member.pk)) == frozenset({jaipur.pk})
 
     def test_promoting_to_admin_on_edit(self):
@@ -154,7 +140,6 @@ class TestNothingLandsInTheOldCopy:
 
         edit(result, member, role=MembershipRole.ADMIN)
 
-        assert old_copy(member) == (MembershipRole.MEMBER, None, False)
         assert standing(Membership.objects.get(pk=member.pk)) == MembershipRole.ADMIN
 
 
@@ -166,7 +151,6 @@ class TestTheOwnerIsNeverAnAdminByForm:
         edit(result, result.membership, role=MembershipRole.ADMIN)
 
         assert administration_grant(result.membership) is None
-        assert old_copy(result.membership)[0] == MembershipRole.OWNER
 
 
 class TestOwnersAndAdminsAreOrganisationWide:

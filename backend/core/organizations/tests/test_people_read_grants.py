@@ -4,8 +4,8 @@ and everybody holds at least one app (C73, "for now").
 
 Step 2c switched the ACTOR side -- where the admin sits. This switches the
 TARGET side: where the person on the other end of "edit", "remove" or the users
-list sits. As in 2c, every test builds people whose old `Membership.unit` and
-their grants DISAGREE, so each passes only when the grant is read.
+list sits. (Written with each person's old `Membership.unit` disagreeing with
+their grant; step 2d-3 dropped that field, and the grant half remains.)
 """
 
 from __future__ import annotations
@@ -49,9 +49,9 @@ def found():
     )
 
 
-def person(result, email, *, unit=None) -> Membership:
+def person(result, email) -> Membership:
     user = User.objects.create_user(email=email, password="x")
-    return Membership.objects.create(user=user, organization=result.organization, unit=unit)
+    return Membership.objects.create(user=user, organization=result.organization)
 
 
 def dms_at(membership, territories, code="dms.manager") -> Membership:
@@ -136,7 +136,7 @@ class TestThePersonSitsWhereTheirGrantsSay:
         result = found()
         delhi = create_dealer(organization=result.organization, name="Delhi Motors")
         jaipur = create_dealer(organization=result.organization, name="Jaipur Auto")
-        ravi = dms_at(person(result, "ravi@apex.test", unit=jaipur), [delhi])
+        ravi = dms_at(person(result, "ravi@apex.test"), [delhi])
 
         assert can_manage_person(dealer_admin(result, delhi), ravi) is True
         assert can_manage_person(dealer_admin(result, jaipur), ravi) is False
@@ -146,7 +146,7 @@ class TestThePersonSitsWhereTheirGrantsSay:
         result = found()
         delhi = create_dealer(organization=result.organization, name="Delhi Motors")
         jaipur = create_dealer(organization=result.organization, name="Jaipur Auto")
-        ravi = dms_at(person(result, "ravi@apex.test", unit=jaipur), [delhi])
+        ravi = dms_at(person(result, "ravi@apex.test"), [delhi])
 
         with pytest.raises(NotFoundError):
             remove_person(
@@ -163,8 +163,7 @@ class TestThePersonSitsWhereTheirGrantsSay:
     def test_the_users_list_shows_the_grants_dealership(self):
         result = found()
         delhi = create_dealer(organization=result.organization, name="Delhi Motors")
-        jaipur = create_dealer(organization=result.organization, name="Jaipur Auto")
-        ravi = dms_at(person(result, "ravi@apex.test", unit=jaipur), [delhi])
+        ravi = dms_at(person(result, "ravi@apex.test"), [delhi])
         da = dealer_admin(result, delhi)
 
         rows = {p.id: p for p in org_users(result.organization, da)}
@@ -186,7 +185,7 @@ class TestThePersonSitsWhereTheirGrantsSay:
         result = found()
         delhi = create_dealer(organization=result.organization, name="Delhi Motors")
         wide = dms_at(
-            person(result, "wide@apex.test", unit=delhi),
+            person(result, "wide@apex.test"),
             [Territory.objects.root_for(result.organization)],
             "dms.fleet_viewer",
         )
@@ -196,7 +195,7 @@ class TestThePersonSitsWhereTheirGrantsSay:
     def test_an_older_member_with_no_grants_is_head_offices_alone(self):
         result = found()
         delhi = create_dealer(organization=result.organization, name="Delhi Motors")
-        stray = person(result, "stray@apex.test", unit=delhi)
+        stray = person(result, "stray@apex.test")
 
         assert can_manage_person(dealer_admin(result, delhi), stray) is False
         assert can_manage_person(result.membership, stray) is True
@@ -206,8 +205,8 @@ class TestTheDealersScreenCountsByGrants:
     def test_a_person_counts_where_their_grant_places_them(self):
         result = found()
         delhi = create_dealer(organization=result.organization, name="Delhi Motors")
-        jaipur = create_dealer(organization=result.organization, name="Jaipur Auto")
-        dms_at(person(result, "ravi@apex.test", unit=jaipur), [delhi])
+        create_dealer(organization=result.organization, name="Jaipur Auto")
+        dms_at(person(result, "ravi@apex.test"), [delhi])
 
         counts = {d.name: d.user_count for d in dealers_for(result.organization)}
 

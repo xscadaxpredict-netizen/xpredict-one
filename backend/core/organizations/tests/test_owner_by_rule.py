@@ -24,10 +24,10 @@ import pytest
 from conftest import TEST_TENANT_ALIAS
 from core.accounts.models import User
 from core.billing.models import AppSubscription, SubscriptionStatus
-from core.organizations.models import ActivationCode, Membership, MembershipRole, Territory
+from core.organizations.models import ActivationCode, Membership, Territory
 from core.organizations.selectors import me, permissions_for, resolve_allowed_units
 from core.organizations.services import create_dealer, grant_app_access, sign_up
-from core.permissions.models import AppAccess, AppCode, Permission, Role
+from core.permissions.models import AppCode, Permission, Role
 
 pytestmark = [pytest.mark.django_db(databases=["default", TEST_TENANT_ALIAS])]
 
@@ -43,9 +43,8 @@ def found():
 
 
 def strip_rows(membership) -> None:
-    """Take away every access row the owner holds, old and new."""
+    """Take away every grant the owner holds."""
     membership.grants.all().delete()
-    AppAccess.objects.filter(membership=membership).delete()
 
 
 def codes(app: str) -> set[str]:
@@ -147,7 +146,7 @@ class TestEverybodyElseIsUnchanged:
         result = found()
         user = User.objects.create_user(email="ravi@apex.test", password="x")
         admin = Membership.objects.create(
-            user=user, organization=result.organization, role=MembershipRole.ADMIN
+            user=user, organization=result.organization
         )
         grant_app_access(
             membership=admin,

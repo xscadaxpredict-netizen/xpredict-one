@@ -1,10 +1,9 @@
 """
 Read logic for memberships, unit scope, and the `/me` payload.
 
-`resolve_allowed_units()` is the one function that turns "which dealership is
-this person attached to" into "which dealerships may this query see". Nothing
-else reads `Membership.unit_id` to make a scoping decision (C7) --- one place
-to be right, one place to test.
+`resolve_allowed_units()` is the one function that turns "where does this
+person's grant for this app place them" into "which dealerships may this query
+see" (C7, C72) --- one place to be right, one place to test.
 
 `me()` builds the whole answer to "who am I and what may I open". It is the
 endpoint that lets the frontend delete its fakes, so the shape here is the
@@ -282,7 +281,7 @@ def me(user) -> MeData:
     """
     memberships = list(
         Membership.objects.filter(user=user, status=MembershipStatus.ACTIVE)
-        .select_related("organization", "unit")
+        .select_related("organization")
         .prefetch_related(*GRANTS_PREFETCH)
         .order_by("organization__name")
     )
@@ -549,9 +548,8 @@ def can_manage(membership: Membership, target_unit_id: uuid.UUID | None) -> bool
     does not exist, while failing the permission check is a 403.
     """
     # THE ACTOR'S SIDE READS THE GRANTS (C72 step 2c), through `reach()`. The
-    # TARGET is still named by their `Membership.unit` / `Invitation.unit`,
-    # which the services keep in step with their grants; step 2d moves that
-    # side too.
+    # TARGET here is a single dealership id -- from a form, or an invitation's
+    # `unit` -- and a member is judged by `can_manage_person()` instead.
     scope = reach(membership)
     if scope is None:
         return True
@@ -727,9 +725,9 @@ class OrgUserData:
     """
     `"organisation"`, `"dealer"`, or None -- the FACT, not the words (C53).
 
-    Administration is never an `AppAccess` row (the check constraint refuses
-    it) and has no `Role`, so "Organisation admin" and "Dealer admin" are copy
-    describing a derived state rather than data. The browser picks the wording,
+    "Organisation admin" and "Dealer admin" are copy describing a derived
+    state rather than data: the first is the `admin.org_admin` grant at the
+    root, the second a role granting `admin.*` held at a dealership. The browser picks the wording,
     the way it already does for every other static label.
 
     TWO SOURCES, which are the two branches in `_administers()`: standing, or
@@ -755,7 +753,7 @@ def org_users(organization: Organization, viewer: Membership) -> list[OrgUserDat
     """
     memberships = (
         Membership.objects.filter(organization=organization)
-        .select_related("user", "unit")
+        .select_related("user")
         .prefetch_related(*GRANTS_PREFETCH)
     )
     invitations = (

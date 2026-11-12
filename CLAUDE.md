@@ -66,8 +66,8 @@ no territories yet; their users belong to the organization directly.
 
 **SAY "TERRITORY", NEVER "BUSINESS UNIT"** (the owner, 2026-11-06). The model was
 renamed from `BusinessUnit`. Where "unit" survives — tenant `unit_id` columns,
-`Membership.unit`, `allowed_units`, `resolve_allowed_units()` — it means territory and
-is renamed in C72 pieces 2, 3 and 7.
+`Invitation.unit`, `allowed_units`, `resolve_allowed_units()` — it means territory and
+is renamed in C72 pieces 3, 5 and 7. (`Membership.unit` is gone: step 2d-3.)
 
 **Build order: DMS first.** CRM later. **E-commerce is deferred** — do not design its
 roles, permissions or models until it is explicitly picked up.
@@ -83,18 +83,19 @@ replaces its build list). Every person, in every app, has a **role** (WHAT — p
 a place in the **territory tree** (WHERE — one tree per organisation) and a position on
 that app's **reporting chart** (WHOSE). Built so far: the `App` table, **the territory
 tree** (piece 1 — `Territory` on django-treebeard, the organisation at its root,
-`/admin/territories/`), and **piece 2, per-app grants, up to step 2d-2**:
+`/admin/territories/`), and **piece 2, per-app grants (steps 2a–2d done)**:
 `MembershipAppAccess` → `MembershipAppRole` + `MembershipAppTerritory` (one or more
 places), written only by `grant_app_access()`.
 
-**THE GRANTS ARE THE WHOLE RECORD (C72 step 2d-2).** Everything reads them, and the
-services no longer write the old `AppAccess`, `Membership.unit` or `Membership.role`
-(except the owner's `role`, tied to `is_owner` by a check constraint until step 2d-3,
-which drops all three). Admin standing is an "Organisation admin" grant at the root; the
-owner holds everything by rule (`is_owner`). **A test that builds a person by hand
-calls `grant_app_access()` with an explicit territory** — an `AppAccess` row or a
-`Membership.unit` alone opens nothing. **An owner or admin is never placed at one
-dealership**: a 409 in the services now, not the database constraint it used to be.
+**THE GRANTS ARE THE WHOLE RECORD (C72 step 2d).** `AppAccess`, `Membership.role` and
+`Membership.unit` are DROPPED (`permissions/0011`, `organizations/0021`, after
+`organizations/0020` refuses to go on unless every non-owner holds a grant). A membership
+is now who, which organisation, its status, and `is_owner`. Admin standing is an
+"Organisation admin" grant at the root; the owner holds everything by rule. The API
+still says `role` / `unit_id` — worked out by `standing()` and `dealership_of()`.
+**A test that builds a person by hand calls `grant_app_access()` with an explicit
+territory.** **An owner or admin is never placed at one dealership**: a 409 in the
+services (`_assert_organisation_wide`), not the database constraint it used to be.
 **`main` is production: never commit or push to it** --- work on the working branch.
 
 ## Status
@@ -119,16 +120,19 @@ their endpoints authorise properly (C66, C67).
 settings, the fail-closed `TenantRouter`, `shared/base_models.py`, Celery wiring and 15
 apps with unique labels (5 control-plane, 10 tenant). **Plain DRF** — drf-spectacular was removed (C43), so there is
 no schema endpoint and no generated client. **`migrate` has run** and `xpredict_control`
-holds **23 tables**, and each organisation gets its own database beside it.
+holds **26 tables** (measured 2026-11-12, after step 2d-3), and each organisation gets
+its own database beside it.
 
 Set the database up once, as a MySQL admin: `mysql -u root -p < backend/scripts/create_dev_db.sql`.
 
 **The control plane is BUILT and MIGRATED.** Models: `Organization`,
 `Territory` (was `BusinessUnit`), `Membership`, `Invitation`, `InvitationAppGrant` in
-`core/organizations`; `App`, `Permission`, `Role`, `RolePermission`, `AppAccess` in
+`core/organizations`, with the grants `MembershipAppAccess`, `MembershipAppRole` and
+`MembershipAppTerritory`; `App`, `Permission`, `Role`, `RolePermission` in
 `core/permissions`; `AppSubscription` in `core/billing`; and `User`. **58 permissions and
-nine roles are seeded** — 48 by `permissions/0002`, seven by `0004` (C67), three by
-`0009` (`admin.territory.*`, C72).
+ten roles are seeded** — 48 permissions by `permissions/0002`, seven by `0004` (C67),
+three by `0009` (`admin.territory.*`, C72); the tenth role, "Organisation admin"
+(`admin.org_admin`), by `0010` (Q60).
 
 **NO MIGRATION READS `catalogue.py`.** `0002` and `0003` read a frozen copy,
 `migrations/_catalogue_2026_10_03.py`; reading the live file replayed TODAY's catalogue
@@ -155,11 +159,11 @@ not a one-line diff. Everything else in C42 stands: the `app.resource.action` sh
 scope staying out of the name, export as its own action, and **modules derived from
 `Permission.module`** rather than stored anywhere.
 
-**Three rules the schema enforces itself, and they will bite you:** a membership with
-standing `owner` or `admin` must have `unit_id IS NULL` (C40); there is exactly one owner
-per organisation, via a nullable `owner_marker` and a unique pair, because **MySQL has no
-partial indexes**; and `admin` can never be granted on `AppAccess` or sold on
-`AppSubscription` (C44).
+**Two rules the schema enforces itself, and they will bite you:** there is exactly one
+owner per organisation, via `is_owner` (True or NULL, never False — a check says so) and
+a unique pair, because **MySQL has no partial indexes**; and `admin` can never be sold
+on `AppSubscription` (C44). The third, "an owner or admin has no dealership", moved into
+the services in step 2d-2 and its constraint went with `Membership.unit`.
 
 > **`Applying <app>.0001_initial... OK` does not mean tables were created.** Django
 > prints it whether it built them or the router refused every operation, so a migration

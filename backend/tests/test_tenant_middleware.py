@@ -27,7 +27,6 @@ from conftest import TEST_TENANT_ALIAS
 from core.accounts.models import User
 from core.organizations.models import (
     Membership,
-    MembershipRole,
     MembershipStatus,
     Organization,
     OrganizationStatus,
@@ -56,7 +55,6 @@ def make_member(organization, email="person@acme.test", status=MembershipStatus.
     Membership.objects.create(
         user=user,
         organization=organization,
-        role=MembershipRole.MEMBER,
         status=status,
     )
     return user
