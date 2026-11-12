@@ -54,10 +54,7 @@ from shared.exceptions import not_found
 GRANTS_PREFETCH: tuple[str | Prefetch, ...] = (
     Prefetch("grants__roles", queryset=MembershipAppRole.objects.select_related("role")),
     "grants__roles__role__permissions",
-    Prefetch(
-        "grants__territories",
-        queryset=MembershipAppTerritory.objects.select_related("territory"),
-    ),
+    Prefetch("grants__territories",queryset=MembershipAppTerritory.objects.select_related("territory"),),
 )
 
 
