@@ -21,7 +21,6 @@ from __future__ import annotations
 import pytest
 from django.utils import timezone
 
-from conftest import give_app_access
 from core.accounts.models import User
 from core.billing.models import AppSubscription, SubscriptionStatus
 from core.organizations.models import (
@@ -35,7 +34,7 @@ from core.organizations.models import (
     UnitStatus,
 )
 from core.organizations.selectors import me, resolve_allowed_units
-from core.organizations.services import sign_up
+from core.organizations.services import grant_app_access, sign_up
 from core.permissions.models import AppCode, Permission, Role
 
 pytestmark = pytest.mark.django_db
@@ -58,16 +57,12 @@ def add_dealer_admin(organization, unit, email="dealeradmin@acme.test"):
     combination outright (C40), which is the whole point of the shape.
     """
     user = User.objects.create_user(email=email, password="x")
-    membership = Membership.objects.create(
-        user=user,
-        organization=organization,
-        unit=unit,
-        role=MembershipRole.MEMBER,
-    )
-    give_app_access(
+    membership = Membership.objects.create(user=user, organization=organization)
+    grant_app_access(
         membership=membership,
-        app_id=AppCode.DMS,
+        app=AppCode.DMS,
         role=Role.objects.get(app_id=AppCode.DMS, code="dms.system_admin"),
+        territories=[unit],
     )
     return user, membership
 
@@ -368,13 +363,12 @@ class TestSomebodyWithNoAdministration:
         result = found()
         unit = Territory.objects.create(organization=result.organization, name="Whitefield")
         user = User.objects.create_user(email="rep@acme.test", password="x")
-        membership = Membership.objects.create(
-            user=user, organization=result.organization, unit=unit, role=MembershipRole.MEMBER
-        )
-        give_app_access(
+        membership = Membership.objects.create(user=user, organization=result.organization)
+        grant_app_access(
             membership=membership,
-            app_id=AppCode.DMS,
+            app=AppCode.DMS,
             role=Role.objects.get(app_id=AppCode.DMS, code="dms.sales_representative"),
+            territories=[unit],
         )
 
         payload = me(user)

@@ -20,19 +20,19 @@ import pytest
 from django.utils import timezone
 from rest_framework.test import APIClient
 
-from conftest import TEST_TENANT_ALIAS, give_app_access
+from conftest import TEST_TENANT_ALIAS
 from core.accounts.models import User
 from core.organizations.models import (
     ActivationCode,
     Invitation,
     Membership,
-    MembershipRole,
     MembershipStatus,
     Territory,
     TerritoryKind,
     UnitStatus,
 )
-from core.organizations.services import sign_up
+from core.organizations.selectors import reach
+from core.organizations.services import grant_app_access, sign_up
 from core.permissions.models import AppCode, Role
 
 pytestmark = [
@@ -72,13 +72,12 @@ def found(name="Acme Motors", email="owner@acme.test", code="CODE-ACME"):
 
 def add_dealer_admin(organization, unit, email="dealeradmin@acme.test"):
     user = User.objects.create_user(email=email, password="x")
-    membership = Membership.objects.create(
-        user=user, organization=organization, unit=unit, role=MembershipRole.MEMBER
-    )
-    give_app_access(
+    membership = Membership.objects.create(user=user, organization=organization)
+    grant_app_access(
         membership=membership,
-        app_id=AppCode.DMS,
+        app=AppCode.DMS,
         role=Role.objects.get(app_id=AppCode.DMS, code="dms.system_admin"),
+        territories=[unit],
     )
     return user
 
@@ -86,17 +85,12 @@ def add_dealer_admin(organization, unit, email="dealeradmin@acme.test"):
 def add_person(organization, *, unit, email, standing=MembershipStatus.ACTIVE):
     """A dealer-scoped member with no administration rights."""
     user = User.objects.create_user(email=email, password="x")
-    membership = Membership.objects.create(
-        user=user,
-        organization=organization,
-        unit=unit,
-        role=MembershipRole.MEMBER,
-        status=standing,
-    )
-    give_app_access(
+    membership = Membership.objects.create(user=user, organization=organization, status=standing)
+    grant_app_access(
         membership=membership,
-        app_id=AppCode.DMS,
+        app=AppCode.DMS,
         role=Role.objects.get(app_id=AppCode.DMS, code="dms.sales_representative"),
+        territories=[unit],
     )
     return membership
 
@@ -806,7 +800,8 @@ class TestClosingAndReopening:
 
         person.refresh_from_db()
         assert person.status == MembershipStatus.ACTIVE
-        assert person.unit_id == unit.id
+        # Still placed there -- by their GRANT, the only record since step 2d-2.
+        assert reach(Membership.objects.get(pk=person.pk)) == frozenset({unit.id})
 
     def test_reopening_does_not_resurrect_somebody_disabled_separately(self, client):
         """

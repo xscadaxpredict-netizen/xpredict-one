@@ -83,19 +83,19 @@ replaces its build list). Every person, in every app, has a **role** (WHAT — p
 a place in the **territory tree** (WHERE — one tree per organisation) and a position on
 that app's **reporting chart** (WHOSE). Built so far: the `App` table, **the territory
 tree** (piece 1 — `Territory` on django-treebeard, the organisation at its root,
-`/admin/territories/`), and **half of piece 2, per-app grants**:
+`/admin/territories/`), and **piece 2, per-app grants, up to step 2d-2**:
 `MembershipAppAccess` → `MembershipAppRole` + `MembershipAppTerritory` (one or more
 places), written only by `grant_app_access()`.
 
-**THE CODE IS BETWEEN TWO MODELS, ON PURPOSE (steps 2a/2b of four).** The services write
-access to BOTH the old `AppAccess` + `Membership.unit` and the grants. Apps, roles,
-permissions, `/me`'s app list, the users list's apps and DMS dealership scoping READ
-THE GRANTS. Admin standing, `can_manage()`, the users-list scope, the closed-dealership
-refusal, `/me`'s `unit_*` fields and `is_manager_or_admin` still read the OLD fields
-until step 2c (blocked on Q60); step 2d removes the old ones. **A test that builds a
-person by hand must use `conftest.give_app_access`**, which writes both — an
-`AppAccess` row alone now opens nothing. **`main` is production: never commit or push
-to it** --- work on the working branch.
+**THE GRANTS ARE THE WHOLE RECORD (C72 step 2d-2).** Everything reads them, and the
+services no longer write the old `AppAccess`, `Membership.unit` or `Membership.role`
+(except the owner's `role`, tied to `is_owner` by a check constraint until step 2d-3,
+which drops all three). Admin standing is an "Organisation admin" grant at the root; the
+owner holds everything by rule (`is_owner`). **A test that builds a person by hand
+calls `grant_app_access()` with an explicit territory** — an `AppAccess` row or a
+`Membership.unit` alone opens nothing. **An owner or admin is never placed at one
+dealership**: a 409 in the services now, not the database constraint it used to be.
+**`main` is production: never commit or push to it** --- work on the working branch.
 
 ## Status
 

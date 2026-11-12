@@ -16,17 +16,21 @@ from __future__ import annotations
 import pytest
 from rest_framework.test import APIClient
 
-from conftest import TEST_TENANT_ALIAS, give_app_access
+from conftest import TEST_TENANT_ALIAS
 from core.accounts.models import User
 from core.organizations.models import (
     ActivationCode,
     Membership,
-    MembershipRole,
     Territory,
     TerritoryKind,
 )
 from core.organizations.selectors import permissions_for
-from core.organizations.services import create_dealer, create_territory, sign_up
+from core.organizations.services import (
+    create_dealer,
+    create_territory,
+    grant_app_access,
+    sign_up,
+)
 from core.permissions.models import AppCode, Permission, Role
 
 pytestmark = [pytest.mark.django_db(databases=["default", TEST_TENANT_ALIAS])]
@@ -57,13 +61,12 @@ def signed_in(user) -> APIClient:
 
 def dealer_admin_at(organization, dealer) -> User:
     user = User.objects.create_user(email="sunil@apex.test", password="x")
-    membership = Membership.objects.create(
-        user=user, organization=organization, unit=dealer, role=MembershipRole.MEMBER
-    )
-    give_app_access(
+    membership = Membership.objects.create(user=user, organization=organization)
+    grant_app_access(
         membership=membership,
-        app_id=AppCode.DMS,
+        app=AppCode.DMS,
         role=Role.objects.get(app_id=AppCode.DMS, code="dms.system_admin"),
+        territories=[dealer],
     )
     return user
 

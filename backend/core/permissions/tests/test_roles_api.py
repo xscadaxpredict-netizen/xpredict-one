@@ -18,15 +18,14 @@ from __future__ import annotations
 import pytest
 from rest_framework.test import APIClient
 
-from conftest import TEST_TENANT_ALIAS, give_app_access
+from conftest import TEST_TENANT_ALIAS
 from core.accounts.models import User
 from core.organizations.models import (
     ActivationCode,
     Membership,
-    MembershipRole,
     Territory,
 )
-from core.organizations.services import sign_up
+from core.organizations.services import grant_app_access, sign_up
 from core.permissions.models import AppCode, Role
 
 pytestmark = [
@@ -59,13 +58,12 @@ def found(name="Acme Motors", email="owner@acme.test", code="CODE-ACME"):
 
 def add_with_role(organization, role_code, unit=None, email="person@acme.test"):
     user = User.objects.create_user(email=email, password="x")
-    membership = Membership.objects.create(
-        user=user, organization=organization, unit=unit, role=MembershipRole.MEMBER
-    )
-    give_app_access(
+    membership = Membership.objects.create(user=user, organization=organization)
+    grant_app_access(
         membership=membership,
-        app_id=AppCode.DMS,
+        app=AppCode.DMS,
         role=Role.objects.get(app_id=AppCode.DMS, code=role_code),
+        territories=[unit or Territory.objects.root_for(organization)],
     )
     return user
 

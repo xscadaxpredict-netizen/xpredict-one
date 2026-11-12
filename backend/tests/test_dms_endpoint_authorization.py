@@ -48,19 +48,19 @@ from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework.test import APIClient
 
-from conftest import TEST_TENANT_ALIAS, give_app_access
+from conftest import TEST_TENANT_ALIAS
 from core.accounts.models import User
 from core.api import TenantAPIView
 from core.billing.models import AppSubscription, SubscriptionStatus
 from core.organizations.models import (
     Membership,
-    MembershipRole,
     MembershipStatus,
     Organization,
     OrganizationStatus,
     Territory,
 )
 from core.organizations.selectors import permissions_for
+from core.organizations.services import grant_app_access
 from core.permissions.models import AppCode, Role
 
 pytestmark = pytest.mark.django_db(databases=["default", TEST_TENANT_ALIAS])
@@ -103,16 +103,13 @@ def add_member(org, role_code, email, unit=None):
     """
     user = User.objects.create_user(email=email, password="correct horse battery staple")
     membership = Membership.objects.create(
-        user=user,
-        organization=org,
-        unit=unit,
-        role=MembershipRole.MEMBER,
-        status=MembershipStatus.ACTIVE,
+        user=user, organization=org, status=MembershipStatus.ACTIVE
     )
-    give_app_access(
+    grant_app_access(
         membership=membership,
-        app_id=AppCode.DMS,
+        app=AppCode.DMS,
         role=Role.objects.get(app_id=AppCode.DMS, code=role_code),
+        territories=[unit or Territory.objects.root_for(org)],
     )
     return user
 

@@ -32,17 +32,16 @@ from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework.test import APIClient
 
-from conftest import TEST_TENANT_ALIAS, give_app_access
+from conftest import TEST_TENANT_ALIAS
 from core.accounts.models import User
 from core.organizations.api.base import OrgScopedAPIView
 from core.organizations.models import (
     ActivationCode,
     Membership,
-    MembershipRole,
     Territory,
 )
 from core.organizations.selectors import can_manage, permissions_for
-from core.organizations.services import sign_up
+from core.organizations.services import grant_app_access, sign_up
 from core.permissions.models import AppCode, Role
 
 pytestmark = [
@@ -145,13 +144,12 @@ def add_dealer_admin(organization, unit, email="dealeradmin@acme.test"):
     unit attached, which is the point of the shape.
     """
     user = User.objects.create_user(email=email, password="x")
-    membership = Membership.objects.create(
-        user=user, organization=organization, unit=unit, role=MembershipRole.MEMBER
-    )
-    give_app_access(
+    membership = Membership.objects.create(user=user, organization=organization)
+    grant_app_access(
         membership=membership,
-        app_id=AppCode.DMS,
+        app=AppCode.DMS,
         role=Role.objects.get(app_id=AppCode.DMS, code="dms.system_admin"),
+        territories=[unit],
     )
     return user, membership
 
@@ -159,13 +157,12 @@ def add_dealer_admin(organization, unit, email="dealeradmin@acme.test"):
 def add_plain_member(organization, unit=None, email="sales@acme.test"):
     """A Sales representative: entitled to be here, administers nothing."""
     user = User.objects.create_user(email=email, password="x")
-    membership = Membership.objects.create(
-        user=user, organization=organization, unit=unit, role=MembershipRole.MEMBER
-    )
-    give_app_access(
+    membership = Membership.objects.create(user=user, organization=organization)
+    grant_app_access(
         membership=membership,
-        app_id=AppCode.DMS,
+        app=AppCode.DMS,
         role=Role.objects.get(app_id=AppCode.DMS, code="dms.sales_representative"),
+        territories=[unit or Territory.objects.root_for(organization)],
     )
     return user, membership
 

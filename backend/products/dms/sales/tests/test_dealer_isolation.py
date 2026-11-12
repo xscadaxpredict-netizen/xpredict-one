@@ -7,17 +7,17 @@ from rest_framework import status
 from rest_framework.test import APIClient
 
 from config.routers import current_tenant_db
-from conftest import TEST_TENANT_ALIAS, give_app_access
+from conftest import TEST_TENANT_ALIAS
 from core.accounts.models import User
 from core.billing.models import AppSubscription, SubscriptionStatus
 from core.organizations.models import (
     Membership,
-    MembershipRole,
     MembershipStatus,
     Organization,
     OrganizationStatus,
     Territory,
 )
+from core.organizations.services import grant_app_access
 from core.permissions.models import AppCode, Role
 from products.dms.sales import selectors
 from products.dms.sales.models import Enquiry
@@ -46,17 +46,13 @@ def create_test_org(slug="test-dealers-org") -> Organization:
 def create_dealer_user(org, unit, email, role_code="dms.sales_representative"):
     user = User.objects.create_user(email=email, password="password123")
     membership = Membership.objects.create(
-        user=user,
-        organization=org,
-        unit=unit,
-        role=MembershipRole.MEMBER,
-        status=MembershipStatus.ACTIVE,
+        user=user, organization=org, status=MembershipStatus.ACTIVE
     )
-    role = Role.objects.get(app_id=AppCode.DMS, code=role_code)
-    give_app_access(
+    grant_app_access(
         membership=membership,
-        app_id=AppCode.DMS,
-        role=role,
+        app=AppCode.DMS,
+        role=Role.objects.get(app_id=AppCode.DMS, code=role_code),
+        territories=[unit],
     )
     return user, membership
 

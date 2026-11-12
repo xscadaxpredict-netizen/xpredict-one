@@ -28,7 +28,7 @@ from django.core.exceptions import ImproperlyConfigured
 from django.utils import timezone
 from rest_framework.test import APIClient
 
-from conftest import TEST_TENANT_ALIAS, give_app_access
+from conftest import TEST_TENANT_ALIAS
 from core.accounts.models import User
 from core.billing.models import AppSubscription, SubscriptionStatus
 from core.organizations.models import (
@@ -40,7 +40,12 @@ from core.organizations.models import (
     Territory,
 )
 from core.organizations.selectors import reach, standing
-from core.organizations.services import accept_invitation, invitation_link, sign_up
+from core.organizations.services import (
+    accept_invitation,
+    grant_app_access,
+    invitation_link,
+    sign_up,
+)
 from core.permissions.models import AppCode, Role
 
 pytestmark = [
@@ -620,16 +625,13 @@ class TestTheLinkAnAdminCopies:
 
         admin_user = User.objects.create_user(email="dealeradmin@acme.test", password=PASSWORD)
         admin_membership = Membership.objects.create(
-            user=admin_user,
-            organization=result.organization,
-            unit=mine,
-            role=MembershipRole.MEMBER,
-            status=MembershipStatus.ACTIVE,
+            user=admin_user, organization=result.organization, status=MembershipStatus.ACTIVE
         )
-        give_app_access(
+        grant_app_access(
             membership=admin_membership,
-            app_id=AppCode.DMS,
+            app=AppCode.DMS,
             role=dms_role("dms.system_admin"),
+            territories=[mine],
         )
 
         other = invite(result.organization, unit=theirs, email="theirs@acme.test")
@@ -660,13 +662,13 @@ class TestTheLinkAnAdminCopies:
 
         viewer = User.objects.create_user(email="viewer@acme.test", password=PASSWORD)
         viewer_membership = Membership.objects.create(
-            user=viewer,
-            organization=result.organization,
-            role=MembershipRole.MEMBER,
-            status=MembershipStatus.ACTIVE,
+            user=viewer, organization=result.organization, status=MembershipStatus.ACTIVE
         )
-        give_app_access(
-            membership=viewer_membership, app_id=AppCode.DMS, role=dms_role("dms.fleet_viewer")
+        grant_app_access(
+            membership=viewer_membership,
+            app=AppCode.DMS,
+            role=dms_role("dms.fleet_viewer"),
+            territories=[Territory.objects.root_for(result.organization)],
         )
         client.force_authenticate(user=viewer)
 

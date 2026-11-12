@@ -26,7 +26,7 @@ import pytest
 from django.utils import timezone
 from rest_framework.test import APIClient
 
-from conftest import TEST_TENANT_ALIAS, give_app_access
+from conftest import TEST_TENANT_ALIAS
 from core.accounts.models import User
 from core.billing.models import AppSubscription, SubscriptionStatus
 from core.organizations.models import (
@@ -37,8 +37,8 @@ from core.organizations.models import (
     MembershipStatus,
     Territory,
 )
-from core.organizations.selectors import org_users
-from core.organizations.services import INVITATION_LIFETIME, sign_up
+from core.organizations.selectors import org_users, reach
+from core.organizations.services import INVITATION_LIFETIME, grant_app_access, sign_up
 from core.permissions.models import AppCode, Role
 
 pytestmark = [
@@ -70,15 +70,23 @@ def dms_role(code):
     return Role.objects.get(app_id=AppCode.DMS, code=code)
 
 
-def add_person(organization, *, unit=None, role_code="dms.sales_representative", email, standing=
-               MembershipRole.MEMBER, status=MembershipStatus.ACTIVE):
+def add_person(
+    organization,
+    *,
+    unit=None,
+    role_code="dms.sales_representative",
+    email,
+    status=MembershipStatus.ACTIVE,
+):
+    """Placed at `unit`, or at the organisation's root when there is none."""
     user = User.objects.create_user(email=email, password="x", first_name="A", last_name="B")
-    membership = Membership.objects.create(
-        user=user, organization=organization, unit=unit, role=standing, status=status
-    )
+    membership = Membership.objects.create(user=user, organization=organization, status=status)
     if role_code:
-        give_app_access(
-            membership=membership, app_id=AppCode.DMS, role=dms_role(role_code)
+        grant_app_access(
+            membership=membership,
+            app=AppCode.DMS,
+            role=dms_role(role_code),
+            territories=[unit or Territory.objects.root_for(organization)],
         )
     return membership
 
@@ -345,8 +353,10 @@ class TestDealerIsolation:
         )
 
         assert response.status_code == 404
-        person.refresh_from_db()
-        assert person.unit_id == mine.id
+        # Still at their own dealership -- by their GRANT, the only record
+        # since step 2d-2. `Membership.unit` is no longer written, so reading
+        # it here would pass whatever the service did.
+        assert reach(Membership.objects.get(pk=person.pk)) == frozenset({mine.id})
 
     def test_a_dealer_admin_cannot_pull_somebody_in_from_another_dealership(
         self, client, two_dealers
@@ -366,8 +376,7 @@ class TestDealerIsolation:
         )
 
         assert response.status_code == 404
-        person.refresh_from_db()
-        assert person.unit_id == theirs.id
+        assert reach(Membership.objects.get(pk=person.pk)) == frozenset({theirs.id})
 
     def test_a_dealer_admin_cannot_appoint_an_organisation_admin(self, client, two_dealers):
         """
