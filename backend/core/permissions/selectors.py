@@ -10,7 +10,7 @@ be a member to ask -- but the answer does not vary by who asks.
 
 from __future__ import annotations
 
-from core.permissions.models import Role
+from core.permissions.models import AppCode, Role
 
 
 def role_catalogue() -> list[Role]:
@@ -30,4 +30,10 @@ def role_catalogue() -> list[Role]:
     which roles are offerable, and the day they disagree the form offers a role
     the backend then refuses.
     """
-    return list(Role.objects.prefetch_related("permissions").all())
+    # EXCEPT ADMINISTRATION'S OWN ROLES, until C72 piece 7. "Organisation
+    # admin" (Q60) is given through the form's `role: "admin"` and never
+    # picked from a list, and the Roles page already describes organisation
+    # admins in its own words (C53). Listing it would put a second
+    # "Organisation admin" on that page as if it were an app role. Piece 7's
+    # role builder is where it appears.
+    return list(Role.objects.prefetch_related("permissions").exclude(app_id=AppCode.ADMIN))

@@ -1,10 +1,10 @@
 """
 Tools models: MarketingAsset, TimerCalculation.
 
-MarketingAsset inherits ``BaseModel`` (org-level, no unit_id) — same
+MarketingAsset inherits ``BaseModel`` (org-level, no territory_id) — same
 reasoning as UserManual and MachineVideo (schema review #04).
 
-TimerCalculation inherits ``UnitScopedModel`` — saved per-site by a
+TimerCalculation inherits ``TerritoryScopedModel`` — saved per-site by a
 dealer's technician.
 """
 
@@ -12,7 +12,7 @@ from __future__ import annotations
 
 from django.db import models
 
-from shared.base_models import BaseModel, UnitScopedModel
+from shared.base_models import BaseModel, TerritoryScopedModel
 
 # ============================================================================
 # MarketingAsset
@@ -61,7 +61,7 @@ class MarketingAsset(BaseModel):
 # TimerCalculation
 # ============================================================================
 
-class TimerCalculation(UnitScopedModel):
+class TimerCalculation(TerritoryScopedModel):
     """
     A saved capacity/timer calculation for a specific site.
 
@@ -83,8 +83,8 @@ class TimerCalculation(UnitScopedModel):
 
     class Meta:
         indexes = [
-            models.Index(fields=["unit_id", "site_id"]),
-            models.Index(fields=["unit_id", "-created_at"]),
+            models.Index(fields=["territory_id", "site_id"]),
+            models.Index(fields=["territory_id", "-created_at"]),
         ]
 
     def __str__(self) -> str:

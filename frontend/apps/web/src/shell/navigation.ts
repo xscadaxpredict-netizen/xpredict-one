@@ -74,8 +74,22 @@ export interface AppDefinition {
   description: string;
   /** Two letters for the launcher tile. */
   initials: string;
+  /**
+   * The heading this app sits under in the topbar's apps panel. Copy, not data
+   * --- the same kind of string as `description`, and grouping changes nothing
+   * about whether the app can be opened.
+   */
+  section: AppSection;
   nav: NavGroup[];
 }
+
+/**
+ * The panel's headings, in the order they are shown. A list rather than the
+ * order apps happen to appear in the catalogue, so adding an app to an
+ * existing section cannot reorder the headings.
+ */
+export const APP_SECTIONS = ["Operations", "Sales & marketing", "Platform"] as const;
+export type AppSection = (typeof APP_SECTIONS)[number];
 
 /**
  * Every app the suite knows how to draw — including ones this organisation has
@@ -89,6 +103,7 @@ export const APP_CATALOG: AppDefinition[] = [
     name: "DMS",
     description: "Dealership management",
     initials: "DM",
+    section: "Operations",
     /*
      * Q19 answered 2026-09-26 from the owner's UI mock: Sales, Service and
      * Tech support are the MODULES; enquiries, quotations and the rest are
@@ -186,6 +201,7 @@ export const APP_CATALOG: AppDefinition[] = [
     name: "CRM",
     description: "Leads & marketing",
     initials: "CR",
+    section: "Sales & marketing",
     // Built after DMS ships. An empty sidebar is honest; invented links are not.
     nav: [],
   },
@@ -194,6 +210,7 @@ export const APP_CATALOG: AppDefinition[] = [
     name: "E-commerce",
     description: "Storefront & orders",
     initials: "EC",
+    section: "Sales & marketing",
     nav: [],
   },
   {
@@ -201,6 +218,7 @@ export const APP_CATALOG: AppDefinition[] = [
     name: "Administration",
     description: "Dealers, people, billing",
     initials: "AD",
+    section: "Platform",
     nav: [
       {
         label: "Organisation",

@@ -28,6 +28,7 @@ from django.core.exceptions import ValidationError as DjangoValidationError
 from django.db import transaction
 from django.utils import timezone
 from django.utils.text import slugify
+from treebeard.exceptions import InvalidMoveToDescendant
 
 from core.accounts.models import User
 from core.billing.models import AppSubscription, SubscriptionStatus
@@ -43,6 +44,7 @@ from core.organizations.exceptions import (
     DealerNameTakenError,
     DealerScopedAppError,
     EmailAlreadyRegisteredError,
+    GrantNeedsTerritoryError,
     InvitationAlreadyAcceptedError,
     InvitationExpiredError,
     InvitationNeedsSignInError,
@@ -51,24 +53,34 @@ from core.organizations.exceptions import (
     OrganizationNameUnusableError,
     OwnerProtectedError,
     PersonEmailTakenError,
+    PersonNeedsAnAppError,
+    RoleNotInAppError,
     RoleScopeMismatchError,
     SignInAddressLockedError,
+    TerritoryIsTheOrganisationError,
+    TerritoryMoveIntoItselfError,
+    TerritoryNameTakenError,
+    TerritoryPlacementError,
 )
 from core.organizations.identifiers import extract_pan
 from core.organizations.models import (
     ActivationCode,
-    BusinessUnit,
     Invitation,
     InvitationAppGrant,
     Membership,
+    MembershipAppAccess,
+    MembershipAppRole,
+    MembershipAppTerritory,
     MembershipRole,
     MembershipStatus,
     Organization,
+    Territory,
+    TerritoryKind,
     UnitStatus,
 )
-from core.organizations.selectors import can_manage
+from core.organizations.selectors import GRANTS_PREFETCH, can_manage, can_manage_person, reach
 from core.organizations.tasks import schedule_provisioning
-from core.permissions.models import AppAccess, AppCode, Role, RoleLevel
+from core.permissions.models import App, AppCode, Role, RoleLevel
 from shared.exceptions import AuthorizationError, FieldError, InvalidInputError, not_found
 
 # WHAT A NEW ORGANIZATION IS SUBSCRIBED TO. DMS only, because DMS is the
@@ -161,20 +173,20 @@ def sign_up(
         db_port=int(settings.DATABASES["default"]["PORT"] or 3306),
     )
 
+    # THE ORGANISATION'S TERRITORY TREE STARTS HERE (C72): its root box, kind
+    # `organisation`. Created with the organisation, in the same transaction,
+    # so no organisation ever exists without one.
+    Territory.objects.root_for(organization)
+
     membership = Membership.objects.create(
         user=user,
         organization=organization,
-        role=MembershipRole.OWNER,
         status=MembershipStatus.ACTIVE,
         # Exactly one owner per organization, expressed the MySQL way: True for
         # the owner and NULL for everyone else, unique on (organization,
-        # owner_marker). The check constraint refuses the two drifting apart,
-        # so this is set HERE rather than left to a signal.
-        owner_marker=True,
-        # An owner is organization-wide. The check constraint enforces it, and
-        # C40 is the reason: somebody who administers one dealership holds the
-        # DMS System administrator role instead.
-        unit=None,
+        # is_owner). Set HERE rather than left to a signal.
+        is_owner=True,
+        # An owner is organisation-wide by rule (C72): no place to record.
         created_by_user_id=user.id,
     )
 
@@ -310,11 +322,14 @@ def _subscribe_and_grant(
     """
     Buy an app for the organization and let the owner into it (C16, C41).
 
-    TWO ROWS, NEVER ONE. `AppSubscription` says the organization pays;
-    `AppAccess` says this person may open it. The owner is not exempt from the
-    second --- C41 rejected an implicit "or is_owner" because an escape hatch
-    in every permission check is where that kind of bug lives, and because the
-    owner is the one account that cannot be deactivated.
+    `AppSubscription` says the organization pays; the grant says where the
+    owner sits in it.
+
+    C41 REJECTED AN IMPLICIT "OR is_owner" AND C72 REVERSED THAT: since step
+    2c the owner holds every permission of every subscribed app by rule
+    (`_membership_data`), so the grant written here no longer decides what the
+    owner can do. It stays until step 2d retires the old tables, and keeps the
+    owner's data shaped like everybody else's in the meantime.
     """
     if app == AppCode.ADMIN:
         # Administration is neither sold nor granted: it comes with the
@@ -323,7 +338,7 @@ def _subscribe_and_grant(
         # rather than a quiet mistake --- but failing here says why.
         raise ValueError(
             "Administration is not subscribable or grantable (C40). "
-            "The owner reaches it through standing."
+            "The owner holds it by rule, through is_owner (C72)."
         )
 
     try:
@@ -336,14 +351,18 @@ def _subscribe_and_grant(
         ) from exc
 
     AppSubscription.objects.create(
-        organization=organization, app=app, created_by_user_id=actor_id
+        organization=organization, app_id=app, created_by_user_id=actor_id
     )
 
-    AppAccess.objects.create(
+    role = Role.objects.get(app=app, code=role_code)
+    # THE GRANT ONLY (C72 step 2d-2) -- no `AppAccess` row. The owner is
+    # organisation-wide, so they are placed at the organisation's root.
+    grant_app_access(
         membership=membership,
         app=app,
-        role=Role.objects.get(app=app, code=role_code),
-        created_by_user_id=actor_id,
+        role=role,
+        territories=[Territory.objects.root_for(organization)],
+        actor_id=actor_id,
     )
 
 
@@ -365,11 +384,325 @@ def _subscribe_and_grant(
 # ---------------------------------------------------------------------------
 
 
+# ---------------------------------------------------------------------------
+# The territory tree (C72 piece 1).
+#
+# THE ORGANISATION IS THE ROOT (the owner, 2026-11-06). Every organisation has
+# one root box of kind `organisation` (`Territory.objects.root_for`), and every
+# other territory sits under it. A `parent_id` of None means "directly under
+# the organisation", which is the root.
+#
+# WHAT MAY SIT UNDER WHAT, in one place. Every write that places a territory --
+# creating one, moving one -- asks `assert_placement_allowed`, so the rule
+# cannot be honoured by one door and forgotten by another.
+#
+# Version 1, the owner's tree from C72: regions may nest; a dealer sits under
+# the organisation or in a region; a branch only inside a dealer; a warehouse
+# anywhere. No dealer inside a dealer until Q57 says sub-dealers exist. Nothing
+# is ever placed AS an organisation: there is one, and sign-up made it.
+# ---------------------------------------------------------------------------
+
+_ALLOWED_PARENTS: dict[str, frozenset[str]] = {
+    TerritoryKind.ORGANISATION: frozenset(),
+    TerritoryKind.REGION: frozenset({TerritoryKind.ORGANISATION, TerritoryKind.REGION}),
+    TerritoryKind.DEALER: frozenset({TerritoryKind.ORGANISATION, TerritoryKind.REGION}),
+    TerritoryKind.BRANCH: frozenset({TerritoryKind.DEALER}),
+    TerritoryKind.WAREHOUSE: frozenset(
+        {
+            TerritoryKind.ORGANISATION,
+            TerritoryKind.REGION,
+            TerritoryKind.DEALER,
+            TerritoryKind.BRANCH,
+        }
+    ),
+}
+
+
+def assert_placement_allowed(kind: str, parent: Territory) -> None:
+    """Refuse a territory of this kind under this parent (C72). 409."""
+    if parent.kind not in _ALLOWED_PARENTS[kind]:
+        raise TerritoryPlacementError
+
+
+def _resolve_parent(organization: Organization, parent_id: uuid.UUID | None) -> Territory:
+    """
+    The parent territory -- the organisation's root when `parent_id` is None.
+
+    FILTERED BY ORGANIZATION, and another organization's territory is a 404,
+    not a placement error: a box the caller cannot see must look like one that
+    does not exist. Paths are unique across the whole table, so without this
+    filter a guessed UUID would graft one customer's dealership into another
+    customer's tree.
+    """
+    if parent_id is None:
+        return Territory.objects.root_for(organization)
+    try:
+        return Territory.objects.get(id=parent_id, organization=organization)
+    except (Territory.DoesNotExist, DjangoValidationError, ValueError):
+        raise not_found("Territory") from None
+
+
+def _assert_not_the_root(territory: Territory) -> None:
+    """
+    The root IS the organisation: it is renamed by renaming the organisation,
+    it has nowhere to move to, and nothing may be moved into its place.
+    """
+    if territory.is_root:
+        raise TerritoryIsTheOrganisationError
+
+
+def _add_territory(organization: Organization, parent: Territory, fields: dict) -> Territory:
+    """
+    Insert a territory under its parent. The caller has checked the rules.
+
+    `add_child` locks the parent row first, so two territories added under one
+    parent at once queue rather than computing the same path. Under the root,
+    that serialises one organisation's own additions -- and no other
+    organisation's, since each has its own root.
+    """
+    return Territory.objects.add_child(parent, {"organization": organization, **fields})
+
+
+def _assert_territory_name_free(
+    organization: Organization, name: str, excluding: uuid.UUID | None = None
+) -> None:
+    existing = Territory.objects.filter(organization=organization, name=name)
+    if excluding is not None:
+        existing = existing.exclude(pk=excluding)
+    if existing.exists():
+        raise TerritoryNameTakenError
+
+
+@transaction.atomic
+def create_territory(
+    *,
+    organization: Organization,
+    kind: str,
+    name: str,
+    parent_id: uuid.UUID | None = None,
+) -> Territory:
+    """
+    Add a region, branch or warehouse to the organization's tree.
+
+    Dealerships have their own door, `create_dealer`, because they carry the
+    GSTIN and the rest of the dealer details the dealers screen edits. Both
+    doors place through the same rule.
+    """
+    parent = _resolve_parent(organization, parent_id)
+    assert_placement_allowed(kind, parent)
+    _assert_territory_name_free(organization, name)
+
+    return _add_territory(organization, parent, {"kind": kind, "name": name})
+
+
+@transaction.atomic
+def rename_territory(*, territory: Territory, name: str) -> Territory:
+    """Change a territory's name -- any kind but the root. Unique across the tree."""
+    _assert_not_the_root(territory)
+    _assert_territory_name_free(territory.organization, name, excluding=territory.pk)
+    territory.name = name
+    territory.save(update_fields=["name", "updated_at"])
+    return territory
+
+
+@transaction.atomic
+def move_territory(*, territory: Territory, parent_id: uuid.UUID | None) -> Territory:
+    """
+    Put a territory -- and everything under it -- somewhere else in the tree.
+
+    `parent_id` None moves it directly under the organisation. This is how the
+    dealerships that existed before regions get organised: every one of them
+    sits directly under the organisation (`organizations/0014`).
+
+    EVERYTHING UNDER IT MOVES TOO, and nothing under it needs checking: the
+    rules depend only on a box and its own parent, and those pairs do not
+    change in a move. Only the moved box's new parent is checked.
+
+    IDS DO NOT CHANGE, ONLY PATHS. Every tenant record and every membership
+    points at a territory by id, so moving a dealership into a region moves
+    nothing else.
+    """
+    _assert_not_the_root(territory)
+    parent = _resolve_parent(territory.organization, parent_id)
+    assert_placement_allowed(territory.kind, parent)
+
+    if parent.pk == territory.pk or parent.path.startswith(territory.path):
+        raise TerritoryMoveIntoItselfError
+
+    try:
+        Territory.objects.move(territory, parent, "last-child")
+    except InvalidMoveToDescendant:
+        raise TerritoryMoveIntoItselfError from None
+
+    return Territory.objects.get(pk=territory.pk)
+
+
+# ---------------------------------------------------------------------------
+# Per-app grants (C72 piece 2).
+#
+# `grant_app_access()` IS THE ONLY WRITER of `MembershipAppAccess`,
+# `MembershipAppRole` and `MembershipAppTerritory`. The rules it enforces are
+# the ones the database cannot: the role belongs to the app; there is at least
+# one territory; every territory is in the person's own organisation; and a
+# dealership person holds only apps that use territories (C27, Q53).
+#
+# THE GRANTS ARE THE ONLY RECORD. `AppAccess`, `Membership.role` and
+# `Membership.unit` stopped being written in step 2d-2 and were dropped in 2d-3.
+# ---------------------------------------------------------------------------
+
+
+def _is_dealership_place(territory: Territory) -> bool:
+    """
+    Is this a place that belongs to a dealership -- a dealer, a branch, or
+    anything (a warehouse) inside a dealer?
+
+    Somebody placed at one is a dealership's person, and Q53 says a
+    dealership's people get DMS and nothing else.
+    """
+    if territory.kind in (TerritoryKind.DEALER, TerritoryKind.BRANCH):
+        return True
+    step = Territory.steplen
+    ancestors = [territory.path[:end] for end in range(step, len(territory.path), step)]
+    return Territory.objects.filter(
+        organization_id=territory.organization_id, path__in=ancestors, kind=TerritoryKind.DEALER
+    ).exists()
+
+
+@transaction.atomic
+def grant_app_access(
+    *,
+    membership: Membership,
+    app: str,
+    role: Role,
+    territories: list[Territory],
+    actor_id: uuid.UUID | None = None,
+) -> MembershipAppAccess:
+    """
+    Give this membership `app`, as `role`, placed at `territories` -- or replace
+    what they had in that app. One user action, one transaction (CLAUDE.md).
+
+    REPLACES, NEVER MERGES. Calling it again for the same app sets the role and
+    the territories to exactly what is passed; a territory left out is a
+    territory removed. Merging would mean a placement could only ever grow.
+    """
+    if role.app_id != app:
+        raise RoleNotInAppError
+    if not territories:
+        raise GrantNeedsTerritoryError
+    if any(t.organization_id != membership.organization_id for t in territories):
+        # Another organisation's territory is one the caller cannot see (C49).
+        raise not_found("Territory")
+
+    app_uses_territories = App.objects.filter(code=app, unit_aware=True).exists()
+    placed_at_a_dealership = any(_is_dealership_place(t) for t in territories)
+
+    # C27 / Q53, BOTH WAYS ROUND, across the person's other grants: a
+    # dealership's person may not hold an app that ignores territories, and a
+    # person holding such an app may not be placed at a dealership elsewhere.
+    others = MembershipAppAccess.objects.filter(membership=membership).exclude(app_id=app)
+    if placed_at_a_dealership and (
+        not app_uses_territories or others.filter(app__unit_aware=False).exists()
+    ):
+        raise DealerScopedAppError
+    if not app_uses_territories and any(
+        _is_dealership_place(placement.territory)
+        for placement in MembershipAppTerritory.objects.filter(
+            app_access__in=others
+        ).select_related("territory")
+    ):
+        raise DealerScopedAppError
+
+    grant, _ = MembershipAppAccess.objects.get_or_create(
+        membership=membership, app_id=app, defaults={"created_by_user_id": actor_id}
+    )
+    MembershipAppRole.objects.update_or_create(app_access=grant, defaults={"role": role})
+    grant.territories.all().delete()
+    for territory in {t.pk: t for t in territories}.values():
+        MembershipAppTerritory.objects.create(
+            app_access=grant, territory=territory, created_by_user_id=actor_id
+        )
+    return grant
+
+
+@transaction.atomic
+def revoke_app_access(*, membership: Membership, app: str) -> None:
+    """Take an app away. The role and the territories go with it (cascade)."""
+    MembershipAppAccess.objects.filter(membership=membership, app_id=app).delete()
+
+
+def _placement(organization: Organization, unit: Territory | None) -> list[Territory]:
+    """
+    Where the FORM puts this person: the dealership it names, or the
+    organisation's root when it names none.
+
+    FROM THE FORM, NOT FROM `Membership.unit` (C72 step 2d-2). Until this step
+    the services saved the dealership on the membership and then read it back
+    to place the grants; now it goes straight into the grants and the old
+    field is not written at all. The form still sends one dealership --
+    several places per person is piece 7's screen.
+    """
+    if unit is not None:
+        return [unit]
+    return [Territory.objects.root_for(organization)]
+
+
+def _assert_organisation_wide(standing: str, unit_id: uuid.UUID | None) -> None:
+    """
+    An owner or an admin is never placed at one dealership.
+
+    THIS USED TO BE THE DATABASE'S JOB, and badly: the check constraint on
+    `Membership` refused `admin` with a `unit`, so an admin invitation naming
+    a dealership was accepted at invite time and blew up as a 500 when the
+    person clicked the link. Step 2d-2 stops writing `Membership.unit`, which
+    would have retired that constraint silently. So the rule lives here now,
+    as a 409, checked at invite, at edit and again at accept.
+
+    A dealership's administrator holds DMS System administrator there (C40);
+    "admin" on the form means the Organisation admin, who is at the root.
+    """
+    if unit_id is not None and standing in (MembershipRole.OWNER, MembershipRole.ADMIN):
+        raise RoleScopeMismatchError
+
+
+# The one built-in Administration role (Q60; `permissions/0010`).
+ORGANISATION_ADMIN_ROLE = "admin.org_admin"
+
+
+def _grant_administration_if_admin(
+    membership: Membership, standing: str, *, actor_id=None
+) -> None:
+    """
+    The form's `role: "admin"` -> an Administration grant, role "Organisation
+    admin", placed at the organisation's root. The owner gets none: they hold
+    Administration by rule (`is_owner`), whatever the form says.
+
+    `standing` IS THE FORM'S WORD, passed in, not `membership.role` -- which
+    step 2d-2 no longer writes. The frontend keeps sending "admin" | "member"
+    until piece 7.
+
+    ONLY EVER ADDS, because both callers start from a person with no
+    Administration grant -- accepting creates the membership, and editing has
+    just deleted every grant it had. A demoted admin therefore loses it by that
+    delete, not here. A new caller that does NOT start clean must revoke first.
+    """
+    if membership.is_owner:
+        return
+    if standing == MembershipRole.ADMIN:
+        grant_app_access(
+            membership=membership,
+            app=AppCode.ADMIN,
+            role=Role.objects.get(app_id=AppCode.ADMIN, code=ORGANISATION_ADMIN_ROLE),
+            territories=[Territory.objects.root_for(membership.organization)],
+            actor_id=actor_id,
+        )
+
+
 @transaction.atomic
 def create_dealer(
     *,
     organization: Organization,
     name: str,
+    parent_id: uuid.UUID | None = None,
     code: str | None = None,
     gstin: str = "",
     pan: str = "",
@@ -379,7 +712,7 @@ def create_dealer(
     city: str = "",
     state: str = "",
     postal_code: str = "",
-) -> BusinessUnit:
+) -> Territory:
     """
     Add a dealership to this organization.
 
@@ -398,35 +731,45 @@ def create_dealer(
     state as additional places of business, so refusing a duplicate would
     refuse real data. The PAN is shared across every branch of one company in
     any case.
+
+    `parent_id` PUTS IT INSIDE A REGION (C72); omitted, it sits at the top
+    level, as every dealership did before the tree existed.
     """
+    parent = _resolve_parent(organization, parent_id)
+    assert_placement_allowed(TerritoryKind.DEALER, parent)
     _assert_dealer_name_free(organization, name)
     _assert_dealer_code_free(organization, code)
 
-    return BusinessUnit.objects.create(
-        organization=organization,
-        name=name,
-        # NULL, never "", and the model comment explains why: MySQL treats
-        # every NULL in a unique index as distinct but two empty strings as a
-        # duplicate, so storing "" would let the first dealership without a
-        # code be created and refuse the second.
-        code=code or None,
-        gstin=gstin,
-        # DERIVED HERE, not in the browser. Characters 3-12 of a GSTIN are the
-        # holder's PAN, so a caller who sends one is overriding a default
-        # rather than supplying a fact we did not have -- and the default has
-        # to exist somewhere both a form and a shell session reach.
-        pan=pan or extract_pan(gstin),
-        contact_person=contact_person,
-        email=email,
-        phone=phone,
-        city=city,
-        state=state,
-        postal_code=postal_code,
+    return _add_territory(
+        organization,
+        parent,
+        {
+            "kind": TerritoryKind.DEALER,
+            "name": name,
+            # NULL, never "", and the model comment explains why: MySQL treats
+            # every NULL in a unique index as distinct but two empty strings as
+            # a duplicate, so storing "" would let the first dealership without
+            # a code be created and refuse the second.
+            "code": code or None,
+            "gstin": gstin,
+            # DERIVED HERE, not in the browser. Characters 3-12 of a GSTIN are
+            # the holder's PAN, so a caller who sends one is overriding a
+            # default rather than supplying a fact we did not have -- and the
+            # default has to exist somewhere both a form and a shell session
+            # reach.
+            "pan": pan or extract_pan(gstin),
+            "contact_person": contact_person,
+            "email": email,
+            "phone": phone,
+            "city": city,
+            "state": state,
+            "postal_code": postal_code,
+        },
     )
 
 
 @transaction.atomic
-def update_dealer(*, dealer: BusinessUnit, **fields: str | None) -> BusinessUnit:
+def update_dealer(*, dealer: Territory, **fields: str | None) -> Territory:
     """
     Change a dealership's details.
 
@@ -459,7 +802,7 @@ def update_dealer(*, dealer: BusinessUnit, **fields: str | None) -> BusinessUnit
 
 
 @transaction.atomic
-def close_dealer(*, dealer: BusinessUnit) -> BusinessUnit:
+def close_dealer(*, dealer: Territory) -> Territory:
     """
     Shut a dealership (C63, answering Q21).
 
@@ -494,7 +837,7 @@ def close_dealer(*, dealer: BusinessUnit) -> BusinessUnit:
 
 
 @transaction.atomic
-def reopen_dealer(*, dealer: BusinessUnit) -> BusinessUnit:
+def reopen_dealer(*, dealer: Territory) -> Territory:
     """
     Open a dealership again.
 
@@ -519,7 +862,7 @@ def reopen_dealer(*, dealer: BusinessUnit) -> BusinessUnit:
 def _assert_dealer_name_free(
     organization: Organization, name: str, excluding: uuid.UUID | None = None
 ) -> None:
-    existing = BusinessUnit.objects.filter(organization=organization, name=name)
+    existing = Territory.objects.filter(organization=organization, name=name)
     # EXCLUDE THE ROW BEING EDITED, or saving a dealership without touching its
     # name collides with itself -- the bug the frontend fake had to fix twice.
     if excluding is not None:
@@ -537,7 +880,7 @@ def _assert_dealer_code_free(
     if not code:
         return
 
-    existing = BusinessUnit.objects.filter(organization=organization, code=code)
+    existing = Territory.objects.filter(organization=organization, code=code)
     if excluding is not None:
         existing = existing.exclude(pk=excluding)
 
@@ -579,8 +922,34 @@ INVITATION_LIFETIME = timedelta(days=7)
 
 
 def _assert_can_manage(actor: Membership, target_unit_id: uuid.UUID | None) -> None:
+    """For a PLACE the form names -- where somebody is being invited or moved to."""
     if not can_manage(actor, target_unit_id):
         raise not_found("User")
+
+
+def _assert_can_manage_person(actor: Membership, person: Membership | Invitation) -> None:
+    """For a PERSON who already exists, judged by their grants (C72 step 2d)."""
+    if not can_manage_person(actor, person):
+        raise not_found("User")
+
+
+def _assert_has_an_app(role: str, grants: list[tuple[str, Role]]) -> None:
+    """
+    C73 (the owner, 2026-11-11, "for now"): everybody holds at least one app,
+    because under C72 a person's place in the tree comes from their grants.
+    Somebody made an admin has one -- Administration. The owner never reaches
+    this: their access is not taken from the form.
+    """
+    if not grants and role != MembershipRole.ADMIN:
+        raise PersonNeedsAnAppError(
+            field_errors=[
+                FieldError(
+                    field="apps",
+                    code="required",
+                    detail="Give this person at least one app.",
+                )
+            ]
+        )
 
 
 def _assert_grants_are_legal(
@@ -650,12 +1019,16 @@ def _assert_email_free(
         raise PersonEmailTakenError
 
 
-def _resolve_unit(organization: Organization, unit_id: uuid.UUID | None) -> BusinessUnit | None:
+def _resolve_unit(organization: Organization, unit_id: uuid.UUID | None) -> Territory | None:
     if unit_id is None:
         return None
     try:
-        return BusinessUnit.objects.get(id=unit_id, organization=organization)
-    except (BusinessUnit.DoesNotExist, DjangoValidationError, ValueError):
+        # DEALERS ONLY until C72 piece 2: a person is placed at a dealership or
+        # at nothing. A region's id here is "no such dealer", the same 404.
+        return Territory.objects.get(
+            id=unit_id, organization=organization, kind=TerritoryKind.DEALER
+        )
+    except (Territory.DoesNotExist, DjangoValidationError, ValueError):
         # Another organization's dealership is not bad input to report back, it
         # is a dealership this caller cannot see.
         raise not_found("Dealer") from None
@@ -698,8 +1071,10 @@ def find_person(organization: Organization, person_id: uuid.UUID) -> Membership 
     up.
     """
     try:
-        return Membership.objects.select_related("user", "unit").get(
-            id=person_id, organization=organization
+        return (
+            Membership.objects.select_related("user")
+            .prefetch_related(*GRANTS_PREFETCH)
+            .get(id=person_id, organization=organization)
         )
     except (Membership.DoesNotExist, DjangoValidationError, ValueError):
         pass
@@ -756,7 +1131,9 @@ def invite_person(
     # answers 404 for one that does not exist, would let a dealer admin
     # enumerate the organization's dealerships by watching which status comes
     # back. Both have to be the same refusal.
-    if actor.unit_id is not None:
+    # "Placed somewhere narrower than the whole organisation", from the
+    # actor's grants (C72 step 2c) -- a dealer admin.
+    if reach(actor) is not None:
         if role == MembershipRole.ADMIN:
             raise AuthorizationError
         if unit_id is None:
@@ -765,7 +1142,9 @@ def invite_person(
     _assert_can_manage(actor, unit_id)
 
     unit = _resolve_unit(organization, unit_id)
+    _assert_organisation_wide(role, unit_id)
     grants = _resolve_grants(apps)
+    _assert_has_an_app(role, grants)
     _assert_grants_are_legal(organization, unit_id, grants)
     _assert_email_free(organization, email)
 
@@ -782,7 +1161,7 @@ def invite_person(
     )
 
     for app, granted_role in grants:
-        InvitationAppGrant.objects.create(invitation=invitation, app=app, role=granted_role)
+        InvitationAppGrant.objects.create(invitation=invitation, app_id=app, role=granted_role)
 
     return invitation
 
@@ -813,14 +1192,18 @@ def update_person(
     the source permits the second.
     """
     person = find_person(organization, person_id)
-    _assert_can_manage(actor, person.unit_id)
+    _assert_can_manage_person(actor, person)
     _assert_can_manage(actor, unit_id)
 
-    if role == MembershipRole.ADMIN and actor.unit_id is not None:
+    if role == MembershipRole.ADMIN and reach(actor) is not None:
         raise AuthorizationError
 
     unit = _resolve_unit(organization, unit_id)
+    is_the_owner = isinstance(person, Membership) and person.is_owner
+    _assert_organisation_wide(MembershipRole.OWNER if is_the_owner else role, unit_id)
     grants = _resolve_grants(apps)
+    if not is_the_owner:
+        _assert_has_an_app(role, grants)
     _assert_grants_are_legal(organization, unit_id, grants)
 
     if isinstance(person, Invitation):
@@ -836,7 +1219,7 @@ def _update_membership(
     first_name: str,
     last_name: str,
     email: str,
-    unit: BusinessUnit | None,
+    unit: Territory | None,
     role: str,
     grants: list[tuple[str, Role]],
 ) -> None:
@@ -849,23 +1232,24 @@ def _update_membership(
     membership.user.last_name = last_name
     membership.user.save(update_fields=["first_name", "last_name"])
 
-    # THE OWNER'S STANDING SURVIVES WHATEVER IS SENT. The form never offers
-    # "owner" and there is exactly one per organization (C14), so taking the
-    # submitted value here would quietly demote them --- and the owner marker
-    # would then disagree with the role, which the check constraint refuses.
-    if membership.role != MembershipRole.OWNER:
-        membership.role = role
-
-    membership.unit = unit
-    membership.save(update_fields=["role", "unit"])
-
+    # THE GRANTS ARE THE WHOLE RECORD (C72 step 2d). There is no standing
+    # field for the form to overwrite, so the owner cannot be demoted by one.
+    #
     # DELETE THEN CREATE, inside the caller's transaction. Updating in place
     # would mean working out which grants went away, and a missed one leaves
     # somebody holding an app the form says they lost --- the stale-grant shape
     # C16 already had to catch once in billing.
-    membership.app_access.all().delete()
+    membership.grants.all().delete()
     for app, granted_role in grants:
-        AppAccess.objects.create(membership=membership, app=app, role=granted_role)
+        grant_app_access(
+            membership=membership,
+            app=app,
+            role=granted_role,
+            territories=_placement(membership.organization, unit),
+        )
+    # The delete above took any Administration grant with it, so the form
+    # decides afresh whether there is one (a demotion ends here).
+    _grant_administration_if_admin(membership, role)
 
 
 def _update_invitation(
@@ -874,7 +1258,7 @@ def _update_invitation(
     first_name: str,
     last_name: str,
     email: str,
-    unit: BusinessUnit | None,
+    unit: Territory | None,
     role: str,
     grants: list[tuple[str, Role]],
 ) -> None:
@@ -893,7 +1277,7 @@ def _update_invitation(
 
     invitation.app_grants.all().delete()
     for app, granted_role in grants:
-        InvitationAppGrant.objects.create(invitation=invitation, app=app, role=granted_role)
+        InvitationAppGrant.objects.create(invitation=invitation, app_id=app, role=granted_role)
 
 
 @transaction.atomic
@@ -911,9 +1295,9 @@ def remove_person(*, actor: Membership, organization: Organization, person_id: u
     there is no account yet and nothing references them.
     """
     person = find_person(organization, person_id)
-    _assert_can_manage(actor, person.unit_id)
+    _assert_can_manage_person(actor, person)
 
-    if isinstance(person, Membership) and person.role == MembershipRole.OWNER:
+    if isinstance(person, Membership) and person.is_owner:
         # Checked here as well as hidden in the UI: an organization with no
         # owner has nobody who could appoint one (C14), and a request does not
         # have to come from our menu.
@@ -939,12 +1323,12 @@ def set_person_status(
     REQUEST rather than when their token expires.
     """
     person = find_person(organization, person_id)
-    _assert_can_manage(actor, person.unit_id)
+    _assert_can_manage_person(actor, person)
 
     if isinstance(person, Invitation):
         raise NotAnInvitationError
 
-    if person.role == MembershipRole.OWNER:
+    if person.is_owner:
         # An organization whose owner is switched off has nobody who could
         # switch them back on.
         raise OwnerProtectedError
@@ -972,7 +1356,7 @@ def _pending_invitation(
     asking one question.
     """
     person = find_person(organization, person_id)
-    _assert_can_manage(actor, person.unit_id)
+    _assert_can_manage_person(actor, person)
 
     if not isinstance(person, Invitation):
         raise NotAnInvitationError
@@ -1136,9 +1520,13 @@ def accept_invitation(
     _assert_email_free(organization, email, excluding_invitation=invitation.id)
 
     grants = [
-        (grant.app, grant.role)
+        (grant.app_id, grant.role)
         for grant in invitation.app_grants.select_related("role").all()
     ]
+    # Re-checked like the rest: an `admin` invitation naming a dealership could
+    # be issued before this rule moved out of the database (step 2d-2), and the
+    # constraint that used to refuse it -- as a 500 -- no longer sees a unit.
+    _assert_organisation_wide(invitation.role, invitation.unit_id)
     _assert_grants_are_legal(organization, invitation.unit_id, grants)
 
     existing = User.objects.filter(email__iexact=email).first()
@@ -1179,24 +1567,30 @@ def accept_invitation(
     membership = Membership.objects.create(
         user=account,
         organization=organization,
-        role=invitation.role,
         status=MembershipStatus.ACTIVE,
-        unit=invitation.unit,
+        # NO `role`, NO `unit` (C72 step 2d-2): where they sit and whether they
+        # administer are the grants below. `role` takes its column default.
+        #
         # NOT the owner. An owner is founded with the organisation and never
         # invited into it (C41) --- `invite_person` refuses the role outright,
-        # so `owner_marker` stays NULL here and the one-owner constraint is
+        # so `is_owner` stays NULL here and the one-owner constraint is
         # untouched.
-        owner_marker=None,
+        is_owner=None,
         created_by_user_id=invitation.invited_by_id,
     )
 
     for app, role in grants:
-        AppAccess.objects.create(
+        grant_app_access(
             membership=membership,
             app=app,
             role=role,
-            created_by_user_id=invitation.invited_by_id,
+            territories=_placement(organization, invitation.unit),
+            actor_id=invitation.invited_by_id,
         )
+    # An `admin` invitation becomes an Organisation admin grant.
+    _grant_administration_if_admin(
+        membership, invitation.role, actor_id=invitation.invited_by_id
+    )
 
     invitation.accepted_at = timezone.now()
     invitation.save(update_fields=["accepted_at", "updated_at"])

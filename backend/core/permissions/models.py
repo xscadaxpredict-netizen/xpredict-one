@@ -23,20 +23,68 @@ from shared.base_models import BaseModel
 
 class AppCode(models.TextChoices):
     """
-    Every app the platform knows, including Administration.
+    Names for the rows of `App`, so code says `AppCode.DMS` rather than "dms".
 
-    ADMINISTRATION IS HERE BUT IS NOT GRANTABLE, and that distinction used to be
-    expressed by leaving it out of this enum entirely. It is back because
-    `admin.*` permissions are real and need an app; what stops it being granted
-    is now a check constraint on `AppAccess` and on `AppSubscription`, which is
-    the better place for it. One vocabulary, narrowed where it narrows, rather
-    than two enums that have to agree.
+    THE `App` TABLE IS THE LIST; THIS IS ONLY ITS SPELLING IN PYTHON (C71). It is
+    no longer `choices=` on any column --- every `app` column is a foreign key to
+    `App` now, which is what makes MySQL refuse a code that is not an app. A test
+    asserts the two list exactly the same codes, so adding an app is a row in a
+    data migration AND a line here, and forgetting either fails the suite.
+
+    ADMINISTRATION IS HERE BUT IS NOT SOLD. A check constraint on
+    `AppSubscription` refuses it (C44). It IS granted since C72 -- the
+    "Organisation admin" grant at the root -- but only by the services, never
+    from the form's list of apps (`_resolve_grants()` refuses it).
     """
 
     ADMIN = "admin", "Administration"
     DMS = "dms", "DMS"
     CRM = "crm", "CRM"
     ECOMMERCE = "ecommerce", "E-commerce"
+
+
+class App(BaseModel):
+    """
+    One app the platform offers: DMS, CRM, Administration...
+
+    A TABLE RATHER THAN AN ENUM, for C44's reason: the owner wants the list, and
+    the facts about each app, readable in Workbench rather than spread through
+    Python. It is also the first piece of C71, whose grant tables point here.
+
+    `code` IS WHAT EVERY OTHER TABLE STORES. The foreign keys use
+    `to_field="code"`, so a row in `permissions_role` still reads `app = 'dms'`
+    rather than a UUID nobody can recognise, and moving to this table rewrote no
+    data. Codes are therefore permanent: renaming one is a migration across five
+    tables, which is what changing a primary key always costs.
+
+    SEEDED BY DATA MIGRATION, never written through the API --- an app arrives
+    with a release, like a column does.
+    """
+
+    code = models.CharField(max_length=20, unique=True)
+    name = models.CharField(max_length=60)
+    unit_aware = models.BooleanField(
+        default=False,
+        help_text="Whether this app's records belong to a dealership (C5).",
+    )
+    """
+    UNIT-AWARENESS IS A PROPERTY OF THE APP, NOT OF THE PERSON (C5). DMS splits
+    its records by dealership; CRM has no dealerships at all, so a unit means
+    nothing there. Declaring it once, here, is the point: inferring it from
+    whether somebody happens to have a unit gets DMS right and CRM silently
+    wrong --- a dealership person's CRM queries filtered by a column CRM does
+    not have.
+    """
+    display_order = models.PositiveSmallIntegerField(
+        default=0,
+        help_text="Order in lists of apps. Ties fall back to the code.",
+    )
+
+    class Meta:
+        ordering = ["display_order", "code"]
+
+    def __str__(self) -> str:
+        return self.code
 
 
 class RoleLevel(models.TextChoices):
@@ -74,7 +122,13 @@ class Permission(BaseModel):
     """
 
     code = models.CharField(max_length=80, unique=True)
-    app = models.CharField(max_length=20, choices=AppCode.choices)
+    app = models.ForeignKey(
+        App,
+        to_field="code",
+        db_column="app",
+        on_delete=models.PROTECT,
+        related_name="permissions",
+    )
     module = models.CharField(
         max_length=40,
         help_text="Which module this makes visible: sales, service, users, dealers...",
@@ -83,7 +137,7 @@ class Permission(BaseModel):
     label = models.CharField(max_length=120, help_text='What it lets you do: "Create an enquiry".')
 
     class Meta:
-        ordering = ["app", "module", "group", "code"]
+        ordering = ["app_id", "module", "group", "code"]
         indexes = [
             # Deriving a person's modules asks "which modules do these
             # permissions touch", so the lookup leads with app.
@@ -112,7 +166,13 @@ class Role(BaseModel):
 
     code = models.CharField(max_length=60)
     name = models.CharField(max_length=100)
-    app = models.CharField(max_length=20, choices=AppCode.choices)
+    app = models.ForeignKey(
+        App,
+        to_field="code",
+        db_column="app",
+        on_delete=models.PROTECT,
+        related_name="roles",
+    )
     level = models.CharField(max_length=10, choices=RoleLevel.choices)
     summary = models.CharField(max_length=300)
 
@@ -159,25 +219,25 @@ class Role(BaseModel):
         # `name` stays as the tie-breaker, so two roles sharing a
         # `display_order` are still returned in a stable order rather than
         # whatever MySQL feels like.
-        ordering = ["app", "level", "display_order", "name"]
+        ordering = ["app_id", "level", "display_order", "name"]
 
     def __str__(self) -> str:
-        return f"{self.name} ({self.app})"
+        return f"{self.name} ({self.app_id})"
 
     @property
     def administers(self) -> bool:
         """
         Whether holding this role lets somebody administer their scope.
 
-        Derived, never stored (C40). An organization admin gets this from
-        standing instead; a dealer admin gets it from holding a role --- the DMS
-        System administrator --- that grants `admin.*` permissions, narrowed to
-        their own dealership by `Membership.unit_id`.
+        Derived, never stored (C40). An organization admin gets this from the
+        "Organisation admin" role at the root; a dealer admin from holding a role
+        --- the DMS System administrator --- that grants `admin.*` permissions,
+        narrowed to the places their grant puts them (C72).
 
         Prefetch `permissions` before asking this for a list of roles, or it is
         a query each.
         """
-        return any(permission.app == AppCode.ADMIN for permission in self.permissions.all())
+        return any(permission.app_id == AppCode.ADMIN for permission in self.permissions.all())
 
 
 class RolePermission(BaseModel):
@@ -205,49 +265,3 @@ class RolePermission(BaseModel):
 
     def __str__(self) -> str:
         return f"{self.role_id} grants {self.permission_id}"
-
-
-class AppAccess(BaseModel):
-    """
-    One app a membership holds, and the role they hold it with.
-
-    `membership` is a string reference rather than an import because
-    `core.organizations` imports `AppCode` from this module. A direct import
-    both ways is a cycle; Django resolves "app_label.Model" lazily, so only one
-    side needs to be a real import.
-
-    NEVER A ROW FOR ADMINISTRATION, and the check constraint below is what says
-    so. Administration comes from standing, or from a role that grants `admin.*`
-    permissions (C40), and `/me` builds that entry rather than reading it. A row
-    here would be a second, conflicting source.
-
-    SUBSCRIPTION IS A SEPARATE FACT (C16). A row here says this person may open
-    the app; `billing.AppSubscription` says the organization pays for it. Both
-    are required and they fail differently: an unpaid app is shown disabled,
-    because nobody can ask for a product they do not know exists, while an app
-    the person is not granted is hidden entirely. A stale grant left on a
-    cancelled subscription must open nothing.
-    """
-
-    membership = models.ForeignKey(
-        "organizations.Membership",
-        on_delete=models.CASCADE,
-        related_name="app_access",
-    )
-    app = models.CharField(max_length=20, choices=AppCode.choices)
-    role = models.ForeignKey(Role, on_delete=models.PROTECT, related_name="+")
-
-    class Meta:
-        verbose_name_plural = "app access"
-        constraints = [
-            models.UniqueConstraint(
-                fields=["membership", "app"], name="appaccess_unique_membership_app"
-            ),
-            models.CheckConstraint(
-                condition=~models.Q(app=AppCode.ADMIN),
-                name="appaccess_never_administration",
-            ),
-        ]
-
-    def __str__(self) -> str:
-        return f"{self.membership_id} -> {self.app}"

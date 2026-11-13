@@ -1,10 +1,9 @@
 """
 Read logic for memberships, unit scope, and the `/me` payload.
 
-`resolve_allowed_units()` is the one function that turns "which dealership is
-this person attached to" into "which dealerships may this query see". Nothing
-else reads `Membership.unit_id` to make a scoping decision (C7) --- one place
-to be right, one place to test.
+`resolve_allowed_territories()` is the one function that turns "where does this
+person's grant for this app place them" into "which dealerships may this query
+see" (C7, C72) --- one place to be right, one place to test.
 
 `me()` builds the whole answer to "who am I and what may I open". It is the
 endpoint that lets the frontend delete its fakes, so the shape here is the
@@ -18,35 +17,54 @@ from __future__ import annotations
 import uuid
 from dataclasses import dataclass
 from datetime import datetime
+from types import SimpleNamespace
 
 from django.core.exceptions import ValidationError as DjangoValidationError
-from django.db.models import Count, IntegerField, OuterRef, Subquery, Value
+from django.db.models import Count, IntegerField, OuterRef, Prefetch, Subquery, Value
 from django.db.models.functions import Coalesce
 from django.utils import timezone
 
 from core.accounts.models import User
 from core.billing.models import AppSubscription, SubscriptionStatus
 from core.organizations.models import (
-    BusinessUnit,
     Invitation,
     Membership,
+    MembershipAppRole,
+    MembershipAppTerritory,
     MembershipRole,
     MembershipStatus,
     Organization,
+    Territory,
+    TerritoryKind,
     UnitStatus,
 )
 from core.permissions.models import AppCode, Permission
 from core.permissions.registry import is_unit_aware
 from shared.exceptions import not_found
 
+# WHAT EVERY READER OF A MEMBERSHIP'S ACCESS PREFETCHES (C72 step 2b): its
+# per-app grants, each grant's role with that role's permissions, and each
+# grant's territories. One definition, so `/me`, the permission check and the
+# users list cannot drift into fetching different things.
+#
+# FOUR QUERIES, WHATEVER THE NUMBER OF GRANTS: the grants; their roles WITH the
+# role row joined in; those roles' permissions; their territories WITH the
+# territory row joined in. Plain lookups ("grants__roles__role") would spend a
+# query on each join, on every request that checks a permission.
+GRANTS_PREFETCH: tuple[str | Prefetch, ...] = (
+    Prefetch("grants__roles", queryset=MembershipAppRole.objects.select_related("role")),
+    "grants__roles__role__permissions",
+    Prefetch("grants__territories",queryset=MembershipAppTerritory.objects.select_related("territory"),),
+)
 
-def resolve_allowed_units(membership: Membership, app: str) -> frozenset[uuid.UUID] | None:
+
+def resolve_allowed_territories(membership: Membership, app: str) -> frozenset[uuid.UUID] | None:
     """
     Which dealerships this membership may see inside this app.
 
     `None` MEANS UNRESTRICTED AND IS NOT THE SAME AS AN EMPTY SET. None says
     "do not filter"; an empty set would say "restricted to nothing", which
-    matches no rows at all. `UnitScopedManager` reads this distinction
+    matches no rows at all. `TerritoryScopedManager` reads this distinction
     directly, so returning the wrong one is the difference between a fleet
     manager seeing everything and seeing nothing.
 
@@ -54,20 +72,129 @@ def resolve_allowed_units(membership: Membership, app: str) -> frozenset[uuid.UU
 
     - **The app has no dealerships** (CRM, E-commerce). A unit-scoped person's
       CRM queries must not be filtered by a column CRM does not have (C5).
-    - **The person is organization-wide** (`unit_id IS NULL`), which is every
-      owner and every org admin (C40), plus org-level roles like Fleet viewer.
+    - **The person is organization-wide**: their grant for this app places
+      them AT the organisation's root (C72) -- every owner, and org-level roles
+      like Fleet viewer.
 
-    A unit-scoped person gets exactly their own dealership. C29 made
-    dealerships a FLAT list, so there is no subtree to walk --- and C7's
-    wording, "the membership's subtree", stays true because the subtree of a
-    flat node is that node. If Q22 is ever answered and parents come back,
-    this function is the only place that has to learn to recurse.
+    READ FROM THE PER-APP GRANT SINCE C72 STEP 2b, not `Membership.unit`. The
+    grant's territories are where this person sits in this app: the root means
+    everything; otherwise exactly those territories. Expanding each one to its
+    subtree (a region covering its dealers) is C72 piece 3 -- until then a
+    placement is a dealership or the root, as it always was, so the answer is
+    unchanged.
+
+    NO GRANT FOR THIS APP IS AN EMPTY SET, never None: restricted to nothing,
+    so a missing grant fails closed. (The permission layer refuses such a
+    request first; this is the second lock.)
     """
     if not is_unit_aware(app):
         return None
-    if membership.unit_id is None:
+    if membership.is_owner:
+        # THE OWNER IS EVERYWHERE, BY RULE (C72), whatever their grant for this
+        # app says -- or whether they hold one at all. The permission layer
+        # still stops them at an app the organisation has not bought (C55).
         return None
-    return frozenset({membership.unit_id})
+    grant = next((g for g in membership.grants.all() if g.app_id == app), None)
+    if grant is None:
+        return frozenset()
+    placed = [placement.territory for placement in grant.territories.all()]
+    if any(territory.is_root for territory in placed):
+        return None
+    return frozenset(territory.id for territory in placed)
+
+
+# ---------------------------------------------------------------------------
+# Where a person sits, ACROSS ALL THEIR GRANTS (C72 step 2c, commit 3).
+#
+# `resolve_allowed_territories()` answers a per-app question -- which dealerships does
+# a DMS request see. These answer the organisation's questions -- whose people
+# may this person administer, are they shut out by a closure, what does `/me`
+# call them -- which used to be read from `Membership.role` and
+# `Membership.unit`. Callers prefetch `GRANTS_PREFETCH`, so they walk memory.
+# ---------------------------------------------------------------------------
+
+
+def _placements(membership: Membership) -> list[Territory]:
+    return [
+        placement.territory
+        for grant in membership.grants.all()
+        for placement in grant.territories.all()
+    ]
+
+
+def reach(membership: Membership) -> frozenset[uuid.UUID] | None:
+    """
+    Where in the organisation this person sits. `None` MEANS EVERYWHERE.
+
+    - **The owner**: everywhere, by rule (C72).
+    - **Any grant placed at the root**: everywhere -- every Organisation admin
+      (their Administration grant), and organisation-wide app users such as a
+      Fleet viewer, exactly as `Membership.unit IS NULL` used to say.
+    - **Otherwise**: exactly the territories their grants place them at -- a
+      dealer admin's dealership(s).
+    - **No grants at all**: an EMPTY set, never None. Fails closed.
+
+    Subtrees (a region covering its dealers) are C72 piece 3; until then a
+    placement is a dealership or the root, as it always was.
+    """
+    if membership.is_owner:
+        return None
+    placed = _placements(membership)
+    if any(territory.is_root for territory in placed):
+        return None
+    return frozenset(territory.id for territory in placed)
+
+
+def standing(membership: Membership) -> str:
+    """
+    `owner`, `admin` or `member` -- READ FROM `is_owner` AND THE GRANTS (C72
+    step 2c), no longer from `Membership.role`. An admin is somebody holding an
+    Administration grant ("Organisation admin", Q60). Kept as these three words
+    because `/me` and the users list still send them to a frontend that reads
+    them, until piece 7.
+    """
+    if membership.is_owner:
+        return MembershipRole.OWNER
+    if any(grant.app_id == AppCode.ADMIN for grant in membership.grants.all()):
+        return MembershipRole.ADMIN
+    return MembershipRole.MEMBER
+
+
+def dealership_of(membership: Membership) -> Territory | None:
+    """
+    The ONE place a dealership-scoped person sits, for `/me`'s `unit_id` and
+    `unit_name` and the launcher's DMS summary -- or None.
+
+    None for anybody who sits everywhere, and ALSO for somebody placed at
+    several dealerships (C72, Q10): `/me` has one field, and naming one of two
+    would be wrong. Nothing in the product can place a person at two yet; the
+    frontend learns about several in piece 7.
+    """
+    if reach(membership) is None:
+        return None
+    places = {territory.id: territory for territory in _placements(membership)}
+    return next(iter(places.values())) if len(places) == 1 else None
+
+
+def is_shut_out_by_closure(membership: Membership) -> bool:
+    """
+    C63, READ FROM THE GRANTS: true when EVERY place this person sits is a
+    closed dealership.
+
+    With one placement that is exactly the old rule ("your dealership is
+    closed"). With several (C72, Q10), closing one of them must not lock
+    somebody out of the other -- they go on working at the one still open.
+    (Whether they should still see the closed one's records is C63's
+    read-only question, Q21, and belongs to piece 3's wall.)
+
+    Anybody who sits everywhere is never shut out: closing a dealership does
+    not touch organisation-level people. Nobody with no placements is "closed"
+    either -- they are refused by having nothing, not by this.
+    """
+    if reach(membership) is None:
+        return False
+    places = {territory.id: territory for territory in _placements(membership)}.values()
+    return bool(places) and all(territory.status == UnitStatus.DISABLED for territory in places)
 
 
 @dataclass(frozen=True)
@@ -136,18 +263,6 @@ class MeData:
     memberships: list[MembershipData]
 
 
-def _standing_grants_administration(role: str) -> bool:
-    """
-    Whether org standing alone confers Administration.
-
-    Owners and org admins hold all 11 `admin.*` permissions and NOT through a
-    Role row (C42). A dealer admin reaches the same app from the other
-    direction --- by holding the DMS System administrator role, which grants
-    `admin.person.*` --- and `Membership.role` stays `member` (C40).
-    """
-    return role in (MembershipRole.OWNER, MembershipRole.ADMIN)
-
-
 def me(user) -> MeData:
     """
     Everything the shell needs to render itself for this person.
@@ -163,14 +278,15 @@ def me(user) -> MeData:
     """
     memberships = list(
         Membership.objects.filter(user=user, status=MembershipStatus.ACTIVE)
-        .select_related("organization", "unit")
-        .prefetch_related("app_access__role__permissions")
+        .select_related("organization")
+        .prefetch_related(*GRANTS_PREFETCH)
         .order_by("organization__name")
     )
 
-    # The 11 `admin.*` rows, fetched once rather than per membership. They are
-    # the same list for every organization: the catalogue is platform-wide (C28).
-    admin_permissions = list(Permission.objects.filter(app=AppCode.ADMIN))
+    # The whole catalogue, fetched once rather than per membership: an owner
+    # holds all of it (C72). It is the same list for every organization,
+    # because the catalogue is platform-wide (C28).
+    catalogue = list(Permission.objects.all())
 
     active_subscriptions = set(
         AppSubscription.objects.filter(
@@ -185,7 +301,7 @@ def me(user) -> MeData:
         first_name=user.first_name,
         last_name=user.last_name,
         memberships=[
-            _membership_data(membership, admin_permissions, active_subscriptions)
+            _membership_data(membership, catalogue, active_subscriptions)
             for membership in memberships
         ],
     )
@@ -193,35 +309,54 @@ def me(user) -> MeData:
 
 def _membership_data(
     membership: Membership,
-    admin_permissions: list[Permission],
+    catalogue: list[Permission],
     active_subscriptions: set[tuple[uuid.UUID, str]],
 ) -> MembershipData:
-    # Every permission this person holds here, from BOTH sources, bucketed by
-    # the app the permission belongs to --- which is not always the app of the
-    # role that granted it. The DMS System administrator role grants
-    # `admin.person.*`, and that is exactly how a dealer admin gets the
-    # Administration app without any standing (C40).
+    # Every permission this person holds here, from BOTH sources -- the
+    # owner rule and their grants -- bucketed by the app the permission belongs
+    # to, which is not always the app of the role that granted it. The DMS
+    # System administrator role grants `admin.person.*`, and that is how a
+    # dealer admin reaches Administration (C40).
+    #
+    # NO STANDING SOURCE SINCE C72 STEP 2c: an organisation admin holds
+    # Administration through their "Organisation admin" grant (Q60), and
+    # `Membership.role` confers nothing.
     held: dict[str, set[Permission]] = {}
-
-    if _standing_grants_administration(membership.role):
-        held.setdefault(AppCode.ADMIN, set()).update(admin_permissions)
-
     granted_apps: set[str] = set()
-    for access in membership.app_access.all():
-        granted_apps.add(access.app)
-        for permission in access.role.permissions.all():
-            held.setdefault(permission.app, set()).add(permission)
 
-    # `unit` is select_related in `me()`, so this costs no query.
-    unit_closed = membership.unit_id is not None and membership.unit.status == UnitStatus.DISABLED
+    if membership.is_owner:
+        # THE OWNER HOLDS EVERYTHING, BY RULE (C72 step 2c) -- every permission
+        # of every app, as though granted every app. It is NOT a way round
+        # billing: `_app_data()` still requires the subscription, so an owner
+        # is not let into an app the organisation has not bought (C55).
+        #
+        # By rule rather than by rows because rows would need topping up every
+        # time an app, a role or a permission is added, and the first one
+        # forgotten leaves the one account that must never be locked out
+        # short of something.
+        for permission in catalogue:
+            held.setdefault(permission.app_id, set()).add(permission)
+        granted_apps.update(AppCode)
+
+    # FROM THE PER-APP GRANTS (C72 step 2b), not `AppAccess`. Callers prefetch
+    # `GRANTS_PREFETCH`, so this walks memory rather than the database.
+    for grant in membership.grants.all():
+        granted_apps.add(grant.app_id)
+        for held_role in grant.roles.all():
+            for permission in held_role.role.permissions.all():
+                held.setdefault(permission.app_id, set()).add(permission)
+
+    # FROM THE GRANTS SINCE C72 STEP 2c, not `Membership.role` / `.unit`.
+    unit_closed = is_shut_out_by_closure(membership)
+    dealership = dealership_of(membership)
 
     return MembershipData(
         org_id=membership.organization_id,
         org_name=membership.organization.name,
         org_slug=membership.organization.slug,
-        role=membership.role,
-        unit_id=membership.unit_id,
-        unit_name=membership.unit.name if membership.unit_id else None,
+        role=standing(membership),
+        unit_id=dealership.id if dealership else None,
+        unit_name=dealership.name if dealership else None,
         # `organization` is select_related in `me()`, so this costs no query.
         is_ready=membership.organization.is_ready,
         unit_closed=unit_closed,
@@ -314,11 +449,16 @@ def _summary(app: str, membership: Membership) -> str | None:
     if app != AppCode.DMS:
         return None
 
-    if membership.unit_id is not None:
-        return membership.unit.name
+    dealership = dealership_of(membership)
+    if dealership is not None:
+        return dealership.name
 
-    count = BusinessUnit.objects.filter(
-        organization_id=membership.organization_id, status=UnitStatus.ACTIVE
+    # DEALERS ONLY: regions, branches and warehouses are territories too (C72),
+    # and "4 dealerships" must not count the region they sit in.
+    count = Territory.objects.filter(
+        organization_id=membership.organization_id,
+        kind=TerritoryKind.DEALER,
+        status=UnitStatus.ACTIVE,
     ).count()
     return f"{count} dealership" if count == 1 else f"{count} dealerships"
 
@@ -366,7 +506,7 @@ def permissions_for(membership: Membership) -> frozenset[str]:
     Costs a few queries. Prefetch as `me()` does if you are asking for a list
     of memberships; for one caller on one request it is not worth caching.
     """
-    admin_permissions = list(Permission.objects.filter(app=AppCode.ADMIN))
+    catalogue = list(Permission.objects.all())
     active_subscriptions = set(
         AppSubscription.objects.filter(
             organization_id=membership.organization_id,
@@ -374,7 +514,7 @@ def permissions_for(membership: Membership) -> frozenset[str]:
         ).values_list("organization_id", "app")
     )
 
-    data = _membership_data(membership, admin_permissions, active_subscriptions)
+    data = _membership_data(membership, catalogue, active_subscriptions)
 
     return frozenset(code for app in data.apps if app.accessible for code in app.permissions)
 
@@ -404,12 +544,42 @@ def can_manage(membership: Membership, target_unit_id: uuid.UUID | None) -> bool
     because a person outside your scope must be indistinguishable from one who
     does not exist, while failing the permission check is a 403.
     """
-    if membership.unit_id is None:
+    # THE ACTOR'S SIDE READS THE GRANTS (C72 step 2c), through `reach()`. The
+    # TARGET here is a single dealership id -- from a form, or an invitation's
+    # `unit` -- and a member is judged by `can_manage_person()` instead.
+    scope = reach(membership)
+    if scope is None:
         return True
-    return target_unit_id == membership.unit_id
+    return target_unit_id is not None and target_unit_id in scope
 
 
-def dealers_for(organization: Organization) -> list[BusinessUnit]:
+def can_manage_person(actor: Membership, person: Membership | Invitation) -> bool:
+    """
+    May `actor` administer this person? BOTH SIDES FROM THE GRANTS (C72 step
+    2d) for a member: the person must sit somewhere, and everywhere they sit
+    must be inside the actor's reach.
+
+    - Somebody who sits everywhere (the owner, anybody at the root) is
+      managed only by somebody who also sits everywhere.
+    - Somebody placed at Delhi AND Jaipur is managed only by somebody whose
+      reach covers both -- a Delhi dealer admin does not get them.
+    - Somebody with no grants sits nowhere, and only organisation-wide admins
+      reach them. C73 requires an app for everybody new; this keeps any older
+      app-less member manageable from head office.
+
+    AN INVITATION KEEPS ITS OWN `unit` until piece 5, so it is still judged by
+    `can_manage(actor, invitation.unit_id)`.
+    """
+    if isinstance(person, Invitation):
+        return can_manage(actor, person.unit_id)
+    scope = reach(actor)
+    if scope is None:
+        return True
+    target = reach(person)
+    return target is not None and bool(target) and target <= scope
+
+
+def dealers_for(organization: Organization) -> list[Territory]:
     """
     Every dealership in this organization, with `user_count` annotated.
 
@@ -432,11 +602,13 @@ def dealers_for(organization: Organization) -> list[BusinessUnit]:
     inflates rather than failing, so nothing looks wrong until somebody counts
     by hand.
     """
+    # PEOPLE PLACED HERE BY A GRANT (C72 step 2d), counted once each however
+    # many of their apps place them here -- not `Membership.unit`.
     memberships = (
-        Membership.objects.filter(unit=OuterRef("pk"))
+        MembershipAppTerritory.objects.filter(territory=OuterRef("pk"))
         .order_by()
-        .values("unit")
-        .annotate(total=Count("*"))
+        .values("territory")
+        .annotate(total=Count("app_access__membership", distinct=True))
         .values("total")
     )
     pending = (
@@ -447,12 +619,53 @@ def dealers_for(organization: Organization) -> list[BusinessUnit]:
         .values("total")
     )
 
+    # ORDERED BY NAME EXPLICITLY. This used to come from `Meta.ordering`; the
+    # territory manager now sorts by tree position, so alphabetical order has
+    # to be asked for. DEALERS ONLY -- the dealers screen lists dealerships, and
+    # the rest of the tree has its own endpoint (C72).
     return list(
-        BusinessUnit.objects.filter(organization=organization).annotate(
+        Territory.objects.filter(organization=organization, kind=TerritoryKind.DEALER)
+        .annotate(
             user_count=Coalesce(Subquery(memberships, output_field=IntegerField()), Value(0))
             + Coalesce(Subquery(pending, output_field=IntegerField()), Value(0))
         )
+        .order_by("name")
     )
+
+
+def territories_for(organization: Organization) -> list[Territory]:
+    """
+    Every territory in this organization's tree, in tree order (C72).
+
+    TREE ORDER, NOT NAME ORDER: each box comes after its parent, which is what
+    lets a client build the tree in one pass over `parent_id`. That is the
+    treebeard manager's own ordering (`path`), asked for explicitly anyway so
+    the contract does not rest on a default.
+    """
+    territories = list(Territory.objects.filter(organization=organization).order_by("path"))
+    return _with_parent_ids(organization, territories)
+
+
+def _with_parent_ids(organization: Organization, territories: list[Territory]) -> list[Territory]:
+    """
+    Set `parent_id` on each territory, from its path.
+
+    A box's parent is the box whose path is its own minus the last step --
+    that is what a materialised path means. One query for the organisation's
+    path-to-id map rather than treebeard's `get_parent()`, which would ask the
+    database once per territory.
+
+    FROM THIS ORGANIZATION ONLY. Paths are unique across the whole table, so a
+    map built without the filter could not return the wrong parent -- but it
+    would read every customer's tree to answer for one.
+    """
+    ids_by_path = dict(
+        Territory.objects.filter(organization=organization).values_list("path", "id")
+    )
+    for territory in territories:
+        parent_path = territory.path[: -Territory.steplen]
+        territory.parent_id = ids_by_path.get(parent_path) if parent_path else None
+    return territories
 
 
 # ---------------------------------------------------------------------------
@@ -509,9 +722,9 @@ class OrgUserData:
     """
     `"organisation"`, `"dealer"`, or None -- the FACT, not the words (C53).
 
-    Administration is never an `AppAccess` row (the check constraint refuses
-    it) and has no `Role`, so "Organisation admin" and "Dealer admin" are copy
-    describing a derived state rather than data. The browser picks the wording,
+    "Organisation admin" and "Dealer admin" are copy describing a derived
+    state rather than data: the first is the `admin.org_admin` grant at the
+    root, the second a role granting `admin.*` held at a dealership. The browser picks the wording,
     the way it already does for every other static label.
 
     TWO SOURCES, which are the two branches in `_administers()`: standing, or
@@ -537,8 +750,8 @@ def org_users(organization: Organization, viewer: Membership) -> list[OrgUserDat
     """
     memberships = (
         Membership.objects.filter(organization=organization)
-        .select_related("user", "unit")
-        .prefetch_related("app_access__role__permissions")
+        .select_related("user")
+        .prefetch_related(*GRANTS_PREFETCH)
     )
     invitations = (
         Invitation.objects.filter(organization=organization, accepted_at__isnull=True)
@@ -546,11 +759,15 @@ def org_users(organization: Organization, viewer: Membership) -> list[OrgUserDat
         .prefetch_related("app_grants__role__permissions")
     )
 
-    if viewer.unit_id is not None:
-        memberships = memberships.filter(unit_id=viewer.unit_id)
-        invitations = invitations.filter(unit_id=viewer.unit_id)
+    # BOTH SIDES FROM THE GRANTS (C72 step 2d): the same rule as managing a
+    # person, so the list never shows somebody the actions would refuse.
+    # Invitations keep their own `unit` until piece 5.
+    scope = reach(viewer)
+    if scope is not None:
+        invitations = invitations.filter(unit_id__in=scope)
+    members = [m for m in memberships if can_manage_person(viewer, m)]
 
-    people = [_membership_row(m) for m in memberships] + [_invitation_row(i) for i in invitations]
+    people = [_membership_row(m) for m in members] + [_invitation_row(i) for i in invitations]
 
     # Sorted here rather than in the database, because two queries cannot share
     # an ORDER BY.
@@ -569,22 +786,35 @@ def org_users(organization: Organization, viewer: Membership) -> list[OrgUserDat
 
 
 def _membership_row(membership: Membership) -> OrgUserData:
-    grants = list(membership.app_access.all())
+    dealership = dealership_of(membership)
+    # FROM THE PER-APP GRANTS (C72 step 2b): each grant's app and its role, as
+    # `(app_id, role)` pairs -- the same shape `AppAccess` rows gave.
+    grants = [
+        SimpleNamespace(app_id=grant.app_id, role=held_role.role)
+        for grant in membership.grants.all()
+        for held_role in grant.roles.all()
+    ]
     return OrgUserData(
         id=membership.id,
         first_name=membership.user.first_name,
         last_name=membership.user.last_name,
         email=membership.user.email,
-        unit_id=membership.unit_id,
-        unit_name=membership.unit.name if membership.unit_id else None,
-        role=membership.role,
+        # FROM THE GRANTS (C72 step 2d), like `/me`: their one dealership, or
+        # None for head office and for somebody placed at several.
+        unit_id=dealership.id if dealership else None,
+        unit_name=dealership.name if dealership else None,
+        role=standing(membership),
         # `invited` is not reachable here: C51 put pending people in the other
         # table, and `MembershipStatus.INVITED` went with it.
         status=membership.status,
-        apps=[_grant(g.app, g.role) for g in grants],
+        # NOT THE ADMINISTRATION GRANT (C72 step 2c). The frontend's edit form
+        # sends this list back as `apps`, and `_resolve_grants` refuses
+        # Administration there -- it arrives through `role: "admin"` instead.
+        # Listing it would make every save of an organisation admin a 4xx.
+        apps=[_grant(g.app_id, g.role) for g in grants if g.app_id != AppCode.ADMIN],
         created_at=membership.created_at,
         administers=_administers(
-            membership.role, membership.unit_id, [g.role for g in grants]
+            standing(membership), reach(membership) is not None, [g.role for g in grants]
         ),
     )
 
@@ -601,10 +831,10 @@ def _invitation_row(invitation: Invitation) -> OrgUserData:
         unit_name=invitation.unit.name if invitation.unit_id else None,
         role=invitation.role,
         status="invited",
-        apps=[_grant(g.app, g.role) for g in grants],
+        apps=[_grant(g.app_id, g.role) for g in grants],
         created_at=invitation.created_at,
         administers=_administers(
-            invitation.role, invitation.unit_id, [g.role for g in grants]
+            invitation.role, invitation.unit_id is not None, [g.role for g in grants]
         ),
     )
 
@@ -619,14 +849,17 @@ def _grant(app: str, role) -> AppGrantData:
     return AppGrantData(app=app, role_code=role.code, role_name=role.name)
 
 
-def _administers(standing: str, unit_id: uuid.UUID | None, roles: list) -> str | None:
+def _administers(standing: str, at_a_dealership: bool, roles: list) -> str | None:
     """
     Whether this person administers, and what.
 
     ORDER MATTERS. Standing is checked first because an owner or org admin
-    administers the whole organization whatever roles they hold -- and the
-    check constraint guarantees they have no dealership, so the second branch
-    could never fire for them anyway.
+    administers the whole organization whatever roles they hold -- and an
+    Organisation admin's grant sits at the root, so the second branch could
+    never fire for them anyway.
+
+    For a membership, `standing` and `at_a_dealership` come from the grants
+    (C72 step 2c); for an invitation, from its own fields until piece 5.
 
     `role.administers` is derived from the permissions the role grants (C44),
     so this cannot drift from what the role actually confers. Prefetch
@@ -635,7 +868,7 @@ def _administers(standing: str, unit_id: uuid.UUID | None, roles: list) -> str |
     if standing in (MembershipRole.OWNER, MembershipRole.ADMIN):
         return "organisation"
 
-    if unit_id is not None and any(role.administers for role in roles):
+    if at_a_dealership and any(role.administers for role in roles):
         return "dealer"
 
     return None

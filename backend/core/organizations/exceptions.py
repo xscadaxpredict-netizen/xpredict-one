@@ -131,6 +131,90 @@ class DealerCodeTakenError(ConflictError):
     message = "Another dealership already uses that code."
 
 
+class TerritoryNameTakenError(ConflictError):
+    """
+    Another territory in this organization -- of any kind -- has this name.
+
+    ONE NAME PER ORGANIZATION ACROSS EVERY KIND, because the unique constraint
+    is on (organization, name) and the tree is one tree (C72). A region called
+    "Chennai" and a dealership called "Chennai" would read identically in every
+    picker that lists both, and a person placed at the wrong one sees the wrong
+    records. `DealerNameTakenError` stays for the dealers endpoints, whose
+    frontend switches on its code.
+    """
+
+    code = "territory_name_taken"
+    message = "Another territory already uses that name."
+
+
+class TerritoryPlacementError(ConflictError):
+    """
+    That kind of territory cannot sit there (C72).
+
+    The rule is one table in `services.py`: regions at the top or inside a
+    region; dealers at the top or inside a region; branches only inside a
+    dealer; warehouses anywhere. No sub-dealers yet (Q57).
+
+    409, the state answer: the request is well-formed and the caller may
+    arrange territories -- it is the TREE that refuses this arrangement. A
+    parent in another organization is not this error; it is a 404, because the
+    caller cannot see it.
+    """
+
+    code = "territory_placement_not_allowed"
+    message = "That kind of territory cannot be placed there."
+
+
+class RoleNotInAppError(ConflictError):
+    """
+    A grant's role must belong to the grant's app (C72): no DMS role on a CRM
+    grant. The database cannot compare the role row's app with the grant row's,
+    so `grant_app_access()` refuses it.
+    """
+
+    code = "role_not_in_app"
+    message = "That role does not belong to that app."
+
+
+class GrantNeedsTerritoryError(ConflictError):
+    """
+    Every grant places its holder somewhere -- at least one territory (C72;
+    the owner's root decision, 2026-11-06). An organisation-wide person is
+    placed AT the organisation's root; "no territory" is never read as
+    "everywhere", so a missing placement fails closed.
+    """
+
+    code = "grant_needs_territory"
+    message = "Choose at least one place in the organisation for this person."
+
+
+class TerritoryIsTheOrganisationError(ConflictError):
+    """
+    The root of the tree is the organisation itself, and is not arranged.
+
+    It cannot be moved -- there is nothing above it -- and it is not renamed
+    here: it shows the organisation's name and stores none of its own, so
+    renaming the organisation is the only way its name changes. 409, the state
+    answer: the caller may arrange territories, just not this one.
+    """
+
+    code = "territory_is_the_organisation"
+    message = "That is the organisation itself; it cannot be moved or renamed here."
+
+
+class TerritoryMoveIntoItselfError(ConflictError):
+    """
+    A territory cannot be moved inside itself or anything under it.
+
+    Moving North under Delhi, which sits under North, would make North its own
+    ancestor and cut the branch off the tree. Treebeard refuses it too; this
+    says so in our vocabulary before treebeard's exception can become a 500.
+    """
+
+    code = "territory_move_into_itself"
+    message = "A territory cannot be moved inside itself."
+
+
 class DealerAlreadyClosedError(ConflictError):
     """
     This dealership is already closed.
@@ -243,6 +327,26 @@ class DealerScopedAppError(ConflictError):
 
     code = "dealer_scoped_app"
     message = "Somebody at a dealership can only be given DMS."
+
+
+class PersonNeedsAnAppError(InvalidInputError):
+    """
+    Somebody was invited or saved with no app at all (C73, the owner,
+    2026-11-11 -- "for now").
+
+    UNDER C72 A PERSON'S PLACE COMES FROM THEIR APP GRANTS ("DMS, at Delhi
+    Motors"), so somebody holding none belongs nowhere: a dealership's new
+    hire would vanish from that dealership's users list. Requiring one app
+    keeps everybody somewhere. An Organisation admin already has one
+    (Administration); the owner holds everything by rule and is never refused.
+
+    422 RATHER THAN 409: it is about what was submitted, not the state of the
+    world, and the reason travels as a field error on `apps` so the form can
+    show it beside the checkboxes.
+    """
+
+    code = "person_needs_an_app"
+    message = "Give this person at least one app."
 
 
 class RoleScopeMismatchError(ConflictError):

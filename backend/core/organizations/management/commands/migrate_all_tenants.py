@@ -51,6 +51,7 @@ from typing import Any
 from django.core.management import call_command
 from django.core.management.base import BaseCommand, CommandError
 from django.db import connections
+from django.db.migrations.executor import MigrationExecutor
 
 from core.organizations.models import Organization
 from core.organizations.tenancy import register_tenant_connection, tenant_migration_targets
@@ -196,6 +197,30 @@ class Command(BaseCommand):
         return self._applied_count(alias) > before
 
     @staticmethod
+    def _pending(alias: str, targets: list[str]) -> list[str]:
+        """
+        The migrations `_migrate` would apply to this database, in order.
+
+        ASKS DJANGO'S MIGRATION ENGINE, NOT ITS PRINTED OUTPUT. The first
+        version ran `migrate --plan` and counted lines starting with `[ ]` ---
+        `showmigrations`' format, which `migrate --plan` never prints --- so it
+        found nothing and called six empty databases "up to date" (2026-11-04).
+        Parsing text meant for people is how that happens; the executor's plan
+        is the same list `migrate` itself works from.
+
+        TOUCHES NOTHING. The recorder reads `django_migrations` only if it
+        exists and never creates it, so a database that has never been
+        migrated is simply reported as owing everything.
+        """
+        executor = MigrationExecutor(connections[alias])
+        leaves = [node for node in executor.loader.graph.leaf_nodes() if node[0] in targets]
+        return [
+            f"{migration.app_label}.{migration.name}"
+            for migration, backwards in executor.migration_plan(leaves)
+            if not backwards
+        ]
+
+    @staticmethod
     def _applied_count(alias: str) -> int:
         """
         How many migrations this database records as applied.
@@ -238,25 +263,7 @@ class Command(BaseCommand):
 
         for organization in organizations:
             alias = register_tenant_connection(organization)
-            plan = io.StringIO()
-            # `--plan` on Django's own migrate lists what WOULD run, without
-            # running it. An empty list means this database is current.
-            for app_label in targets:
-                call_command(
-                    "migrate",
-                    app_label,
-                    database=alias,
-                    plan=True,
-                    interactive=False,
-                    verbosity=1,
-                    stdout=plan,
-                )
-
-            pending = [
-                line.strip()
-                for line in plan.getvalue().splitlines()
-                if line.strip().startswith("[ ]")
-            ]
+            pending = self._pending(alias, targets)
 
             if pending:
                 behind.append(organization.slug)

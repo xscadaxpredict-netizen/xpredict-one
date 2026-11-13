@@ -31,15 +31,15 @@ from core.accounts.models import User
 from core.billing.models import AppSubscription, SubscriptionStatus
 from core.organizations.models import (
     ActivationCode,
-    BusinessUnit,
     Invitation,
     Membership,
     MembershipRole,
     MembershipStatus,
+    Territory,
 )
-from core.organizations.selectors import org_users
-from core.organizations.services import INVITATION_LIFETIME, sign_up
-from core.permissions.models import AppAccess, AppCode, Role
+from core.organizations.selectors import org_users, reach, standing
+from core.organizations.services import INVITATION_LIFETIME, grant_app_access, sign_up
+from core.permissions.models import AppCode, Role
 
 pytestmark = [
     pytest.mark.django_db(databases=["default", TEST_TENANT_ALIAS]),
@@ -67,17 +67,27 @@ def found(name="Acme Motors", email="owner@acme.test", code="CODE-ACME"):
 
 
 def dms_role(code):
-    return Role.objects.get(app=AppCode.DMS, code=code)
+    return Role.objects.get(app_id=AppCode.DMS, code=code)
 
 
-def add_person(organization, *, unit=None, role_code="dms.sales_representative", email, standing=
-               MembershipRole.MEMBER, status=MembershipStatus.ACTIVE):
+def add_person(
+    organization,
+    *,
+    unit=None,
+    role_code="dms.sales_representative",
+    email,
+    status=MembershipStatus.ACTIVE,
+):
+    """Placed at `unit`, or at the organisation's root when there is none."""
     user = User.objects.create_user(email=email, password="x", first_name="A", last_name="B")
-    membership = Membership.objects.create(
-        user=user, organization=organization, unit=unit, role=standing, status=status
-    )
+    membership = Membership.objects.create(user=user, organization=organization, status=status)
     if role_code:
-        AppAccess.objects.create(membership=membership, app=AppCode.DMS, role=dms_role(role_code))
+        grant_app_access(
+            membership=membership,
+            app=AppCode.DMS,
+            role=dms_role(role_code),
+            territories=[unit or Territory.objects.root_for(organization)],
+        )
     return membership
 
 
@@ -92,7 +102,7 @@ def add_invitation(organization, *, unit=None, email, role_code="dms.sales_repre
         expires_at=timezone.now() + timezone.timedelta(days=7),
     )
     if role_code:
-        invitation.app_grants.create(app=AppCode.DMS, role=dms_role(role_code))
+        invitation.app_grants.create(app_id=AppCode.DMS, role=dms_role(role_code))
     return invitation
 
 
@@ -165,7 +175,7 @@ class TestTheList:
 
     def test_a_dealership_is_named_and_not_only_referenced(self, client):
         result = found()
-        unit = BusinessUnit.objects.create(organization=result.organization, name="Whitefield")
+        unit = Territory.objects.create(organization=result.organization, name="Whitefield")
         add_person(result.organization, unit=unit, email="dealer@acme.test")
         client.force_authenticate(user=result.user)
 
@@ -236,7 +246,7 @@ class TestAdministersIsAFactNotAName:
         what makes them an admin is the DMS System administrator role.
         """
         result = found()
-        unit = BusinessUnit.objects.create(organization=result.organization, name="Whitefield")
+        unit = Territory.objects.create(organization=result.organization, name="Whitefield")
         add_person(
             result.organization, unit=unit, email="da@acme.test", role_code="dms.system_admin"
         )
@@ -250,7 +260,7 @@ class TestAdministersIsAFactNotAName:
 
     def test_a_salesperson_administers_nothing(self, client):
         result = found()
-        unit = BusinessUnit.objects.create(organization=result.organization, name="Whitefield")
+        unit = Territory.objects.create(organization=result.organization, name="Whitefield")
         add_person(result.organization, unit=unit, email="sales@acme.test")
         client.force_authenticate(user=result.user)
 
@@ -270,8 +280,8 @@ class TestDealerIsolation:
     @pytest.fixture
     def two_dealers(self):
         result = found()
-        mine = BusinessUnit.objects.create(organization=result.organization, name="Whitefield")
-        theirs = BusinessUnit.objects.create(organization=result.organization, name="Guindy")
+        mine = Territory.objects.create(organization=result.organization, name="Whitefield")
+        theirs = Territory.objects.create(organization=result.organization, name="Guindy")
         admin = add_person(
             result.organization, unit=mine, email="da@acme.test", role_code="dms.system_admin"
         )
@@ -343,8 +353,10 @@ class TestDealerIsolation:
         )
 
         assert response.status_code == 404
-        person.refresh_from_db()
-        assert person.unit_id == mine.id
+        # Still at their own dealership -- by their GRANT, the only record
+        # since step 2d-2. `Membership.unit` is no longer written, so reading
+        # it here would pass whatever the service did.
+        assert reach(Membership.objects.get(pk=person.pk)) == frozenset({mine.id})
 
     def test_a_dealer_admin_cannot_pull_somebody_in_from_another_dealership(
         self, client, two_dealers
@@ -364,8 +376,7 @@ class TestDealerIsolation:
         )
 
         assert response.status_code == 404
-        person.refresh_from_db()
-        assert person.unit_id == theirs.id
+        assert reach(Membership.objects.get(pk=person.pk)) == frozenset({theirs.id})
 
     def test_a_dealer_admin_cannot_appoint_an_organisation_admin(self, client, two_dealers):
         """
@@ -556,7 +567,7 @@ class TestSubscriptionIsRequired:
         stale grant must simply open nothing — but no NEW one may be made.
         """
         result = found()
-        AppSubscription.objects.filter(organization=result.organization, app=AppCode.DMS).update(
+        AppSubscription.objects.filter(organization=result.organization, app_id=AppCode.DMS).update(
             status=SubscriptionStatus.CANCELLED
         )
         client.force_authenticate(user=result.user)
@@ -594,7 +605,7 @@ class TestSubscriptionIsRequired:
         """
         result = found()
         owner = Membership.objects.get(user=result.user, organization=result.organization)
-        owner.app_access.all().delete()
+        owner.grants.all().delete()
         client.force_authenticate(user=result.user)
 
         response = client.put(
@@ -607,7 +618,7 @@ class TestSubscriptionIsRequired:
         )
 
         assert response.status_code == 200
-        assert [a.app for a in owner.app_access.all()] == ["dms"]
+        assert [g.app_id for g in owner.grants.all()] == ["dms"]
 
 
 class TestC27DealerScopedGrants:
@@ -625,10 +636,10 @@ class TestC27DealerScopedGrants:
         result = found()
         AppSubscription.objects.create(
             organization=result.organization,
-            app=AppCode.CRM,
+            app_id=AppCode.CRM,
             status=SubscriptionStatus.ACTIVE,
         )
-        unit = BusinessUnit.objects.create(organization=result.organization, name="Whitefield")
+        unit = Territory.objects.create(organization=result.organization, name="Whitefield")
         client.force_authenticate(user=result.user)
 
         response = client.post(
@@ -649,7 +660,7 @@ class TestC27DealerScopedGrants:
 
     def test_a_dealer_scoped_person_cannot_hold_an_org_level_role(self, client):
         result = found()
-        unit = BusinessUnit.objects.create(organization=result.organization, name="Whitefield")
+        unit = Territory.objects.create(organization=result.organization, name="Whitefield")
         client.force_authenticate(user=result.user)
 
         response = client.post(
@@ -712,7 +723,7 @@ class TestEditing:
         assert response.json()["first_name"] == "Renamed"
         person.refresh_from_db()
         assert person.user.first_name == "Renamed"
-        assert person.app_access.count() == 1
+        assert person.grants.count() == 1
 
     def test_a_members_sign_in_address_cannot_be_changed(self, client):
         """
@@ -758,9 +769,8 @@ class TestEditing:
     def test_an_owners_standing_survives_whatever_is_sent(self, client):
         """
         The form never offers "owner", so a payload saying `member` is a stale
-        screen rather than an instruction. Taking it would demote the owner and
-        leave the owner marker disagreeing with the role, which the check
-        constraint refuses outright.
+        screen rather than an instruction. Ownership is `is_owner`, which no
+        form writes.
         """
         result = found()
         owner = Membership.objects.get(user=result.user, organization=result.organization)
@@ -774,9 +784,16 @@ class TestEditing:
 
         assert response.status_code == 200
         owner.refresh_from_db()
-        assert owner.role == MembershipRole.OWNER
+        assert owner.is_owner is True
+        assert standing(owner) == MembershipRole.OWNER
 
-    def test_removing_an_app_takes_the_grant_away(self, client):
+    def test_removing_their_last_app_is_refused(self, client):
+        """
+        C73 (2026-11-11, "for now"): everybody holds at least one app, because
+        a person's place comes from their grants. This used to assert the
+        opposite -- that saving with no apps left them with none. The reason
+        is a field error on `apps`, so the form can show it there.
+        """
         result = found()
         person = add_person(result.organization, email="person@acme.test")
         client.force_authenticate(user=result.user)
@@ -787,8 +804,10 @@ class TestEditing:
             format="json",
         )
 
-        assert response.status_code == 200
-        assert person.app_access.count() == 0
+        assert response.status_code == 422
+        assert response.json()["code"] == "person_needs_an_app"
+        assert [e["field"] for e in response.json()["errors"]] == ["apps"]
+        assert person.grants.count() == 1
 
 
 class TestRemoving:
@@ -991,7 +1010,7 @@ class TestCapabilityRefusals:
 
     def test_a_salesperson_cannot_read_the_users_list(self, client):
         result = found()
-        unit = BusinessUnit.objects.create(organization=result.organization, name="Whitefield")
+        unit = Territory.objects.create(organization=result.organization, name="Whitefield")
         person = add_person(result.organization, unit=unit, email="sales@acme.test")
         client.force_authenticate(user=person.user)
 
@@ -1002,7 +1021,7 @@ class TestCapabilityRefusals:
 
     def test_a_salesperson_cannot_invite_anybody(self, client):
         result = found()
-        unit = BusinessUnit.objects.create(organization=result.organization, name="Whitefield")
+        unit = Territory.objects.create(organization=result.organization, name="Whitefield")
         person = add_person(result.organization, unit=unit, email="sales@acme.test")
         client.force_authenticate(user=person.user)
 

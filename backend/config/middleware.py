@@ -32,7 +32,7 @@ from config.routers import current_tenant_db
 from core.organizations.api.base import REQUEST_ORGANIZATION_ATTR
 from core.organizations.models import Organization, OrganizationStatus
 from core.organizations.tenancy import register_tenant_connection
-from shared.base_models import allowed_units
+from shared.base_models import NOT_SET, allowed_territories
 
 # Everything org-scoped lives under /api/v1/orgs/<slug>/. Auth and /me do not,
 # because they are what tell the browser which slugs exist.
@@ -114,12 +114,14 @@ class TenantMiddleware:
             return self.get_response(request)
 
         token = current_tenant_db.set(register_tenant_connection(organization))
-        # Cleared per request as well. `allowed_units` is set per app by the
-        # view layer from `resolve_allowed_units()`; binding nothing here means
-        # a view that forgets to set it gets "unrestricted", which is wrong but
-        # LOUD -- a dealer seeing every dealership is noticed. Leaving a
-        # previous request's value in place would be quiet and worse.
-        units_token = allowed_units.set(None)
+        # Cleared per request as well, to NOT_SET: "nobody has decided yet".
+        # `TenantAPIView` decides per app from `resolve_allowed_territories()`; a
+        # view that does not gets a `TerritoryScopeMissingError` on its first
+        # dealership-scoped query. This used to reset to None, which meant
+        # "every dealership" -- so a view that forgot quietly showed a dealer
+        # everybody's records. Leaving a previous request's value in place
+        # would be quieter and worse still.
+        units_token = allowed_territories.set(NOT_SET)
 
         # STOWED UNDER A PRIVATE NAME, not as `request.organization` (C49).
         # Reading it directly would skip the membership check, so the public
@@ -136,7 +138,7 @@ class TenantMiddleware:
             # database. The symptom is one customer seeing another's data
             # under load and nothing at all in testing.
             current_tenant_db.reset(token)
-            allowed_units.reset(units_token)
+            allowed_territories.reset(units_token)
 
     def _resolve(self, slug: str) -> Organization | None:
         """

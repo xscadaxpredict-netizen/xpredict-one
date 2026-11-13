@@ -2,8 +2,8 @@
 Site Services models: ServiceSchedule, ServiceReport, ReportAttachment,
 WaterReport, Complaint.
 
-All models inherit ``UnitScopedModel`` (schema review #01 — every table
-carries its own ``unit_id``).  Technician references use a plain UUID
+All models inherit ``TerritoryScopedModel`` (schema review #01 — every table
+carries its own ``territory_id``).  Technician references use a plain UUID
 plus a display-name snapshot (schema review #09).  Signatures are stored
 as file paths, not Base64 (schema review #10).
 """
@@ -14,13 +14,13 @@ import uuid
 
 from django.db import models
 
-from shared.base_models import UnitScopedModel
+from shared.base_models import TerritoryScopedModel
 
 # ============================================================================
 # SiteServiceProfile
 # ============================================================================
 
-class SiteServiceProfile(UnitScopedModel):
+class SiteServiceProfile(TerritoryScopedModel):
     """
     Service details for a confirmed site, editable from the Scheduling screen.
     """
@@ -40,7 +40,7 @@ class SiteServiceProfile(UnitScopedModel):
 
     class Meta:
         indexes = [
-            models.Index(fields=["unit_id", "site_id"]),
+            models.Index(fields=["territory_id", "site_id"]),
         ]
 
     def __str__(self) -> str:
@@ -59,7 +59,7 @@ class ScheduleStatus(models.TextChoices):
     CANCELLED = "CANCELLED", "Cancelled"
 
 
-class ServiceSchedule(UnitScopedModel):
+class ServiceSchedule(TerritoryScopedModel):
     """
     A scheduled service visit for a confirmed site.
 
@@ -99,9 +99,9 @@ class ServiceSchedule(UnitScopedModel):
 
     class Meta:
         indexes = [
-            models.Index(fields=["unit_id", "status"]),
-            models.Index(fields=["unit_id", "scheduled_date"]),
-            models.Index(fields=["unit_id", "site_id"]),
+            models.Index(fields=["territory_id", "status"]),
+            models.Index(fields=["territory_id", "scheduled_date"]),
+            models.Index(fields=["territory_id", "site_id"]),
         ]
 
     def __str__(self) -> str:
@@ -125,7 +125,7 @@ class ApprovalStatus(models.TextChoices):
     REJECTED = "REJECTED", "Rejected"
 
 
-class ServiceReport(UnitScopedModel):
+class ServiceReport(TerritoryScopedModel):
     """
     A service report filed by a technician after visiting a site.
 
@@ -193,9 +193,9 @@ class ServiceReport(UnitScopedModel):
 
     class Meta:
         indexes = [
-            models.Index(fields=["unit_id", "status"]),
-            models.Index(fields=["unit_id", "site_id"]),
-            models.Index(fields=["unit_id", "-service_date"]),
+            models.Index(fields=["territory_id", "status"]),
+            models.Index(fields=["territory_id", "site_id"]),
+            models.Index(fields=["territory_id", "-service_date"]),
         ]
 
     def __str__(self) -> str:
@@ -206,7 +206,7 @@ class ServiceReport(UnitScopedModel):
 # ReportAttachment
 # ============================================================================
 
-class ReportAttachment(UnitScopedModel):
+class ReportAttachment(TerritoryScopedModel):
     """
     A file (photo, PDF, etc.) attached to a service report.
 
@@ -241,9 +241,9 @@ class ReportAttachment(UnitScopedModel):
 
     class Meta:
         indexes = [
-            models.Index(fields=["unit_id", "service_report_id"]),
-            models.Index(fields=["unit_id", "water_report_id"]),
-            models.Index(fields=["unit_id", "complaint_id"]),
+            models.Index(fields=["territory_id", "service_report_id"]),
+            models.Index(fields=["territory_id", "water_report_id"]),
+            models.Index(fields=["territory_id", "complaint_id"]),
         ]
 
     def __str__(self) -> str:
@@ -254,7 +254,7 @@ class ReportAttachment(UnitScopedModel):
 # WaterReport
 # ============================================================================
 
-class WaterReport(UnitScopedModel):
+class WaterReport(TerritoryScopedModel):
     """
     Water quality report for a deployed site.
 
@@ -287,8 +287,8 @@ class WaterReport(UnitScopedModel):
 
     class Meta:
         indexes = [
-            models.Index(fields=["unit_id", "site_id"]),
-            models.Index(fields=["unit_id", "-date_tested"]),
+            models.Index(fields=["territory_id", "site_id"]),
+            models.Index(fields=["territory_id", "-date_tested"]),
         ]
 
     def __str__(self) -> str:
@@ -313,7 +313,7 @@ class ComplaintStatus(models.TextChoices):
     CLOSED = "CLOSED", "Closed"
 
 
-class Complaint(UnitScopedModel):
+class Complaint(TerritoryScopedModel):
     """
     A customer complaint about a deployed site.
 
@@ -359,9 +359,9 @@ class Complaint(UnitScopedModel):
 
     class Meta:
         indexes = [
-            models.Index(fields=["unit_id", "status"]),
-            models.Index(fields=["unit_id", "site_id"]),
-            models.Index(fields=["unit_id", "-created_at"]),
+            models.Index(fields=["territory_id", "status"]),
+            models.Index(fields=["territory_id", "site_id"]),
+            models.Index(fields=["territory_id", "-created_at"]),
         ]
 
     def __str__(self) -> str:

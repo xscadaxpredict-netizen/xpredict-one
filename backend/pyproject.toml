@@ -13,6 +13,11 @@ dependencies = [
     "redis>=5.0",
     "django-environ>=0.12",
     "django-cors-headers>=4.7",
+    # The territory tree (C72) and, later, each app's reporting chart. Chosen
+    # by the owner over a hand-written path column (Q56, 2026-11-06). Its
+    # default manager MUST be treebeard's (enforced from 6.0), and tree
+    # queries live on the manager: `Territory.objects.get_descendants(node)`.
+    "django-treebeard>=7.0.3,<8",
     # The WSGI server. `manage.py runserver` is single-threaded, reloads on
     # file changes and is documented by Django as unfit for production.
     "gunicorn>=26.0",

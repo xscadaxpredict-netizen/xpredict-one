@@ -1,5 +1,5 @@
 """
-`resolve_allowed_units()` and the `/me` payload.
+`resolve_allowed_territories()` and the `/me` payload.
 
 These are the scoping and entitlement rules, so they are written against the
 decisions rather than against the code: every module list and permission count
@@ -25,16 +25,17 @@ from core.accounts.models import User
 from core.billing.models import AppSubscription, SubscriptionStatus
 from core.organizations.models import (
     ActivationCode,
-    BusinessUnit,
     Membership,
+    MembershipAppAccess,
     MembershipRole,
     MembershipStatus,
     Organization,
+    Territory,
     UnitStatus,
 )
-from core.organizations.selectors import me, resolve_allowed_units
-from core.organizations.services import sign_up
-from core.permissions.models import AppAccess, AppCode, Role
+from core.organizations.selectors import me, resolve_allowed_territories
+from core.organizations.services import grant_app_access, sign_up
+from core.permissions.models import AppCode, Permission, Role
 
 pytestmark = pytest.mark.django_db
 
@@ -56,16 +57,12 @@ def add_dealer_admin(organization, unit, email="dealeradmin@acme.test"):
     combination outright (C40), which is the whole point of the shape.
     """
     user = User.objects.create_user(email=email, password="x")
-    membership = Membership.objects.create(
-        user=user,
-        organization=organization,
-        unit=unit,
-        role=MembershipRole.MEMBER,
-    )
-    AppAccess.objects.create(
+    membership = Membership.objects.create(user=user, organization=organization)
+    grant_app_access(
         membership=membership,
         app=AppCode.DMS,
-        role=Role.objects.get(app=AppCode.DMS, code="dms.system_admin"),
+        role=Role.objects.get(app_id=AppCode.DMS, code="dms.system_admin"),
+        territories=[unit],
     )
     return user, membership
 
@@ -82,15 +79,15 @@ class TestResolveAllowedUnits:
 
     def test_a_dealer_scoped_person_gets_their_own_dealership_in_dms(self):
         result = found()
-        unit = BusinessUnit.objects.create(organization=result.organization, name="Whitefield")
+        unit = Territory.objects.create(organization=result.organization, name="Whitefield")
         _, membership = add_dealer_admin(result.organization, unit)
 
-        assert resolve_allowed_units(membership, AppCode.DMS) == frozenset({unit.id})
+        assert resolve_allowed_territories(membership, AppCode.DMS) == frozenset({unit.id})
 
     def test_an_organization_wide_person_is_unrestricted_in_dms(self):
         result = found()
 
-        assert resolve_allowed_units(result.membership, AppCode.DMS) is None
+        assert resolve_allowed_territories(result.membership, AppCode.DMS) is None
 
     def test_a_dealer_scoped_person_is_unrestricted_in_crm(self):
         """
@@ -101,10 +98,10 @@ class TestResolveAllowedUnits:
         unrestricted here even though they are restricted in DMS.
         """
         result = found()
-        unit = BusinessUnit.objects.create(organization=result.organization, name="Whitefield")
+        unit = Territory.objects.create(organization=result.organization, name="Whitefield")
         _, membership = add_dealer_admin(result.organization, unit)
 
-        assert resolve_allowed_units(membership, AppCode.CRM) is None
+        assert resolve_allowed_territories(membership, AppCode.CRM) is None
 
     def test_none_is_returned_rather_than_an_empty_set(self):
         """
@@ -114,8 +111,8 @@ class TestResolveAllowedUnits:
         """
         result = found()
 
-        assert resolve_allowed_units(result.membership, AppCode.DMS) is not frozenset()
-        assert resolve_allowed_units(result.membership, AppCode.DMS) is None
+        assert resolve_allowed_territories(result.membership, AppCode.DMS) is not frozenset()
+        assert resolve_allowed_territories(result.membership, AppCode.DMS) is None
 
 
 class TestTheOwner:
@@ -131,11 +128,14 @@ class TestTheOwner:
         assert membership.unit_id is None
         assert membership.unit_name is None
 
-    def test_administration_comes_from_standing_with_all_eleven_permissions(self):
+    def test_administration_comes_from_standing_with_all_fourteen_permissions(self):
         """
         Owners and org admins hold every `admin.*` permission and NOT through a
         Role row (C42) -- which is also why they get the dealers and roles
-        modules and a dealer admin does not.
+        modules and a dealer admin does not. Eleven until C72 piece 1 added the
+        three `admin.territory.*` codes, which reach them by the same rule with
+        no grant written; they sit in the `dealers` module, so the modules
+        below are unchanged.
         """
         result = found()
 
@@ -143,7 +143,7 @@ class TestTheOwner:
 
         assert admin.subscribed is True
         assert admin.accessible is True
-        assert len(admin.permissions) == 11
+        assert len(admin.permissions) == 14
         assert admin.modules == ["dealers", "roles", "users"]
 
     def test_administration_is_reported_subscribed_without_being_bought(self):
@@ -154,20 +154,20 @@ class TestTheOwner:
         """
         result = found()
 
-        assert not AppSubscription.objects.filter(app=AppCode.ADMIN).exists()
+        assert not AppSubscription.objects.filter(app_id=AppCode.ADMIN).exists()
         assert app_of(me(result.user), "acme-motors", AppCode.ADMIN).subscribed is True
 
-    def test_dms_is_group_operations_across_all_five_modules(self):
+    def test_dms_is_every_dms_permission_across_all_five_modules(self):
         """
-        C41 seeds the owner at Group operations. It WAS Manager's set at
-        organization scope -- 33 permissions across three modules -- and C67
-        made it Manager's set plus the four organisation-wide codes, which
-        brings two more modules with them.
+        THE OWNER HOLDS ALL OF DMS BY RULE SINCE C72 STEP 2c, not their seed
+        role. C41 seeds the owner at Group operations (40 permissions), which
+        lacks Tech support's three ticket codes; this test pinned 40 until the
+        rule arrived, and the owner now holds all 43. `test_owner_by_rule.py`
+        names the three.
 
-        THE MODULE LIST IS DERIVED, NOT STORED (C42), which is why seven new
-        permissions changed it: a module shows when the role holds at least one
-        permission inside it. `tools` and `ecommerce` appear here for the first
-        time, through the real mechanism.
+        THE MODULE LIST IS DERIVED, NOT STORED (C42): a module shows when the
+        person holds at least one permission inside it. `tools` and
+        `ecommerce` arrived through that mechanism with C67.
 
         Worth knowing while reading the frontend: `shell/access.ts` has a
         hardcoded `isManagerOrAdmin && (moduleKey === "ecommerce" || moduleKey
@@ -181,7 +181,10 @@ class TestTheOwner:
 
         assert dms.accessible is True
         assert dms.modules == ["ecommerce", "sales", "service", "tech-support", "tools"]
-        assert len(dms.permissions) == 40
+        assert dms.permissions == sorted(
+            Permission.objects.filter(app=AppCode.DMS).values_list("code", flat=True)
+        )
+        assert len(dms.permissions) == 43
 
     def test_unbought_apps_are_shown_but_not_accessible(self):
         """
@@ -205,14 +208,14 @@ class TestTheOwner:
         module names in the fake's version were copy the frontend already has.
         """
         result = found()
-        BusinessUnit.objects.create(organization=result.organization, name="Whitefield")
-        BusinessUnit.objects.create(organization=result.organization, name="Indiranagar")
+        Territory.objects.create(organization=result.organization, name="Whitefield")
+        Territory.objects.create(organization=result.organization, name="Indiranagar")
 
         assert app_of(me(result.user), "acme-motors", AppCode.DMS).summary == "2 dealerships"
 
     def test_one_dealership_is_singular(self):
         result = found()
-        BusinessUnit.objects.create(organization=result.organization, name="Whitefield")
+        Territory.objects.create(organization=result.organization, name="Whitefield")
 
         assert app_of(me(result.user), "acme-motors", AppCode.DMS).summary == "1 dealership"
 
@@ -258,7 +261,6 @@ class TestWorkspaceReadiness:
         Membership.objects.create(
             user=acme.user,
             organization=northway.organization,
-            role=MembershipRole.MEMBER,
         )
 
         by_slug = {m.org_slug: m.is_ready for m in me(acme.user).memberships}
@@ -275,7 +277,7 @@ class TestTheDealerAdmin:
         standing really is `member`, and the database refuses anything else.
         """
         result = found()
-        unit = BusinessUnit.objects.create(organization=result.organization, name="Whitefield")
+        unit = Territory.objects.create(organization=result.organization, name="Whitefield")
         user, _ = add_dealer_admin(result.organization, unit)
 
         membership = me(user).memberships[0]
@@ -291,7 +293,7 @@ class TestTheDealerAdmin:
         modules are reachable only through standing, which they do not have.
         """
         result = found()
-        unit = BusinessUnit.objects.create(organization=result.organization, name="Whitefield")
+        unit = Territory.objects.create(organization=result.organization, name="Whitefield")
         user, _ = add_dealer_admin(result.organization, unit)
 
         admin = app_of(me(user), "acme-motors", AppCode.ADMIN)
@@ -314,7 +316,7 @@ class TestTheDealerAdmin:
         job (C3, C23).
         """
         result = found()
-        unit = BusinessUnit.objects.create(organization=result.organization, name="Whitefield")
+        unit = Territory.objects.create(organization=result.organization, name="Whitefield")
         user, _ = add_dealer_admin(result.organization, unit)
 
         admin = app_of(me(user), "acme-motors", AppCode.ADMIN)
@@ -329,7 +331,7 @@ class TestTheDealerAdmin:
         you cannot see is not a job.
         """
         result = found()
-        unit = BusinessUnit.objects.create(organization=result.organization, name="Whitefield")
+        unit = Territory.objects.create(organization=result.organization, name="Whitefield")
         user, _ = add_dealer_admin(result.organization, unit)
 
         dms = app_of(me(user), "acme-motors", AppCode.DMS)
@@ -343,8 +345,8 @@ class TestTheDealerAdmin:
 
     def test_their_dms_summary_is_their_own_dealership(self):
         result = found()
-        unit = BusinessUnit.objects.create(organization=result.organization, name="Whitefield")
-        BusinessUnit.objects.create(organization=result.organization, name="Indiranagar")
+        unit = Territory.objects.create(organization=result.organization, name="Whitefield")
+        Territory.objects.create(organization=result.organization, name="Indiranagar")
         user, _ = add_dealer_admin(result.organization, unit)
 
         assert app_of(me(user), "acme-motors", AppCode.DMS).summary == "Whitefield"
@@ -358,15 +360,14 @@ class TestSomebodyWithNoAdministration:
         have it gives away what the hiding was for.
         """
         result = found()
-        unit = BusinessUnit.objects.create(organization=result.organization, name="Whitefield")
+        unit = Territory.objects.create(organization=result.organization, name="Whitefield")
         user = User.objects.create_user(email="rep@acme.test", password="x")
-        membership = Membership.objects.create(
-            user=user, organization=result.organization, unit=unit, role=MembershipRole.MEMBER
-        )
-        AppAccess.objects.create(
+        membership = Membership.objects.create(user=user, organization=result.organization)
+        grant_app_access(
             membership=membership,
             app=AppCode.DMS,
-            role=Role.objects.get(app=AppCode.DMS, code="dms.sales_representative"),
+            role=Role.objects.get(app_id=AppCode.DMS, code="dms.sales_representative"),
+            territories=[unit],
         )
 
         payload = me(user)
@@ -380,19 +381,19 @@ class TestASubscriptionThatLapsed:
     def test_a_grant_left_on_a_cancelled_subscription_opens_nothing(self):
         """
         THE RULE THAT ONLY WORKS BECAUSE THESE ARE TWO TABLES (C16). Cancelling
-        a subscription does not revoke anybody's `AppAccess` row -- there is no
-        process that walks them -- so the grant outlives the subscription. This
+        a subscription does not revoke anybody's grant -- there is no process
+        that walks them -- so the grant outlives the subscription. This
         is the place that catches it, and if it did not, a lapsed customer
         would keep working indefinitely.
         """
         result = found()
         AppSubscription.objects.filter(
-            organization=result.organization, app=AppCode.DMS
+            organization=result.organization, app_id=AppCode.DMS
         ).update(status=SubscriptionStatus.CANCELLED)
 
         dms = app_of(me(result.user), "acme-motors", AppCode.DMS)
 
-        assert AppAccess.objects.filter(app=AppCode.DMS).exists()
+        assert MembershipAppAccess.objects.filter(app_id=AppCode.DMS).exists()
         assert dms.subscribed is False
         assert dms.accessible is False
         assert dms.modules == []
@@ -422,13 +423,7 @@ class TestOrganizationIsolation:
         acme = found("Acme Motors", "owner@acme.test", "CODE-ACME")
         northway = found("Northway Auto Group", "owner@northway.test", "CODE-NORTH")
 
-        unit = BusinessUnit.objects.create(organization=northway.organization, name="Whitefield")
-        Membership.objects.create(
-            user=acme.user,
-            organization=northway.organization,
-            unit=unit,
-            role=MembershipRole.MEMBER,
-        )
+        Membership.objects.create(user=acme.user, organization=northway.organization)
 
         payload = me(acme.user)
 
@@ -436,7 +431,7 @@ class TestOrganizationIsolation:
             "acme-motors",
             "northway-auto-group",
         ]
-        # Owner in one, a dealer-scoped member with no grants in the other.
+        # Owner in one, a member with no grants in the other.
         assert app_of(payload, "acme-motors", AppCode.DMS).accessible is True
         assert app_of(payload, "northway-auto-group", AppCode.DMS).accessible is False
         assert app_of(payload, "northway-auto-group", AppCode.ADMIN).accessible is False
@@ -456,7 +451,7 @@ class TestAClosedDealership:
 
     def test_the_membership_is_still_returned(self):
         result = found()
-        unit = BusinessUnit.objects.create(
+        unit = Territory.objects.create(
             organization=result.organization, name="Whitefield", status=UnitStatus.DISABLED
         )
         user, _ = add_dealer_admin(result.organization, unit)
@@ -468,7 +463,7 @@ class TestAClosedDealership:
 
     def test_it_is_marked_closed(self):
         result = found()
-        unit = BusinessUnit.objects.create(
+        unit = Territory.objects.create(
             organization=result.organization, name="Whitefield", status=UnitStatus.DISABLED
         )
         user, _ = add_dealer_admin(result.organization, unit)
@@ -484,7 +479,7 @@ class TestAClosedDealership:
         tile clickable, and it would lead straight to a 403.
         """
         result = found()
-        unit = BusinessUnit.objects.create(
+        unit = Territory.objects.create(
             organization=result.organization, name="Whitefield", status=UnitStatus.DISABLED
         )
         user, _ = add_dealer_admin(result.organization, unit)
@@ -502,7 +497,7 @@ class TestAClosedDealership:
         would tell the browser what they would have been able to do.
         """
         result = found()
-        unit = BusinessUnit.objects.create(
+        unit = Territory.objects.create(
             organization=result.organization, name="Whitefield", status=UnitStatus.DISABLED
         )
         user, _ = add_dealer_admin(result.organization, unit)
@@ -517,7 +512,7 @@ class TestAClosedDealership:
         an organisation whose every branch is shut still runs the place.
         """
         result = found()
-        BusinessUnit.objects.create(
+        Territory.objects.create(
             organization=result.organization, name="Whitefield", status=UnitStatus.DISABLED
         )
 
@@ -532,7 +527,7 @@ class TestAClosedDealership:
         the dealership is open again the payload is what it always was.
         """
         result = found()
-        unit = BusinessUnit.objects.create(
+        unit = Territory.objects.create(
             organization=result.organization, name="Whitefield", status=UnitStatus.DISABLED
         )
         user, _ = add_dealer_admin(result.organization, unit)

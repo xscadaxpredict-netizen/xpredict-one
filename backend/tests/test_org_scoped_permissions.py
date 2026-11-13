@@ -37,13 +37,12 @@ from core.accounts.models import User
 from core.organizations.api.base import OrgScopedAPIView
 from core.organizations.models import (
     ActivationCode,
-    BusinessUnit,
     Membership,
-    MembershipRole,
+    Territory,
 )
 from core.organizations.selectors import can_manage, permissions_for
-from core.organizations.services import sign_up
-from core.permissions.models import AppAccess, AppCode, Role
+from core.organizations.services import grant_app_access, sign_up
+from core.permissions.models import AppCode, Role
 
 pytestmark = [
     pytest.mark.django_db(databases=["default", TEST_TENANT_ALIAS]),
@@ -145,13 +144,12 @@ def add_dealer_admin(organization, unit, email="dealeradmin@acme.test"):
     unit attached, which is the point of the shape.
     """
     user = User.objects.create_user(email=email, password="x")
-    membership = Membership.objects.create(
-        user=user, organization=organization, unit=unit, role=MembershipRole.MEMBER
-    )
-    AppAccess.objects.create(
+    membership = Membership.objects.create(user=user, organization=organization)
+    grant_app_access(
         membership=membership,
         app=AppCode.DMS,
-        role=Role.objects.get(app=AppCode.DMS, code="dms.system_admin"),
+        role=Role.objects.get(app_id=AppCode.DMS, code="dms.system_admin"),
+        territories=[unit],
     )
     return user, membership
 
@@ -159,13 +157,12 @@ def add_dealer_admin(organization, unit, email="dealeradmin@acme.test"):
 def add_plain_member(organization, unit=None, email="sales@acme.test"):
     """A Sales representative: entitled to be here, administers nothing."""
     user = User.objects.create_user(email=email, password="x")
-    membership = Membership.objects.create(
-        user=user, organization=organization, unit=unit, role=MembershipRole.MEMBER
-    )
-    AppAccess.objects.create(
+    membership = Membership.objects.create(user=user, organization=organization)
+    grant_app_access(
         membership=membership,
         app=AppCode.DMS,
-        role=Role.objects.get(app=AppCode.DMS, code="dms.sales_representative"),
+        role=Role.objects.get(app_id=AppCode.DMS, code="dms.sales_representative"),
+        territories=[unit or Territory.objects.root_for(organization)],
     )
     return user, membership
 
@@ -189,7 +186,7 @@ class TestPermissionsFor:
 
     def test_a_dealer_admin_holds_the_people_permissions_and_not_the_dealer_ones(self):
         result = found()
-        unit = BusinessUnit.objects.create(organization=result.organization, name="Whitefield")
+        unit = Territory.objects.create(organization=result.organization, name="Whitefield")
         _, membership = add_dealer_admin(result.organization, unit)
 
         held = permissions_for(membership)
@@ -208,7 +205,7 @@ class TestPermissionsFor:
 
     def test_a_sales_representative_holds_no_admin_permission_at_all(self):
         result = found()
-        unit = BusinessUnit.objects.create(organization=result.organization, name="Whitefield")
+        unit = Territory.objects.create(organization=result.organization, name="Whitefield")
         _, membership = add_plain_member(result.organization, unit)
 
         held = permissions_for(membership)
@@ -228,15 +225,15 @@ class TestCanManage:
     def test_an_organization_wide_admin_manages_everybody(self):
         result = found()
         owner = Membership.objects.get(user=result.user, organization=result.organization)
-        unit = BusinessUnit.objects.create(organization=result.organization, name="Whitefield")
+        unit = Territory.objects.create(organization=result.organization, name="Whitefield")
 
         assert can_manage(owner, None) is True
         assert can_manage(owner, unit.id) is True
 
     def test_a_dealer_admin_manages_their_own_dealership_only(self):
         result = found()
-        mine = BusinessUnit.objects.create(organization=result.organization, name="Whitefield")
-        theirs = BusinessUnit.objects.create(organization=result.organization, name="Guindy")
+        mine = Territory.objects.create(organization=result.organization, name="Whitefield")
+        theirs = Territory.objects.create(organization=result.organization, name="Guindy")
         _, membership = add_dealer_admin(result.organization, mine)
 
         assert can_manage(membership, mine.id) is True
@@ -249,7 +246,7 @@ class TestCanManage:
         whose scope they do not share.
         """
         result = found()
-        unit = BusinessUnit.objects.create(organization=result.organization, name="Whitefield")
+        unit = Territory.objects.create(organization=result.organization, name="Whitefield")
         _, membership = add_dealer_admin(result.organization, unit)
 
         assert can_manage(membership, None) is False
@@ -267,7 +264,7 @@ class TestTheViewLayer:
 
     def test_a_member_without_the_permission_gets_403_and_the_handler_never_runs(self, client):
         result = found()
-        unit = BusinessUnit.objects.create(organization=result.organization, name="Whitefield")
+        unit = Territory.objects.create(organization=result.organization, name="Whitefield")
         user, _ = add_plain_member(result.organization, unit)
         client.force_authenticate(user=user)
 
@@ -285,7 +282,7 @@ class TestTheViewLayer:
         create dealers, however many people permissions they hold.
         """
         result = found()
-        unit = BusinessUnit.objects.create(organization=result.organization, name="Whitefield")
+        unit = Territory.objects.create(organization=result.organization, name="Whitefield")
         user, _ = add_dealer_admin(result.organization, unit)
         client.force_authenticate(user=user)
 
@@ -301,7 +298,7 @@ class TestTheViewLayer:
         this is the test that catches it.
         """
         result = found()
-        unit = BusinessUnit.objects.create(organization=result.organization, name="Whitefield")
+        unit = Territory.objects.create(organization=result.organization, name="Whitefield")
         user, _ = add_dealer_admin(result.organization, unit)
         client.force_authenticate(user=user)
 
@@ -317,7 +314,7 @@ class TestTheViewLayer:
         role-catalogue case.
         """
         result = found()
-        unit = BusinessUnit.objects.create(organization=result.organization, name="Whitefield")
+        unit = Territory.objects.create(organization=result.organization, name="Whitefield")
         user, _ = add_dealer_admin(result.organization, unit)
         client.force_authenticate(user=user)
 
@@ -328,7 +325,7 @@ class TestTheViewLayer:
 
     def test_required_any_permission_still_refuses_somebody_holding_neither(self, client):
         result = found()
-        unit = BusinessUnit.objects.create(organization=result.organization, name="Whitefield")
+        unit = Territory.objects.create(organization=result.organization, name="Whitefield")
         user, _ = add_plain_member(result.organization, unit)
         client.force_authenticate(user=user)
 

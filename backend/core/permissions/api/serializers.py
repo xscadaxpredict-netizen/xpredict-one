@@ -28,7 +28,8 @@ class RoleSerializer(serializers.Serializer):
 
     code = serializers.CharField(read_only=True)
     name = serializers.CharField(read_only=True)
-    app = serializers.CharField(read_only=True)
+    # The code, not the App row: `app_id` IS the code (C71's `to_field`).
+    app = serializers.CharField(source="app_id", read_only=True)
     level = serializers.CharField(read_only=True)
     summary = serializers.CharField(read_only=True)
     administers = serializers.BooleanField(read_only=True)

@@ -22,12 +22,11 @@ from conftest import TEST_TENANT_ALIAS
 from core.accounts.models import User
 from core.organizations.models import (
     ActivationCode,
-    BusinessUnit,
     Membership,
-    MembershipRole,
+    Territory,
 )
-from core.organizations.services import sign_up
-from core.permissions.models import AppAccess, AppCode, Role
+from core.organizations.services import grant_app_access, sign_up
+from core.permissions.models import AppCode, Role
 
 pytestmark = [
     pytest.mark.django_db(databases=["default", TEST_TENANT_ALIAS]),
@@ -59,13 +58,12 @@ def found(name="Acme Motors", email="owner@acme.test", code="CODE-ACME"):
 
 def add_with_role(organization, role_code, unit=None, email="person@acme.test"):
     user = User.objects.create_user(email=email, password="x")
-    membership = Membership.objects.create(
-        user=user, organization=organization, unit=unit, role=MembershipRole.MEMBER
-    )
-    AppAccess.objects.create(
+    membership = Membership.objects.create(user=user, organization=organization)
+    grant_app_access(
         membership=membership,
         app=AppCode.DMS,
-        role=Role.objects.get(app=AppCode.DMS, code=role_code),
+        role=Role.objects.get(app_id=AppCode.DMS, code=role_code),
+        territories=[unit or Territory.objects.root_for(organization)],
     )
     return user
 
@@ -79,8 +77,12 @@ class TestTheCatalogue:
 
         assert response.status_code == 200
         body = response.json()
-        # Nine: seven DMS (C35) plus two org-level, plus CRM's single default.
-        assert len(body) == Role.objects.count() == 9
+        # Nine: the app roles -- DMS's and CRM's single default. The database
+        # holds ten: "Organisation admin" (Q60) is Administration's own role,
+        # given through the form's `role: "admin"`, and left out of this list
+        # until C72 piece 7.
+        assert len(body) == Role.objects.exclude(app_id=AppCode.ADMIN).count() == 9
+        assert Role.objects.count() == 10
 
     def test_the_fields_are_exactly_what_roles_ts_declares(self, client):
         """
@@ -185,7 +187,7 @@ class TestWhoMayAsk:
         page. `admin.person.invite` is what lets them through.
         """
         result = found()
-        unit = BusinessUnit.objects.create(organization=result.organization, name="Whitefield")
+        unit = Territory.objects.create(organization=result.organization, name="Whitefield")
         user = add_with_role(
             result.organization, "dms.system_admin", unit=unit, email="da@acme.test"
         )
@@ -198,7 +200,7 @@ class TestWhoMayAsk:
 
     def test_a_sales_representative_is_refused_with_403(self, client):
         result = found()
-        unit = BusinessUnit.objects.create(organization=result.organization, name="Whitefield")
+        unit = Territory.objects.create(organization=result.organization, name="Whitefield")
         user = add_with_role(
             result.organization, "dms.sales_representative", unit=unit, email="sales@acme.test"
         )

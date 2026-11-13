@@ -14,9 +14,9 @@ are all in the same database.
 from __future__ import annotations
 
 from django.conf import settings
-from django.db import models
+from django.db import IntegrityError, models, transaction
+from treebeard.mp_tree import MP_Node, MP_NodeManager
 
-from core.permissions.models import AppCode
 from shared.base_models import BaseModel
 
 
@@ -28,6 +28,106 @@ class OrganizationStatus(models.TextChoices):
 class UnitStatus(models.TextChoices):
     ACTIVE = "active", "Active"
     DISABLED = "disabled", "Closed"
+
+
+class TerritoryKind(models.TextChoices):
+    """
+    What a box in the territory tree is (C72).
+
+    THE ORGANISATION IS THE ROOT, one per organisation (the owner, 2026-11-06,
+    reversing piece 1's first design, which had no box for it). Every other
+    territory sits somewhere under it, and from C72 piece 2 a person placed
+    "organisation-wide" is placed AT the root -- so a missing placement can be
+    refused instead of silently meaning "everything".
+
+    The root does not store the organisation's name: `display_name` reads it
+    from the organisation, so there is one copy and nothing to drift.
+
+    Which kind may sit under which is one rule in `services.py`, not here.
+    """
+
+    ORGANISATION = "organisation", "Organisation"
+    REGION = "region", "Region"
+    DEALER = "dealer", "Dealer"
+    BRANCH = "branch", "Branch"
+    WAREHOUSE = "warehouse", "Warehouse"
+
+
+# Two organisations signing up in the same instant can compute the same root
+# path -- every organisation's root is a treebeard root, and roots share one
+# sequence. The second insert fails the unique index on `path`; retrying
+# computes a fresh one. This is now the ONLY place a root is made.
+_ROOT_PATH_ATTEMPTS = 3
+
+
+class TerritoryManager(MP_NodeManager):
+    """
+    Treebeard's manager -- which since treebeard 6.0 a tree model's default
+    manager MUST be -- plus the organisation's root.
+
+    `root_for(organization)` IS THE ORGANISATION'S BOX, created on first use.
+    Sign-up creates it; the lazy path exists for organisations made any other
+    way (tests, the shell) and is serialised by a lock on the organisation row,
+    so two first uses cannot make two roots -- and the database refuses a
+    second one anyway (`territory_one_root_per_org`).
+
+    `create()` ADDS A TERRITORY DIRECTLY UNDER THE ORGANISATION. A box in a
+    materialised-path tree cannot simply be inserted: it needs a `path` saying
+    where it sits. So `create()` goes through treebeard's `add_child()` on the
+    root, and a territory under any other parent goes through
+    `add_child(parent, {...})`. Every existing caller -- `create_dealer()` and
+    roughly a hundred test lines that make a dealership -- meant "a dealership
+    with nothing above it but the organisation", which is exactly that.
+
+    TREEBEARD SORTS BY `path`, NOT BY NAME. Anything that needs alphabetical
+    order says `.order_by("name")`; the model's `Meta.ordering` is overridden
+    by this manager and must not be relied on.
+    """
+
+    def root_for(self, organization) -> Territory:
+        root = self.filter(organization=organization, is_root=True).first()
+        if root is not None:
+            return root
+
+        with transaction.atomic():
+            # Lock the organisation, then look again: whoever waited behind the
+            # lock finds the root the first caller made.
+            type(organization).objects.select_for_update().get(pk=organization.pk)
+            root = self.filter(organization=organization, is_root=True).first()
+            if root is not None:
+                return root
+            return self._add_root_with_retry(
+                {
+                    "organization": organization,
+                    "kind": TerritoryKind.ORGANISATION,
+                    "name": "",
+                    "is_root": True,
+                }
+            )
+
+    def create(self, **kwargs):
+        return self.add_child(self.root_for(kwargs["organization"]), kwargs)
+
+    def _add_root_with_retry(self, create_kwargs: dict) -> Territory:
+        """
+        Add a root, retrying a collision on `path` in a savepoint.
+
+        RECOGNISED BY THE INDEX NAME, which is what MySQL reports -- "for key
+        'organizations_territory.organizations_territory_path_<hash>_uniq'",
+        never the column. Django names a `unique=True` field's index
+        `<table>_<column>_<hash>_uniq`, so the prefix is stable; a test pins it
+        against the real server, because the first version looked for `.path'`
+        and could never have fired.
+        """
+        path_index = f"{self.model._meta.db_table}_path_"
+        for attempt in range(_ROOT_PATH_ATTEMPTS):
+            try:
+                with transaction.atomic():
+                    return self.add_root(create_kwargs)
+            except IntegrityError as exc:
+                if path_index not in str(exc) or attempt == _ROOT_PATH_ATTEMPTS - 1:
+                    raise
+        raise AssertionError("unreachable")  # pragma: no cover
 
 
 class MembershipRole(models.TextChoices):
@@ -188,22 +288,59 @@ class ActivationCode(BaseModel):
         state = "spent" if self.spent_at else "unspent"
         return f"{self.label or self.pk} ({state})"
 
-class BusinessUnit(BaseModel):
+class Territory(MP_Node, BaseModel):
     """
-    A dealership.
+    One box in the organisation's territory tree (C72): a region, a dealer, a
+    branch or a warehouse.
 
-    FLAT, NOT A TREE (C29). There is no `parent` field: the question of what a
-    parent dealership would actually confer was never answered, and a field that
-    is stored and displayed and means nothing is decoration. It was removed
-    rather than hidden.
+    A TREE SINCE 2026-11-06, reversing C29. Built on django-treebeard's
+    materialised path (Q56): every box stores `path`, its position from the
+    top, so "this box and everything under it" is `path LIKE 'prefix%'`.
+    Treebeard keeps `path`, `depth` and `numchild` correct; nothing else
+    writes them. Use the manager -- `Territory.objects.add_child(parent, {...})`,
+    `.move(...)`, `.get_descendants(...)` -- never the per-box methods, which
+    treebeard 7 deprecates and 8 removes.
+
+    ONE TREE PER ORGANISATION, WITH THE ORGANISATION AT ITS ROOT. Each
+    organisation has exactly one root box (kind `organisation`) and everything
+    else sits under it, so an organisation's whole tree is one path prefix.
+    Paths are still unique across the whole table -- the roots themselves are
+    one sequence -- so every query filters by `organization`, as every query
+    here always has; a tree question asked without it is a cross-tenant leak.
+
+    RENAMED FROM `BusinessUnit` ON 2026-11-06, because the owner asked for the
+    name to match the idea. The table moved with it; the rows, their ids and
+    everything pointing at them did not change.
+
+    "UNIT" STILL APPEARS ELSEWHERE, ON PURPOSE AND FOR NOW. `Invitation.unit`
+    (piece 5), `App.unit_aware`, `UnitStatus` and the API's `unit_*` fields and
+    `X-Unit-Id` header (piece 7) all mean "territory". The tenant column became
+    `territory_id` in C72 piece 3 step 1, with `allowed_territories` and
+    `resolve_allowed_territories()`; `Membership.unit` went in piece 2.
 
     Only DMS is unit-aware (C5). CRM and E-commerce ignore these entirely, which
     is why unit scope lives on `Membership` and is read through one resolver
     rather than being assumed everywhere.
+
+    THE DEALER-ONLY COLUMNS -- code, GSTIN, PAN, contact and address -- stay on
+    every kind and are simply blank on a region. One table rather than one per
+    kind is the point of C72's single tree; a warehouse may well want an
+    address too.
     """
 
+    # FIVE CHARACTERS PER LEVEL, not treebeard's four: about 60 million boxes
+    # per level instead of 1.7 million, and up to 51 levels in the 255-character
+    # path. Every organisation's root shares one sequence (see above), and the
+    # owner chose treebeard so this can scale -- changing it later means
+    # rewriting every path, so it is chosen generously now.
+    steplen = 5
+
+    kind = models.CharField(
+        max_length=20, choices=TerritoryKind.choices, default=TerritoryKind.DEALER
+    )
+
     organization = models.ForeignKey(
-        Organization, on_delete=models.CASCADE, related_name="business_units"
+        Organization, on_delete=models.CASCADE, related_name="territories"
     )
 
     name = models.CharField(max_length=200)
@@ -244,10 +381,50 @@ class BusinessUnit(BaseModel):
 
     status = models.CharField(max_length=20, choices=UnitStatus.choices, default=UnitStatus.ACTIVE)
 
+    is_root = models.BooleanField(
+        null=True,
+        blank=True,
+        editable=False,
+        help_text="True for the organisation's root box, NULL for every other. Never set by hand.",
+    )
+    """
+    THE ONE-ROOT-PER-ORGANISATION MARKER, shaped like `Membership.is_owner`
+    and for the same reason: MySQL has no partial unique index (C39). True for
+    the root and NULL for everything else, and a unique index on
+    (organization, is_root) lets any number of NULLs coexist while refusing a
+    second True. The check constraint below keeps it in step with `kind`.
+    """
+
+    objects = TerritoryManager()
+
     class Meta:
+        # OVERRIDDEN BY THE MANAGER, which sorts by `path`; kept for anything
+        # that reads `_meta` (the admin, `latest()`). Order by name explicitly.
         ordering = ["name"]
         constraints = [
-            models.UniqueConstraint(fields=["organization", "code"], name="unit_unique_org_code"),
+            # EXACTLY ONE ROOT PER ORGANISATION -- "at most one" here, and "at
+            # least one" because sign-up creates it and `root_for()` creates
+            # it on first use for anything made another way.
+            models.UniqueConstraint(
+                fields=["organization", "is_root"], name="territory_one_root_per_org"
+            ),
+            # THE ROOT IS THE ORGANISATION, AT THE TOP, AND NOTHING ELSE IS.
+            # A root that is not kind `organisation`, an `organisation` box
+            # below the top, or a region left at the top level beside the root
+            # are all refused by the database, not just by the services.
+            models.CheckConstraint(
+                condition=(
+                    models.Q(kind=TerritoryKind.ORGANISATION, is_root=True, depth=1)
+                    | (
+                        ~models.Q(kind=TerritoryKind.ORGANISATION)
+                        & models.Q(is_root__isnull=True, depth__gte=2)
+                    )
+                ),
+                name="territory_root_is_the_organisation",
+            ),
+            models.UniqueConstraint(
+                fields=["organization", "code"], name="territory_unique_org_code"
+            ),
             # NAME IS UNIQUE TOO, and case-insensitively, which costs nothing
             # here: MySQL's `utf8mb4_0900_ai_ci` collation compares that way, so
             # this refuses "Chennai - Guindy" and "chennai - guindy" as the same
@@ -256,22 +433,56 @@ class BusinessUnit(BaseModel):
             #
             # Unlike `code` this is NOT nullable, so there is no NULL-is-distinct
             # subtlety -- every dealership has a name and every name is checked.
-            models.UniqueConstraint(fields=["organization", "name"], name="unit_unique_org_name"),
+            models.UniqueConstraint(
+                fields=["organization", "name"], name="territory_unique_org_name"
+            ),
         ]
 
     def __str__(self) -> str:
-        return self.name
+        return self.display_name
+
+    @property
+    def display_name(self) -> str:
+        """
+        The root shows the organisation's name; it stores none of its own.
+        One copy of the name, so renaming the organisation renames its tree's
+        top without anything to keep in step.
+        """
+        return self.organization.name if self.is_root else self.name
+
+    def save(self, *args, **kwargs) -> None:
+        """
+        REFUSE A BOX WITH NO PLACE IN THE TREE.
+
+        `QuerySet.create()` and `get_or_create()` bypass the manager's
+        `create()` and would save a territory with an empty `path` -- the first
+        one succeeding, the second colliding on the unique index as a 500, and
+        the tree quietly corrupt in between. Treebeard sets `path` before it
+        saves, so this only ever fires on a caller who went round it: loudly,
+        at the line that did it.
+        """
+        if not self.path:
+            raise ValueError(
+                "A Territory needs a place in the tree: create it with "
+                "Territory.objects.create() (directly under the organisation) or "
+                "Territory.objects.add_child(parent, {...})."
+            )
+        super().save(*args, **kwargs)
 
 
 class Membership(BaseModel):
     """
-    One person inside one organization: their standing, and their dealership.
+    One person inside one organization: that they belong, and whether they own it.
 
-    `unit_id` IS THE ONLY PLACE A PERSON'S DEALERSHIP IS STORED (C7). Null means
-    organization-wide and `resolve_allowed_units()` returns unrestricted; a value
-    means that dealership and nothing else. Nothing reads this field to make a
-    scoping decision directly --- everything goes through the resolver, so there
-    is one place to be right.
+    EVERYTHING ELSE IS IN THEIR GRANTS (C72). Which apps, with which role, at
+    which places in the territory tree: `MembershipAppAccess` ->
+    `MembershipAppRole` + `MembershipAppTerritory`, written only by
+    `grant_app_access()`. Whether they administer the organisation is an
+    "Organisation admin" grant at the root.
+
+    `unit` AND `role` WERE HERE UNTIL STEP 2d-3, which dropped them with
+    `permissions.AppAccess`. `MembershipRole` survives as the API's words
+    ("owner" / "admin" / "member"), worked out by `selectors.standing()`.
     """
 
     user = models.ForeignKey(
@@ -280,41 +491,34 @@ class Membership(BaseModel):
     organization = models.ForeignKey(
         Organization, on_delete=models.CASCADE, related_name="memberships"
     )
-    unit = models.ForeignKey(
-        BusinessUnit,
-        on_delete=models.PROTECT,
-        null=True,
-        blank=True,
-        related_name="memberships",
-    )
-
-    role = models.CharField(
-        max_length=20, choices=MembershipRole.choices, default=MembershipRole.MEMBER
-    )
     status = models.CharField(
         max_length=20, choices=MembershipStatus.choices, default=MembershipStatus.ACTIVE
     )
 
-    owner_marker = models.BooleanField(
+    is_owner = models.BooleanField(
         null=True,
         blank=True,
         editable=False,
         help_text="True for the owner, NULL for everyone else. Never set by hand.",
     )
     """
-    THIS COLUMN LOOKS WRONG AND IS NOT. It exists to express "exactly one owner
-    per organization" on MySQL, which has no partial unique indexes (C39).
+    WHO OWNS THIS ORGANISATION (C72 step 2c; was `owner_marker`). True for the
+    owner, NULL -- never False -- for everybody else.
 
-    On PostgreSQL this would be a unique index on `organization` with a
-    `WHERE role = 'owner'` condition. MySQL cannot do that. What it CAN do is
-    treat every NULL in a unique index as distinct --- so the marker is True for
-    the owner and NULL for everybody else, and a unique index across
-    (organization, owner_marker) lets any number of members coexist while
-    refusing a second True.
+    READ IT AS A BOOLEAN AND IT IS ONE: `if membership.is_owner` is falsy for
+    NULL. The three-valued shape exists for the database, not for callers:
+    MySQL has no partial unique indexes (C39), but it treats every NULL in a
+    unique index as distinct, so a unique index across (organization,
+    is_owner) lets any number of members coexist while refusing a second True.
+    "At most one owner" is the database's; "at least one" is the services'
+    (the owner cannot be removed, disabled or demoted).
 
-    The cost is that it must be kept in step with `role` by hand, in the same
-    transaction, including on ownership transfer. The check constraint below is
-    what stops the two drifting.
+    THE OWNER HOLDS EVERYTHING BY RULE, NOT BY ROWS (C72): every permission in
+    every app the organisation subscribes to, plus Administration, everywhere
+    in the territory tree. `_membership_data()` and `resolve_allowed_territories()`
+    ask this flag first. Grant rows would need topping up whenever an app, role
+    or permission is added, and the first one forgotten leaves the one account
+    that can never be locked out short of something.
     """
 
     class Meta:
@@ -322,28 +526,18 @@ class Membership(BaseModel):
             models.UniqueConstraint(
                 fields=["user", "organization"], name="membership_unique_user_org"
             ),
-            # The one-owner rule. See owner_marker above for why it is shaped
+            # The one-owner rule. See is_owner above for why it is shaped
             # like this rather than as a conditional index.
             models.UniqueConstraint(
-                fields=["organization", "owner_marker"], name="membership_one_owner_per_org"
+                fields=["organization", "is_owner"], name="membership_one_owner_per_org"
             ),
-            # owner_marker is True exactly when role is owner, and NULL
-            # otherwise. Without this the marker is a second source of truth
-            # that nothing forces to agree with the first.
+            # TWO CHECK CONSTRAINTS WENT WITH `role` AND `unit` (step 2d-3):
+            # "is_owner matches role" has nothing left to match, and "an owner or
+            # admin has no dealership" is `_assert_organisation_wide()` in the
+            # services now -- a 409 at invite, edit and accept rather than a 500.
             models.CheckConstraint(
-                condition=(
-                    models.Q(role=MembershipRole.OWNER, owner_marker=True)
-                    | (~models.Q(role=MembershipRole.OWNER) & models.Q(owner_marker__isnull=True))
-                ),
-                name="membership_owner_marker_matches_role",
-            ),
-            # C40: an administrator of the ORGANIZATION is not scoped to one
-            # dealership. Somebody who administers a single dealership holds the
-            # DMS System administrator role instead, and their standing stays
-            # `member`. This is what C31 used to say in prose.
-            models.CheckConstraint(
-                condition=(models.Q(role=MembershipRole.MEMBER) | models.Q(unit__isnull=True)),
-                name="membership_org_standing_has_no_unit",
+                condition=models.Q(is_owner=True) | models.Q(is_owner__isnull=True),
+                name="membership_is_owner_true_or_null",
             ),
         ]
 
@@ -367,7 +561,7 @@ class Invitation(BaseModel):
         Organization, on_delete=models.CASCADE, related_name="invitations"
     )
     unit = models.ForeignKey(
-        BusinessUnit,
+        Territory,
         on_delete=models.CASCADE,
         null=True,
         blank=True,
@@ -416,7 +610,13 @@ class InvitationAppGrant(BaseModel):
     """
 
     invitation = models.ForeignKey(Invitation, on_delete=models.CASCADE, related_name="app_grants")
-    app = models.CharField(max_length=20, choices=AppCode.choices)
+    app = models.ForeignKey(
+        "permissions.App",
+        to_field="code",
+        db_column="app",
+        on_delete=models.PROTECT,
+        related_name="+",
+    )
     role = models.ForeignKey("permissions.Role", on_delete=models.PROTECT, related_name="+")
 
     class Meta:
@@ -427,4 +627,108 @@ class InvitationAppGrant(BaseModel):
         ]
 
     def __str__(self) -> str:
-        return f"{self.invitation_id} -> {self.app}"
+        return f"{self.invitation_id} -> {self.app_id}"
+
+
+# ---------------------------------------------------------------------------
+# THE PER-APP GRANT (C72 piece 2). One person's access to one app, and
+# everything about it: the role (WHAT), the territories (WHERE) and -- from
+# piece 4 -- their position on that app's reporting chart (WHOSE).
+#
+# WRITTEN ONLY BY `services.grant_app_access()` / `revoke_app_access()`. The
+# database can say "at most one grant per app" and "at most one role per
+# grant"; it cannot say "every grant HAS a role and at least one territory".
+# Writing all of it in one function, in one transaction, is what makes that
+# true.
+#
+# THESE ARE THE WHOLE RECORD SINCE STEP 2d-2. Every reader moved here in steps
+# 2b-2d-1, and the services stopped writing the old copy (`AppAccess`,
+# `Membership.role`, `Membership.unit`) in 2d-2. Step 2d-3 drops it.
+# ---------------------------------------------------------------------------
+
+
+class MembershipAppAccess(BaseModel):
+    """
+    "This membership may use this app." One row per person per app.
+
+    Deleting it takes the role and the territories with it (cascade), so
+    removing somebody's access to an app can never leave a role or a placement
+    behind. Subscription stays a separate fact (C16, C55): a grant on an app
+    the organisation no longer pays for opens nothing.
+    """
+
+    membership = models.ForeignKey(Membership, on_delete=models.CASCADE, related_name="grants")
+    app = models.ForeignKey(
+        "permissions.App",
+        to_field="code",
+        db_column="app",
+        on_delete=models.PROTECT,
+        related_name="+",
+    )
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["membership", "app"], name="grant_unique_membership_app"
+            ),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.membership_id} may use {self.app_id}"
+
+
+class MembershipAppRole(BaseModel):
+    """
+    The role held in that app (WHAT).
+
+    ONE ROLE PER GRANT, FOR NOW (C71): the unique constraint is on the grant
+    alone. Allowing "Sales executive AND Service advisor" later is relaxing it
+    to (app_access, role) -- a constraint change, not a reshaping -- and then
+    permissions are the union.
+
+    The role must belong to the grant's app. The database cannot compare two
+    rows' `app` columns, so `grant_app_access()` enforces it.
+    """
+
+    app_access = models.ForeignKey(
+        MembershipAppAccess, on_delete=models.CASCADE, related_name="roles"
+    )
+    role = models.ForeignKey("permissions.Role", on_delete=models.PROTECT, related_name="+")
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(fields=["app_access"], name="grant_one_role_per_grant"),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.app_access_id} as {self.role_id}"
+
+
+class MembershipAppTerritory(BaseModel):
+    """
+    One place this person sits in that app (WHERE).
+
+    SEVERAL PER GRANT (the owner, 2026-11-06, answering Q10 and Q57): they see
+    the union of the subtrees. AT LEAST ONE, always -- an organisation-wide
+    person is placed AT the organisation's root, never "nowhere" (the owner's
+    root decision), so a missing placement fails closed.
+
+    PROTECT, not cascade, on the territory: a territory people are placed at
+    cannot be deleted out from under them. (There is no delete for territories
+    anyway -- C63 closes a dealership, it never removes one.)
+    """
+
+    app_access = models.ForeignKey(
+        MembershipAppAccess, on_delete=models.CASCADE, related_name="territories"
+    )
+    territory = models.ForeignKey(Territory, on_delete=models.PROTECT, related_name="placements")
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["app_access", "territory"], name="grant_unique_territory_per_grant"
+            ),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.app_access_id} at {self.territory_id}"

@@ -1,29 +1,24 @@
 """
-Which apps exist, and which of them care about dealerships.
+Which apps care about dealerships.
 
-THIS IS THE APP REGISTRY the implementation plan puts at the top of Phase 3,
-and it is deliberately four lines: `AppCode` already names the apps, so the
-only fact missing was unit-awareness.
+THE ANSWER IS A COLUMN NOW, `App.unit_aware` (C71). This file used to hold it
+as `UNIT_AWARE_APPS = {DMS}`; the fact moved into the table so it is readable in
+Workbench beside the rest of what an app is. The function stays, with the same
+signature, so its callers did not change.
 
-UNIT-AWARENESS IS A PROPERTY OF THE APP, NOT OF THE PERSON (C5). DMS splits its
-records by dealership. CRM and E-commerce have no dealerships at all --- their
-users belong to the organization directly --- so a unit means nothing there.
+UNIT-AWARENESS IS A PROPERTY OF THE APP, NOT OF THE PERSON (C5) --- see
+`App.unit_aware` for why that matters.
 
-Declaring it ONCE here is the point. The alternative is inferring it per
-request from whether somebody happens to have a unit, which gets the answer
-right for DMS and silently wrong for CRM: a dealer-scoped person would have
-their CRM queries filtered by a column CRM does not have.
+AN UNKNOWN CODE ANSWERS False, as it did before. Every `app` column is a
+foreign key to `App`, so a code that reaches here from a stored row exists; one
+that does not came from a request and is refused by whoever checks the grant.
 """
 
 from __future__ import annotations
 
-from core.permissions.models import AppCode
-
-# E-commerce is absent on purpose rather than listed as False: it is deferred
-# and nothing about it is designed (Q15), so this file has no opinion to offer.
-UNIT_AWARE_APPS: frozenset[str] = frozenset({AppCode.DMS})
+from core.permissions.models import App
 
 
 def is_unit_aware(app: str) -> bool:
     """Whether records in this app belong to a dealership."""
-    return app in UNIT_AWARE_APPS
+    return App.objects.filter(code=app, unit_aware=True).exists()

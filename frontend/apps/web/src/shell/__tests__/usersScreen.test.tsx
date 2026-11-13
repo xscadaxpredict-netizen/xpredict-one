@@ -125,7 +125,10 @@ describe("the search filters the list, not the open record", () => {
 
     await screen.findByRole("complementary", { name: "Sanjay Desai" });
 
-    fireEvent.change(screen.getByRole("searchbox"), { target: { value: "zzzzz" } });
+    // By its placeholder: the topbar has a search box of its own.
+    fireEvent.change(screen.getByPlaceholderText("Search by name or email"), {
+      target: { value: "zzzzz" },
+    });
 
     // The list says there are no matches...
     expect(await screen.findByText("No users match your search")).toBeInTheDocument();

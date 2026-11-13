@@ -2,15 +2,21 @@
 The permission catalogue, and which role grants what (C42).
 
 THIS IS DATA, NOT A REGISTRY. Permissions live in the database (C44); this
-module is only the source the seeding migration reads, kept beside the models
-rather than buried inside a migration file so it can be read, diffed and
-reviewed like anything else. Changing it changes nothing until a migration
-applies it.
+module is the readable statement of what they should be, kept beside the models
+so it can be read, diffed and reviewed like anything else. Changing it changes
+nothing until a migration applies it.
+
+NO MIGRATION READS THIS FILE ANY MORE (2026-11-05). `0002` and `0003` used to
+import it, which made every database built from scratch replay TODAY's lists
+inside a migration dated 2026-10-03; they read the frozen
+`migrations/_catalogue_2026_10_03.py` now, and a test refuses any migration that
+imports this module again.
 
 ADDING A CAPABILITY IS TWO STEPS, and that is the cost C44 accepted: edit the
-lists here, then write a migration that applies the difference. A new migration
-rather than editing the old one -- an applied migration is history, and rewriting
-it leaves every environment that already ran it silently out of step.
+lists here, then write a NEW migration that carries its own data and applies
+the difference, as `0004` does -- never one that imports this file, and never an
+edit to an old one. An applied migration is history, and rewriting it leaves
+every environment that already ran it silently out of step.
 
 The strings themselves, and the reasoning behind them, are C42.
 """
@@ -47,6 +53,17 @@ PERMISSIONS: list[tuple[str, str, str, str, str]] = [
     ("admin.dealer.create", "admin", "dealers", "Dealerships", "Add a dealership"),
     ("admin.dealer.update", "admin", "dealers", "Dealerships", "Edit a dealership"),
     ("admin.dealer.set_status", "admin", "dealers", "Dealerships", "Close or reopen a dealership"),
+    # The territory tree (C72 piece 1, `permissions/0009`). In the `dealers`
+    # module because the tree is shown where dealerships are.
+    ("admin.territory.view", "admin", "dealers", "Territories", "See the territory tree"),
+    (
+        "admin.territory.create",
+        "admin",
+        "dealers",
+        "Territories",
+        "Add a region, branch or warehouse",
+    ),
+    ("admin.territory.update", "admin", "dealers", "Territories", "Rename or move a territory"),
     ("admin.role.view", "admin", "roles", "Roles", "Read what each role grants"),
     # --- DMS: Sales ---------------------------------------------------------
     ("dms.enquiry.view", "dms", "sales", "Enquiries", "See enquiries"),
@@ -152,7 +169,12 @@ PERMISSIONS: list[tuple[str, str, str, str, str]] = [
 
 _SALES = [code for code, _app, module, *_ in PERMISSIONS if module == "sales"]
 _SERVICE = [code for code, _app, module, *_ in PERMISSIONS if module == "service"]
-_TICKETS = [code for code, _app, module, *_ in PERMISSIONS if module == "tech-support"]
+# THE TICKET CODES, NOT THE WHOLE `tech-support` MODULE. This read
+# `module == "tech-support"` until 2026-11-05, and the module also holds the
+# organisation library (`dms.manual.manage`, `dms.video.manage`, above) -- so
+# Tech support, a dealership role, was quietly handed the cross-dealership
+# edits C67 forbids. A module is a screen, not a job.
+_TICKETS = [code for code, *_rest in PERMISSIONS if code.startswith("dms.ticket.")]
 _ADMIN_PEOPLE = [code for code, _app, module, *_ in PERMISSIONS if module == "users"]
 
 _DMS_READS = [code for code, app, *_rest in PERMISSIONS if app == "dms" and code.endswith(".view")]
@@ -171,7 +193,7 @@ _MANAGER = [
     "dms.ticket.close",
     # The two UNIT-SCOPED tools. A store order and a saved calculation both
     # belong to one dealership, so a dealership's manager is the right person
-    # and `allowed_units` keeps them to their own either way.
+    # and `allowed_territories` keeps them to their own either way.
     "dms.store_order.create",
     "dms.store_order.manage",
     "dms.timer_calculation.delete",
@@ -180,8 +202,8 @@ _MANAGER = [
 # WHAT THE WHOLE ORGANISATION SHARES, and why it is not in `_MANAGER`.
 #
 # `UserManual`, `MachineVideo`, `MarketingAsset` and `CalculatorSettings` all
-# inherit `BaseModel`, not `UnitScopedModel` -- they have no `unit_id`. So
-# `allowed_units` does not filter them and cannot: there is one copy per
+# inherit `BaseModel`, not `TerritoryScopedModel` -- they have no `unit_id`. So
+# `allowed_territories` does not filter them and cannot: there is one copy per
 # organisation and every dealership reads it.
 #
 # That makes a unit-level grant the wrong shape rather than merely generous.
@@ -296,7 +318,7 @@ ROLES: dict[str, tuple[str, str, str, str, list[str]]] = {
         "org",
         "Reads every dealership. Changes nothing.",
         # Read-only is the only safe shape for somebody with no dealership:
-        # resolve_allowed_units() returns unrestricted, so they see everything.
+        # resolve_allowed_territories() returns unrestricted, so they see everything.
         # Exports are included because reporting across the group is the whole
         # point of the role -- "changes nothing" is about writes.
         [*_DMS_READS, *_DMS_EXPORTS],
@@ -325,5 +347,21 @@ ROLES: dict[str, tuple[str, str, str, str, list[str]]] = {
         "org",
         "The whole organisation's contacts and deals.",
         ["crm.lead.view"],
+    ),
+    "admin.org_admin": (
+        "Organisation admin",
+        "admin",
+        "org",
+        "Runs the organisation: its people, dealerships and territories.",
+        # EVERY `admin.*` PERMISSION (Q60, answered 2026-11-11: one built-in
+        # Administration role). It is today's "admin" standing as a role, so
+        # it holds exactly what that standing conferred. Granted in the
+        # Administration app, placed at the organisation's root
+        # (`permissions/0010`, `organizations/0019`).
+        #
+        # A NEW `admin.*` PERMISSION MUST BE ADDED HERE AND TO THE ROLE IN THE
+        # SAME MIGRATION, or Organisation admins quietly lack it. The owner
+        # needs nothing: they hold every permission by rule (C72).
+        [code for code, app, *_rest in PERMISSIONS if app == "admin"],
     ),
 }

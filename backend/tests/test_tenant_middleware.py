@@ -27,12 +27,11 @@ from conftest import TEST_TENANT_ALIAS
 from core.accounts.models import User
 from core.organizations.models import (
     Membership,
-    MembershipRole,
     MembershipStatus,
     Organization,
     OrganizationStatus,
 )
-from shared.base_models import allowed_units
+from shared.base_models import NOT_SET, allowed_territories
 
 pytestmark = pytest.mark.django_db(databases=["default", TEST_TENANT_ALIAS])
 
@@ -56,7 +55,6 @@ def make_member(organization, email="person@acme.test", status=MembershipStatus.
     Membership.objects.create(
         user=user,
         organization=organization,
-        role=MembershipRole.MEMBER,
         status=status,
     )
     return user
@@ -251,7 +249,8 @@ class TestResetting:
 
         client.get(url_for(organization))
 
-        assert allowed_units.get() is None
+        # Back to "nobody has decided" -- not None, which means "everything".
+        assert allowed_territories.get() is NOT_SET
 
     def test_nothing_is_bound_for_a_request_outside_orgs(self, client):
         """

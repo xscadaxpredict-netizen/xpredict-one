@@ -59,9 +59,19 @@ separate apps: **DMS** (dealership management), **CRM**, and **E-commerce**. The
 is the **Organization**, and each organization gets its **own MySQL database** (C39
 replaced PostgreSQL; nothing else about the tenancy model changed).
 Authentication is **JWT, issued by the platform layer (`core/`) — never by the apps.**
-DMS is **unit-aware**: an organization's dealerships are `BusinessUnit` rows, and
-dealers manage their own scoped users. CRM and E-commerce have no business units;
-their users belong to the organization directly.
+DMS is **unit-aware**: an organization's dealerships are **`Territory`** rows of kind
+`dealer`, in the organisation's one **territory tree** (regions, dealers, branches,
+warehouses — C72), and dealers manage their own scoped users. CRM and E-commerce have
+no territories yet; their users belong to the organization directly.
+
+**SAY "TERRITORY", NEVER "BUSINESS UNIT"** (the owner, 2026-11-06). The model was
+renamed from `BusinessUnit`. **DMS records carry `territory_id`** (C72 piece 3 step 1,
+was `unit_id`), scoped by `TerritoryScopedModel` / `allowed_territories` /
+`resolve_allowed_territories()` / `territory_scope()`. Where "unit" survives —
+`Invitation.unit` (piece 5), `App.unit_aware`, `UnitStatus`, and the API's `unit_*` fields
+and `X-Unit-Id` header (piece 7) — it means territory. (`Membership.unit` is gone: 2d-3.)
+**Renaming the tenant column was a TENANT migration**: production needs
+`migrate_all_tenants` run by hand (C69) before or with that deploy.
 
 **Build order: DMS first.** CRM later. **E-commerce is deferred** — do not design its
 roles, permissions or models until it is explicitly picked up.
@@ -70,7 +80,27 @@ roles, permissions or models until it is explicitly picked up.
 each dealer's users are managed at the **dealer** level. An org admin reaching into a
 dealer's users is an audited override, not the normal path.
 
-Full rationale: `context/02-DECISIONS.md` C1–C67 — all `[Decided]`. Don't reopen them.
+Full rationale: `context/02-DECISIONS.md` C1–C72 — all `[Decided]`. Don't reopen them.
+
+**C72 IS BEING BUILT on `feat/app-access-model`, piece by piece** (it amends C71 and
+replaces its build list). Every person, in every app, has a **role** (WHAT — per app),
+a place in the **territory tree** (WHERE — one tree per organisation) and a position on
+that app's **reporting chart** (WHOSE). Built so far: the `App` table, **the territory
+tree** (piece 1 — `Territory` on django-treebeard, the organisation at its root,
+`/admin/territories/`), and **piece 2, per-app grants (steps 2a–2d done)**:
+`MembershipAppAccess` → `MembershipAppRole` + `MembershipAppTerritory` (one or more
+places), written only by `grant_app_access()`.
+
+**THE GRANTS ARE THE WHOLE RECORD (C72 step 2d).** `AppAccess`, `Membership.role` and
+`Membership.unit` are DROPPED (`permissions/0011`, `organizations/0021`, after
+`organizations/0020` refuses to go on unless every non-owner holds a grant). A membership
+is now who, which organisation, its status, and `is_owner`. Admin standing is an
+"Organisation admin" grant at the root; the owner holds everything by rule. The API
+still says `role` / `unit_id` — worked out by `standing()` and `dealership_of()`.
+**A test that builds a person by hand calls `grant_app_access()` with an explicit
+territory.** **An owner or admin is never placed at one dealership**: a 409 in the
+services (`_assert_organisation_wide`), not the database constraint it used to be.
+**`main` is production: never commit or push to it** --- work on the working branch.
 
 ## Status
 
@@ -94,18 +124,37 @@ their endpoints authorise properly (C66, C67).
 settings, the fail-closed `TenantRouter`, `shared/base_models.py`, Celery wiring and 15
 apps with unique labels (5 control-plane, 10 tenant). **Plain DRF** — drf-spectacular was removed (C43), so there is
 no schema endpoint and no generated client. **`migrate` has run** and `xpredict_control`
-holds **23 tables**, and each organisation gets its own database beside it.
+holds **26 tables** (measured 2026-11-12, after step 2d-3), and each organisation gets
+its own database beside it.
 
 Set the database up once, as a MySQL admin: `mysql -u root -p < backend/scripts/create_dev_db.sql`.
 
-**The control plane is BUILT and MIGRATED.** Eleven models: `Organization`,
-`BusinessUnit`, `Membership`, `Invitation`, `InvitationAppGrant` in `core/organizations`;
-`Permission`, `Role`, `RolePermission`, `AppAccess` in `core/permissions`;
-`AppSubscription` in `core/billing`; and `User`, which was already there. **55 permissions
-and nine roles are seeded** — 48 by `core/permissions/migrations/0002_seed_catalogue.py`
-from `core/permissions/catalogue.py`, and seven more by `0004` for the DMS reference
-library, tools and store orders (C67). Both are idempotent and reversible, and 0002
-withdraws a grant the catalogue no longer makes.
+**The control plane is BUILT and MIGRATED.** Models: `Organization`,
+`Territory` (was `BusinessUnit`), `Membership`, `Invitation`, `InvitationAppGrant` in
+`core/organizations`, with the grants `MembershipAppAccess`, `MembershipAppRole` and
+`MembershipAppTerritory`; `App`, `Permission`, `Role`, `RolePermission` in
+`core/permissions`; `AppSubscription` in `core/billing`; and `User`. **58 permissions and
+ten roles are seeded** — 48 permissions by `permissions/0002`, seven by `0004` (C67),
+three by `0009` (`admin.territory.*`, C72); the tenth role, "Organisation admin"
+(`admin.org_admin`), by `0010` (Q60).
+
+**NO MIGRATION READS `catalogue.py`.** `0002` and `0003` read a frozen copy,
+`migrations/_catalogue_2026_10_03.py`; reading the live file replayed TODAY's catalogue
+on every database built from scratch, and it had already handed dealership Tech support
+the shared library (`permissions/0008` took it back). A change to roles or permissions
+is a NEW migration carrying its own data, plus the same edit to `catalogue.py` so people
+can read it. `tests/test_migration_history.py` enforces it.
+
+**`Territory` IS A django-treebeard TREE WITH THE ORGANISATION AT ITS ROOT** (C72, Q56).
+Each organisation has exactly one root box of kind `organisation` — the database refuses
+a second, and refuses anything else at the top — and the root shows the organisation's
+name, storing none of its own. Use the MANAGER: `root_for(org)` is the root,
+`Territory.objects.create(...)` adds directly under it, `.add_child(parent, {...})`,
+`.move(...)`, `.get_descendants(...)` — never the per-node methods treebeard 8 removes.
+`save()` refuses a territory with no `path`. The manager sorts by `path`, so ask for
+`.order_by("name")` when you want names. **Every tree query filters by `organization`**:
+all organisations' roots share one sequence, so an unfiltered tree question is a
+cross-tenant leak.
 
 **Permissions are ROWS, not a Python registry (C44)** — reversing the last part of C42,
 because the owner wants the list queryable in Workbench rather than readable only by
@@ -114,11 +163,11 @@ not a one-line diff. Everything else in C42 stands: the `app.resource.action` sh
 scope staying out of the name, export as its own action, and **modules derived from
 `Permission.module`** rather than stored anywhere.
 
-**Three rules the schema enforces itself, and they will bite you:** a membership with
-standing `owner` or `admin` must have `unit_id IS NULL` (C40); there is exactly one owner
-per organisation, via a nullable `owner_marker` and a unique pair, because **MySQL has no
-partial indexes**; and `admin` can never be granted on `AppAccess` or sold on
-`AppSubscription` (C44).
+**Two rules the schema enforces itself, and they will bite you:** there is exactly one
+owner per organisation, via `is_owner` (True or NULL, never False — a check says so) and
+a unique pair, because **MySQL has no partial indexes**; and `admin` can never be sold
+on `AppSubscription` (C44). The third, "an owner or admin has no dealership", moved into
+the services in step 2d-2 and its constraint went with `Membership.unit`.
 
 > **`Applying <app>.0001_initial... OK` does not mean tables were created.** Django
 > prints it whether it built them or the router refused every operation, so a migration
@@ -159,8 +208,8 @@ DMS view inherits `TenantAPIView`. A product base class needs its own assertion 
 inheriting a rule is not the same as being covered by its test.
 
 **WHICH ROLE MAY WRITE FOLLOWS THE SCOPE OF THE DATA, NOT SENIORITY (C67).** A
-`UnitScopedModel` row belongs to one dealership, so a Manager may write it and
-`allowed_units` confines them. A `BaseModel` row has no `unit_id` — one copy per
+`TerritoryScopedModel` row belongs to one dealership, so a Manager may write it and
+`allowed_territories` confines them. A `BaseModel` row has no `territory_id` — one copy per
 organisation, read by every dealership — so it is granted at organisation level only,
 to `dms.group_operations`. Notably **not** to `dms.system_admin`, which sounds like an
 admin and is unit-level; a test asserts that absence so reversing it is deliberate.
@@ -203,7 +252,9 @@ be rewritten when the modules landed.
 PAGES WILL 500.** `provision_tenant` only runs at signup, so existing tenant
 databases do not gain the new tables by themselves. Run **`manage.py
 migrate_all_tenants --plan`** first, then without `--plan`. This is the first time
-that command has ever had anything to apply.
+that command has ever had anything to apply. **Until `304fe60`, `--plan` said "up to
+date" for every database whatever its state** --- check for `dms_*` tables rather
+than trusting an older run.
 
 **A provision that failed for good is repaired with
 `manage.py reprovision_tenant <slug>`** (C50). The launcher refuses to open an
@@ -338,10 +389,17 @@ user row on every request and refuses an inactive one, so **disabling somebody t
 effect on their next request**, not after a token expires. The 15-minute access
 lifetime is how long a STOLEN token survives a logout.
 
-**Gates, all green:** `npm run test -w web` (194), `npm run typecheck -w web`,
-`npm run lint`, and in `backend/`: `pytest` (447), `ruff check .`, and
+**Gates:** `npm run test -w web` (228), `npm run typecheck -w web`, and in `backend/`:
+`pytest` (592), `ruff check .`, `manage.py makemigrations --check`, and
 `.venv/Scripts/lint-imports.exe` — **not** `python -m importlinter.cli`, which exits 0
-without running. Run them before pushing.
+without running. Run them before pushing. **`npm run lint` is NOT green and never has
+been on this code:** 139 errors in `apps/web`, inherited with the DMS modules and
+measured as deferrable in session 15. Do not quote it as passing.
+
+**RUN ONE PYTEST AT A TIME.** Two runs share one MySQL test database and produce
+phantom failures and deadlocks (it happened again in session 22). The backend venv must
+be **Python 3.13** on Windows: 3.12's clock ticks every 15.6 ms, `created_at` values
+tie, and three ordering tests turn random.
 
 **One branch per FEATURE, not per commit.** Commit as the work goes; the owner merges
 when the whole feature is done.

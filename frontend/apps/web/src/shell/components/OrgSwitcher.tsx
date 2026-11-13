@@ -1,13 +1,12 @@
 /**
  * Which organisation am I in, and how do I get to another.
  *
- * A PANEL, not a menu. A menu is right for a short list of commands; this is a
- * list of things each carrying a name, an identifier you can copy, and a state
- * — and those do not fit on a menu row. Radix's popover gives the same Escape,
- * outside-click and focus handling as its menu without pretending the contents
- * are menu items.
+ * A DRAWER at the right edge (`TopbarDrawer`), like every other panel the
+ * topbar opens, not a menu. A menu is right for a short list of commands; this
+ * is a list of things each carrying a name, an identifier you can copy, and a
+ * standing — and those do not fit on a menu row.
  *
- * WITH ONE MEMBERSHIP THIS IS PLAIN TEXT, not a panel with a single row in it.
+ * WITH ONE MEMBERSHIP THIS IS PLAIN TEXT, not a drawer with a single row in it.
  * C13 decided against an organisation picker screen on the grounds that a
  * choice with one option is not a choice; the same reasoning applies here.
  *
@@ -18,12 +17,13 @@
  * and the loser of that disagreement would be showing the wrong customer's data.
  */
 
+import { SettingsIcon, XIcon } from "lucide-react";
 import { useState } from "react";
-import * as Popover from "@radix-ui/react-popover";
 import { useNavigate } from "react-router-dom";
 
 import type { Membership } from "../api/auth";
 import { visibleApps } from "../navigation";
+import { DrawerClose, DrawerTitle, TopbarDrawer } from "./TopbarDrawer";
 import styles from "./OrgSwitcher.module.css";
 
 interface OrgSwitcherProps {
@@ -41,7 +41,9 @@ interface OrgSwitcherProps {
 
 export function OrgSwitcher({ memberships, currentOrgSlug, currentAppKey }: OrgSwitcherProps) {
   const navigate = useNavigate();
+  const [open, setOpen] = useState(false);
   const [copiedId, setCopiedId] = useState<string | null>(null);
+
   const current = memberships.find((m) => m.org_slug === currentOrgSlug);
   const label = current?.org_name ?? currentOrgSlug;
 
@@ -63,6 +65,11 @@ export function OrgSwitcher({ memberships, currentOrgSlug, currentAppKey }: OrgS
     ? visibleApps(current).some((app) => app.definition.key === "admin" && app.enabled)
     : false;
 
+  function go(path: string) {
+    setOpen(false);
+    void navigate(path);
+  }
+
   async function copyOrgId(orgId: string) {
     try {
       await navigator.clipboard.writeText(orgId);
@@ -81,124 +88,145 @@ export function OrgSwitcher({ memberships, currentOrgSlug, currentAppKey }: OrgS
   }
 
   return (
-    <Popover.Root>
-      <Popover.Trigger className={styles.trigger}>
-        <span className={styles.orgName}>{label}</span>
-        {/* The unit shows here as well as in the single-org case. In DMS it is
-            which dealer you are acting as, so dropping it for multi-org users
-            would hide the more important half of "where am I". */}
-        {current?.unit_name && <span className={styles.unit}>{current.unit_name}</span>}
-        <ChevronIcon />
-      </Popover.Trigger>
+    <TopbarDrawer
+      open={open}
+      onOpenChange={setOpen}
+      triggerLabel={`Switch organisation, current: ${label}${current?.unit_name ? `, ${current.unit_name}` : ""}`}
+      // The name in full: the button cuts a long one short with an ellipsis.
+      tooltip={label}
+      triggerClassName={styles.trigger}
+      triggerContent={
+        <>
+          <span className={styles.orgName}>{label}</span>
+          {/* The unit shows here as well as in the single-org case. In DMS it
+              is which dealer you are acting as, so dropping it for multi-org
+              users would hide the more important half of "where am I". */}
+          {current?.unit_name && <span className={styles.unit}>{current.unit_name}</span>}
+          <ChevronIcon />
+        </>
+      }
+    >
+      <div className={styles.header}>
+        <DrawerTitle className={styles.title}>Organisations</DrawerTitle>
+        {canManage && (
+          <button
+            type="button"
+            className={styles.manage}
+            onClick={() => go(`/${currentOrgSlug}/admin`)}
+          >
+            <SettingsIcon size={16} aria-hidden="true" />
+            Manage
+          </button>
+        )}
+        <span className={styles.divider} aria-hidden="true" />
+        <DrawerClose className={styles.close} aria-label="Close organisations">
+          <XIcon size={18} aria-hidden="true" />
+        </DrawerClose>
+      </div>
 
-      <Popover.Portal>
-        <Popover.Content
-          className={styles.panel}
-          align="end"
-          sideOffset={10}
-          // Keeps the panel on screen on a narrow window instead of letting it
-          // run off the right edge, where the close button would be unreachable.
-          collisionPadding={12}
-        >
-          <Popover.Arrow className={styles.arrow} width={16} height={8} />
+      <h3 className={styles.sectionLabel}>My organisations</h3>
 
-          <div className={styles.header}>
-            <h2 className={styles.title}>Organisations</h2>
+      <ul className={styles.list}>
+        {memberships.map((membership) => {
+          const isCurrent = membership.org_slug === currentOrgSlug;
+          const standing = standingLabel(membership);
+          return (
+            <li key={membership.org_id} className={styles.row} data-current={isCurrent || undefined}>
+              {/*
+                Two separate buttons, side by side — never one inside the
+                other. Copy is a different action from switch, and a button
+                nested in a button gives two tab stops that disagree about
+                what they do.
+              */}
+              <button
+                type="button"
+                className={styles.choose}
+                aria-current={isCurrent ? "true" : undefined}
+                onClick={() =>
+                  go(
+                    currentAppKey
+                      ? `/${membership.org_slug}/${currentAppKey}`
+                      : `/${membership.org_slug}`,
+                  )
+                }
+              >
+                <span className={styles.mark} aria-hidden="true">
+                  <OrgIcon />
+                </span>
 
-            <div className={styles.headerActions}>
-              {canManage && (
-                <button
-                  type="button"
-                  className={styles.manage}
-                  onClick={() => void navigate(`/${currentOrgSlug}/admin`)}
-                >
-                  Manage
-                </button>
-              )}
-              <Popover.Close className={styles.close} aria-label="Close">
-                <CloseIcon />
-              </Popover.Close>
-            </div>
-          </div>
-
-          <p className={styles.sectionLabel}>My organisations</p>
-
-          <ul className={styles.list}>
-            {memberships.map((membership) => {
-              const isCurrent = membership.org_slug === currentOrgSlug;
-
-              return (
-                <li key={membership.org_id} className={styles.row} data-current={isCurrent || undefined}>
+                <span className={styles.text}>
+                  <span className={styles.name}>{membership.org_name}</span>
                   {/*
-                    Two separate buttons, side by side — never one inside the
-                    other. Copy is a different action from switch, and a button
-                    nested in a button gives two tab stops that disagree about
-                    what they do.
+                    The ID, not the slug. This is the value support asks for,
+                    and it is the one thing about an organisation that never
+                    changes — a slug can be renamed, so a number quoted in an
+                    old email would stop matching. Nobody retypes a UUID, which
+                    is what earns the copy button beside it.
                   */}
-                  <Popover.Close asChild>
-                    <button
-                      type="button"
-                      className={styles.choose}
-                      onClick={() =>
-                        void navigate(
-                          currentAppKey
-                            ? `/${membership.org_slug}/${currentAppKey}`
-                            : `/${membership.org_slug}`,
-                        )
-                      }
-                    >
-                      <span className={styles.mark} aria-hidden="true">
-                        <OrgIcon />
-                      </span>
+                  <span className={styles.orgId}>
+                    <span className={styles.orgIdLabel}>Organization ID:</span> {membership.org_id}
+                  </span>
+                  {(standing || membership.unit_name) && (
+                    <span className={styles.meta}>
+                      {standing && <span className={styles.standing}>{standing}</span>}
+                      {membership.unit_name && <span>{membership.unit_name}</span>}
+                    </span>
+                  )}
+                </span>
+              </button>
 
-                      <span className={styles.text}>
-                        <span className={styles.name}>{membership.org_name}</span>
-                        {/*
-                          The ID, not the slug. This is the value support asks
-                          for, and it is the one thing about an organisation
-                          that never changes — a slug can be renamed, so a
-                          number quoted in an old email would stop matching.
-                          Nobody retypes a UUID, which is what earns the copy
-                          button beside it.
-                        */}
-                        <span className={styles.orgId}>
-                          <span className={styles.orgIdLabel}>ID</span>
-                          {membership.org_id}
-                        </span>
-                      </span>
+              <button
+                type="button"
+                className={styles.copy}
+                data-copied={copiedId === membership.org_id || undefined}
+                onClick={() => void copyOrgId(membership.org_id)}
+                aria-label={`Copy the organisation ID of ${membership.org_name}`}
+                title={copiedId === membership.org_id ? "Copied" : "Copy ID"}
+              >
+                {copiedId === membership.org_id ? <CheckIcon /> : <CopyIcon />}
+              </button>
 
-                      {isCurrent && (
-                        <span className={styles.check}>
-                          <CheckIcon />
-                          {/* The tick is the only thing marking the current
-                              organisation, and a tick is not announced. */}
-                          <span className={styles.srOnly}>Current organisation</span>
-                        </span>
-                      )}
-                    </button>
-                  </Popover.Close>
-
-                  <button
-                    type="button"
-                    className={styles.copy}
-                    onClick={() => void copyOrgId(membership.org_id)}
-                    aria-label={`Copy the organisation ID of ${membership.org_name}`}
-                  >
-                    {copiedId === membership.org_id ? <CheckIcon /> : <CopyIcon />}
-                  </button>
-                </li>
-              );
-            })}
-          </ul>
-        </Popover.Content>
-      </Popover.Portal>
-    </Popover.Root>
+              {isCurrent && (
+                <span className={styles.check}>
+                  <CheckIcon />
+                  {/* The tick is the only thing marking the current
+                      organisation, and a tick is not announced. */}
+                  <span className={styles.srOnly}>Current organisation</span>
+                </span>
+              )}
+            </li>
+          );
+        })}
+      </ul>
+    </TopbarDrawer>
   );
+}
+
+/**
+ * "Owner" or "Admin" where that is true, and nothing for `member`.
+ *
+ * Standing alone shows a dealer administrator as "Member" (C40 — what somebody
+ * may DO is in their app permissions, not here), which is the bug the owner
+ * found in the user list. So a member's row carries their dealership instead,
+ * and an organisation-wide member carries nothing rather than a label that
+ * may be wrong.
+ */
+function standingLabel(membership: Membership): string | null {
+  if (membership.role === "owner") return "Owner";
+  if (membership.role === "admin") return "Admin";
+  return null;
 }
 
 function ChevronIcon() {
   return (
-    <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true" focusable="false">
+    <svg
+      className={styles.chevron}
+      width="12"
+      height="12"
+      viewBox="0 0 12 12"
+      aria-hidden="true"
+      focusable="false"
+    >
       <path
         d="M3 4.75 6 7.75l3-3"
         fill="none"
@@ -235,12 +263,12 @@ function OrgIcon() {
 
 function CheckIcon() {
   return (
-    <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true" focusable="false">
+    <svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true" focusable="false">
       <path
         d="m3.5 8.5 3 3 6-7"
         fill="none"
         stroke="currentColor"
-        strokeWidth="1.8"
+        strokeWidth="2"
         strokeLinecap="round"
         strokeLinejoin="round"
       />
@@ -264,20 +292,6 @@ function CopyIcon() {
     >
       <rect x="5.5" y="5.5" width="8" height="8" rx="1.5" />
       <path d="M10.5 3.5A1.5 1.5 0 0 0 9 2H4a1.5 1.5 0 0 0-1.5 1.5v5A1.5 1.5 0 0 0 4 10" />
-    </svg>
-  );
-}
-
-function CloseIcon() {
-  return (
-    <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true" focusable="false">
-      <path
-        d="m3.5 3.5 7 7m0-7-7 7"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="1.6"
-        strokeLinecap="round"
-      />
     </svg>
   );
 }

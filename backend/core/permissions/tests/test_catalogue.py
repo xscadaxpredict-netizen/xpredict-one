@@ -22,26 +22,28 @@ pytestmark = pytest.mark.django_db
 
 
 class TestPermissions:
-    def test_there_are_55(self):
+    def test_there_are_58(self):
         """
-        C42 settled on 48 and C67 added seven. A number that drifts is a
-        decision nobody made -- which is exactly what this assertion is for,
-        and it did its job: the seven codes were added with a comment saying
-        the catalogue had grown and this test was not updated with them.
+        C42 settled on 48, C67 added seven, and C72 piece 1 added three
+        (`admin.territory.view/create/update`, `permissions/0009`). A number
+        that drifts is a decision nobody made -- which is exactly what this
+        assertion is for, and it did its job: the seven codes were added with a
+        comment saying the catalogue had grown and this test was not updated
+        with them.
         """
-        assert Permission.objects.count() == 55
+        assert Permission.objects.count() == 58
 
     def test_split_by_app_as_decided(self):
         """
         DMS went 36 -> 43 with C67's seven: two for the reference library
         (manuals, videos), three for tools (marketing material, the calculator
         constants, deleting a saved calculation) and two for store orders.
-        Administration and CRM are untouched, which is the point of asserting
-        them separately -- a DMS change must not quietly reach either.
+        Administration went 11 -> 14 with C72's territory three. Each app is
+        asserted separately so a change to one cannot quietly reach another.
         """
-        assert Permission.objects.filter(app=AppCode.ADMIN).count() == 11
-        assert Permission.objects.filter(app=AppCode.DMS).count() == 43
-        assert Permission.objects.filter(app=AppCode.CRM).count() == 1
+        assert Permission.objects.filter(app_id=AppCode.ADMIN).count() == 14
+        assert Permission.objects.filter(app_id=AppCode.DMS).count() == 43
+        assert Permission.objects.filter(app_id=AppCode.CRM).count() == 1
 
     def test_every_code_is_app_resource_action(self):
         """
@@ -52,7 +54,7 @@ class TestPermissions:
         for permission in Permission.objects.all():
             segments = permission.code.split(".")
             assert len(segments) == 3, permission.code
-            assert segments[0] == permission.app, permission.code
+            assert segments[0] == permission.app_id, permission.code
 
     def test_export_is_its_own_action_on_five_resources(self):
         """
@@ -98,8 +100,10 @@ class TestPermissions:
 
 
 class TestRoles:
-    def test_there_are_nine(self):
-        assert Role.objects.count() == 9
+    def test_there_are_ten(self):
+        """Nine app roles, plus Administration's "Organisation admin" (Q60, `0010`)."""
+        assert Role.objects.count() == 10
+        assert Role.objects.filter(app_id=AppCode.ADMIN).count() == 1
 
     def test_the_six_dealer_roles_are_the_real_jobs(self):
         """C35/C36: the roles are the jobs people actually hold at a dealership."""
@@ -114,15 +118,16 @@ class TestRoles:
             "Tech support",
         }
 
-    def test_only_system_administrator_administers(self):
+    def test_only_the_two_admin_roles_administer(self):
         """
         `administers` is derived from holding any `admin.*` permission (C40), so
         this asserts the derivation AND the grant at once. Manager runs the
-        business; System administrator runs the software (C36).
+        business; System administrator runs the software at a dealership (C36);
+        Organisation admin runs the organisation (Q60).
         """
         administering = {role.code for role in Role.objects.all() if role.administers}
 
-        assert administering == {"dms.system_admin"}
+        assert administering == {"dms.system_admin", "admin.org_admin"}
 
     def test_manager_has_no_user_management(self):
         """
@@ -131,7 +136,7 @@ class TestRoles:
         """
         manager = Role.objects.get(code="dms.manager")
 
-        assert not manager.permissions.filter(app=AppCode.ADMIN).exists()
+        assert not manager.permissions.filter(app_id=AppCode.ADMIN).exists()
 
     def test_group_operations_is_managers_set_plus_the_organisation_wide_four(self):
         """
@@ -141,7 +146,7 @@ class TestRoles:
 
         The four resources in the difference have no dealership. `UserManual`,
         `MachineVideo`, `MarketingAsset` and `CalculatorSettings` inherit
-        `BaseModel`, so there is one copy per organisation and `allowed_units`
+        `BaseModel`, so there is one copy per organisation and `allowed_territories`
         does not confine them -- a unit-level grant would let one dealership's
         Manager change what every other dealership sees.
 
@@ -203,6 +208,32 @@ class TestRoles:
             granted = set(role.permissions.values_list("code", flat=True))
             assert not {code for code in granted if code.startswith("admin.dealer.")}, role.code
 
+    def test_no_dealer_role_can_edit_the_organisations_shared_library(self):
+        """
+        C67: the four library resources have no `unit_id`, so one copy serves
+        every dealership and `allowed_territories` cannot confine an edit to one. A
+        unit-level grant lets one dealership change what all of them see.
+
+        THIS FAILED ON EVERY DATABASE BUILT FROM SCRATCH until 2026-11-05, and
+        nothing noticed. `0002` imported the live `catalogue.py`, where the
+        library codes sit in the `tech-support` module that Tech support's
+        `_TICKETS` gathers whole -- so the test database, CI and any new
+        machine gave the dealership-level Tech support role
+        `dms.manual.manage` and `dms.video.manage`, while production (which ran
+        `0002` before those codes existed) did not. Every other test here
+        passed throughout: none of them asked this question of Tech support.
+        """
+        library = {
+            "dms.manual.manage",
+            "dms.video.manage",
+            "dms.marketing_asset.manage",
+            "dms.calculator.manage",
+        }
+
+        for role in Role.objects.filter(level="unit"):
+            granted = set(role.permissions.values_list("code", flat=True))
+            assert not granted & library, role.code
+
 
 class TestModulesAreDerived:
     def test_a_role_sees_exactly_the_modules_it_has_permissions_in(self):
@@ -247,25 +278,28 @@ class TestModulesAreDerived:
             for module in role.permissions.values_list("module", flat=True)
         }
         by_standing = set(
-            Permission.objects.filter(app=AppCode.ADMIN).values_list("module", flat=True)
+            Permission.objects.filter(app_id=AppCode.ADMIN).values_list("module", flat=True)
         )
 
         assert all_modules == by_role | by_standing
 
-    def test_dealers_and_roles_belong_to_standing_alone(self):
+    def test_dealers_and_roles_belong_to_the_organisation_admin_alone(self):
         """
         Pinned explicitly, because it is the surprising half of the rule above:
-        no role may manage dealerships or read the role catalogue. Those are the
-        organisation's own jobs, and a dealer admin never gets them.
+        no APP role may manage dealerships or read the role catalogue. Those are
+        the organisation's own jobs, and a dealer admin never gets them.
+
+        This said "standing alone" until C72 step 2c: the admin standing became
+        Administration's "Organisation admin" role (Q60), which is now the one
+        role that reaches them.
         """
-        by_role = {
-            module
+        reaching = {
+            role.code
             for role in Role.objects.all()
-            for module in role.permissions.values_list("module", flat=True)
+            if role.permissions.filter(module__in=["dealers", "roles"]).exists()
         }
 
-        assert "dealers" not in by_role
-        assert "roles" not in by_role
+        assert reaching == {"admin.org_admin"}
 
 
 class TestTheSeedCanBeRunAgain:
@@ -277,13 +311,23 @@ class TestTheSeedCanBeRunAgain:
 
     @staticmethod
     def _seed():
-        """Call the migration's own function, not a copy of it."""
+        """
+        Call the migration's own function, not a copy of it --- with the models
+        AS THEY WERE AT 0002, which is what Django hands a migration.
+
+        Passing today's registry instead worked until C71 made `app` a foreign
+        key: 0002 writes `app="admin"`, which the historical CharField takes and
+        today's ForeignKey refuses. Re-running a migration means re-running it
+        against its own schema, so that is what this does.
+        """
         import importlib
 
-        from django.apps import apps as django_apps
+        from django.db import connection
+        from django.db.migrations.loader import MigrationLoader
 
+        state = MigrationLoader(connection).project_state(("permissions", "0002_seed_catalogue"))
         module = importlib.import_module("core.permissions.migrations.0002_seed_catalogue")
-        module.seed(django_apps, None)
+        module.seed(state.apps, None)
 
     def test_running_it_again_changes_nothing(self):
         before = (Permission.objects.count(), Role.objects.count())

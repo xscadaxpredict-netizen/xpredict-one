@@ -97,6 +97,15 @@
   --app-admin: #475569;
   --app-admin-tint: #e9edf2;
 
+  /* ---- Brand panel -----------------------------------------------------
+   * The dark block at the left of the topbar that names the open app. One
+   * value in both themes on purpose: it is the product's signature, and the
+   * text on it is white either way (16.9:1).
+   */
+  --color-brand-panel: #141c27;
+  --color-brand-panel-hover: #222d3b;
+  --color-brand-panel-text: #ffffff;
+
   /* ---- Radius ---------------------------------------------------------- */
   --radius-sm: 4px;     /* badges */
   --radius-md: 6px;     /* buttons, inputs */
@@ -169,6 +178,9 @@
     --app-admin: #9fb0c4;
     --app-admin-tint: #1e242c;
 
+    --color-brand-panel: #0b1017;
+    --color-brand-panel-hover: #1a222d;
+
     --shadow-sm: 0 1px 2px rgb(0 0 0 / 0.4);
     --shadow-md: 0 8px 24px rgb(0 0 0 / 0.5);
     --shadow-lg: 0 16px 48px rgb(0 0 0 / 0.6);
@@ -218,6 +230,9 @@
   --app-ecommerce-tint: #261a38;
   --app-admin: #9fb0c4;
   --app-admin-tint: #1e242c;
+
+  --color-brand-panel: #0b1017;
+  --color-brand-panel-hover: #1a222d;
 
   --shadow-sm: 0 1px 2px rgb(0 0 0 / 0.4);
   --shadow-md: 0 8px 24px rgb(0 0 0 / 0.5);

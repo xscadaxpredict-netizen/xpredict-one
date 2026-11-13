@@ -1,27 +1,53 @@
 .topbar {
   display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--space-4);
+  align-items: stretch;
   height: var(--topbar-height);
-  padding: 0 var(--space-4);
   background: var(--color-surface);
   border-bottom: 1px solid var(--color-border);
 }
 
-.left,
-.right {
+/* ---- Brand block ------------------------------------------------------- */
+
+/*
+ * The dark block at the left, as wide as the sidebar under it. It names the
+ * open app and takes you to that app's first screen.
+ */
+.brand {
+  flex: none;
   display: flex;
   align-items: center;
   gap: var(--space-3);
-  min-width: 0;
+  width: var(--sidebar-width);
+  box-sizing: border-box;
+  padding: 0 var(--space-5);
+  background: var(--color-brand-panel);
+  color: var(--color-brand-panel-text);
+  text-decoration: none;
+  overflow: hidden;
 }
 
-.brand {
+.brand:hover {
+  background: var(--color-brand-panel-hover);
+}
+
+.brand:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: -2px;
+}
+
+.brand[data-collapsed] {
+  width: var(--sidebar-width-collapsed);
+  justify-content: center;
+  padding: 0;
+}
+
+.brand[data-collapsed] .brandName {
+  display: none;
+}
+
+.brandIcon {
+  flex: none;
   display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  min-width: 0;
 }
 
 .mark {
@@ -33,101 +59,164 @@
   height: 26px;
   border-radius: var(--radius-md);
   background: var(--color-primary);
-  color: var(--color-primary-text);
+  color: var(--color-brand-panel-text);
   font-size: var(--text-sm);
   font-weight: 700;
 }
 
 .brandName {
-  font-size: var(--text-md);
-  font-weight: 600;
-  letter-spacing: -0.01em;
+  font-size: var(--text-xl);
+  font-weight: 500;
+  letter-spacing: 0.01em;
   white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ---- The rest of the bar ----------------------------------------------- */
+
+.bar {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: 0 var(--space-4) 0 var(--space-5);
+}
+
+.spacer {
+  flex: 1;
 }
 
 .divider {
-  width: 1px;
-  height: 18px;
-  background: var(--color-border-strong);
-}
-
-/*
- * Never shrinks. Something in the bar has to absorb a narrow screen, and it
- * should be the organisation name — "Northway Mot…" still reads, whereas an
- * app called "D…" tells you nothing at all.
- */
-.appName {
   flex: none;
-  font-size: var(--text-md);
-  color: var(--color-text-2);
-  white-space: nowrap;
+  width: 1px;
+  height: 28px;
+  background: var(--color-border);
 }
 
-/* The brand text is the first thing worth dropping on a narrow screen: the
-   logo mark already says where you are. */
-@media (max-width: 768px) {
-  .center {
-    display: none;
-  }
-}
-
-@media (max-width: 640px) {
-  .brandName,
-  .divider {
-    display: none;
-  }
-  .appName {
-    max-width: 130px;
-    overflow: hidden;
-    text-overflow: ellipsis;
-  }
-}
-
-@media (max-width: 480px) {
-  .appName {
-    display: none;
-  }
-}
-
-.center {
-  flex: 1;
+.actions {
+  flex: none;
   display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+/* Same size and states as the bell beside it. */
+.iconButton {
+  display: inline-flex;
+  align-items: center;
   justify-content: center;
-  padding: 0 var(--space-4);
-  max-width: 600px;
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--color-text-2);
+  cursor: pointer;
+}
+
+.iconButton:hover {
+  background: var(--color-surface-alt);
+  color: var(--color-text);
+}
+
+.iconButton:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: -2px;
+}
+
+/* The drawer buttons' tooltip, so the settings one matches them. */
+.tooltip {
+  padding: var(--space-1) var(--space-2);
+  border-radius: var(--radius-sm);
+  background: var(--color-text);
+  color: var(--color-surface);
+  font-size: var(--text-xs);
+  line-height: 1.4;
+  z-index: 70;
+}
+
+.tooltipArrow {
+  fill: var(--color-text);
 }
 
 .searchContainer {
   position: relative;
-  width: 100%;
-  max-width: 400px;
+  flex: 0 1 320px;
+  min-width: 0;
 }
 
 .searchInput {
   width: 100%;
-  height: 36px;
+  height: 40px;
+  box-sizing: border-box;
   padding: 0 var(--space-3) 0 36px;
   border-radius: var(--radius-md);
-  border: 1px solid var(--color-border);
-  background: var(--color-surface-hover);
+  border: 1px solid var(--color-border-strong);
+  background: var(--color-canvas);
   color: var(--color-text);
-  font-size: var(--text-sm);
-  transition: all 0.2s;
+  font: inherit;
+  font-size: var(--text-base);
 }
 
 .searchInput:focus {
-  outline: none;
-  border-color: var(--color-primary);
+  outline: 2px solid var(--color-primary);
+  outline-offset: -1px;
   background: var(--color-surface);
-  box-shadow: 0 0 0 2px var(--color-primary-light);
 }
 
 .searchIcon {
   position: absolute;
-  left: 10px;
+  left: 12px;
   top: 50%;
   transform: translateY(-50%);
   color: var(--color-text-3);
   pointer-events: none;
 }
 
+.visuallyHidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+/* ---- Narrow screens ------------------------------------------------------ */
+
+@media (max-width: 1024px) {
+  .divider {
+    display: none;
+  }
+}
+
+@media (max-width: 768px) {
+  .searchContainer {
+    display: none;
+  }
+}
+
+/*
+ * The sidebar is gone at this width (its own stylesheet hides it), so the
+ * block no longer has a column to line up with. It shrinks to its icon and
+ * hands the space to the organisation name and the account.
+ */
+@media (max-width: 640px) {
+  .brand,
+  .brand[data-collapsed] {
+    width: auto;
+    padding: 0 var(--space-4);
+  }
+
+  .brandName {
+    display: none;
+  }
+
+  .bar {
+    padding: 0 var(--space-2);
+    gap: var(--space-2);
+  }
+}

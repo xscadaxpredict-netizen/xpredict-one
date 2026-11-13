@@ -53,15 +53,15 @@ from core.accounts.models import User
 from core.api import TenantAPIView
 from core.billing.models import AppSubscription, SubscriptionStatus
 from core.organizations.models import (
-    BusinessUnit,
     Membership,
-    MembershipRole,
     MembershipStatus,
     Organization,
     OrganizationStatus,
+    Territory,
 )
 from core.organizations.selectors import permissions_for
-from core.permissions.models import AppAccess, AppCode, Role
+from core.organizations.services import grant_app_access
+from core.permissions.models import AppCode, Role
 
 pytestmark = pytest.mark.django_db(databases=["default", TEST_TENANT_ALIAS])
 
@@ -87,7 +87,7 @@ def make_org(slug="dms-authz-org") -> Organization:
         status=OrganizationStatus.ACTIVE,
     )
     AppSubscription.objects.create(
-        organization=org, app=AppCode.DMS, status=SubscriptionStatus.ACTIVE
+        organization=org, app_id=AppCode.DMS, status=SubscriptionStatus.ACTIVE
     )
     return org
 
@@ -103,16 +103,13 @@ def add_member(org, role_code, email, unit=None):
     """
     user = User.objects.create_user(email=email, password="correct horse battery staple")
     membership = Membership.objects.create(
-        user=user,
-        organization=org,
-        unit=unit,
-        role=MembershipRole.MEMBER,
-        status=MembershipStatus.ACTIVE,
+        user=user, organization=org, status=MembershipStatus.ACTIVE
     )
-    AppAccess.objects.create(
+    grant_app_access(
         membership=membership,
         app=AppCode.DMS,
-        role=Role.objects.get(app=AppCode.DMS, code=role_code),
+        role=Role.objects.get(app_id=AppCode.DMS, code=role_code),
+        territories=[unit or Territory.objects.root_for(org)],
     )
     return user
 
@@ -236,7 +233,7 @@ class TestASalesRepresentativeCannotWrite:
     )
     def test_each_write_is_403(self, label, method, suffix, code):
         org = make_org()
-        unit = BusinessUnit.objects.create(organization=org, name="Dealer A")
+        unit = Territory.objects.create(organization=org, name="Dealer A")
         rep = add_member(org, "dms.sales_representative", "rep@dms-authz.test", unit=unit)
 
         client = APIClient()
@@ -258,7 +255,7 @@ class TestASalesRepresentativeCannotWrite:
         or reading the calculator's constants, is the job.
         """
         org = make_org()
-        unit = BusinessUnit.objects.create(organization=org, name="Dealer A")
+        unit = Territory.objects.create(organization=org, name="Dealer A")
         rep = add_member(org, "dms.sales_representative", "rep@dms-authz.test", unit=unit)
 
         client = APIClient()
@@ -273,7 +270,7 @@ class TestTheGrantsMatchTheScopeOfTheData:
     """
     WHICH ROLE GETS WHAT, and the reason it is not seniority.
 
-    Store orders and saved calculations inherit `UnitScopedModel`, so they
+    Store orders and saved calculations inherit `TerritoryScopedModel`, so they
     belong to one dealership and a Manager is the right audience. Manuals,
     videos, marketing material and the calculator constants inherit
     `BaseModel` -- no `unit_id`, one copy per organisation, read by every
@@ -295,7 +292,7 @@ class TestTheGrantsMatchTheScopeOfTheData:
 
     def test_a_manager_holds_the_unit_scoped_codes(self):
         org = make_org()
-        unit = BusinessUnit.objects.create(organization=org, name="Dealer A")
+        unit = Territory.objects.create(organization=org, name="Dealer A")
         user = add_member(org, "dms.manager", "mgr@dms-authz.test", unit=unit)
         held = permissions_for(Membership.objects.get(user=user, organization=org))
 
@@ -307,7 +304,7 @@ class TestTheGrantsMatchTheScopeOfTheData:
         every other dealership reads is the reach C5 and C40 exist to prevent.
         """
         org = make_org()
-        unit = BusinessUnit.objects.create(organization=org, name="Dealer A")
+        unit = Territory.objects.create(organization=org, name="Dealer A")
         user = add_member(org, "dms.manager", "mgr@dms-authz.test", unit=unit)
         held = permissions_for(Membership.objects.get(user=user, organization=org))
 
@@ -335,7 +332,7 @@ class TestTheGrantsMatchTheScopeOfTheData:
         is why the absence is asserted rather than left implied.
         """
         org = make_org()
-        unit = BusinessUnit.objects.create(organization=org, name="Dealer A")
+        unit = Territory.objects.create(organization=org, name="Dealer A")
         user = add_member(org, "dms.system_admin", "dealeradmin@dms-authz.test", unit=unit)
         held = permissions_for(Membership.objects.get(user=user, organization=org))
 

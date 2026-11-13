@@ -1,328 +1,412 @@
+/* ---- The bell ------------------------------------------------------------ */
+
 .bellButton {
   position: relative;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 38px;
-  height: 38px;
-  border-radius: var(--radius-md, 6px);
-  border: 1px solid var(--color-border, #dde2e8);
-  background: var(--color-surface, #ffffff);
-  color: var(--color-text-2, #4e5a67);
-  cursor: pointer;
-  transition: all 0.15s ease;
+  width: 40px;
+  height: 40px;
   padding: 0;
+  border: 1px solid transparent;
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--color-text-2);
+  cursor: pointer;
 }
 
 .bellButton:hover,
 .bellButton[data-state="open"] {
-  background: var(--color-surface-alt, #ebeef2);
-  color: var(--color-text, #10161d);
-  border-color: var(--color-border-strong, #c3cbd5);
+  background: var(--color-surface-alt);
+  color: var(--color-text);
+}
+
+.bellButton[data-state="open"] {
+  border-color: var(--color-border);
 }
 
 .badge {
   position: absolute;
-  top: -4px;
-  right: -4px;
-  background: var(--color-danger, #b3261e);
-  color: #ffffff;
-  font-size: 0.7rem;
-  font-weight: 700;
-  line-height: 1;
-  padding: 2px 5px;
-  border-radius: 10px;
-  border: 2px solid var(--color-surface, #ffffff);
-  min-width: 18px;
+  top: 4px;
+  right: 3px;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  box-sizing: border-box;
+  border: 2px solid var(--color-surface);
+  border-radius: var(--radius-pill);
+  background: var(--color-danger);
+  color: var(--color-danger-text);
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 12px;
   text-align: center;
 }
 
-/* The portaled Radix Popover panel */
-.panel {
-  width: 390px;
-  max-width: calc(100vw - 24px);
-  max-height: calc(100vh - var(--topbar-height, 56px) - 20px);
-  display: flex;
-  flex-direction: column;
-  background: var(--color-surface, #ffffff);
-  border: 1px solid var(--color-border, #dde2e8);
-  border-radius: var(--radius-lg, 8px);
-  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.15), 0 8px 10px -6px rgba(0, 0, 0, 0.1);
-  z-index: 1000;
-  overflow: hidden;
-  outline: none;
-  animation: popoverFadeIn 0.15s ease-out;
+/* ---- The drawer's header ------------------------------------------------- */
+
+.head {
+  background: var(--color-canvas);
+  border-bottom: 1px solid var(--color-border);
 }
 
-@keyframes popoverFadeIn {
-  from {
-    opacity: 0;
-    transform: translateY(-4px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-
-.header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 10px 14px;
-  border-bottom: 1px solid var(--color-border, #dde2e8);
-  background: var(--color-canvas, #f4f6f8);
-  flex-shrink: 0;
-}
-
-.headerTitle {
-  font-size: var(--text-sm, 0.875rem);
-  font-weight: 600;
-  color: var(--color-text, #10161d);
+.titleRow {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--space-1);
+  padding: var(--space-3) var(--space-3) var(--space-1) var(--space-5);
 }
 
-.headerCountBadge {
-  font-size: 0.75rem;
-  font-weight: 600;
-  background: var(--color-primary-050, #eff4fe);
-  color: var(--color-primary, #2450b5);
-  padding: 2px 7px;
-  border-radius: 10px;
-}
-
-.headerActions {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-
-.markAllBtn {
-  background: transparent;
-  border: none;
-  font-size: var(--text-xs, 0.75rem);
-  color: var(--color-primary, #2450b5);
-  cursor: pointer;
-  padding: 4px 6px;
+.title {
+  flex: 1;
+  margin: 0;
+  font-size: var(--text-lg);
   font-weight: 500;
-  border-radius: 4px;
-  display: inline-flex;
-  align-items: center;
+  color: var(--color-text);
 }
 
-.markAllBtn:hover {
-  text-decoration: underline;
-}
-
-.closeBtn {
+.iconButton,
+.close {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 28px;
-  height: 28px;
+  width: 36px;
+  height: 36px;
   padding: 0;
-  border: none;
-  border-radius: var(--radius-md, 4px);
+  border: 0;
+  border-radius: var(--radius-md);
   background: transparent;
-  color: var(--color-text-3, #6f7b89);
   cursor: pointer;
-  transition: all 0.15s ease;
 }
 
-.closeBtn:hover {
-  background: var(--color-surface-alt, #ebeef2);
-  color: var(--color-text, #10161d);
+.iconButton {
+  color: var(--color-primary);
 }
 
-.tabsRow {
-  display: flex;
+.iconButton:hover:not(:disabled) {
+  background: var(--color-surface-alt);
+}
+
+/* Nothing unread: the button stays where it is, so the header does not jump,
+   but says it has nothing to do. */
+.iconButton:disabled {
+  color: var(--color-text-disabled);
+  cursor: default;
+}
+
+.close {
+  color: var(--color-danger);
+}
+
+.close:hover {
+  background: var(--color-danger-100);
+}
+
+.divider {
+  width: 1px;
+  height: 18px;
+  background: var(--color-border);
+}
+
+/* ---- The filter ---------------------------------------------------------- */
+
+/* Drawn as a selected tab — the underline — because it does the job of one:
+   it says what the list below is showing. */
+.filter {
+  display: inline-flex;
   align-items: center;
-  gap: 4px;
-  padding: 8px 12px;
-  background: var(--color-surface, #ffffff);
-  border-bottom: 1px solid var(--color-border, #dde2e8);
-  overflow-x: auto;
-  scrollbar-width: none;
-  flex-shrink: 0;
-  -webkit-overflow-scrolling: touch;
-}
-
-.tabsRow::-webkit-scrollbar {
-  display: none;
-}
-
-.tabBtn {
+  gap: var(--space-2);
+  margin-left: var(--space-5);
+  padding: var(--space-2) 0 calc(var(--space-2) - 1px);
+  border: 0;
+  border-bottom: 2px solid var(--color-primary);
   background: transparent;
-  border: none;
-  padding: 4px 10px;
-  border-radius: 14px;
-  font-size: 0.75rem;
+  font: inherit;
+  font-size: var(--text-base);
   font-weight: 500;
-  color: var(--color-text-2, #4e5a67);
+  color: var(--color-text);
   cursor: pointer;
-  white-space: nowrap;
-  transition: all 0.15s ease;
-  flex-shrink: 0;
 }
 
-.tabBtn:hover {
-  background: var(--color-surface-alt, #ebeef2);
-  color: var(--color-text, #10161d);
+.filter:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
 }
 
-.tabBtnActive {
-  background: var(--color-primary, #2450b5);
-  color: #ffffff !important;
+.count {
+  min-width: 18px;
+  padding: 0 5px;
+  box-sizing: border-box;
+  border-radius: var(--radius-pill);
+  background: var(--color-primary);
+  color: var(--color-primary-text);
+  font-size: var(--text-xs);
+  line-height: 18px;
+  text-align: center;
 }
 
-.listWrapper {
-  overflow-y: auto;
-  max-height: 400px;
+.filterDivider {
+  width: 1px;
+  height: 16px;
+  background: var(--color-border-strong);
+}
+
+.caret {
+  border-radius: var(--radius-sm);
+  transition: transform 120ms ease;
+}
+
+.filter[data-state="open"] .caret {
+  transform: rotate(180deg);
+}
+
+/* Over the list, inside the drawer (50): the ladder's 50 is for menus. */
+.menu {
+  min-width: 232px;
+  padding: 6px;
   display: flex;
   flex-direction: column;
-  -webkit-overflow-scrolling: touch;
+  gap: 2px;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lg);
+  z-index: 50;
 }
 
-.notificationItem {
+.menuItem {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  min-height: 40px;
+  box-sizing: border-box;
+  border-radius: var(--radius-md);
+  font-size: var(--text-base);
+  color: var(--color-text);
+  cursor: pointer;
+  outline: none;
+  user-select: none;
+}
+
+.menuItem > span:first-child {
+  flex: 1;
+}
+
+.menuItem[data-highlighted] {
+  background: var(--color-surface-alt);
+}
+
+/* The chosen one is filled, as Zoho's is — it reads as "this is on". */
+.menuItem[data-state="checked"] {
+  background: var(--color-primary);
+  color: var(--color-primary-text);
+  font-weight: 500;
+}
+
+.menuCount {
+  font-size: var(--text-xs);
+  color: var(--color-text-3);
+}
+
+.menuItem[data-state="checked"] .menuCount {
+  color: inherit;
+  opacity: 0.8;
+}
+
+/* ---- The list ------------------------------------------------------------ */
+
+.body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.item {
   display: flex;
   align-items: flex-start;
-  gap: 12px;
-  padding: 12px 14px;
-  border-bottom: 1px solid var(--color-border, #dde2e8);
+  gap: var(--space-3);
+  width: 100%;
+  padding: var(--space-3) var(--space-5);
+  border: 0;
+  border-bottom: 1px solid var(--color-border);
+  background: var(--color-surface);
+  font: inherit;
+  color: var(--color-text);
+  text-align: left;
   cursor: pointer;
-  transition: background 0.15s ease;
-  position: relative;
-  text-decoration: none;
-  color: inherit;
-  outline: none;
 }
 
-.notificationItem:hover,
-.notificationItem:focus-visible {
-  background: var(--color-canvas, #f4f6f8);
+.item:hover {
+  background: var(--color-surface-alt);
 }
 
-.unreadItem {
-  background: #fdfefe;
+.item:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: -2px;
 }
 
-.unreadDot {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: var(--color-primary, #2450b5);
-  position: absolute;
-  top: 14px;
-  right: 12px;
+.item[data-unread] {
+  background: var(--color-primary-050);
 }
 
-.iconWrapper {
-  width: 32px;
-  height: 32px;
-  border-radius: 6px;
+.item[data-unread]:hover {
+  background: var(--color-primary-100);
+}
+
+.kindIcon {
+  flex: none;
   display: flex;
   align-items: center;
   justify-content: center;
-  flex-shrink: 0;
-  margin-top: 2px;
+  width: 36px;
+  height: 36px;
+  border-radius: var(--radius-pill);
 }
 
-.iconFollowup {
-  background: #eff6ff;
-  color: #2563eb;
+.kindIcon[data-kind="followup"] {
+  background: var(--color-primary-100);
+  color: var(--color-primary-800);
 }
 
-.iconService {
-  background: #fef3c7;
-  color: #d97706;
+.kindIcon[data-kind="service"] {
+  background: var(--color-success-100);
+  color: var(--color-success-700);
 }
 
-.iconComplaint {
-  background: #fee2e2;
-  color: #dc2626;
+.kindIcon[data-kind="complaint"] {
+  background: var(--color-danger-100);
+  color: var(--color-danger-700);
 }
 
-.iconCall {
-  background: #f3e8ff;
-  color: #7e22ce;
+.kindIcon[data-kind="call"] {
+  background: var(--color-attention-100);
+  color: var(--color-attention-700);
 }
 
-.itemContent {
+.itemText {
   flex: 1;
   min-width: 0;
   display: flex;
   flex-direction: column;
-  gap: 2px;
-}
-
-.itemHeader {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  gap: 8px;
+  gap: 3px;
 }
 
 .itemTitle {
-  font-size: var(--text-sm, 0.875rem);
+  font-size: var(--text-base);
+  line-height: 1.35;
+}
+
+.item[data-unread] .itemTitle {
   font-weight: 600;
-  color: var(--color-text, #10161d);
-  line-height: 1.3;
-}
-
-.dueBadge {
-  font-size: 0.7rem;
-  font-weight: 600;
-  padding: 2px 6px;
-  border-radius: 4px;
-  white-space: nowrap;
-  flex-shrink: 0;
-}
-
-.badgeUrgent {
-  background: var(--color-danger-100, #fbe4e2);
-  color: var(--color-danger-700, #8f1d17);
-}
-
-.badgeWarning {
-  background: var(--color-attention-100, #fcebd4);
-  color: var(--color-attention-700, #8a4b06);
-}
-
-.badgeInfo {
-  background: var(--color-primary-050, #eff4fe);
-  color: var(--color-primary, #2450b5);
 }
 
 .itemSubtitle {
-  font-size: var(--text-xs, 0.75rem);
-  color: var(--color-text-2, #4e5a67);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  font-size: var(--text-sm);
+  line-height: 1.4;
+  color: var(--color-text-2);
+  overflow-wrap: anywhere;
 }
 
 .itemDetails {
-  font-size: 0.7rem;
-  color: var(--color-text-3, #6f7b89);
+  font-size: var(--text-xs);
+  color: var(--color-text-3);
+}
+
+.itemMeta {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
   margin-top: 2px;
+  font-size: var(--text-xs);
+  color: var(--color-text-3);
 }
 
-.emptyState {
-  padding: 32px 16px;
+.due {
+  padding: 1px var(--space-2);
+  border-radius: var(--radius-pill);
+  font-weight: 500;
+  background: var(--color-surface-alt);
+  color: var(--color-text-2);
+}
+
+.due[data-urgency="urgent"] {
+  background: var(--color-danger-100);
+  color: var(--color-danger-700);
+}
+
+.due[data-urgency="warning"] {
+  background: var(--color-attention-100);
+  color: var(--color-attention-700);
+}
+
+.due[data-urgency="info"] {
+  background: var(--color-primary-050);
+  color: var(--color-primary);
+}
+
+.unreadDot {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  margin-top: 6px;
+  border-radius: var(--radius-pill);
+  background: var(--color-primary);
+}
+
+.chevron {
+  flex: none;
+  margin-top: 2px;
+  color: var(--color-text-3);
+}
+
+/* ---- Nothing to show ----------------------------------------------------- */
+
+.empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: var(--space-8) var(--space-6) var(--space-6);
   text-align: center;
-  color: var(--color-text-3, #6f7b89);
-  font-size: var(--text-sm, 0.875rem);
 }
 
-@media (max-width: 640px) {
-  .panel {
-    width: calc(100vw - 24px);
-    max-height: calc(100vh - var(--topbar-height, 56px) - 16px);
-  }
+.emptyIcon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 72px;
+  height: 72px;
+  border-radius: var(--radius-pill);
+  background: var(--color-surface-alt);
+  color: var(--color-text-3);
+}
 
-  .itemSubtitle {
-    white-space: normal;
-  }
+.emptyTitle {
+  margin: var(--space-4) 0 0;
+  font-size: var(--text-md);
+  font-weight: 500;
+  color: var(--color-text);
+}
+
+.emptyText {
+  max-width: 280px;
+  margin: var(--space-2) 0 0;
+  font-size: var(--text-sm);
+  line-height: 1.45;
+  color: var(--color-text-2);
+}
+
+.visuallyHidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
 }

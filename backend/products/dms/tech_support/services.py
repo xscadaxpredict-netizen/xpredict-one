@@ -52,7 +52,7 @@ def delete_machine_video(video_id: str) -> None:
 
 def create_call_request(
     *,
-    unit_id: str,
+    territory_id: str,
     name: str,
     phone: str = "",
     email: str = "",
@@ -62,7 +62,7 @@ def create_call_request(
     attachment: UploadedFile | None = None,
 ) -> CallRequest:
     call = CallRequest(
-        unit_id=unit_id,
+        territory_id=territory_id,
         name=name,
         phone=phone,
         email=email,

@@ -33,14 +33,20 @@ from core.accounts.models import User
 from core.billing.models import AppSubscription, SubscriptionStatus
 from core.organizations.models import (
     ActivationCode,
-    BusinessUnit,
     Invitation,
     Membership,
     MembershipRole,
     MembershipStatus,
+    Territory,
 )
-from core.organizations.services import accept_invitation, invitation_link, sign_up
-from core.permissions.models import AppAccess, AppCode, Role
+from core.organizations.selectors import reach, standing
+from core.organizations.services import (
+    accept_invitation,
+    grant_app_access,
+    invitation_link,
+    sign_up,
+)
+from core.permissions.models import AppCode, Role
 
 pytestmark = [
     pytest.mark.django_db(databases=["default", TEST_TENANT_ALIAS]),
@@ -70,7 +76,7 @@ def found(name="Acme Motors", email="owner@acme.test", code="CODE-ACME"):
 
 
 def dms_role(code):
-    return Role.objects.get(app=AppCode.DMS, code=code)
+    return Role.objects.get(app_id=AppCode.DMS, code=code)
 
 
 # THE ROLE HAS TO MATCH THE SCOPE, and accepting is where that gets checked
@@ -108,7 +114,7 @@ def invite(
         invited_by=invited_by,
     )
     if role_code:
-        invitation.app_grants.create(app=AppCode.DMS, role=dms_role(role_code))
+        invitation.app_grants.create(app_id=AppCode.DMS, role=dms_role(role_code))
     return invitation
 
 
@@ -162,7 +168,7 @@ class TestThePreview:
         of them are somebody's staffing arrangement.
         """
         result = found()
-        unit = BusinessUnit.objects.create(organization=result.organization, name="Chennai North")
+        unit = Territory.objects.create(organization=result.organization, name="Chennai North")
         invite(result.organization, unit=unit)
 
         body = client.get(PREVIEW_URL.format(token=TOKEN)).json()
@@ -235,8 +241,10 @@ class TestAcceptingAsSomebodyNew:
         user = User.objects.get(email="pending@acme.test")
         membership = Membership.objects.get(user=user, organization=result.organization)
         assert membership.status == MembershipStatus.ACTIVE
-        assert membership.role == MembershipRole.MEMBER
-        assert [a.role.code for a in membership.app_access.all()] == [ORG_ROLE]
+        assert standing(membership) == MembershipRole.MEMBER
+        assert [r.role.code for g in membership.grants.all() for r in g.roles.all()] == [
+            ORG_ROLE
+        ]
 
     def test_the_name_comes_from_the_invitation(self, client):
         """
@@ -268,18 +276,18 @@ class TestAcceptingAsSomebodyNew:
 
     def test_the_dealership_comes_across(self, client):
         result = found()
-        unit = BusinessUnit.objects.create(organization=result.organization, name="Chennai North")
+        unit = Territory.objects.create(organization=result.organization, name="Chennai North")
         invite(result.organization, unit=unit)
 
         client.post(ACCEPT_URL.format(token=TOKEN), {"password": PASSWORD}, format="json")
 
         membership = Membership.objects.get(user__email="pending@acme.test")
-        assert membership.unit_id == unit.id
+        assert reach(membership) == frozenset({unit.id})
 
     def test_the_new_member_is_not_an_owner(self, client):
         """
         An owner is founded with the organisation and never invited into one
-        (C41). `owner_marker` must stay NULL or the one-owner-per-org
+        (C41). `is_owner` must stay NULL or the one-owner-per-org
         constraint is the thing that notices.
         """
         result = found()
@@ -288,11 +296,11 @@ class TestAcceptingAsSomebodyNew:
         client.post(ACCEPT_URL.format(token=TOKEN), {"password": PASSWORD}, format="json")
 
         membership = Membership.objects.get(user__email="pending@acme.test")
-        assert membership.role == MembershipRole.ADMIN
-        assert membership.owner_marker is None
+        assert standing(membership) == MembershipRole.ADMIN
+        assert membership.is_owner is None
         assert (
             Membership.objects.filter(
-                organization=result.organization, role=MembershipRole.OWNER
+                organization=result.organization, is_owner=True
             ).count()
             == 1
         )
@@ -374,7 +382,6 @@ class TestAcceptingWhenTheAddressAlreadyHasAnAccount:
         Membership.objects.create(
             user=joiner,
             organization=second.organization,
-            role=MembershipRole.MEMBER,
             status=MembershipStatus.ACTIVE,
         )
         invite(first.organization)
@@ -494,7 +501,7 @@ class TestTheWorldMayHaveMovedOn:
         """
         result = found()
         invite(result.organization)
-        AppSubscription.objects.filter(organization=result.organization, app=AppCode.DMS).update(
+        AppSubscription.objects.filter(organization=result.organization, app_id=AppCode.DMS).update(
             status=SubscriptionStatus.CANCELLED
         )
 
@@ -530,7 +537,6 @@ class TestTheWorldMayHaveMovedOn:
         Membership.objects.create(
             user=existing,
             organization=result.organization,
-            role=MembershipRole.MEMBER,
             status=MembershipStatus.ACTIVE,
         )
         client.force_authenticate(user=existing)
@@ -591,7 +597,6 @@ class TestTheLinkAnAdminCopies:
         membership = Membership.objects.create(
             user=member,
             organization=result.organization,
-            role=MembershipRole.MEMBER,
             status=MembershipStatus.ACTIVE,
         )
         client.force_authenticate(user=result.user)
@@ -608,21 +613,18 @@ class TestTheLinkAnAdminCopies:
         get the answer they would get for an id that was never minted.
         """
         result = found()
-        mine = BusinessUnit.objects.create(organization=result.organization, name="Mine")
-        theirs = BusinessUnit.objects.create(organization=result.organization, name="Theirs")
+        mine = Territory.objects.create(organization=result.organization, name="Mine")
+        theirs = Territory.objects.create(organization=result.organization, name="Theirs")
 
         admin_user = User.objects.create_user(email="dealeradmin@acme.test", password=PASSWORD)
         admin_membership = Membership.objects.create(
-            user=admin_user,
-            organization=result.organization,
-            unit=mine,
-            role=MembershipRole.MEMBER,
-            status=MembershipStatus.ACTIVE,
+            user=admin_user, organization=result.organization, status=MembershipStatus.ACTIVE
         )
-        AppAccess.objects.create(
+        grant_app_access(
             membership=admin_membership,
             app=AppCode.DMS,
             role=dms_role("dms.system_admin"),
+            territories=[mine],
         )
 
         other = invite(result.organization, unit=theirs, email="theirs@acme.test")
@@ -653,13 +655,13 @@ class TestTheLinkAnAdminCopies:
 
         viewer = User.objects.create_user(email="viewer@acme.test", password=PASSWORD)
         viewer_membership = Membership.objects.create(
-            user=viewer,
-            organization=result.organization,
-            role=MembershipRole.MEMBER,
-            status=MembershipStatus.ACTIVE,
+            user=viewer, organization=result.organization, status=MembershipStatus.ACTIVE
         )
-        AppAccess.objects.create(
-            membership=viewer_membership, app=AppCode.DMS, role=dms_role("dms.fleet_viewer")
+        grant_app_access(
+            membership=viewer_membership,
+            app=AppCode.DMS,
+            role=dms_role("dms.fleet_viewer"),
+            territories=[Territory.objects.root_for(result.organization)],
         )
         client.force_authenticate(user=viewer)
 

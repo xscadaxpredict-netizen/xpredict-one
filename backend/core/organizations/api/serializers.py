@@ -48,6 +48,13 @@ class DealerSerializer(serializers.Serializer):
 
     created_at = serializers.DateTimeField(read_only=True)
 
+    # NO `kind` OR `parent_id` HERE, deliberately (C72 piece 1). They were
+    # added and `test_the_fields_are_exactly_what_dealers_ts_declares` refused
+    # them: this shape must match `dealers.ts` field for field, and nothing
+    # generates that file (C43). Where a dealership sits in the tree is on
+    # `/admin/territories/`; this response gains the fields when the frontend
+    # does, in C72 piece 7.
+
 
 class DealerDetailsSerializer(serializers.Serializer):
     """
@@ -131,6 +138,69 @@ class DealerDetailsSerializer(serializers.Serializer):
             )
 
         return pan
+
+
+class DealerCreateSerializer(DealerDetailsSerializer):
+    """
+    Adding a dealership: its details, and optionally the region it sits in.
+
+    CREATE ONLY. Editing a dealership's details does not move it -- moving is
+    `POST /admin/territories/<id>/move/`, its own act with its own permission
+    -- so `parent_id` is absent from the edit payload rather than silently
+    ignored there.
+    """
+
+    parent_id = serializers.UUIDField(required=False, allow_null=True, default=None)
+
+
+# ---------------------------------------------------------------------------
+# The territory tree (C72 piece 1). Mirrors nothing in the frontend yet; the
+# screens arrive in C72 piece 7.
+# ---------------------------------------------------------------------------
+
+
+class TerritorySerializer(serializers.Serializer):
+    """
+    One box in the tree. A flat list ordered by tree position -- each box after
+    its parent -- so a client can build the tree from `parent_id` in one pass.
+
+    NO `path`. It is treebeard's bookkeeping and changes whenever anything above
+    a box moves; `id` is what identifies a territory, everywhere, forever.
+    """
+
+    id = serializers.UUIDField(read_only=True)
+    kind = serializers.CharField(read_only=True)
+    # The root's name is the organisation's -- it stores none of its own.
+    name = serializers.CharField(source="display_name", read_only=True)
+    code = serializers.CharField(read_only=True, allow_null=True)
+    parent_id = serializers.UUIDField(read_only=True, allow_null=True)
+    depth = serializers.IntegerField(read_only=True)
+    status = serializers.CharField(read_only=True)
+
+
+class TerritoryCreateSerializer(serializers.Serializer):
+    """
+    Add a region, branch or warehouse. NOT a dealer: a dealership carries a
+    GSTIN and the rest of its details, and is added through the dealers
+    endpoint, which can place it in a region too.
+    """
+
+    kind = serializers.ChoiceField(choices=["region", "branch", "warehouse"])
+    name = serializers.CharField(max_length=200)
+    parent_id = serializers.UUIDField(required=False, allow_null=True, default=None)
+
+
+class TerritoryRenameSerializer(serializers.Serializer):
+    name = serializers.CharField(max_length=200)
+
+
+class TerritoryMoveSerializer(serializers.Serializer):
+    """
+    Where to put it. `parent_id` is REQUIRED and may be null: null means "the
+    top level", and an omitted field must not be read as that by accident.
+    """
+
+    parent_id = serializers.UUIDField(allow_null=True)
 
 
 class AppGrantSerializer(serializers.Serializer):

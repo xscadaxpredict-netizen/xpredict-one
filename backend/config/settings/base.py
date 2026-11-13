@@ -75,7 +75,7 @@ TENANT_APPS = [
     "products.dms.tech_support",
     "products.dms.ecommerce",
     "products.dms.tools",
-    # CRM --- organization level, no business units.
+    # CRM --- organization level, no territories yet (C72 gives it region-level ones).
     "products.crm",
 ]
 

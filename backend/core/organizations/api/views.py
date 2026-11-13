@@ -21,21 +21,29 @@ from rest_framework.response import Response
 
 from core.organizations.api.base import OrgScopedAPIView
 from core.organizations.api.serializers import (
+    DealerCreateSerializer,
     DealerDetailsSerializer,
     DealerSerializer,
     InviteLinkSerializer,
     OrgUserSerializer,
     PersonDetailsSerializer,
+    TerritoryCreateSerializer,
+    TerritoryMoveSerializer,
+    TerritoryRenameSerializer,
+    TerritorySerializer,
 )
-from core.organizations.models import BusinessUnit, MembershipStatus
-from core.organizations.selectors import dealers_for, org_users
+from core.organizations.models import MembershipStatus, Territory, TerritoryKind
+from core.organizations.selectors import dealers_for, org_users, territories_for
 from core.organizations.services import (
     close_dealer,
     create_dealer,
+    create_territory,
     invitation_for_link,
     invitation_link,
     invite_person,
+    move_territory,
     remove_person,
+    rename_territory,
     reopen_dealer,
     resend_invitation,
     set_person_status,
@@ -104,7 +112,9 @@ class DealersView(OrgScopedAPIView):
         return Response(DealerSerializer(dealers, many=True).data)
 
     def post(self, request: Request, org_slug: str) -> Response:
-        payload = DealerDetailsSerializer(data=request.data)
+        # CREATE takes an optional `parent_id` -- the region it sits in (C72).
+        # Editing does not: moving is the territories endpoint's job.
+        payload = DealerCreateSerializer(data=request.data)
         payload.is_valid(raise_exception=True)
 
         dealer = create_dealer(organization=self.organization, **payload.validated_data)
@@ -139,7 +149,7 @@ class DealerDetailView(OrgScopedAPIView):
         updated = next(d for d in dealers_for(self.organization) if d.pk == dealer.pk)
         return Response(DealerSerializer(updated).data)
 
-    def _get_dealer(self, dealer_id: str) -> BusinessUnit:
+    def _get_dealer(self, dealer_id: str) -> Territory:
         """
         FILTERED BY ORGANIZATION, which is the isolation. A bare
         `get(pk=dealer_id)` would happily return another customer's dealership
@@ -152,8 +162,10 @@ class DealerDetailView(OrgScopedAPIView):
         would confirm that a well-formed id is the thing being looked up.
         """
         try:
-            return BusinessUnit.objects.get(id=dealer_id, organization=self.organization)
-        except (BusinessUnit.DoesNotExist, ValidationError, ValueError):
+            return Territory.objects.get(
+                id=dealer_id, organization=self.organization, kind=TerritoryKind.DEALER
+            )
+        except (Territory.DoesNotExist, ValidationError, ValueError):
             raise not_found("Dealer") from None
 
 
@@ -214,12 +226,97 @@ class DealerStatusView(OrgScopedAPIView):
         updated = next(d for d in dealers_for(self.organization) if d.pk == dealer.pk)
         return Response(DealerSerializer(updated).data)
 
-    def _get_dealer(self, dealer_id: str) -> BusinessUnit:
+    def _get_dealer(self, dealer_id: str) -> Territory:
         """The same filter-by-organization isolation as `DealerDetailView`."""
         try:
-            return BusinessUnit.objects.get(id=dealer_id, organization=self.organization)
-        except (BusinessUnit.DoesNotExist, ValidationError, ValueError):
+            return Territory.objects.get(
+                id=dealer_id, organization=self.organization, kind=TerritoryKind.DEALER
+            )
+        except (Territory.DoesNotExist, ValidationError, ValueError):
             raise not_found("Dealer") from None
+
+
+class _TerritoryLookup:
+    """The one way a territory view finds its territory: inside this organization, or 404."""
+
+    def _get_territory(self, territory_id: str) -> Territory:
+        # The same isolation as `_get_dealer`: paths are unique across every
+        # organisation, so an id alone would reach another customer's tree.
+        try:
+            return Territory.objects.get(id=territory_id, organization=self.organization)
+        except (Territory.DoesNotExist, ValidationError, ValueError):
+            raise not_found("Territory") from None
+
+    def _respond_with(
+        self, territory: Territory, status_code: int = status.HTTP_200_OK
+    ) -> Response:
+        # Re-read through the selector so the response carries `parent_id`,
+        # which is derived from the path rather than stored.
+        fresh = next(t for t in territories_for(self.organization) if t.pk == territory.pk)
+        return Response(TerritorySerializer(fresh).data, status=status_code)
+
+
+class TerritoriesView(_TerritoryLookup, OrgScopedAPIView):
+    """
+    The organisation's territory tree, or a new region, branch or warehouse
+    (C72 piece 1).
+
+    ORGANISATION-LEVEL, like dealerships (C3): only standing grants
+    `admin.territory.*`, so a dealer admin cannot redraw the tree they sit in.
+    Dealerships are added through `/admin/dealers/`, which can place one in a
+    region.
+    """
+
+    required_permissions: ClassVar[list[str]] = ["admin.territory.view"]
+    method_permissions: ClassVar[dict[str, list[str]]] = {
+        "POST": ["admin.territory.create"],
+    }
+
+    def get(self, request: Request, org_slug: str) -> Response:
+        return Response(TerritorySerializer(territories_for(self.organization), many=True).data)
+
+    def post(self, request: Request, org_slug: str) -> Response:
+        payload = TerritoryCreateSerializer(data=request.data)
+        payload.is_valid(raise_exception=True)
+
+        territory = create_territory(organization=self.organization, **payload.validated_data)
+        return self._respond_with(territory, status.HTTP_201_CREATED)
+
+
+class TerritoryDetailView(_TerritoryLookup, OrgScopedAPIView):
+    """Rename a territory -- any kind, dealerships included."""
+
+    required_permissions: ClassVar[list[str]] = ["admin.territory.update"]
+
+    def patch(self, request: Request, org_slug: str, territory_id: str) -> Response:
+        territory = self._get_territory(territory_id)
+
+        payload = TerritoryRenameSerializer(data=request.data)
+        payload.is_valid(raise_exception=True)
+
+        rename_territory(territory=territory, **payload.validated_data)
+        return self._respond_with(territory)
+
+
+class TerritoryMoveView(_TerritoryLookup, OrgScopedAPIView):
+    """
+    Put a territory, and everything under it, somewhere else in the tree.
+
+    A POST TO ITS OWN URL, not a field on the rename: moving changes what every
+    box underneath sits in, which is a different act from correcting a name,
+    and one request is one user action (CLAUDE.md).
+    """
+
+    required_permissions: ClassVar[list[str]] = ["admin.territory.update"]
+
+    def post(self, request: Request, org_slug: str, territory_id: str) -> Response:
+        territory = self._get_territory(territory_id)
+
+        payload = TerritoryMoveSerializer(data=request.data)
+        payload.is_valid(raise_exception=True)
+
+        moved = move_territory(territory=territory, **payload.validated_data)
+        return self._respond_with(moved)
 
 
 class UsersView(OrgScopedAPIView):

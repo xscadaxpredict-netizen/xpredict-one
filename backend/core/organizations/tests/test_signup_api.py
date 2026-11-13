@@ -24,7 +24,7 @@ from django.utils import timezone
 from rest_framework.test import APIClient
 
 from core.accounts.models import User
-from core.organizations.models import ActivationCode, MembershipRole, Organization
+from core.organizations.models import ActivationCode, Organization
 
 pytestmark = pytest.mark.django_db
 
@@ -144,7 +144,7 @@ class TestSigningUp:
 
         organization = Organization.objects.get()
         assert organization.slug == "acme-motors"
-        assert organization.memberships.get().role == MembershipRole.OWNER
+        assert organization.memberships.get().is_owner is True
 
     def test_is_ready_is_false_because_the_database_is_not_there(self, client, code):
         """

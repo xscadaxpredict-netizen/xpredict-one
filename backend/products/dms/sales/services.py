@@ -33,7 +33,7 @@ from .models import (
 @transaction.atomic
 def create_enquiry(
     *,
-    unit_id: uuid.UUID,
+    territory_id: uuid.UUID,
     created_by_user_id: uuid.UUID,
     customer_name: str,
     contact_person: str = "",
@@ -46,7 +46,7 @@ def create_enquiry(
 ) -> Enquiry:
     """Record a new enquiry for a dealer, and its initial followup."""
     enquiry = Enquiry.objects.create(
-        unit_id=unit_id,
+        territory_id=territory_id,
         created_by_user_id=created_by_user_id,
         customer_name=customer_name,
         contact_person=contact_person,
@@ -59,7 +59,7 @@ def create_enquiry(
 
     if followup_remarks or followup_next_date:
         Followup.objects.create(
-            unit_id=unit_id,
+            territory_id=territory_id,
             enquiry=enquiry,
             created_by_user_id=created_by_user_id,
             remarks=followup_remarks or "",
@@ -105,7 +105,7 @@ def delete_enquiry(*, enquiry_id: uuid.UUID) -> None:
 def add_followup(
     *,
     enquiry_id: uuid.UUID,
-    unit_id: uuid.UUID | None = None,
+    territory_id: uuid.UUID | None = None,
     actor_user_id: uuid.UUID | None = None,
     remarks: str = "",
     next_followup_date: str | None = None,
@@ -115,7 +115,7 @@ def add_followup(
         raise not_found("Enquiry")
 
     Followup.objects.create(
-        unit_id=unit_id or enquiry.unit_id,
+        territory_id=territory_id or enquiry.territory_id,
         enquiry=enquiry,
         created_by_user_id=actor_user_id,
         remarks=remarks or "",
@@ -167,7 +167,7 @@ def delete_followup(
 def save_quotation(
     *,
     enquiry_id: uuid.UUID,
-    unit_id: uuid.UUID,
+    territory_id: uuid.UUID,
     actor_user_id: uuid.UUID,
     quote_data: dict,
     existing_quote_id: uuid.UUID | None = None,
@@ -207,7 +207,7 @@ def save_quotation(
         quote.items.all().delete()
     else:
         quote = Quotation(
-            unit_id=unit_id,
+            territory_id=territory_id,
             enquiry=enquiry,
             created_by_user_id=actor_user_id,
             bank_account_id=quote_data.pop("selected_bank_id"),
@@ -222,7 +222,7 @@ def save_quotation(
 
     for item in items_data:
         QuotationItem.objects.create(
-            unit_id=unit_id,
+            territory_id=territory_id,
             quotation=quote,
             product_id=item.get("product_id"),
             description=item.get("description", ""),
@@ -271,7 +271,7 @@ def confirm_order(
     *,
     enquiry_id: uuid.UUID,
     quote_id: uuid.UUID,
-    unit_id: uuid.UUID,
+    territory_id: uuid.UUID,
     actor_user_id: uuid.UUID,
 ) -> Enquiry:
     enquiry = Enquiry.objects.filter(id=enquiry_id).first()
@@ -307,7 +307,7 @@ def confirm_order(
     if not enquiry.customer_id:
         from .models import Customer
         customer = Customer.objects.create(
-            unit_id=unit_id,
+            territory_id=territory_id,
             name=enquiry.customer_name,
             contact_person=enquiry.contact_person,
             phone=enquiry.phone,
@@ -319,7 +319,7 @@ def confirm_order(
         enquiry.save(update_fields=["customer_id"])
 
     ConfirmedSite.objects.create(
-        unit_id=unit_id,
+        territory_id=territory_id,
         enquiry=enquiry,
         customer=enquiry.customer,
         confirmed_quote=quote,
@@ -399,7 +399,7 @@ def confirm_amc_quote(
 @transaction.atomic
 def create_bank_account(
     *,
-    unit_id: uuid.UUID,
+    territory_id: uuid.UUID,
     actor_user_id: uuid.UUID,
     bank_name: str,
     account_no: str,
@@ -409,10 +409,12 @@ def create_bank_account(
     is_active: bool = True,
 ) -> BankAccount:
     if is_default:
-        BankAccount.objects.filter(unit_id=unit_id, is_default=True).update(is_default=False)
+        BankAccount.objects.filter(territory_id=territory_id, is_default=True).update(
+            is_default=False
+        )
 
     bank = BankAccount.objects.create(
-        unit_id=unit_id,
+        territory_id=territory_id,
         created_by_user_id=actor_user_id,
         bank_name=bank_name,
         account_no=account_no,
@@ -436,7 +438,7 @@ def update_bank_account(
 
     if updates.get("is_default"):
         BankAccount.objects.filter(
-            unit_id=bank.unit_id,
+            territory_id=bank.territory_id,
             is_default=True).exclude(id=bank_id).update(is_default=False,
         )
 
@@ -458,7 +460,7 @@ def delete_bank_account(*, bank_id: uuid.UUID) -> None:
 @transaction.atomic
 def create_product_catalog(
     *,
-    unit_id: uuid.UUID,
+    territory_id: uuid.UUID,
     actor_user_id: uuid.UUID,
     product_type: str,
     base_price: float,
@@ -475,7 +477,7 @@ def create_product_catalog(
         name = description[:255]
 
     product = ProductCatalog.objects.create(
-        unit_id=unit_id,
+        territory_id=territory_id,
         created_by_user_id=actor_user_id,
         product_type=product_type,
         name=name,
@@ -496,7 +498,7 @@ def create_product_catalog(
         for idx, spec in enumerate(spec_list):
             from .models import ProductSpec
             ProductSpec.objects.create(
-                unit_id=unit_id,
+                territory_id=territory_id,
                 product=product,
                 spec_value=spec,
                 sort_order=idx,
@@ -540,7 +542,7 @@ def update_product_catalog(
         spec_list = [s.strip() for s in specs.split(",") if s.strip()]
         for idx, spec in enumerate(spec_list):
             ProductSpec.objects.create(
-                unit_id=product.unit_id,
+                territory_id=product.territory_id,
                 product=product,
                 spec_value=spec,
                 sort_order=idx,
