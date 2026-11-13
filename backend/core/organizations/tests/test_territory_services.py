@@ -309,15 +309,15 @@ class TestARegionIsNeverTakenForADealership:
                 apps=[{"app": "dms", "role": "dms.manager"}],
             )
 
-    def test_a_dms_request_may_file_at_a_region_but_never_the_root_or_a_warehouse(self):
+    def test_a_dms_request_may_file_at_a_region_or_the_root_but_never_a_warehouse(self):
         """
         CHANGED IN C72 PIECE 3 STEP 2 (the owner, 2026-11-13). This test used
         to pin "a region is never a record's home". A region is now the
         "regional pool" -- an enquiry no dealership has been chosen for yet,
-        seen at the region and above -- so `X-Unit-Id` naming one is honoured.
-        The root (head-office records are step 3) and a warehouse are still
-        never a record's home: the header is ignored and the request falls
-        back as if it named nothing.
+        seen at the region and above -- and the root the "head-office pool",
+        so `X-Unit-Id` naming either is honoured. A warehouse is still never a
+        DMS record's home (it is for stock): the header is ignored and the
+        request falls back as if it named nothing.
         """
         result = found()
         north = create_territory(organization=result.organization, kind=REGION, name="North")
@@ -336,8 +336,8 @@ class TestARegionIsNeverTakenForADealership:
             return TenantAPIView._resolve_territory_id(request, result.organization)
 
         assert filed_at(north) == north.pk
+        assert filed_at(root) == root.pk
         assert filed_at(store) == delhi.pk
-        assert filed_at(root) == delhi.pk
 
     def test_the_dealer_endpoints_answer_404_for_a_region(self):
         result = found()

@@ -283,6 +283,24 @@ class TestFilingANewRecord:
 
         assert home == t.north.pk
 
+    def test_head_office_may_file_at_the_head_office_pool(self, tenant_db):
+        """The root is a record's home too (the owner, 2026-11-13)."""
+        result = found(tenant=True)
+        t = build_tree(result.organization)
+
+        home = self.create(result, self.rep(result, "h@apex.test", [t.root]), header=t.root)
+
+        assert home == t.root.pk
+
+    def test_somebody_below_head_office_cannot_file_at_the_root(self, tenant_db):
+        """The root is above North, so outside a North person's subtree."""
+        result = found(tenant=True)
+        t = build_tree(result.organization)
+
+        home = self.create(result, self.rep(result, "n@apex.test", [t.north]), header=t.root)
+
+        assert home != t.root.pk
+
     def test_a_place_outside_their_subtree_is_ignored(self, tenant_db):
         result = found(tenant=True)
         t = build_tree(result.organization)

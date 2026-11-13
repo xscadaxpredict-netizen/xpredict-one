@@ -8,8 +8,17 @@ from core.organizations.selectors import (
 from core.permissions.models import AppCode
 from shared.base_models import allowed_territories
 
-# Where a record may live (C72 piece 3 step 2): never the root, never a warehouse.
-FILING_KINDS = (TerritoryKind.REGION, TerritoryKind.DEALER, TerritoryKind.BRANCH)
+# Where a DMS record may live (C72 piece 3 step 2; the root added by the owner,
+# 2026-11-13 -- the head-office pool). Never a warehouse: that is for stock.
+# ONE LIST FOR EVERY RECORD TYPE, AND ONLY UNTIL STEP 3, when each record type
+# declares its own `home_kinds` (enquiries here; manuals the root only; future
+# stock the root and warehouses) and a model that declares none fails a test.
+FILING_KINDS = (
+    TerritoryKind.ORGANISATION,
+    TerritoryKind.REGION,
+    TerritoryKind.DEALER,
+    TerritoryKind.BRANCH,
+)
 
 
 class TenantAPIView(OrgScopedAPIView):
@@ -76,9 +85,10 @@ class TenantAPIView(OrgScopedAPIView):
         The territory a new record is filed at -- its HOME (C72 piece 3 step 2).
 
         Records live where things are sold or managed: a dealership, a branch,
-        or a region -- a region being the "regional pool" for enquiries no
-        dealership has been chosen for yet (the owner, 2026-11-13, after Zoho).
-        Never the root (head-office records are step 3) and never a warehouse.
+        a region -- the "regional pool" for enquiries no dealership has been
+        chosen for yet (the owner, 2026-11-13, after Zoho) -- or the root, the
+        HEAD-OFFICE POOL, seen only by people placed at head office. Never a
+        warehouse. See `FILING_KINDS`.
 
         In this order:
 
