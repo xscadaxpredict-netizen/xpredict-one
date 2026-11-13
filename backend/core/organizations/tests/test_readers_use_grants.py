@@ -26,7 +26,7 @@ from core.organizations.selectors import (
     me,
     org_users,
     permissions_for,
-    resolve_allowed_units,
+    resolve_allowed_territories,
 )
 from core.organizations.services import create_dealer, grant_app_access, sign_up
 from core.permissions.models import AppCode, Role
@@ -89,7 +89,7 @@ class TestTheNewTablesAloneOpenTheApp:
 class TestWhichDealershipsADmsRequestSees:
     def test_the_root_sees_everything(self):
         result = found()
-        assert resolve_allowed_units(result.membership, AppCode.DMS) is None
+        assert resolve_allowed_territories(result.membership, AppCode.DMS) is None
 
     def test_one_dealership(self):
         result = found()
@@ -102,7 +102,7 @@ class TestWhichDealershipsADmsRequestSees:
             territories=[delhi],
         )
 
-        assert resolve_allowed_units(member, AppCode.DMS) == frozenset({delhi.pk})
+        assert resolve_allowed_territories(member, AppCode.DMS) == frozenset({delhi.pk})
 
     def test_several_dealerships_see_exactly_those(self):
         """Q10, answered: something `Membership.unit` could never hold."""
@@ -118,14 +118,14 @@ class TestWhichDealershipsADmsRequestSees:
             territories=[delhi, jaipur],
         )
 
-        assert resolve_allowed_units(member, AppCode.DMS) == frozenset({delhi.pk, jaipur.pk})
+        assert resolve_allowed_territories(member, AppCode.DMS) == frozenset({delhi.pk, jaipur.pk})
 
     def test_no_grant_sees_nothing_never_everything(self):
         """Fail closed: a missing grant is an empty set, not None."""
         result = found()
         member = bare_member(result.organization)
 
-        assert resolve_allowed_units(member, AppCode.DMS) == frozenset()
+        assert resolve_allowed_territories(member, AppCode.DMS) == frozenset()
 
 
 class TestWhichDealershipARequestWritesTo:
@@ -144,7 +144,7 @@ class TestWhichDealershipARequestWritesTo:
 
         def pick(header):
             request = SimpleNamespace(membership=member, headers={"X-Unit-Id": str(header)})
-            return TenantAPIView._resolve_unit_id(request, result.organization)
+            return TenantAPIView._resolve_territory_id(request, result.organization)
 
         assert pick(jaipur.pk) == jaipur.pk
         # A dealership they are not placed at is ignored, never honoured:

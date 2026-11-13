@@ -2,7 +2,7 @@
 Ecommerce models: EcommerceOrder, EcommerceOrderItem.
 
 These represent purchase orders placed by a dealer from the spares catalog
-against a confirmed site.  All inherit ``UnitScopedModel``.
+against a confirmed site.  All inherit ``TerritoryScopedModel``.
 """
 
 from __future__ import annotations
@@ -10,7 +10,7 @@ from __future__ import annotations
 from django.db import models
 from django.db.models import F
 
-from shared.base_models import UnitScopedModel
+from shared.base_models import TerritoryScopedModel
 
 # ============================================================================
 # EcommerceOrder
@@ -23,7 +23,7 @@ class OrderStatus(models.TextChoices):
     DELIVERED = "DELIVERED", "Delivered"
 
 
-class EcommerceOrder(UnitScopedModel):
+class EcommerceOrder(TerritoryScopedModel):
     """
     A spares purchase order placed against a confirmed site.
 
@@ -61,9 +61,9 @@ class EcommerceOrder(UnitScopedModel):
 
     class Meta:
         indexes = [
-            models.Index(fields=["unit_id", "status"]),
-            models.Index(fields=["unit_id", "-placed_at"]),
-            models.Index(fields=["unit_id", "site_id"]),
+            models.Index(fields=["territory_id", "status"]),
+            models.Index(fields=["territory_id", "-placed_at"]),
+            models.Index(fields=["territory_id", "site_id"]),
         ]
 
     def __str__(self) -> str:
@@ -74,7 +74,7 @@ class EcommerceOrder(UnitScopedModel):
 # EcommerceOrderItem
 # ============================================================================
 
-class EcommerceOrderItem(UnitScopedModel):
+class EcommerceOrderItem(TerritoryScopedModel):
     """
     A line item in a spares purchase order.
 
@@ -109,7 +109,7 @@ class EcommerceOrderItem(UnitScopedModel):
 
     class Meta:
         indexes = [
-            models.Index(fields=["unit_id", "order_id"]),
+            models.Index(fields=["territory_id", "order_id"]),
         ]
 
     def __str__(self) -> str:

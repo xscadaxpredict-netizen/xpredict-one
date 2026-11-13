@@ -324,7 +324,7 @@ class TestARegionIsNeverTakenForADealership:
             membership=result.membership, headers={"X-Unit-Id": str(north.pk)}
         )
 
-        assert TenantAPIView._resolve_unit_id(request, result.organization) == delhi.pk
+        assert TenantAPIView._resolve_territory_id(request, result.organization) == delhi.pk
 
     def test_the_dealer_endpoints_answer_404_for_a_region(self):
         result = found()

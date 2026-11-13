@@ -146,7 +146,7 @@ class TestRoles:
 
         The four resources in the difference have no dealership. `UserManual`,
         `MachineVideo`, `MarketingAsset` and `CalculatorSettings` inherit
-        `BaseModel`, so there is one copy per organisation and `allowed_units`
+        `BaseModel`, so there is one copy per organisation and `allowed_territories`
         does not confine them -- a unit-level grant would let one dealership's
         Manager change what every other dealership sees.
 
@@ -211,7 +211,7 @@ class TestRoles:
     def test_no_dealer_role_can_edit_the_organisations_shared_library(self):
         """
         C67: the four library resources have no `unit_id`, so one copy serves
-        every dealership and `allowed_units` cannot confine an edit to one. A
+        every dealership and `allowed_territories` cannot confine an edit to one. A
         unit-level grant lets one dealership change what all of them see.
 
         THIS FAILED ON EVERY DATABASE BUILT FROM SCRATCH until 2026-11-05, and

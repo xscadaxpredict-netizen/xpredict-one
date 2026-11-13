@@ -193,7 +193,7 @@ _MANAGER = [
     "dms.ticket.close",
     # The two UNIT-SCOPED tools. A store order and a saved calculation both
     # belong to one dealership, so a dealership's manager is the right person
-    # and `allowed_units` keeps them to their own either way.
+    # and `allowed_territories` keeps them to their own either way.
     "dms.store_order.create",
     "dms.store_order.manage",
     "dms.timer_calculation.delete",
@@ -202,8 +202,8 @@ _MANAGER = [
 # WHAT THE WHOLE ORGANISATION SHARES, and why it is not in `_MANAGER`.
 #
 # `UserManual`, `MachineVideo`, `MarketingAsset` and `CalculatorSettings` all
-# inherit `BaseModel`, not `UnitScopedModel` -- they have no `unit_id`. So
-# `allowed_units` does not filter them and cannot: there is one copy per
+# inherit `BaseModel`, not `TerritoryScopedModel` -- they have no `unit_id`. So
+# `allowed_territories` does not filter them and cannot: there is one copy per
 # organisation and every dealership reads it.
 #
 # That makes a unit-level grant the wrong shape rather than merely generous.
@@ -318,7 +318,7 @@ ROLES: dict[str, tuple[str, str, str, str, list[str]]] = {
         "org",
         "Reads every dealership. Changes nothing.",
         # Read-only is the only safe shape for somebody with no dealership:
-        # resolve_allowed_units() returns unrestricted, so they see everything.
+        # resolve_allowed_territories() returns unrestricted, so they see everything.
         # Exports are included because reporting across the group is the whole
         # point of the role -- "changes nothing" is about writes.
         [*_DMS_READS, *_DMS_EXPORTS],

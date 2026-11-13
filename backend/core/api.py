@@ -1,8 +1,8 @@
 from core.organizations.api.base import OrgScopedAPIView
 from core.organizations.models import Territory, TerritoryKind
-from core.organizations.selectors import permissions_for, resolve_allowed_units
+from core.organizations.selectors import permissions_for, resolve_allowed_territories
 from core.permissions.models import AppCode
-from shared.base_models import allowed_units
+from shared.base_models import allowed_territories
 
 
 class TenantAPIView(OrgScopedAPIView):
@@ -13,9 +13,9 @@ class TenantAPIView(OrgScopedAPIView):
     refuses users of a closed dealership (C63) and requires the permission
     declaration below, all before the handler runs.
 
-    On top of that it sets `request.membership` and `request.unit_id` -- the
+    On top of that it sets `request.membership` and `request.territory_id` -- the
     dealership new unit-scoped rows are written to -- both read from the
-    person's DMS grant (C72 step 2b; see `_resolve_unit_id`).
+    person's DMS grant (C72 step 2b; see `_resolve_territory_id`).
     """
 
     app_code: str = AppCode.DMS
@@ -42,12 +42,12 @@ class TenantAPIView(OrgScopedAPIView):
     def initial(self, request, *args, **kwargs):
         super().initial(request, *args, **kwargs)
         request.membership = self.membership
-        request.unit_id = self._resolve_unit_id(request, self.organization)
+        request.territory_id = self._resolve_territory_id(request, self.organization)
 
         # Enforce dealer isolation for all unit-scoped models (Enquiries, Quotations, Job cards,
         # etc.)
-        allowed = resolve_allowed_units(self.membership, self.app_code)
-        allowed_units.set(allowed)
+        allowed = resolve_allowed_territories(self.membership, self.app_code)
+        allowed_territories.set(allowed)
 
     @property
     def is_manager_or_admin(self) -> bool:
@@ -64,12 +64,12 @@ class TenantAPIView(OrgScopedAPIView):
         )
 
     @staticmethod
-    def _resolve_unit_id(request, organization, app: str = AppCode.DMS):
+    def _resolve_territory_id(request, organization, app: str = AppCode.DMS):
         """
         The dealership this request writes new records to.
 
         CHOSEN AMONG THE DEALERSHIPS THE PERSON'S GRANT ALLOWS (C72 step 2b),
-        read through `resolve_allowed_units()` rather than `Membership.unit`.
+        read through `resolve_allowed_territories()` rather than `Membership.unit`.
         Placed at one dealership, that is the only candidate -- the answer it
         always was. Placed at the root, every dealership is a candidate, and
         `X-Unit-Id` picks one, else the first created -- as before. Placed at
@@ -79,7 +79,7 @@ class TenantAPIView(OrgScopedAPIView):
         honoured: it is how a person would otherwise file a record somewhere
         they cannot see.
         """
-        allowed = resolve_allowed_units(request.membership, app)
+        allowed = resolve_allowed_territories(request.membership, app)
         dealers = Territory.objects.filter(organization=organization, kind=TerritoryKind.DEALER)
         if allowed is not None:
             dealers = dealers.filter(id__in=allowed)

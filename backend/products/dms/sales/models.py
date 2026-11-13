@@ -2,8 +2,8 @@
 Sales models: Customer, BankAccount, Enquiry, Followup,
 ProductCatalog, ProductSpec, Quotation, QuotationItem, ConfirmedSite.
 
-Every model that a dealer owns inherits ``UnitScopedModel``, which supplies
-``unit_id`` and a default manager that filters by the caller's dealer.
+Every model that a dealer owns inherits ``TerritoryScopedModel``, which supplies
+``territory_id`` and a default manager that filters by the caller's dealer.
 
 Cross-database references (to users, territories) are **plain UUIDs**,
 never a ForeignKey — the router refuses cross-database relations.
@@ -19,13 +19,13 @@ from __future__ import annotations
 from django.db import models
 from django.db.models import F, Value
 
-from shared.base_models import UnitScopedModel
+from shared.base_models import TerritoryScopedModel
 
 # ============================================================================
 # Customer
 # ============================================================================
 
-class Customer(UnitScopedModel):
+class Customer(TerritoryScopedModel):
     """
     A customer managed by a specific dealership.
 
@@ -47,8 +47,8 @@ class Customer(UnitScopedModel):
 
     class Meta:
         indexes = [
-            models.Index(fields=["unit_id", "name"]),
-            models.Index(fields=["unit_id", "-created_at"]),
+            models.Index(fields=["territory_id", "name"]),
+            models.Index(fields=["territory_id", "-created_at"]),
         ]
 
     def __str__(self) -> str:
@@ -59,7 +59,7 @@ class Customer(UnitScopedModel):
 # BankAccount
 # ============================================================================
 
-class BankAccount(UnitScopedModel):
+class BankAccount(TerritoryScopedModel):
     """
     Dealer's bank account shown on quotation PDFs.
 
@@ -75,7 +75,7 @@ class BankAccount(UnitScopedModel):
 
     class Meta:
         indexes = [
-            models.Index(fields=["unit_id", "is_default"]),
+            models.Index(fields=["territory_id", "is_default"]),
         ]
 
     def __str__(self) -> str:
@@ -100,7 +100,7 @@ class EnquirySource(models.TextChoices):
     OTHER = "OTHER", "Other"
 
 
-class Enquiry(UnitScopedModel):
+class Enquiry(TerritoryScopedModel):
     """
     A sales enquiry from a prospective or existing customer.
 
@@ -147,8 +147,8 @@ class Enquiry(UnitScopedModel):
     class Meta:
         verbose_name_plural = "enquiries"
         indexes = [
-            models.Index(fields=["unit_id", "status"]),
-            models.Index(fields=["unit_id", "-created_at"]),
+            models.Index(fields=["territory_id", "status"]),
+            models.Index(fields=["territory_id", "-created_at"]),
         ]
 
     def __str__(self) -> str:
@@ -159,7 +159,7 @@ class Enquiry(UnitScopedModel):
 # Followup
 # ============================================================================
 
-class Followup(UnitScopedModel):
+class Followup(TerritoryScopedModel):
     """
     A follow-up entry on an enquiry.
 
@@ -177,7 +177,7 @@ class Followup(UnitScopedModel):
 
     class Meta:
         indexes = [
-            models.Index(fields=["unit_id", "-created_at"]),
+            models.Index(fields=["territory_id", "-created_at"]),
         ]
         ordering = ["-created_at"]
 
@@ -195,14 +195,14 @@ class ProductType(models.TextChoices):
     SPARES = "SPARES", "Spares"
 
 
-class ProductCatalog(UnitScopedModel):
+class ProductCatalog(TerritoryScopedModel):
     """
     A product in a dealer's catalog.
 
     Frontend ref: ProductPreset interface — type, description, hsn,
     base_price, margin, gst_rate.
 
-    Schema review #05: per-dealer products (inherits UnitScopedModel).
+    Schema review #05: per-dealer products (inherits TerritoryScopedModel).
     """
 
     product_type = models.CharField(
@@ -228,8 +228,8 @@ class ProductCatalog(UnitScopedModel):
 
     class Meta:
         indexes = [
-            models.Index(fields=["unit_id", "product_type"]),
-            models.Index(fields=["unit_id", "is_active"]),
+            models.Index(fields=["territory_id", "product_type"]),
+            models.Index(fields=["territory_id", "is_active"]),
         ]
 
     def __str__(self) -> str:
@@ -240,7 +240,7 @@ class ProductCatalog(UnitScopedModel):
 # ProductSpec
 # ============================================================================
 
-class ProductSpec(UnitScopedModel):
+class ProductSpec(TerritoryScopedModel):
     """
     A specification line for a product (e.g. "Flow Rate: 1000 LPH").
 
@@ -260,7 +260,7 @@ class ProductSpec(UnitScopedModel):
     class Meta:
         ordering = ["sort_order"]
         indexes = [
-            models.Index(fields=["unit_id", "product_id"]),
+            models.Index(fields=["territory_id", "product_id"]),
         ]
 
     def __str__(self) -> str:
@@ -290,11 +290,11 @@ class QuotationStatus(models.TextChoices):
     EXPIRED = "EXPIRED", "Expired"
 
 
-class Quotation(UnitScopedModel):
+class Quotation(TerritoryScopedModel):
     """
     A price quotation linked to an enquiry (NORMAL) or a site (AMC).
 
-    Schema review #08: ``unit_id`` handles scoping. Snapshot fields
+    Schema review #08: ``territory_id`` handles scoping. Snapshot fields
     (from_*, to_*) lock the printed address at creation time so the
     quote PDF never silently reprints with new data.
 
@@ -374,13 +374,13 @@ class Quotation(UnitScopedModel):
 
     class Meta:
         indexes = [
-            models.Index(fields=["unit_id", "status"]),
-            models.Index(fields=["unit_id", "quote_type"]),
-            models.Index(fields=["unit_id", "-created_at"]),
+            models.Index(fields=["territory_id", "status"]),
+            models.Index(fields=["territory_id", "quote_type"]),
+            models.Index(fields=["territory_id", "-created_at"]),
         ]
         constraints = [
             models.UniqueConstraint(
-                fields=["unit_id", "quote_no"],
+                fields=["territory_id", "quote_no"],
                 name="uq_quotation_unit_quote_no",
             ),
         ]
@@ -393,11 +393,11 @@ class Quotation(UnitScopedModel):
 # QuotationItem
 # ============================================================================
 
-class QuotationItem(UnitScopedModel):
+class QuotationItem(TerritoryScopedModel):
     """
     A line item on a quotation — snapshots the product's price at quote time.
 
-    Schema review #01: every table carries its own ``unit_id``.
+    Schema review #01: every table carries its own ``territory_id``.
     Schema review — "quotation_item snapshots the product": description,
     hsn_code, base_price, margin, gst_rate are all locked at creation.
 
@@ -459,7 +459,7 @@ class QuotationItem(UnitScopedModel):
 
     class Meta:
         indexes = [
-            models.Index(fields=["unit_id", "quotation_id"]),
+            models.Index(fields=["territory_id", "quotation_id"]),
         ]
         ordering = ["created_at"]
 
@@ -471,7 +471,7 @@ class QuotationItem(UnitScopedModel):
 # ConfirmedSite
 # ============================================================================
 
-class ConfirmedSite(UnitScopedModel):
+class ConfirmedSite(TerritoryScopedModel):
     """
     A confirmed installation site — the pivot point of the entire system.
 
@@ -513,12 +513,12 @@ class ConfirmedSite(UnitScopedModel):
 
     class Meta:
         indexes = [
-            models.Index(fields=["unit_id", "is_active"]),
-            models.Index(fields=["unit_id", "-created_at"]),
+            models.Index(fields=["territory_id", "is_active"]),
+            models.Index(fields=["territory_id", "-created_at"]),
         ]
         constraints = [
             models.UniqueConstraint(
-                fields=["unit_id", "oc_number"],
+                fields=["territory_id", "oc_number"],
                 name="uq_site_unit_oc_number",
                 condition=~models.Q(oc_number=""),
             ),

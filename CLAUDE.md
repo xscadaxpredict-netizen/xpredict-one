@@ -65,9 +65,13 @@ warehouses — C72), and dealers manage their own scoped users. CRM and E-commer
 no territories yet; their users belong to the organization directly.
 
 **SAY "TERRITORY", NEVER "BUSINESS UNIT"** (the owner, 2026-11-06). The model was
-renamed from `BusinessUnit`. Where "unit" survives — tenant `unit_id` columns,
-`Invitation.unit`, `allowed_units`, `resolve_allowed_units()` — it means territory and
-is renamed in C72 pieces 3, 5 and 7. (`Membership.unit` is gone: step 2d-3.)
+renamed from `BusinessUnit`. **DMS records carry `territory_id`** (C72 piece 3 step 1,
+was `unit_id`), scoped by `TerritoryScopedModel` / `allowed_territories` /
+`resolve_allowed_territories()` / `territory_scope()`. Where "unit" survives —
+`Invitation.unit` (piece 5), `App.unit_aware`, `UnitStatus`, and the API's `unit_*` fields
+and `X-Unit-Id` header (piece 7) — it means territory. (`Membership.unit` is gone: 2d-3.)
+**Renaming the tenant column was a TENANT migration**: production needs
+`migrate_all_tenants` run by hand (C69) before or with that deploy.
 
 **Build order: DMS first.** CRM later. **E-commerce is deferred** — do not design its
 roles, permissions or models until it is explicitly picked up.
@@ -204,8 +208,8 @@ DMS view inherits `TenantAPIView`. A product base class needs its own assertion 
 inheriting a rule is not the same as being covered by its test.
 
 **WHICH ROLE MAY WRITE FOLLOWS THE SCOPE OF THE DATA, NOT SENIORITY (C67).** A
-`UnitScopedModel` row belongs to one dealership, so a Manager may write it and
-`allowed_units` confines them. A `BaseModel` row has no `unit_id` — one copy per
+`TerritoryScopedModel` row belongs to one dealership, so a Manager may write it and
+`allowed_territories` confines them. A `BaseModel` row has no `territory_id` — one copy per
 organisation, read by every dealership — so it is granted at organisation level only,
 to `dms.group_operations`. Notably **not** to `dms.system_admin`, which sounds like an
 admin and is unit-level; a test asserts that absence so reversing it is deliberate.

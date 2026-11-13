@@ -270,7 +270,7 @@ class TestTheGrantsMatchTheScopeOfTheData:
     """
     WHICH ROLE GETS WHAT, and the reason it is not seniority.
 
-    Store orders and saved calculations inherit `UnitScopedModel`, so they
+    Store orders and saved calculations inherit `TerritoryScopedModel`, so they
     belong to one dealership and a Manager is the right audience. Manuals,
     videos, marketing material and the calculator constants inherit
     `BaseModel` -- no `unit_id`, one copy per organisation, read by every

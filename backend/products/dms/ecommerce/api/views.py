@@ -31,7 +31,7 @@ class CatalogListView(TenantAPIView):
 
 class OrderListCreateView(TenantAPIView):
     # Reading your dealership's orders is open; PLACING one commits the
-    # dealership to a purchase, so it is a Manager's call. `allowed_units`
+    # dealership to a purchase, so it is a Manager's call. `allowed_territories`
     # already confines both to the caller's own dealership.
     required_permissions: ClassVar[list[str]] = []
     method_permissions: ClassVar[dict[str, list[str]]] = {
@@ -47,7 +47,7 @@ class OrderListCreateView(TenantAPIView):
         payload = OrderCreateSerializer(data=request.data)
         payload.is_valid(raise_exception=True)
         order = services.place_order(
-            unit_id=request.unit_id,
+            territory_id=request.territory_id,
             **payload.validated_data
         )
         order_fetched = selectors.get_order(order_id=order.id)

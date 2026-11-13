@@ -26,7 +26,7 @@ only for a record the caller is entitled to see but not to act on this way.
 Getting this backwards leaks which dealers exist and how many records they hold.
 
 In practice the default manager already produces the right answer: a
-`UnitScopedModel` query for another dealer's row returns nothing, so the
+`TerritoryScopedModel` query for another dealer's row returns nothing, so the
 selector returns None and the service raises `NotFoundError` without anyone
 making a judgement call.
 """

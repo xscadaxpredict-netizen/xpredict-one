@@ -1,5 +1,5 @@
 """
-`allowed_units` has three states, and "nobody decided" refuses.
+`allowed_territories` has three states, and "nobody decided" refuses.
 
 Before this, the dealership scope had two: a set of dealerships, or None for
 "every dealership". The middleware reset it to None per request, so None also
@@ -8,9 +8,9 @@ dealership's records. A view not built on `TenantAPIView`, a Celery task, a
 management command: each would have shown a dealer everybody's enquiries with
 nothing in any log. Fail-open, the one thing the tenancy rules forbid.
 
-Now the middleware resets it to `NOT_SET`, and `UnitScopedManager` raises on
+Now the middleware resets it to `NOT_SET`, and `TerritoryScopedManager` raises on
 that. The tests below pin each state, the reset, the escape hatches
-(`unit_scope(None)` and `all_units`), and the two public sign-link endpoints
+(`territory_scope(None)` and `all_territories`), and the two public sign-link endpoints
 that were reading "every dealership" by accident and now say so on purpose.
 """
 
@@ -38,7 +38,12 @@ from core.organizations.models import (
 )
 from products.dms.sales.models import ConfirmedSite, Customer, Enquiry
 from products.dms.site_services.models import ReportAttachment, ServiceReport
-from shared.base_models import NOT_SET, UnitScopeMissingError, allowed_units, unit_scope
+from shared.base_models import (
+    NOT_SET,
+    TerritoryScopeMissingError,
+    allowed_territories,
+    territory_scope,
+)
 
 pytestmark = [
     pytest.mark.django_db(databases=["default", TEST_TENANT_ALIAS]),
@@ -60,7 +65,7 @@ class ForgetfulDmsReader(OrgScopedAPIView):
     required_permissions: ClassVar[list[str]] = []
 
     def get(self, request: Request, org_slug: str) -> Response:
-        seen_inside.append(allowed_units.get())
+        seen_inside.append(allowed_territories.get())
         return Response({"count": Enquiry.objects.count()})
 
 
@@ -110,9 +115,9 @@ def make_member(organization) -> User:
     return user
 
 
-def enquiry_at(unit_id: uuid.UUID) -> Enquiry:
-    with unit_scope(None):
-        return Enquiry.objects.create(unit_id=unit_id, customer_name="C", phone="1")
+def enquiry_at(territory_id: uuid.UUID) -> Enquiry:
+    with territory_scope(None):
+        return Enquiry.objects.create(territory_id=territory_id, customer_name="C", phone="1")
 
 
 # ---------------------------------------------------------------------------
@@ -122,23 +127,23 @@ def enquiry_at(unit_id: uuid.UUID) -> Enquiry:
 
 class TestNobodyDecidedRefuses:
     def test_the_default_is_not_set(self):
-        assert allowed_units.get() is NOT_SET
+        assert allowed_territories.get() is NOT_SET
 
     def test_a_query_with_no_scope_raises(self, tenant_db):
-        with pytest.raises(UnitScopeMissingError, match="Enquiry"):
+        with pytest.raises(TerritoryScopeMissingError, match="Enquiry"):
             list(Enquiry.objects.all())
 
     def test_creating_through_objects_raises_too(self, tenant_db):
         """`.objects.create()` goes through the same manager."""
-        with pytest.raises(UnitScopeMissingError):
-            Enquiry.objects.create(unit_id=uuid.uuid4(), customer_name="C", phone="1")
+        with pytest.raises(TerritoryScopeMissingError):
+            Enquiry.objects.create(territory_id=uuid.uuid4(), customer_name="C", phone="1")
 
     def test_all_units_is_unaffected(self, tenant_db):
         """The deliberate escape hatch reads every dealership, scope or not."""
         delhi, jaipur = uuid.uuid4(), uuid.uuid4()
         a, b = enquiry_at(delhi), enquiry_at(jaipur)
 
-        ids = set(Enquiry.all_units.filter(pk__in=[a.pk, b.pk]).values_list("pk", flat=True))
+        ids = set(Enquiry.all_territories.filter(pk__in=[a.pk, b.pk]).values_list("pk", flat=True))
 
         assert ids == {a.pk, b.pk}
 
@@ -147,7 +152,7 @@ class TestADecisionIsHonoured:
     def test_none_is_every_dealership(self, tenant_db):
         a, b = enquiry_at(uuid.uuid4()), enquiry_at(uuid.uuid4())
 
-        with unit_scope(None):
+        with territory_scope(None):
             ids = set(Enquiry.objects.values_list("pk", flat=True))
 
         assert {a.pk, b.pk} <= ids
@@ -156,7 +161,7 @@ class TestADecisionIsHonoured:
         delhi, jaipur = uuid.uuid4(), uuid.uuid4()
         a, b = enquiry_at(delhi), enquiry_at(jaipur)
 
-        with unit_scope(frozenset({delhi})):
+        with territory_scope(frozenset({delhi})):
             ids = set(Enquiry.objects.values_list("pk", flat=True))
 
         assert a.pk in ids
@@ -165,30 +170,30 @@ class TestADecisionIsHonoured:
     def test_an_empty_set_is_nothing(self, tenant_db):
         enquiry_at(uuid.uuid4())
 
-        with unit_scope(frozenset()):
+        with territory_scope(frozenset()):
             assert Enquiry.objects.count() == 0
 
 
 class TestUnitScopePutsItBack:
     def test_restored_on_the_way_out(self):
-        with unit_scope(frozenset()):
+        with territory_scope(frozenset()):
             pass
 
-        assert allowed_units.get() is NOT_SET
+        assert allowed_territories.get() is NOT_SET
 
     def test_restored_when_the_code_inside_raises(self):
-        with pytest.raises(ValueError), unit_scope(None):
+        with pytest.raises(ValueError), territory_scope(None):
             raise ValueError
 
-        assert allowed_units.get() is NOT_SET
+        assert allowed_territories.get() is NOT_SET
 
     def test_a_nested_scope_does_not_leak_outwards(self):
         delhi = frozenset({uuid.uuid4()})
 
-        with unit_scope(delhi):
-            with unit_scope(None):
+        with territory_scope(delhi):
+            with territory_scope(None):
                 pass
-            assert allowed_units.get() == delhi
+            assert allowed_territories.get() == delhi
 
 
 # ---------------------------------------------------------------------------
@@ -214,9 +219,9 @@ class TestARequestStartsUndecided:
         client = APIClient()
         client.force_authenticate(user=make_member(organization))
 
-        with unit_scope(None):
+        with territory_scope(None):
             response = client.get(f"/api/v1/orgs/{organization.slug}/forgetful/")
-            assert allowed_units.get() is None
+            assert allowed_territories.get() is None
 
         assert seen_inside == [NOT_SET]
         assert response.status_code == 500
@@ -227,19 +232,21 @@ class TestARequestStartsUndecided:
 # ---------------------------------------------------------------------------
 
 
-def report_at(unit_id: uuid.UUID) -> ServiceReport:
-    with unit_scope(None):
-        enquiry = Enquiry.objects.create(unit_id=unit_id, customer_name="C", phone="1")
-        customer = Customer.objects.create(unit_id=unit_id, name="Customer")
-        site = ConfirmedSite.objects.create(unit_id=unit_id, enquiry=enquiry, customer=customer)
+def report_at(territory_id: uuid.UUID) -> ServiceReport:
+    with territory_scope(None):
+        enquiry = Enquiry.objects.create(territory_id=territory_id, customer_name="C", phone="1")
+        customer = Customer.objects.create(territory_id=territory_id, name="Customer")
+        site = ConfirmedSite.objects.create(
+            territory_id=territory_id, enquiry=enquiry, customer=customer
+        )
         report = ServiceReport.objects.create(
-            unit_id=unit_id,
+            territory_id=territory_id,
             site=site,
             service_date=date(2026, 11, 12),
             service_person_name="Tech",
         )
         ReportAttachment.objects.create(
-            unit_id=unit_id, service_report=report, file="reports/attachments/a.pdf"
+            territory_id=territory_id, service_report=report, file="reports/attachments/a.pdf"
         )
     return report
 
@@ -278,5 +285,5 @@ class TestThePublicSignLink:
         )
 
         assert response.status_code == 200
-        with unit_scope(None):
+        with territory_scope(None):
             assert ServiceReport.objects.get(pk=report.pk).client_name == "Customer"

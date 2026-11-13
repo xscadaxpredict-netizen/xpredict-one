@@ -31,7 +31,7 @@ from core.organizations.models import (
     Organization,
     OrganizationStatus,
 )
-from shared.base_models import NOT_SET, allowed_units
+from shared.base_models import NOT_SET, allowed_territories
 
 pytestmark = pytest.mark.django_db(databases=["default", TEST_TENANT_ALIAS])
 
@@ -250,7 +250,7 @@ class TestResetting:
         client.get(url_for(organization))
 
         # Back to "nobody has decided" -- not None, which means "everything".
-        assert allowed_units.get() is NOT_SET
+        assert allowed_territories.get() is NOT_SET
 
     def test_nothing_is_bound_for_a_request_outside_orgs(self, client):
         """

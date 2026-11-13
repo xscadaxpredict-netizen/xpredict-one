@@ -1,18 +1,18 @@
 """
 Tech Support models: UserManual, MachineVideo, CallRequest.
 
-UserManual and MachineVideo inherit ``BaseModel`` (org-level, no unit_id)
+UserManual and MachineVideo inherit ``BaseModel`` (org-level, no territory_id)
 because they are admin-uploaded content visible to ALL dealers within an
 organisation (schema review #04).
 
-CallRequest inherits ``UnitScopedModel`` because it is dealer-specific.
+CallRequest inherits ``TerritoryScopedModel`` because it is dealer-specific.
 """
 
 from __future__ import annotations
 
 from django.db import models
 
-from shared.base_models import BaseModel, UnitScopedModel
+from shared.base_models import BaseModel, TerritoryScopedModel
 
 # ============================================================================
 # UserManual
@@ -84,7 +84,7 @@ class CallStatus(models.TextChoices):
     CANCELLED = "CANCELLED", "Cancelled"
 
 
-class CallRequest(UnitScopedModel):
+class CallRequest(TerritoryScopedModel):
     """
     A request for a tech support call from a dealer or technician.
 
@@ -113,8 +113,8 @@ class CallRequest(UnitScopedModel):
 
     class Meta:
         indexes = [
-            models.Index(fields=["unit_id", "status"]),
-            models.Index(fields=["unit_id", "-created_at"]),
+            models.Index(fields=["territory_id", "status"]),
+            models.Index(fields=["territory_id", "-created_at"]),
         ]
 
     def __str__(self) -> str:

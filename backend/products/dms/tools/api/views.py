@@ -22,7 +22,7 @@ from .serializers import (
 
 
 class MarketingAssetListView(TenantAPIView):
-    # Organisation-wide material (`BaseModel`, no unit_id): any member may
+    # Organisation-wide material (`BaseModel`, no territory_id): any member may
     # read it, only the organisation-level role may add to it.
     required_permissions: ClassVar[list[str]] = []
     method_permissions: ClassVar[dict[str, list[str]]] = {
@@ -65,7 +65,7 @@ class MarketingAssetDetailView(TenantAPIView):
 
 class TimerCalculationListView(TenantAPIView):
     # SAVING A CALCULATION IS USING THE TOOL, so POST needs nothing: the row
-    # inherits `UnitScopedModel` and lands at the caller's own dealership.
+    # inherits `TerritoryScopedModel` and lands at the caller's own dealership.
     # Removing somebody's saved work is the Manager's call, below.
     required_permissions: ClassVar[list[str]] = []
 

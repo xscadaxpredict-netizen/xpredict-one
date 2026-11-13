@@ -21,7 +21,7 @@ from core.organizations.services import grant_app_access
 from core.permissions.models import AppCode, Role
 from products.dms.sales import selectors
 from products.dms.sales.models import Enquiry
-from shared.base_models import allowed_units, unit_scope
+from shared.base_models import allowed_territories, territory_scope
 
 pytestmark = pytest.mark.django_db(databases=["default", TEST_TENANT_ALIAS])
 
@@ -59,7 +59,7 @@ def create_dealer_user(org, unit, email, role_code="dms.sales_representative"):
 
 class TestDealerAndColleagueIsolation:
     def test_enquiry_selectors_dealer_scoping(self):
-        """allowed_units filters enquiries by dealership."""
+        """allowed_territories filters enquiries by dealership."""
         dealer_a = uuid.uuid4()
         dealer_b = uuid.uuid4()
         user_a1 = uuid.uuid4()
@@ -69,39 +69,39 @@ class TestDealerAndColleagueIsolation:
         token_db = current_tenant_db.set(TEST_TENANT_ALIAS)
         try:
             # Built at both dealerships, so said on purpose: every dealership.
-            with unit_scope(None):
+            with territory_scope(None):
                 enq_a = Enquiry.objects.create(
-                    unit_id=dealer_a,
+                    territory_id=dealer_a,
                     customer_name="Customer A",
                     phone="1234567890",
                     created_by_user_id=user_a1,
                 )
                 enq_b = Enquiry.objects.create(
-                    unit_id=dealer_b,
+                    territory_id=dealer_b,
                     customer_name="Customer B",
                     phone="9876543210",
                     created_by_user_id=user_b1,
                 )
 
-            # 1. When allowed_units is scoped to Dealer A
-            token_units = allowed_units.set(frozenset({dealer_a}))
+            # 1. When allowed_territories is scoped to Dealer A
+            token_units = allowed_territories.set(frozenset({dealer_a}))
             try:
                 enquiries_a = list(selectors.list_enquiries(is_manager_or_admin=True))
                 enquiry_ids_a = [e.id for e in enquiries_a]
                 assert enq_a.id in enquiry_ids_a
                 assert enq_b.id not in enquiry_ids_a
             finally:
-                allowed_units.reset(token_units)
+                allowed_territories.reset(token_units)
 
-            # 2. When allowed_units is scoped to Dealer B
-            token_units_b = allowed_units.set(frozenset({dealer_b}))
+            # 2. When allowed_territories is scoped to Dealer B
+            token_units_b = allowed_territories.set(frozenset({dealer_b}))
             try:
                 enquiries_b = list(selectors.list_enquiries(is_manager_or_admin=True))
                 enquiry_ids_b = [e.id for e in enquiries_b]
                 assert enq_b.id in enquiry_ids_b
                 assert enq_a.id not in enquiry_ids_b
             finally:
-                allowed_units.reset(token_units_b)
+                allowed_territories.reset(token_units_b)
 
         finally:
             current_tenant_db.reset(token_db)
@@ -113,16 +113,16 @@ class TestDealerAndColleagueIsolation:
         user_rep2 = uuid.uuid4()
 
         token_db = current_tenant_db.set(TEST_TENANT_ALIAS)
-        token_units = allowed_units.set(frozenset({dealer_a}))
+        token_units = allowed_territories.set(frozenset({dealer_a}))
         try:
             enq1 = Enquiry.objects.create(
-                unit_id=dealer_a,
+                territory_id=dealer_a,
                 customer_name="Rep 1 Lead",
                 phone="1111111111",
                 created_by_user_id=user_rep1,
             )
             enq2 = Enquiry.objects.create(
-                unit_id=dealer_a,
+                territory_id=dealer_a,
                 customer_name="Rep 2 Lead",
                 phone="2222222222",
                 created_by_user_id=user_rep2,
@@ -165,7 +165,7 @@ class TestDealerAndColleagueIsolation:
             assert enq2.id in mgr_ids
 
         finally:
-            allowed_units.reset(token_units)
+            allowed_territories.reset(token_units)
             current_tenant_db.reset(token_db)
 
     def test_api_dealer_and_colleague_isolation(self):
@@ -284,8 +284,8 @@ class TestDealerAndColleagueIsolation:
         THE ONLY TEST HERE THAT FAILS WHEN DEALER SCOPING IS REMOVED, and it
         exists because a revert showed the other three do not.
 
-        The two selector tests above set `allowed_units` by hand and never
-        reach a view, so they exercise `UnitScopedManager` rather than the
+        The two selector tests above set `allowed_territories` by hand and never
+        reach a view, so they exercise `TerritoryScopedManager` rather than the
         wiring in `TenantAPIView.initial()` that was the actual bug. And
         `test_api_dealer_and_colleague_isolation` does go through the API, but
         its reader is a REP at the other dealership -- colleague privacy hides

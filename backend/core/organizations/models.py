@@ -312,11 +312,11 @@ class Territory(MP_Node, BaseModel):
     name to match the idea. The table moved with it; the rows, their ids and
     everything pointing at them did not change.
 
-    "UNIT" STILL APPEARS ELSEWHERE, ON PURPOSE AND FOR NOW. `unit_id` on every
-    tenant table, `Membership.unit`, `allowed_units` and `resolve_allowed_units()`
-    all mean "territory". They are renamed in C72 piece 3 (the tenant column
-    needs a tenant migration, run by hand on the server) and piece 7 (the API
-    fields the frontend reads); `Membership.unit` goes away in piece 2.
+    "UNIT" STILL APPEARS ELSEWHERE, ON PURPOSE AND FOR NOW. `Invitation.unit`
+    (piece 5), `App.unit_aware`, `UnitStatus` and the API's `unit_*` fields and
+    `X-Unit-Id` header (piece 7) all mean "territory". The tenant column became
+    `territory_id` in C72 piece 3 step 1, with `allowed_territories` and
+    `resolve_allowed_territories()`; `Membership.unit` went in piece 2.
 
     Only DMS is unit-aware (C5). CRM and E-commerce ignore these entirely, which
     is why unit scope lives on `Membership` and is read through one resolver
@@ -515,7 +515,7 @@ class Membership(BaseModel):
 
     THE OWNER HOLDS EVERYTHING BY RULE, NOT BY ROWS (C72): every permission in
     every app the organisation subscribes to, plus Administration, everywhere
-    in the territory tree. `_membership_data()` and `resolve_allowed_units()`
+    in the territory tree. `_membership_data()` and `resolve_allowed_territories()`
     ask this flag first. Grant rows would need topping up whenever an app, role
     or permission is added, and the first one forgotten leaves the one account
     that can never be locked out short of something.

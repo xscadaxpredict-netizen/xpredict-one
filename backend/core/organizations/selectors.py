@@ -1,7 +1,7 @@
 """
 Read logic for memberships, unit scope, and the `/me` payload.
 
-`resolve_allowed_units()` is the one function that turns "where does this
+`resolve_allowed_territories()` is the one function that turns "where does this
 person's grant for this app place them" into "which dealerships may this query
 see" (C7, C72) --- one place to be right, one place to test.
 
@@ -58,13 +58,13 @@ GRANTS_PREFETCH: tuple[str | Prefetch, ...] = (
 )
 
 
-def resolve_allowed_units(membership: Membership, app: str) -> frozenset[uuid.UUID] | None:
+def resolve_allowed_territories(membership: Membership, app: str) -> frozenset[uuid.UUID] | None:
     """
     Which dealerships this membership may see inside this app.
 
     `None` MEANS UNRESTRICTED AND IS NOT THE SAME AS AN EMPTY SET. None says
     "do not filter"; an empty set would say "restricted to nothing", which
-    matches no rows at all. `UnitScopedManager` reads this distinction
+    matches no rows at all. `TerritoryScopedManager` reads this distinction
     directly, so returning the wrong one is the difference between a fleet
     manager seeing everything and seeing nothing.
 
@@ -106,7 +106,7 @@ def resolve_allowed_units(membership: Membership, app: str) -> frozenset[uuid.UU
 # ---------------------------------------------------------------------------
 # Where a person sits, ACROSS ALL THEIR GRANTS (C72 step 2c, commit 3).
 #
-# `resolve_allowed_units()` answers a per-app question -- which dealerships does
+# `resolve_allowed_territories()` answers a per-app question -- which dealerships does
 # a DMS request see. These answer the organisation's questions -- whose people
 # may this person administer, are they shut out by a closure, what does `/me`
 # call them -- which used to be read from `Membership.role` and

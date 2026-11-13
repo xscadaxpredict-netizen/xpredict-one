@@ -1,5 +1,5 @@
 """
-`resolve_allowed_units()` and the `/me` payload.
+`resolve_allowed_territories()` and the `/me` payload.
 
 These are the scoping and entitlement rules, so they are written against the
 decisions rather than against the code: every module list and permission count
@@ -33,7 +33,7 @@ from core.organizations.models import (
     Territory,
     UnitStatus,
 )
-from core.organizations.selectors import me, resolve_allowed_units
+from core.organizations.selectors import me, resolve_allowed_territories
 from core.organizations.services import grant_app_access, sign_up
 from core.permissions.models import AppCode, Permission, Role
 
@@ -82,12 +82,12 @@ class TestResolveAllowedUnits:
         unit = Territory.objects.create(organization=result.organization, name="Whitefield")
         _, membership = add_dealer_admin(result.organization, unit)
 
-        assert resolve_allowed_units(membership, AppCode.DMS) == frozenset({unit.id})
+        assert resolve_allowed_territories(membership, AppCode.DMS) == frozenset({unit.id})
 
     def test_an_organization_wide_person_is_unrestricted_in_dms(self):
         result = found()
 
-        assert resolve_allowed_units(result.membership, AppCode.DMS) is None
+        assert resolve_allowed_territories(result.membership, AppCode.DMS) is None
 
     def test_a_dealer_scoped_person_is_unrestricted_in_crm(self):
         """
@@ -101,7 +101,7 @@ class TestResolveAllowedUnits:
         unit = Territory.objects.create(organization=result.organization, name="Whitefield")
         _, membership = add_dealer_admin(result.organization, unit)
 
-        assert resolve_allowed_units(membership, AppCode.CRM) is None
+        assert resolve_allowed_territories(membership, AppCode.CRM) is None
 
     def test_none_is_returned_rather_than_an_empty_set(self):
         """
@@ -111,8 +111,8 @@ class TestResolveAllowedUnits:
         """
         result = found()
 
-        assert resolve_allowed_units(result.membership, AppCode.DMS) is not frozenset()
-        assert resolve_allowed_units(result.membership, AppCode.DMS) is None
+        assert resolve_allowed_territories(result.membership, AppCode.DMS) is not frozenset()
+        assert resolve_allowed_territories(result.membership, AppCode.DMS) is None
 
 
 class TestTheOwner:

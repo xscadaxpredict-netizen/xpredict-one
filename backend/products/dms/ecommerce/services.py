@@ -20,7 +20,7 @@ from .models import EcommerceOrder, EcommerceOrderItem, OrderStatus
 @transaction.atomic
 def place_order(
     *,
-    unit_id: uuid.UUID,
+    territory_id: uuid.UUID,
     site_id: uuid.UUID,
     items: list[dict[str, Any]],
     **kwargs
@@ -39,7 +39,7 @@ def place_order(
     order_number = f"PO/{random.randint(1000, 9999)}"  # noqa: S311
 
     order = EcommerceOrder.objects.create(
-        unit_id=unit_id,
+        territory_id=territory_id,
         site=site,
         customer=site.customer,
         order_number=order_number,
@@ -63,7 +63,7 @@ def place_order(
         total += line_total
 
         EcommerceOrderItem.objects.create(
-            unit_id=unit_id,
+            territory_id=territory_id,
             order=order,
             product=product,
             name=product.name,

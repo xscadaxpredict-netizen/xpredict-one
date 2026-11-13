@@ -23,7 +23,7 @@ from .serializers import CallRequestSerializer, MachineVideoSerializer, UserManu
 class UserManualListView(TenantAPIView):
     # READING THE LIBRARY IS THE JOB; CHANGING IT REACHES EVERY DEALERSHIP.
     # `UserManual` inherits `BaseModel`, so there is one copy per organisation
-    # and `allowed_units` does not confine it -- an upload or a deletion here
+    # and `allowed_territories` does not confine it -- an upload or a deletion here
     # changes what every dealership sees, which is why the write is granted at
     # organisation level only.
     required_permissions: ClassVar[list[str]] = []
@@ -113,7 +113,7 @@ class CallRequestListView(TenantAPIView):
         if serializer.is_valid():
             attachment = request.FILES.get("attachment")
             call = create_call_request(
-                unit_id=request.unit_id,
+                territory_id=request.territory_id,
                 name=serializer.validated_data["name"],
                 phone=serializer.validated_data.get("phone", ""),
                 email=serializer.validated_data.get("email", ""),

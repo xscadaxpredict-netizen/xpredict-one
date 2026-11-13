@@ -4,10 +4,10 @@ Read logic for Sales.
 Queries live here rather than in views, so a list endpoint, an export and a
 dashboard tile all share one definition of "the enquiries this user may see".
 
-Unit scoping is NOT applied by hand here. `Enquiry` inherits `UnitScopedModel`,
-whose default manager filters by the `allowed_units` contextvar --- so
+Unit scoping is NOT applied by hand here. `Enquiry` inherits `TerritoryScopedModel`,
+whose default manager filters by the `allowed_territories` contextvar --- so
 `Enquiry.objects` is already scoped to the caller's dealer. Use
-`Enquiry.all_units` only for deliberate fleet-wide reporting, and justify it.
+`Enquiry.all_territories` only for deliberate fleet-wide reporting, and justify it.
 """
 
 from __future__ import annotations
@@ -29,7 +29,7 @@ def list_enquiries(
     is_manager_or_admin: bool = True,
 ) -> QuerySet[Enquiry]:
     """
-    Enquiries the caller may see, newest first. Already dealer-scoped by UnitScopedModel.
+    Enquiries the caller may see, newest first. Already dealer-scoped by TerritoryScopedModel.
     If the caller is not a manager or admin, only their own assigned or created
     enquiries are returned (peers cannot see each other's deals).
     """

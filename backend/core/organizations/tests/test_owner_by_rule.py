@@ -25,7 +25,7 @@ from conftest import TEST_TENANT_ALIAS
 from core.accounts.models import User
 from core.billing.models import AppSubscription, SubscriptionStatus
 from core.organizations.models import ActivationCode, Membership, Territory
-from core.organizations.selectors import me, permissions_for, resolve_allowed_units
+from core.organizations.selectors import me, permissions_for, resolve_allowed_territories
 from core.organizations.services import create_dealer, grant_app_access, sign_up
 from core.permissions.models import AppCode, Permission, Role
 
@@ -112,7 +112,7 @@ class TestTheOwnerIsEverywhere:
         result = found()
         strip_rows(result.membership)
 
-        assert resolve_allowed_units(result.membership, AppCode.DMS) is None
+        assert resolve_allowed_territories(result.membership, AppCode.DMS) is None
 
     def test_even_when_their_grant_says_one_dealership(self):
         result = found()
@@ -124,7 +124,7 @@ class TestTheOwnerIsEverywhere:
             territories=[delhi],
         )
 
-        assert resolve_allowed_units(result.membership, AppCode.DMS) is None
+        assert resolve_allowed_territories(result.membership, AppCode.DMS) is None
 
 
 class TestEverybodyElseIsUnchanged:
@@ -135,7 +135,7 @@ class TestEverybodyElseIsUnchanged:
 
         assert member.is_owner is None
         assert permissions_for(member) == frozenset()
-        assert resolve_allowed_units(member, AppCode.DMS) == frozenset()
+        assert resolve_allowed_territories(member, AppCode.DMS) == frozenset()
 
     def test_an_org_admin_holds_administration_and_only_what_they_are_granted(self):
         """
