@@ -29,6 +29,12 @@ jobs:
             source .venv/bin/activate
             pip install -r requirements.lock.txt
             python manage.py migrate --database=default --settings=config.settings.prod
+            # `migrate` only touches the control database. Every organisation has its
+            # own database (C1), migrated only by provision_tenant at signup and by
+            # this command. Without it, new tenant migrations never reach customers
+            # and every page that reads a changed table answers 500.
+            python manage.py migrate_all_tenants --plan --settings=config.settings.prod
+            python manage.py migrate_all_tenants --settings=config.settings.prod
             python manage.py collectstatic --no-input --settings=config.settings.prod
 
             echo "⚛️ 3. Building Frontend..."
