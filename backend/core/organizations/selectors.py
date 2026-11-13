@@ -20,7 +20,7 @@ from datetime import datetime
 from types import SimpleNamespace
 
 from django.core.exceptions import ValidationError as DjangoValidationError
-from django.db.models import Count, IntegerField, OuterRef, Prefetch, Subquery, Value
+from django.db.models import Count, IntegerField, OuterRef, Prefetch, Q, Subquery, Value
 from django.db.models.functions import Coalesce
 from django.utils import timezone
 
@@ -76,12 +76,10 @@ def resolve_allowed_territories(membership: Membership, app: str) -> frozenset[u
       them AT the organisation's root (C72) -- every owner, and org-level roles
       like Fleet viewer.
 
-    READ FROM THE PER-APP GRANT SINCE C72 STEP 2b, not `Membership.unit`. The
-    grant's territories are where this person sits in this app: the root means
-    everything; otherwise exactly those territories. Expanding each one to its
-    subtree (a region covering its dealers) is C72 piece 3 -- until then a
-    placement is a dealership or the root, as it always was, so the answer is
-    unchanged.
+    READ FROM THE PER-APP GRANT (C72 step 2b). The grant's territories are
+    where this person sits in this app: the root means everything; otherwise
+    EACH PLACE AND EVERYTHING BELOW IT (C72 piece 3 step 2) -- placed at North,
+    you see North, Delhi, Delhi's branches and Jaipur, not Chennai.
 
     NO GRANT FOR THIS APP IS AN EMPTY SET, never None: restricted to nothing,
     so a missing grant fails closed. (The permission layer refuses such a
@@ -100,7 +98,39 @@ def resolve_allowed_territories(membership: Membership, app: str) -> frozenset[u
     placed = [placement.territory for placement in grant.territories.all()]
     if any(territory.is_root for territory in placed):
         return None
-    return frozenset(territory.id for territory in placed)
+    return with_subtrees(membership.organization_id, placed)
+
+
+def with_subtrees(
+    organization_id: uuid.UUID, territories: list[Territory]
+) -> frozenset[uuid.UUID]:
+    """
+    These territories AND EVERYTHING BELOW THEM, as ids (C72 piece 3 step 2).
+
+    ONE QUERY, however many places: treebeard stores a box's position as a
+    path that grows by one step per level ("0001" root, "00010001" North,
+    "000100010001" Delhi), so everything under North is every box whose path
+    STARTS WITH North's. Read on every call, never stored, so moving a box in
+    the tree changes who sees what on the very next request.
+
+    FILTERED BY ORGANISATION, ALWAYS. Every organisation's root shares one
+    path sequence (CLAUDE.md), and an unfiltered tree question is a
+    cross-tenant leak. Today two organisations' paths never share a prefix,
+    so no test can make this filter fail -- it is the rule that keeps that
+    true if the tree's numbering ever changes.
+
+    No territories is an EMPTY set, never everything: fails closed.
+    """
+    if not territories:
+        return frozenset()
+    below = Q()
+    for territory in territories:
+        below |= Q(path__startswith=territory.path)
+    return frozenset(
+        Territory.objects.filter(organization_id=organization_id)
+        .filter(below)
+        .values_list("id", flat=True)
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -122,6 +152,16 @@ def _placements(membership: Membership) -> list[Territory]:
     ]
 
 
+def placements_for(membership: Membership, app: str) -> list[Territory]:
+    """Where this person's grant for ONE app places them -- not expanded."""
+    return [
+        placement.territory
+        for grant in membership.grants.all()
+        if grant.app_id == app
+        for placement in grant.territories.all()
+    ]
+
+
 def reach(membership: Membership) -> frozenset[uuid.UUID] | None:
     """
     Where in the organisation this person sits. `None` MEANS EVERYWHERE.
@@ -134,8 +174,9 @@ def reach(membership: Membership) -> frozenset[uuid.UUID] | None:
       dealer admin's dealership(s).
     - **No grants at all**: an EMPTY set, never None. Fails closed.
 
-    Subtrees (a region covering its dealers) are C72 piece 3; until then a
-    placement is a dealership or the root, as it always was.
+    WHERE THEY ARE PLACED, NOT WHAT IS BELOW. For "whose people may they
+    administer", which covers everything below their places, ask
+    `administers_within()`.
     """
     if membership.is_owner:
         return None
@@ -143,6 +184,21 @@ def reach(membership: Membership) -> frozenset[uuid.UUID] | None:
     if any(territory.is_root for territory in placed):
         return None
     return frozenset(territory.id for territory in placed)
+
+
+def administers_within(membership: Membership) -> frozenset[uuid.UUID] | None:
+    """
+    The territories whose people this person may administer: their places
+    AND EVERYTHING BELOW THEM (C72 piece 3 step 2, the owner 2026-11-13). A
+    DMS System administrator placed at North manages Delhi's and Jaipur's
+    people, not Chennai's. `None` means everywhere, exactly as `reach()`.
+
+    One query. Callers checking many people -- the users list -- ask this
+    ONCE and compare each person against it, never once per person.
+    """
+    if reach(membership) is None:
+        return None
+    return with_subtrees(membership.organization_id, _placements(membership))
 
 
 def standing(membership: Membership) -> str:
@@ -544,13 +600,22 @@ def can_manage(membership: Membership, target_unit_id: uuid.UUID | None) -> bool
     because a person outside your scope must be indistinguishable from one who
     does not exist, while failing the permission check is a 403.
     """
-    # THE ACTOR'S SIDE READS THE GRANTS (C72 step 2c), through `reach()`. The
-    # TARGET here is a single dealership id -- from a form, or an invitation's
-    # `unit` -- and a member is judged by `can_manage_person()` instead.
-    scope = reach(membership)
+    # THE ACTOR'S SIDE READS THE GRANTS (C72 step 2c), expanded to subtrees
+    # (piece 3 step 2). The TARGET here is a single dealership id -- from a
+    # form, or an invitation's `unit` -- and a member is judged by
+    # `can_manage_person()` instead.
+    scope = administers_within(membership)
     if scope is None:
         return True
     return target_unit_id is not None and target_unit_id in scope
+
+
+def _person_inside(scope: frozenset[uuid.UUID] | None, person: Membership) -> bool:
+    """Everywhere `person` sits is inside `scope` -- an actor's, already expanded."""
+    if scope is None:
+        return True
+    target = reach(person)
+    return target is not None and bool(target) and target <= scope
 
 
 def can_manage_person(actor: Membership, person: Membership | Invitation) -> bool:
@@ -567,16 +632,17 @@ def can_manage_person(actor: Membership, person: Membership | Invitation) -> boo
       reach them. C73 requires an app for everybody new; this keeps any older
       app-less member manageable from head office.
 
+    THE ACTOR'S PLACES COVER EVERYTHING BELOW THEM (piece 3 step 2): an admin
+    at North manages somebody at Delhi. The PERSON's side stays where they are
+    placed, unexpanded -- "everywhere they sit is inside my subtree" needs
+    only the actor's side expanded.
+
     AN INVITATION KEEPS ITS OWN `unit` until piece 5, so it is still judged by
     `can_manage(actor, invitation.unit_id)`.
     """
     if isinstance(person, Invitation):
         return can_manage(actor, person.unit_id)
-    scope = reach(actor)
-    if scope is None:
-        return True
-    target = reach(person)
-    return target is not None and bool(target) and target <= scope
+    return _person_inside(administers_within(actor), person)
 
 
 def dealers_for(organization: Organization) -> list[Territory]:
@@ -761,11 +827,12 @@ def org_users(organization: Organization, viewer: Membership) -> list[OrgUserDat
 
     # BOTH SIDES FROM THE GRANTS (C72 step 2d): the same rule as managing a
     # person, so the list never shows somebody the actions would refuse.
-    # Invitations keep their own `unit` until piece 5.
-    scope = reach(viewer)
+    # Invitations keep their own `unit` until piece 5. The viewer's scope,
+    # subtrees included, is worked out ONCE -- not once per row.
+    scope = administers_within(viewer)
     if scope is not None:
         invitations = invitations.filter(unit_id__in=scope)
-    members = [m for m in memberships if can_manage_person(viewer, m)]
+    members = [m for m in memberships if _person_inside(scope, m)]
 
     people = [_membership_row(m) for m in members] + [_invitation_row(i) for i in invitations]
 

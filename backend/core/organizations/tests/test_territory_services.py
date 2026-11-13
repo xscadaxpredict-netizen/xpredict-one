@@ -309,22 +309,35 @@ class TestARegionIsNeverTakenForADealership:
                 apps=[{"app": "dms", "role": "dms.manager"}],
             )
 
-    def test_a_dms_request_cannot_choose_a_region_as_its_dealership(self):
+    def test_a_dms_request_may_file_at_a_region_but_never_the_root_or_a_warehouse(self):
         """
-        An organisation-level person picks a dealership with `X-Unit-Id`;
-        records they create are filed under it. A region there would file an
-        enquiry under a region.
+        CHANGED IN C72 PIECE 3 STEP 2 (the owner, 2026-11-13). This test used
+        to pin "a region is never a record's home". A region is now the
+        "regional pool" -- an enquiry no dealership has been chosen for yet,
+        seen at the region and above -- so `X-Unit-Id` naming one is honoured.
+        The root (head-office records are step 3) and a warehouse are still
+        never a record's home: the header is ignored and the request falls
+        back as if it named nothing.
         """
         result = found()
         north = create_territory(organization=result.organization, kind=REGION, name="North")
         delhi = create_dealer(
             organization=result.organization, name="Delhi Motors", parent_id=north.pk
         )
-        request = SimpleNamespace(
-            membership=result.membership, headers={"X-Unit-Id": str(north.pk)}
+        store = create_territory(
+            organization=result.organization, kind=WAREHOUSE, name="Store", parent_id=north.pk
         )
+        root = Territory.objects.root_for(result.organization)
 
-        assert TenantAPIView._resolve_territory_id(request, result.organization) == delhi.pk
+        def filed_at(place):
+            request = SimpleNamespace(
+                membership=result.membership, headers={"X-Unit-Id": str(place.pk)}
+            )
+            return TenantAPIView._resolve_territory_id(request, result.organization)
+
+        assert filed_at(north) == north.pk
+        assert filed_at(store) == delhi.pk
+        assert filed_at(root) == delhi.pk
 
     def test_the_dealer_endpoints_answer_404_for_a_region(self):
         result = found()

@@ -1,8 +1,15 @@
 from core.organizations.api.base import OrgScopedAPIView
 from core.organizations.models import Territory, TerritoryKind
-from core.organizations.selectors import permissions_for, resolve_allowed_territories
+from core.organizations.selectors import (
+    permissions_for,
+    placements_for,
+    resolve_allowed_territories,
+)
 from core.permissions.models import AppCode
 from shared.base_models import allowed_territories
+
+# Where a record may live (C72 piece 3 step 2): never the root, never a warehouse.
+FILING_KINDS = (TerritoryKind.REGION, TerritoryKind.DEALER, TerritoryKind.BRANCH)
 
 
 class TenantAPIView(OrgScopedAPIView):
@@ -66,29 +73,41 @@ class TenantAPIView(OrgScopedAPIView):
     @staticmethod
     def _resolve_territory_id(request, organization, app: str = AppCode.DMS):
         """
-        The dealership this request writes new records to.
+        The territory a new record is filed at -- its HOME (C72 piece 3 step 2).
 
-        CHOSEN AMONG THE DEALERSHIPS THE PERSON'S GRANT ALLOWS (C72 step 2b),
-        read through `resolve_allowed_territories()` rather than `Membership.unit`.
-        Placed at one dealership, that is the only candidate -- the answer it
-        always was. Placed at the root, every dealership is a candidate, and
-        `X-Unit-Id` picks one, else the first created -- as before. Placed at
-        several (C72, Q10), the header picks among those.
+        Records live where things are sold or managed: a dealership, a branch,
+        or a region -- a region being the "regional pool" for enquiries no
+        dealership has been chosen for yet (the owner, 2026-11-13, after Zoho).
+        Never the root (head-office records are step 3) and never a warehouse.
 
-        A header naming a dealership outside the candidates is ignored, never
-        honoured: it is how a person would otherwise file a record somewhere
-        they cannot see.
+        In this order:
+
+        1. `X-Unit-Id`, if it names such a place INSIDE the person's subtree.
+           One outside it is ignored, never honoured: it is how a person would
+           otherwise file a record somewhere they cannot see.
+        2. PLACED AT EXACTLY ONE DEALERSHIP OR BRANCH: there. No question to
+           ask. (A branch person's records used to have no home at all --
+           only dealerships were candidates -- and the save failed.)
+        3. OTHERWISE -- a region, the root, or several places -- the first
+           dealership created inside their subtree. TEMPORARY, AND A GUESS:
+           the frontend sends no `X-Unit-Id`, so this is today's behaviour,
+           kept until the create forms gain a "dealership or branch" choice
+           and this step is removed with it (C72 piece 3, its own step).
         """
         allowed = resolve_allowed_territories(request.membership, app)
-        dealers = Territory.objects.filter(organization=organization, kind=TerritoryKind.DEALER)
+        places = Territory.objects.filter(organization=organization)
         if allowed is not None:
-            dealers = dealers.filter(id__in=allowed)
+            places = places.filter(id__in=allowed)
 
         requested = request.headers.get("X-Unit-Id")
         if requested:
-            chosen = dealers.filter(id=requested).first()
+            chosen = places.filter(id=requested, kind__in=FILING_KINDS).first()
             if chosen:
                 return chosen.id
 
-        first = dealers.order_by("created_at").first()
+        own = placements_for(request.membership, app)
+        if len(own) == 1 and own[0].kind in (TerritoryKind.DEALER, TerritoryKind.BRANCH):
+            return own[0].id
+
+        first = places.filter(kind=TerritoryKind.DEALER).order_by("created_at").first()
         return first.id if first else None
