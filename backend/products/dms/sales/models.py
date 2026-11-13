@@ -20,7 +20,7 @@ from django.db import models
 from django.db.models import F, Value
 from django.utils import timezone
 
-from shared.base_models import BaseModel, UnitScopedModel, UnitScopedManager, allowed_units
+from shared.base_models import BaseModel, UnitScopedManager, UnitScopedModel, allowed_units
 
 # ============================================================================
 # Customer
@@ -661,7 +661,8 @@ class AgentPayout(UnitScopedModel):
         blank=True,
         related_name="lead_fee_payouts",
     )
-    payout_type = models.CharField(max_length=20, default="COMMISSION")  # "COMMISSION" or "LEAD_FEE"
+    # "COMMISSION" or "LEAD_FEE"
+    payout_type = models.CharField(max_length=20, default="COMMISSION")
     agent_id = models.UUIDField(null=True, blank=True, db_index=True)
     agent_name = models.CharField(max_length=255, blank=True, default="")
     amount = models.DecimalField(max_digits=12, decimal_places=2)
@@ -684,7 +685,8 @@ class AgentPayout(UnitScopedModel):
 
 class AgentPayoutAttachment(UnitScopedModel):
     """
-    Uploaded proof files (bank transfer counterfoil, screenshot, voucher PDF) for an agent installment.
+    Uploaded proof files (bank transfer counterfoil, screenshot, voucher PDF)
+    for an agent installment.
     """
 
     payout = models.ForeignKey(
@@ -704,5 +706,3 @@ class AgentPayoutAttachment(UnitScopedModel):
 
     def __str__(self) -> str:
         return self.file_name or str(self.id)
-
-

@@ -6,7 +6,6 @@ from .feasibility_engine import get_master_template_seed_data
 from .models import (
     ECDosingCalculation,
     FeasibilityAttachment,
-    FeasibilityLineItem,
     FeasibilityReport,
     MarketingAsset,
     TimerCalculation,

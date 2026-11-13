@@ -66,14 +66,12 @@ urlpatterns = [
         EnquiryUnconfirmView.as_view(),
         name="enquiry-unconfirm",
     ),
-
     # Static lookups for quotes and master data
     path("dealer-profile/", CurrentDealerProfileView.as_view(), name="dealer-profile"),
     path("banks/", BankAccountListView.as_view(), name="bank-list"),
     path("banks/<uuid:pk>/", BankAccountDetailView.as_view(), name="bank-detail"),
     path("products/", ProductPresetListView.as_view(), name="product-preset-list"),
     path("products/<uuid:pk>/", ProductPresetDetailView.as_view(), name="product-preset-detail"),
-
     # Techno-Commercial Documents
     path(
         "techno-commercial/",
@@ -85,8 +83,11 @@ urlpatterns = [
         TechnoCommercialDocumentDetailView.as_view(),
         name="techno-commercial-detail",
     ),
-
     # Agent Commissions & Dues
     path("commissions/", AgentCommissionListView.as_view(), name="agent-commission-list"),
-    path("commissions/record-payment/", RecordCommissionPaymentView.as_view(), name="record-commission-payment"),
+    path(
+        "commissions/record-payment/",
+        RecordCommissionPaymentView.as_view(),
+        name="record-commission-payment",
+    ),
 ]

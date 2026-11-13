@@ -20,7 +20,8 @@ from products.dms.tools.models import (
 class TenantAwareModelAdmin(admin.ModelAdmin):
     """
     Ensures that queries from Django admin for tenant models route to the active tenant database.
-    Supports selecting an organization via `?org=<slug>` or defaults to the first active organization.
+    Supports selecting an organization via `?org=<slug>`, or defaults to the first
+    active organization.
     """
 
     def _bind_tenant(self, request: Any):
@@ -55,23 +56,27 @@ class TenantAwareModelAdmin(admin.ModelAdmin):
         form_url: str = "",
         extra_context: dict[str, Any] | None = None,
     ):
-        token, org = self._bind_tenant(request)
+        token, _org = self._bind_tenant(request)
         try:
             return super().changeform_view(request, object_id, form_url, extra_context)
         finally:
             if token:
                 current_tenant_db.reset(token)
 
-    def delete_view(self, request: Any, object_id: str, extra_context: dict[str, Any] | None = None):
-        token, org = self._bind_tenant(request)
+    def delete_view(
+        self, request: Any, object_id: str, extra_context: dict[str, Any] | None = None
+    ):
+        token, _org = self._bind_tenant(request)
         try:
             return super().delete_view(request, object_id, extra_context)
         finally:
             if token:
                 current_tenant_db.reset(token)
 
-    def history_view(self, request: Any, object_id: str, extra_context: dict[str, Any] | None = None):
-        token, org = self._bind_tenant(request)
+    def history_view(
+        self, request: Any, object_id: str, extra_context: dict[str, Any] | None = None
+    ):
+        token, _org = self._bind_tenant(request)
         try:
             return super().history_view(request, object_id, extra_context)
         finally:
@@ -82,7 +87,15 @@ class TenantAwareModelAdmin(admin.ModelAdmin):
 class FeasibilityLineItemInline(admin.TabularInline):
     model = FeasibilityLineItem
     extra = 1
-    fields = ("item_name", "specification", "quantity", "unit", "unit_price", "total_price", "display_order")
+    fields = (
+        "item_name",
+        "specification",
+        "quantity",
+        "unit",
+        "unit_price",
+        "total_price",
+        "display_order",
+    )
     readonly_fields = ("total_price",)
 
 
@@ -100,7 +113,7 @@ class FeasibilityReportAdmin(TenantAwareModelAdmin):
     list_filter = ("status", "created_at")
     search_fields = ("proposal_number", "proposed_model", "site_name", "site_location")
     readonly_fields = ("id", "created_at", "updated_at")
-    inlines = [FeasibilityLineItemInline]
+    inlines = (FeasibilityLineItemInline,)
 
 
 @admin.register(FeasibilityLineItem)

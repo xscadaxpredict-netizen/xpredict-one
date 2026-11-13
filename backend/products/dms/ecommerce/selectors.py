@@ -20,7 +20,9 @@ def list_spares_catalog() -> QuerySet[ProductCatalog]:
     specific product_type or category. In E-commerce (buying from factory),
     only official OEM products (unit_id IS NULL) are available.
     """
-    return ProductCatalog.all_units.filter(is_active=True, unit_id__isnull=True, product_type="SPARES").order_by("name")
+    return ProductCatalog.all_units.filter(
+        is_active=True, unit_id__isnull=True, product_type="SPARES"
+    ).order_by("name")
 
 
 def get_spare(product_id: uuid.UUID) -> ProductCatalog:

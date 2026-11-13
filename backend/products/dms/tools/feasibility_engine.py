@@ -8,7 +8,7 @@ feasibility models (Faraday's Law, Hydraulic Retention Times, Sizing, Electrical
 from __future__ import annotations
 
 import math
-from typing import Any, Dict
+from typing import Any
 
 
 def calculate_reclaimer_feasibility(
@@ -27,7 +27,7 @@ def calculate_reclaimer_feasibility(
     raw_tds: float = 1100.0,
     treated_tds: float = 1100.0,
     conductivity_us_cm: float = 2000.0,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """
     Computes all engineering equipment sizes, chemical dosing, electrode lifespans,
     pumps, civil footprints, and power metrics dynamically based on capacity and site inputs.
@@ -55,7 +55,9 @@ def calculate_reclaimer_feasibility(
     tank_width_mm = 1600
     tank_length_mm = 1600
     tank_depth_mm = 2500  # 2.3m SWD (Side Water Depth) + 0.2m freeboard
-    modular_tank_vol_m3 = round((tank_width_mm / 1000.0) * (tank_length_mm / 1000.0) * (tank_depth_mm / 1000.0), 1)
+    modular_tank_vol_m3 = round(
+        (tank_width_mm / 1000.0) * (tank_length_mm / 1000.0) * (tank_depth_mm / 1000.0), 1
+    )
 
     # Aeration & Oxygen Demand for 30% biological reduction in pre-aeration
     bod_reduction_ratio = 0.30
@@ -83,7 +85,7 @@ def calculate_reclaimer_feasibility(
 
     # Electrochemistry & Faraday's Law
     # Al: z = 3, M = 26.98 g/mol | Fe: z = 2, M = 55.85 g/mol
-    is_al = (electrode_metal.upper() == "AL")
+    is_al = electrode_metal.upper() == "AL"
     z = 3 if is_al else 2
     molar_mass = 26.98 if is_al else 55.85
     faraday_f = 96485.0  # Coulombs/mol
@@ -103,7 +105,7 @@ def calculate_reclaimer_feasibility(
     plate_height_m = 1.00
     plate_thickness_m = 0.008  # 8mm plates
     plate_face_area_m2 = 2 * (plate_width_m * plate_height_m)
-    
+
     # Calculate required active plate count (minimum 4 plates)
     plate_count = max(4, math.ceil(actual_cell_current_amps / (plate_face_area_m2 * 12.0)))
     total_anode_area_m2 = round((plate_count / 2) * plate_face_area_m2, 2)
@@ -115,7 +117,7 @@ def calculate_reclaimer_feasibility(
     # Cell pack initial mass: ~5 kg per plate for Al, ~15 kg per plate for Fe
     plate_unit_weight_kg = 5.0 if is_al else 14.5
     total_electrode_pack_weight_kg = round(plate_count * plate_unit_weight_kg, 1)
-    
+
     # Usable electrode consumption before replacement (~60% usable before structural degradation)
     usable_metal_kg = total_electrode_pack_weight_kg * 0.60
     days_to_replacement = round(usable_metal_kg / max(daily_dissolution_kg, 0.001), 0)
@@ -141,8 +143,10 @@ def calculate_reclaimer_feasibility(
     # 8. Mixed Bed Media Filter
     # Pumping flow = 3.5 to 4 x average flow to complete tertiary run in ~4 to 5 hours
     filter_pump_flow_m3_hr = round(max(3.5, flow_m3_hr * 2.5), 1)
-    filter_pump_hp = 0.5 if filter_pump_flow_m3_hr <= 4.0 else (1.0 if filter_pump_flow_m3_hr <= 8.0 else 2.0)
-    
+    filter_pump_hp = (
+        0.5 if filter_pump_flow_m3_hr <= 4.0 else (1.0 if filter_pump_flow_m3_hr <= 8.0 else 2.0)
+    )
+
     # Surface loading rate = 10 m3/m2/hr
     filter_area_req_m2 = filter_pump_flow_m3_hr / 10.0
     filter_dia_m = math.sqrt((4 * filter_area_req_m2) / math.pi)
@@ -184,7 +188,9 @@ def calculate_reclaimer_feasibility(
         "raw_water_tanks": {
             "retention_hours": tank_retention_hrs,
             "required_volume_m3": tank_liquid_vol_m3,
-            "tank_dimensions_mm": f"{tank_width_mm}mm x {tank_length_mm}mm x {tank_depth_mm}mm (Depth)",
+            "tank_dimensions_mm": (
+                f"{tank_width_mm}mm x {tank_length_mm}mm x {tank_depth_mm}mm (Depth)"
+            ),
             "tank_volume_m3": modular_tank_vol_m3,
             "air_required_m3_hr": air_required_m3_hr,
             "o2_required_kg_day": o2_required_kg_day,
@@ -212,7 +218,10 @@ def calculate_reclaimer_feasibility(
             "operating_power_kw": operating_power_kw,
             "specific_energy_kwh_m3": specific_energy_kwh_m3,
             "plate_count": plate_count,
-            "plate_dimensions_m": f"{plate_width_m}m(W) x {plate_height_m}m(H) x {int(plate_thickness_m * 1000)}mm(Thick)",
+            "plate_dimensions_m": (
+                f"{plate_width_m}m(W) x {plate_height_m}m(H) x "
+                f"{int(plate_thickness_m * 1000)}mm(Thick)"
+            ),
             "inter_electrode_gap_mm": 30,
             "current_density_a_m2": current_density_a_m2,
             "total_pack_weight_kg": total_electrode_pack_weight_kg,
@@ -249,12 +258,14 @@ def calculate_reclaimer_feasibility(
         },
         "electrical": {
             "total_connected_load_kw": total_connected_load_kw,
-            "automation": "All-in-one fully automatic PLC controlled machine with motorized actuators",
+            "automation": (
+                "All-in-one fully automatic PLC controlled machine with motorized actuators"
+            ),
         },
     }
 
 
-def get_master_template_seed_data() -> Dict[str, Any]:
+def get_master_template_seed_data() -> dict[str, Any]:
     """
     Returns the initial database seed data for the Master Feasibility Template.
     This replaces hardcoded frontend boilerplate with database-driven content.
@@ -283,7 +294,10 @@ def get_master_template_seed_data() -> Dict[str, Any]:
                 "subtitle": "PROPOSAL FOR WASTE WATER RECLAIMER PLANT",
                 "model": "HIDREC EZ 1000",
                 "organization_name": "XpredictLabs",
-                "confidentiality": "This document contains proprietary design and commercial information intended solely for the recipient.",
+                "confidentiality": (
+                    "This document contains proprietary design and commercial information "
+                    "intended solely for the recipient."
+                ),
             },
             "page2_toc": {
                 "sections": [
@@ -305,12 +319,28 @@ def get_master_template_seed_data() -> Dict[str, Any]:
                 ]
             },
             "page3_observations": {
-                "preamble": "A detailed technical survey of the premises was conducted to assess daily wastewater generation patterns, inlet physical parameters, and space availability for civil and mechanical installations.",
+                "preamble": (
+                    "A detailed technical survey of the premises was conducted to assess daily "
+                    "wastewater generation patterns, inlet physical parameters, and space "
+                    "availability for civil and mechanical installations."
+                ),
                 "points": [
-                    "Daily wastewater generation consists of mixed domestic sewage from cafeteria, handwash basins, and sanitary facilities.",
-                    "Gravity collection network feeds into the designated collection sump with intermittent peak discharges during morning and lunch hours.",
-                    "Existing civil layout allows modular tank positioning with minimal structural interference.",
-                    "Available electrical power supply at the proposed plant location meets three-phase requirements.",
+                    (
+                        "Daily wastewater generation consists of mixed domestic sewage from "
+                        "cafeteria, handwash basins, and sanitary facilities."
+                    ),
+                    (
+                        "Gravity collection network feeds into the designated collection sump "
+                        "with intermittent peak discharges during morning and lunch hours."
+                    ),
+                    (
+                        "Existing civil layout allows modular tank positioning with minimal "
+                        "structural interference."
+                    ),
+                    (
+                        "Available electrical power supply at the proposed plant location meets "
+                        "three-phase requirements."
+                    ),
                 ],
                 "raw_characteristics": {
                     "pH": "7.2 - 7.8",
@@ -323,83 +353,217 @@ def get_master_template_seed_data() -> Dict[str, Any]:
             },
             "page4_pre_post": {
                 "pre_installation": [
-                    "High operational dependency on external freshwater supplies and commercial tanker deliveries.",
-                    "Recurring sewage disposal charges and environmental regulatory compliance hurdles.",
-                    "Foul odour emissions and potential septic conditions in untreated wastewater holding pits.",
-                    "Zero on-site water recycling, resulting in substantial discharge of reusable secondary resources.",
+                    (
+                        "High operational dependency on external freshwater supplies and "
+                        "commercial tanker deliveries."
+                    ),
+                    (
+                        "Recurring sewage disposal charges and environmental regulatory "
+                        "compliance hurdles."
+                    ),
+                    (
+                        "Foul odour emissions and potential septic conditions in untreated "
+                        "wastewater holding pits."
+                    ),
+                    (
+                        "Zero on-site water recycling, resulting in substantial discharge of "
+                        "reusable secondary resources."
+                    ),
                 ],
                 "post_installation": [
-                    "Up to 85% - 90% recovered high-purity water recycled directly for toilet flushing, landscape irrigation, and cooling towers.",
-                    "Total elimination of chemical coagulants (Alum/PAC) via clean electrolytic coagulation technology.",
-                    "Compact physical footprint with minimal civil works and odourless, silent plant operation.",
-                    "Payback period achieved in approximately 14 to 18 months via avoided freshwater procurement.",
+                    (
+                        "Up to 85% - 90% recovered high-purity water recycled directly for toilet "
+                        "flushing, landscape irrigation, and cooling towers."
+                    ),
+                    (
+                        "Total elimination of chemical coagulants (Alum/PAC) via clean "
+                        "electrolytic coagulation technology."
+                    ),
+                    (
+                        "Compact physical footprint with minimal civil works and odourless, "
+                        "silent plant operation."
+                    ),
+                    (
+                        "Payback period achieved in approximately 14 to 18 months via avoided "
+                        "freshwater procurement."
+                    ),
                 ],
             },
             "page5_proposal_intro": {
-                "executive_summary": "XpredictLabs proposes a cutting-edge Electrocoagulation (EC) based Waste Water Reclaimer Plant engineered for high-efficiency non-chemical contaminant removal. Unlike biological STPs that suffer from microbial upsets, EC provides instantaneous, predictable treatment using low-voltage electrolytic dissolution.",
+                "executive_summary": (
+                    "XpredictLabs proposes a cutting-edge Electrocoagulation (EC) based Waste "
+                    "Water Reclaimer Plant engineered for high-efficiency non-chemical "
+                    "contaminant removal. Unlike biological STPs that suffer from microbial "
+                    "upsets, EC provides instantaneous, predictable treatment using low-voltage "
+                    "electrolytic dissolution."
+                ),
                 "key_advantages": [
                     "Continuous automated PLC operation with minimal daily operator intervention.",
-                    "Dense, easily dewaterable mineralized flocs producing 60% less sludge volume than conventional chemical treatment.",
-                    "Simultaneous pathogen disinfection and heavy metals precipitation through in-situ electrolytic generation of hydroxyl radicals.",
+                    (
+                        "Dense, easily dewaterable mineralized flocs producing 60% less sludge "
+                        "volume than conventional chemical treatment."
+                    ),
+                    (
+                        "Simultaneous pathogen disinfection and heavy metals precipitation "
+                        "through in-situ electrolytic generation of hydroxyl radicals."
+                    ),
                 ],
             },
             "page7_process_description": {
-                "stage1_screening": "Coarse and fine debris separation through stainless steel bar screens to protect downstream pump impellers.",
-                "stage2_equalization": "Hydraulic flow equalization with fine-bubble aeration to prevent anaerobic septic degradation and maintain uniform solids suspension.",
-                "stage3_electrocoagulation": "Primary reactive reactor with sacrificial metallic electrodes where electrolytic oxidation destabilizes colloidal suspended particles, emulsified oils, and organic complexes without added chemicals.",
-                "stage4_clarification": "Lamella gravity clarifier for accelerated sedimentation of coagulated flocs into the conical bottom sludge hopper.",
-                "stage5_filtration": "Dual media pressure sand filter and activated carbon polisher followed by 5-micron safety bag filtration for sparkling crystal-clear output.",
+                "stage1_screening": (
+                    "Coarse and fine debris separation through stainless steel bar screens to "
+                    "protect downstream pump impellers."
+                ),
+                "stage2_equalization": (
+                    "Hydraulic flow equalization with fine-bubble aeration to prevent anaerobic "
+                    "septic degradation and maintain uniform solids suspension."
+                ),
+                "stage3_electrocoagulation": (
+                    "Primary reactive reactor with sacrificial metallic electrodes where "
+                    "electrolytic oxidation destabilizes colloidal suspended particles, "
+                    "emulsified oils, and organic complexes without added chemicals."
+                ),
+                "stage4_clarification": (
+                    "Lamella gravity clarifier for accelerated sedimentation of coagulated flocs "
+                    "into the conical bottom sludge hopper."
+                ),
+                "stage5_filtration": (
+                    "Dual media pressure sand filter and activated carbon polisher followed by "
+                    "5-micron safety bag filtration for sparkling crystal-clear output."
+                ),
             },
             "page9_scope_of_work": {
                 "xpredict_scope": [
-                    "Process engineering, equipment sizing, design calculations, and complete P&ID drawings.",
-                    "Manufacturing and supply of skid-mounted Electrocoagulation Reactor Chamber with quick-change electrode pack.",
-                    "Supply of high-frequency switched-mode DC power supply unit (SMPS) with polarity-reversal automation.",
-                    "Supply of tertiary filtration system including FRP vessels, multi-grade media, and multiport control valves.",
-                    "Plant testing, wet commissioning, and hands-on operational training for client facility staff.",
+                    (
+                        "Process engineering, equipment sizing, design calculations, and complete "
+                        "P&ID drawings."
+                    ),
+                    (
+                        "Manufacturing and supply of skid-mounted Electrocoagulation Reactor "
+                        "Chamber with quick-change electrode pack."
+                    ),
+                    (
+                        "Supply of high-frequency switched-mode DC power supply unit (SMPS) with "
+                        "polarity-reversal automation."
+                    ),
+                    (
+                        "Supply of tertiary filtration system including FRP vessels, multi-grade "
+                        "media, and multiport control valves."
+                    ),
+                    (
+                        "Plant testing, wet commissioning, and hands-on operational training for "
+                        "client facility staff."
+                    ),
                 ],
                 "client_scope": [
-                    "Civil construction of collection sump, raw water holding tanks, and treated water clear well as per engineering layouts.",
-                    "Three-phase 415V, 50Hz electrical power termination with dedicated MCCB/ELCB isolator at plant battery limits.",
-                    "Inlet sewage raw water piping up to plant skid and treated water distribution pumping from clear well.",
-                    "Protected weather shed or well-ventilated plant room with adequate lighting and drainage floor sump.",
+                    (
+                        "Civil construction of collection sump, raw water holding tanks, and "
+                        "treated water clear well as per engineering layouts."
+                    ),
+                    (
+                        "Three-phase 415V, 50Hz electrical power termination with dedicated "
+                        "MCCB/ELCB isolator at plant battery limits."
+                    ),
+                    (
+                        "Inlet sewage raw water piping up to plant skid and treated water "
+                        "distribution pumping from clear well."
+                    ),
+                    (
+                        "Protected weather shed or well-ventilated plant room with adequate "
+                        "lighting and drainage floor sump."
+                    ),
                 ],
             },
             "page10_commercials": {
                 "equipment_breakdown": [
-                    {"item": "HIDREC EC Reactor Chamber & Power Electronics", "qty": "1 Lot", "amount_inr": 485000},
-                    {"item": "Equalization Aeration Grid & Raw Lift Pumps", "qty": "1 Set", "amount_inr": 95000},
-                    {"item": "Tertiary Dual Media & Carbon Polishing Skid", "qty": "1 Set", "amount_inr": 165000},
-                    {"item": "Automation Control Panel (PLC + Touchscreen)", "qty": "1 Unit", "amount_inr": 125000},
-                    {"item": "Erection, Skid Piping, Testing & Commissioning", "qty": "1 Job", "amount_inr": 85000},
+                    {
+                        "item": "HIDREC EC Reactor Chamber & Power Electronics",
+                        "qty": "1 Lot",
+                        "amount_inr": 485000,
+                    },
+                    {
+                        "item": "Equalization Aeration Grid & Raw Lift Pumps",
+                        "qty": "1 Set",
+                        "amount_inr": 95000,
+                    },
+                    {
+                        "item": "Tertiary Dual Media & Carbon Polishing Skid",
+                        "qty": "1 Set",
+                        "amount_inr": 165000,
+                    },
+                    {
+                        "item": "Automation Control Panel (PLC + Touchscreen)",
+                        "qty": "1 Unit",
+                        "amount_inr": 125000,
+                    },
+                    {
+                        "item": "Erection, Skid Piping, Testing & Commissioning",
+                        "qty": "1 Job",
+                        "amount_inr": 85000,
+                    },
                 ],
                 "taxes_note": "GST @ 18% extra as applicable at the time of invoicing.",
                 "freight_note": "Freight and transit insurance included up to site battery limits.",
             },
             "page11_terms_conditions": {
-                "payment_terms": "40% advance along with confirmed Purchase Order; 50% against proforma invoice prior to dispatch; 10% after successful wet commissioning and handover.",
-                "delivery_period": "Skid equipment dispatch within 4 to 6 weeks from receipt of advance and approved layout drawings.",
-                "warranty": "12 months comprehensive manufacturer warranty from the date of commissioning covering all mechanical and electrical parts against manufacturing defects.",
-                "validity": "Commercial proposal valid for 30 calendar days from the date of issue.",
+                "payment_terms": (
+                    "40% advance along with confirmed Purchase Order; 50% against proforma "
+                    "invoice prior to dispatch; 10% after successful wet commissioning and "
+                    "handover."
+                ),
+                "delivery_period": (
+                    "Skid equipment dispatch within 4 to 6 weeks from receipt of advance and "
+                    "approved layout drawings."
+                ),
+                "warranty": (
+                    "12 months comprehensive manufacturer warranty from the date of commissioning "
+                    "covering all mechanical and electrical parts against manufacturing defects."
+                ),
+                "validity": (
+                    "Commercial proposal valid for 30 calendar days from the date of issue."
+                ),
             },
             "page12_project_schedule": {
                 "phases": [
-                    {"phase": "Engineering Design & Client Layout Approval", "duration": "Week 1 - 2"},
+                    {
+                        "phase": "Engineering Design & Client Layout Approval",
+                        "duration": "Week 1 - 2",
+                    },
                     {"phase": "Civil Work by Client & Skid Fabrication", "duration": "Week 2 - 4"},
-                    {"phase": "Factory Testing, Quality Inspection & Dispatch", "duration": "Week 4 - 5"},
-                    {"phase": "Onsite Skid Placement, Interconnection & Wiring", "duration": "Week 5 - 6"},
-                    {"phase": "Wet Commissioning, Lab Testing & Handover", "duration": "Week 6 - 7"},
+                    {
+                        "phase": "Factory Testing, Quality Inspection & Dispatch",
+                        "duration": "Week 4 - 5",
+                    },
+                    {
+                        "phase": "Onsite Skid Placement, Interconnection & Wiring",
+                        "duration": "Week 5 - 6",
+                    },
+                    {
+                        "phase": "Wet Commissioning, Lab Testing & Handover",
+                        "duration": "Week 6 - 7",
+                    },
                 ]
             },
             "page13_appendix_a": {
-                "design_principles": "Calculations follow Faraday's Law of Electrolysis m = (I * t * M) / (z * F) ensuring stoichiometric coagulant release, optimal current density (12-25 A/m2), and hydraulic retention time of 10-15 minutes.",
+                "design_principles": (
+                    "Calculations follow Faraday's Law of Electrolysis m = (I * t * M) / (z * F) "
+                    "ensuring stoichiometric coagulant release, optimal current density (12-25 "
+                    "A/m2), and hydraulic retention time of 10-15 minutes."
+                ),
             },
             "page14_appendix_b": {
-                "electrical_specs": "Supply voltage: 415V AC 3-Phase + Neutral; Reactor input: 0-48V DC variable; Ingress protection: IP55 control enclosure with safety door interlocks, phase failure relays, and overload trips.",
+                "electrical_specs": (
+                    "Supply voltage: 415V AC 3-Phase + Neutral; Reactor input: 0-48V DC variable; "
+                    "Ingress protection: IP55 control enclosure with safety door interlocks, "
+                    "phase failure relays, and overload trips."
+                ),
             },
             "page15_appendix_c": {
-                "installation_summary": "Modular pre-assembled skid layout engineered for rapid plug-and-play installation, simplified periodic electrode maintenance, and zero downtime during media backwashing.",
+                "installation_summary": (
+                    "Modular pre-assembled skid layout engineered for rapid plug-and-play "
+                    "installation, simplified periodic electrode maintenance, and zero downtime "
+                    "during media backwashing."
+                ),
             },
         },
     }
-

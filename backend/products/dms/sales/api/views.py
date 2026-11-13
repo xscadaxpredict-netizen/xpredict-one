@@ -9,7 +9,6 @@ from rest_framework.response import Response
 from core.api import TenantAPIView
 
 from .. import selectors, services
-from ..models import TechnoCommercialDocument
 from .serializers import (
     BankAccountReadSerializer,
     BankAccountWriteSerializer,
@@ -209,7 +208,9 @@ class BankAccountListView(TenantAPIView):
     method_permissions: ClassVar[dict[str, list[str]]] = {"POST": ["dms.order.confirm"]}
 
     def get(self, request: Request, org_slug: str) -> Response:
-        is_org_admin = bool(self.membership.role in ("owner", "admin") and self.membership.unit_id is None)
+        is_org_admin = bool(
+            self.membership.role in ("owner", "admin") and self.membership.unit_id is None
+        )
         unit_id_param = request.query_params.get("unit_id")
         banks = selectors.list_banks(is_org_admin=is_org_admin, unit_id=unit_id_param)
         return Response(BankAccountReadSerializer(banks, many=True).data)
@@ -217,7 +218,9 @@ class BankAccountListView(TenantAPIView):
     def post(self, request: Request, org_slug: str) -> Response:
         payload = BankAccountWriteSerializer(data=request.data)
         payload.is_valid(raise_exception=True)
-        is_org_admin = bool(self.membership.role in ("owner", "admin") and self.membership.unit_id is None)
+        is_org_admin = bool(
+            self.membership.role in ("owner", "admin") and self.membership.unit_id is None
+        )
         unit_id = None if is_org_admin else request.unit_id
         bank = services.create_bank_account(
             unit_id=unit_id,
@@ -233,7 +236,9 @@ class BankAccountDetailView(TenantAPIView):
     def patch(self, request: Request, org_slug: str, pk: str) -> Response:
         payload = BankAccountWriteSerializer(data=request.data, partial=True)
         payload.is_valid(raise_exception=True)
-        is_org_admin = bool(self.membership.role in ("owner", "admin") and self.membership.unit_id is None)
+        is_org_admin = bool(
+            self.membership.role in ("owner", "admin") and self.membership.unit_id is None
+        )
         bank = services.update_bank_account(
             bank_id=pk,
             actor_user_id=request.user.id,
@@ -244,7 +249,9 @@ class BankAccountDetailView(TenantAPIView):
         return Response(BankAccountReadSerializer(bank).data)
 
     def delete(self, request: Request, org_slug: str, pk: str) -> Response:
-        is_org_admin = bool(self.membership.role in ("owner", "admin") and self.membership.unit_id is None)
+        is_org_admin = bool(
+            self.membership.role in ("owner", "admin") and self.membership.unit_id is None
+        )
         services.delete_bank_account(
             bank_id=pk,
             request_unit_id=request.unit_id,
@@ -260,14 +267,16 @@ class ProductPresetListView(TenantAPIView):
     def get(self, request: Request, org_slug: str) -> Response:
         products = selectors.list_products()
         return Response(
-            ProductPresetReadSerializer(products, many=True, context={'request': request}).data
+            ProductPresetReadSerializer(products, many=True, context={"request": request}).data
         )
 
     def post(self, request: Request, org_slug: str) -> Response:
         payload = ProductCatalogWriteSerializer(data=request.data)
         payload.is_valid(raise_exception=True)
 
-        is_org_admin = bool(self.membership.role in ("owner", "admin") and self.membership.unit_id is None)
+        is_org_admin = bool(
+            self.membership.role in ("owner", "admin") and self.membership.unit_id is None
+        )
         is_global_param = payload.validated_data.pop("is_global", None)
 
         if is_org_admin:
@@ -283,7 +292,7 @@ class ProductPresetListView(TenantAPIView):
             **payload.validated_data,
         )
         return Response(
-            ProductPresetReadSerializer(product, context={'request': request}).data,
+            ProductPresetReadSerializer(product, context={"request": request}).data,
             status=status.HTTP_201_CREATED,
         )
 
@@ -294,7 +303,9 @@ class ProductPresetDetailView(TenantAPIView):
     def patch(self, request: Request, org_slug: str, pk: str) -> Response:
         payload = ProductCatalogWriteSerializer(data=request.data, partial=True)
         payload.is_valid(raise_exception=True)
-        is_org_admin = bool(self.membership.role in ("owner", "admin") and self.membership.unit_id is None)
+        is_org_admin = bool(
+            self.membership.role in ("owner", "admin") and self.membership.unit_id is None
+        )
         product = services.update_product_catalog(
             product_id=pk,
             actor_user_id=request.user.id,
@@ -302,10 +313,12 @@ class ProductPresetDetailView(TenantAPIView):
             is_org_admin=is_org_admin,
             **payload.validated_data,
         )
-        return Response(ProductPresetReadSerializer(product, context={'request': request}).data)
+        return Response(ProductPresetReadSerializer(product, context={"request": request}).data)
 
     def delete(self, request: Request, org_slug: str, pk: str) -> Response:
-        is_org_admin = bool(self.membership.role in ("owner", "admin") and self.membership.unit_id is None)
+        is_org_admin = bool(
+            self.membership.role in ("owner", "admin") and self.membership.unit_id is None
+        )
         services.delete_product_catalog(
             product_id=pk,
             request_unit_id=request.unit_id,
@@ -330,9 +343,7 @@ class EnquiryConfirmAmcView(TenantAPIView):
 
 class TechnoCommercialDocumentListCreateView(TenantAPIView):
     required_permissions: ClassVar[list[str]] = ["dms.enquiry.view"]
-    method_permissions: ClassVar[dict[str, list[str]]] = {
-        "POST": ["dms.quotation.create"]
-    }
+    method_permissions: ClassVar[dict[str, list[str]]] = {"POST": ["dms.quotation.create"]}
     parser_classes: ClassVar[list] = [MultiPartParser, FormParser, JSONParser]
 
     def get(self, request: Request, org_slug: str) -> Response:
@@ -350,7 +361,9 @@ class TechnoCommercialDocumentListCreateView(TenantAPIView):
 
         file = request.FILES.get("file") or payload.validated_data.get("file")
         if not file:
-            return Response({"file": ["This field is required."]}, status=status.HTTP_400_BAD_REQUEST)
+            return Response(
+                {"file": ["This field is required."]}, status=status.HTTP_400_BAD_REQUEST
+            )
 
         doc = services.create_techno_commercial_document(
             unit_id=request.unit_id,
@@ -368,7 +381,9 @@ class TechnoCommercialDocumentListCreateView(TenantAPIView):
             actor_user_id=request.user.id,
             is_manager_or_admin=self.is_manager_or_admin,
         )
-        return Response(TechnoCommercialDocumentReadSerializer(doc_fetched).data, status=status.HTTP_201_CREATED)
+        return Response(
+            TechnoCommercialDocumentReadSerializer(doc_fetched).data, status=status.HTTP_201_CREATED
+        )
 
 
 class TechnoCommercialDocumentDetailView(TenantAPIView):
@@ -417,7 +432,10 @@ class TechnoCommercialDocumentDetailView(TenantAPIView):
 
     def delete(self, request: Request, org_slug: str, pk: str) -> Response:
         if not self.is_manager_or_admin:
-            raise PermissionDenied("Only sales managers or dealership administrators can delete techno-commercial documents.")
+            raise PermissionDenied(
+                "Only sales managers or dealership administrators can delete "
+                "techno-commercial documents."
+            )
         services.delete_techno_commercial_document(
             document_id=pk,
             actor_user_id=request.user.id,
@@ -431,6 +449,7 @@ class CurrentDealerProfileView(TenantAPIView):
     Returns the current business unit (dealership) profile for the requesting user,
     or organization fallback if the user is org-scoped.
     """
+
     required_permissions: ClassVar[list[str]] = ["dms.enquiry.view"]
 
     def get(self, request: Request, org_slug: str) -> Response:
@@ -441,42 +460,48 @@ class CurrentDealerProfileView(TenantAPIView):
             unit = BusinessUnit.objects.using("default").filter(id=unit_id).first()
             if unit:
                 address_parts = [p for p in [unit.city, unit.state, unit.postal_code] if p]
-                return Response({
-                    "id": str(unit.id),
-                    "company_name": unit.name,
-                    "address": ", ".join(address_parts),
-                    "city": unit.city or "",
-                    "state": unit.state or "",
-                    "postal_code": unit.postal_code or "",
-                    "contact_person": unit.contact_person or "",
-                    "email": unit.email or "",
-                    "phone": unit.phone or "",
-                    "gstin": unit.gstin or "",
-                    "pan": unit.pan or "",
-                    "is_dealer": True,
-                })
+                return Response(
+                    {
+                        "id": str(unit.id),
+                        "company_name": unit.name,
+                        "address": ", ".join(address_parts),
+                        "city": unit.city or "",
+                        "state": unit.state or "",
+                        "postal_code": unit.postal_code or "",
+                        "contact_person": unit.contact_person or "",
+                        "email": unit.email or "",
+                        "phone": unit.phone or "",
+                        "gstin": unit.gstin or "",
+                        "pan": unit.pan or "",
+                        "is_dealer": True,
+                    }
+                )
 
-        return Response({
-            "id": None,
-            "company_name": self.organization.name,
-            "address": "",
-            "city": "",
-            "state": "",
-            "postal_code": "",
-            "contact_person": "",
-            "email": "",
-            "phone": "",
-            "gstin": "",
-            "pan": "",
-            "is_dealer": False,
-        })
+        return Response(
+            {
+                "id": None,
+                "company_name": self.organization.name,
+                "address": "",
+                "city": "",
+                "state": "",
+                "postal_code": "",
+                "contact_person": "",
+                "email": "",
+                "phone": "",
+                "gstin": "",
+                "pan": "",
+                "is_dealer": False,
+            }
+        )
 
 
 class AgentCommissionListView(TenantAPIView):
     required_permissions: ClassVar[list[str]] = ["dms.quotation.view"]
 
     def get(self, request: Request, org_slug: str) -> Response:
-        is_org_admin = bool(self.membership.role in ("owner", "admin") and self.membership.unit_id is None)
+        is_org_admin = bool(
+            self.membership.role in ("owner", "admin") and self.membership.unit_id is None
+        )
         commissions = selectors.list_agent_commissions(
             unit_id=request.unit_id,
             is_org_admin=is_org_admin,
@@ -493,15 +518,21 @@ class RecordCommissionPaymentView(TenantAPIView):
         reference_id = request.data.get("reference_id")
         payment_ref = request.data.get("payment_ref", "").strip()
         amount_raw = request.data.get("amount")
-        amount = float(amount_raw) if amount_raw is not None and str(amount_raw).strip() != "" else None
+        amount = (
+            float(amount_raw) if amount_raw is not None and str(amount_raw).strip() != "" else None
+        )
         paid_at = request.data.get("paid_at") or None
         notes = request.data.get("notes", "").strip()
         proof_files = request.FILES.getlist("proofs") or request.FILES.getlist("proof_files") or []
 
         if not reference_id:
-            return Response({"error": "reference_id is required"}, status=status.HTTP_400_BAD_REQUEST)
+            return Response(
+                {"error": "reference_id is required"}, status=status.HTTP_400_BAD_REQUEST
+            )
         if not payment_ref:
-            return Response({"error": "Payment reference / UTR is required"}, status=status.HTTP_400_BAD_REQUEST)
+            return Response(
+                {"error": "Payment reference / UTR is required"}, status=status.HTTP_400_BAD_REQUEST
+            )
 
         if comm_type == "LEAD_FEE":
             enquiry = services.record_lead_fee_payment(
@@ -514,12 +545,14 @@ class RecordCommissionPaymentView(TenantAPIView):
                 notes=notes,
                 proof_files=proof_files,
             )
-            return Response({
-                "status": enquiry.lead_fee_status,
-                "payment_ref": payment_ref,
-                "paid_amount": enquiry.total_lead_fee_paid,
-                "balance_amount": enquiry.lead_fee_balance,
-            })
+            return Response(
+                {
+                    "status": enquiry.lead_fee_status,
+                    "payment_ref": payment_ref,
+                    "paid_amount": enquiry.total_lead_fee_paid,
+                    "balance_amount": enquiry.lead_fee_balance,
+                }
+            )
         else:
             quote = services.record_commission_payment(
                 quote_id=reference_id,
@@ -531,10 +564,11 @@ class RecordCommissionPaymentView(TenantAPIView):
                 notes=notes,
                 proof_files=proof_files,
             )
-            return Response({
-                "status": quote.commission_status,
-                "payment_ref": payment_ref,
-                "paid_amount": quote.total_commission_paid,
-                "balance_amount": quote.commission_balance,
-            })
-
+            return Response(
+                {
+                    "status": quote.commission_status,
+                    "payment_ref": payment_ref,
+                    "paid_amount": quote.total_commission_paid,
+                    "balance_amount": quote.commission_balance,
+                }
+            )

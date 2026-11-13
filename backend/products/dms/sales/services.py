@@ -9,10 +9,11 @@ consistently.
 
 from __future__ import annotations
 
+import logging
 import random
 import uuid
-
 from decimal import Decimal
+
 from django.db import transaction
 
 from shared.exceptions import ConflictError, not_found
@@ -32,6 +33,8 @@ from .models import (
     QuoteType,
     TechnoCommercialDocument,
 )
+
+logger = logging.getLogger(__name__)
 
 
 @transaction.atomic
@@ -215,7 +218,12 @@ def save_quotation(
                     if not from_details.get("contact_person"):
                         from_details["contact_person"] = unit.contact_person or ""
             except Exception:
-                pass
+                # Sender details are a convenience; the quotation still saves without them.
+                logger.warning(
+                    "Could not load dealership %s for quotation sender details",
+                    effective_unit_id,
+                    exc_info=True,
+                )
 
     if existing_quote_id:
         quote = Quotation.objects.filter(id=existing_quote_id, enquiry=enquiry).first()
@@ -351,7 +359,11 @@ def confirm_order(
     enquiry.save(update_fields=["status", "confirmed_quote_id", "oc_number", "updated_by_user_id"])
 
     quote.status = QuotationStatus.CONFIRMED
-    if quote.commission_amount and float(quote.commission_amount) > 0 and quote.commission_status != "PAID":
+    if (
+        quote.commission_amount
+        and float(quote.commission_amount) > 0
+        and quote.commission_status != "PAID"
+    ):
         quote.commission_status = "PAYABLE"
         quote.save(update_fields=["status", "commission_status"])
     else:
@@ -362,6 +374,7 @@ def confirm_order(
     # For now, we assume the customer is linked or we create a dummy one for the site.
     if not enquiry.customer_id:
         from .models import Customer
+
         customer = Customer.objects.create(
             unit_id=unit_id,
             name=enquiry.customer_name,
@@ -422,28 +435,28 @@ def confirm_amc_quote(
 ) -> Enquiry:
     enquiry = Enquiry.objects.filter(id=enquiry_id).first()
     if not enquiry:
-        raise not_found('Enquiry')
+        raise not_found("Enquiry")
 
     quote = Quotation.objects.filter(id=quote_id, enquiry=enquiry).first()
     if not quote:
-        raise not_found('Quotation')
+        raise not_found("Quotation")
 
     if quote.quote_type != QuoteType.AMC:
         raise ConflictError(
-            code='not_amc',
-            message='Only AMC quotes can be confirmed via this endpoint.',
+            code="not_amc",
+            message="Only AMC quotes can be confirmed via this endpoint.",
         )
 
     if quote.status == QuotationStatus.CONFIRMED:
-        raise ConflictError(code='already_confirmed', message='Quotation is already confirmed.')
+        raise ConflictError(code="already_confirmed", message="Quotation is already confirmed.")
 
     quote.status = QuotationStatus.CONFIRMED
-    quote.save(update_fields=['status'])
+    quote.save(update_fields=["status"])
 
     site = ConfirmedSite.objects.filter(enquiry=enquiry).first()
     if site:
         quote.site = site
-        quote.save(update_fields=['site_id'])
+        quote.save(update_fields=["site_id"])
 
     return enquiry
 
@@ -451,6 +464,7 @@ def confirm_amc_quote(
 # ============================================================================
 # Master Data (Bank Accounts & Products)
 # ============================================================================
+
 
 @transaction.atomic
 def create_bank_account(
@@ -466,7 +480,9 @@ def create_bank_account(
 ) -> BankAccount:
     if is_default:
         if unit_id is None:
-            BankAccount.all_units.filter(unit_id__isnull=True, is_default=True).update(is_default=False)
+            BankAccount.all_units.filter(unit_id__isnull=True, is_default=True).update(
+                is_default=False
+            )
         else:
             BankAccount.all_units.filter(unit_id=unit_id, is_default=True).update(is_default=False)
 
@@ -481,6 +497,7 @@ def create_bank_account(
         is_active=is_active,
     )
     return bank
+
 
 @transaction.atomic
 def update_bank_account(
@@ -498,24 +515,26 @@ def update_bank_account(
     # Protection: Dealers cannot modify Org banks
     if bank.unit_id is None and not is_org_admin:
         from rest_framework.exceptions import PermissionDenied
+
         raise PermissionDenied("Dealers cannot modify organization bank accounts.")
 
     # Protection: Dealers cannot modify other dealers' banks
     if bank.unit_id is not None and not is_org_admin and str(bank.unit_id) != str(request_unit_id):
         from rest_framework.exceptions import PermissionDenied
-        raise PermissionDenied("You do not have permission to modify this dealership's bank accounts.")
+
+        raise PermissionDenied(
+            "You do not have permission to modify this dealership's bank accounts."
+        )
 
     if updates.get("is_default"):
         if bank.unit_id is None:
-            BankAccount.all_units.filter(
-                unit_id__isnull=True,
-                is_default=True
-            ).exclude(id=bank_id).update(is_default=False)
+            BankAccount.all_units.filter(unit_id__isnull=True, is_default=True).exclude(
+                id=bank_id
+            ).update(is_default=False)
         else:
-            BankAccount.all_units.filter(
-                unit_id=bank.unit_id,
-                is_default=True
-            ).exclude(id=bank_id).update(is_default=False)
+            BankAccount.all_units.filter(unit_id=bank.unit_id, is_default=True).exclude(
+                id=bank_id
+            ).update(is_default=False)
 
     for key, value in updates.items():
         setattr(bank, key, value)
@@ -523,6 +542,7 @@ def update_bank_account(
     bank.updated_by_user_id = actor_user_id
     bank.save()
     return bank
+
 
 @transaction.atomic
 def delete_bank_account(
@@ -537,11 +557,15 @@ def delete_bank_account(
 
     if bank.unit_id is None and not is_org_admin:
         from rest_framework.exceptions import PermissionDenied
+
         raise PermissionDenied("Dealers cannot delete organization bank accounts.")
 
     if bank.unit_id is not None and not is_org_admin and str(bank.unit_id) != str(request_unit_id):
         from rest_framework.exceptions import PermissionDenied
-        raise PermissionDenied("You do not have permission to delete this dealership's bank accounts.")
+
+        raise PermissionDenied(
+            "You do not have permission to delete this dealership's bank accounts."
+        )
 
     bank.delete()
 
@@ -590,6 +614,7 @@ def create_product_catalog(
         spec_list = [s.strip() for s in specs.split(",") if s.strip()]
         for idx, spec in enumerate(spec_list):
             from .models import ProductSpec
+
             ProductSpec.objects.create(
                 unit_id=unit_id,
                 product=product,
@@ -598,6 +623,7 @@ def create_product_catalog(
             )
 
     return product
+
 
 @transaction.atomic
 def update_product_catalog(
@@ -615,11 +641,17 @@ def update_product_catalog(
     # Protection: Dealers cannot edit OEM global items
     if product.unit_id is None and not is_org_admin:
         from rest_framework.exceptions import PermissionDenied
+
         raise PermissionDenied("Dealers cannot modify standard OEM catalog items.")
 
     # Protection: Dealers cannot edit other dealers' items
-    if product.unit_id is not None and not is_org_admin and str(product.unit_id) != str(request_unit_id):
+    if (
+        product.unit_id is not None
+        and not is_org_admin
+        and str(product.unit_id) != str(request_unit_id)
+    ):
         from rest_framework.exceptions import PermissionDenied
+
         raise PermissionDenied("You do not have permission to modify this dealership's items.")
 
     is_global = updates.pop("is_global", None)
@@ -627,7 +659,7 @@ def update_product_catalog(
         product.unit_id = None
 
     if "description" in updates and not updates.get("name") and not product.name:
-         updates["name"] = updates["description"][:255]
+        updates["name"] = updates["description"][:255]
 
     image = updates.pop("image", None)
     specs = updates.pop("specs", None)
@@ -647,6 +679,7 @@ def update_product_catalog(
 
     if specs is not None:
         from .models import ProductSpec
+
         product.specs.all().delete()
         spec_list = [s.strip() for s in specs.split(",") if s.strip()]
         for idx, spec in enumerate(spec_list):
@@ -658,6 +691,7 @@ def update_product_catalog(
             )
 
     return product
+
 
 @transaction.atomic
 def delete_product_catalog(
@@ -673,11 +707,17 @@ def delete_product_catalog(
     # Protection: Dealers cannot delete OEM global items
     if product.unit_id is None and not is_org_admin:
         from rest_framework.exceptions import PermissionDenied
+
         raise PermissionDenied("Dealers cannot delete standard OEM catalog items.")
 
     # Protection: Dealers cannot delete other dealers' items
-    if product.unit_id is not None and not is_org_admin and str(product.unit_id) != str(request_unit_id):
+    if (
+        product.unit_id is not None
+        and not is_org_admin
+        and str(product.unit_id) != str(request_unit_id)
+    ):
         from rest_framework.exceptions import PermissionDenied
+
         raise PermissionDenied("You do not have permission to delete this dealership's items.")
 
     product.delete()
@@ -756,7 +796,7 @@ def update_techno_commercial_document(
             try:
                 doc.file.delete(save=False)
             except Exception:
-                pass
+                logger.warning("Could not delete old file for document %s", doc.id, exc_info=True)
         doc.file = file
         doc.file_name = getattr(file, "name", doc.file_name)
         doc.file_size = _format_file_size(getattr(file, "size", 0))
@@ -767,7 +807,9 @@ def update_techno_commercial_document(
         if s_id:
             doc.site = ConfirmedSite.objects.filter(id=s_id).first()
             if doc.site and not updates.get("site_name"):
-                doc.site_name = doc.site.site_name or (doc.site.customer.name if doc.site.customer else "")
+                doc.site_name = doc.site.site_name or (
+                    doc.site.customer.name if doc.site.customer else ""
+                )
         else:
             doc.site = None
 
@@ -804,7 +846,7 @@ def delete_techno_commercial_document(
         try:
             doc.file.delete(save=False)
         except Exception:
-            pass
+            logger.warning("Could not delete file for document %s", doc.id, exc_info=True)
 
     doc.delete()
 
@@ -817,13 +859,14 @@ def record_commission_payment(
     actor_user_id: uuid.UUID,
     unit_id: uuid.UUID | None = None,
     amount: Decimal | float | None = None,
-    paid_at = None,
+    paid_at=None,
     notes: str = "",
     proof_files: list | None = None,
 ) -> Quotation:
+    import datetime
+
     from django.utils import timezone
     from django.utils.dateparse import parse_date, parse_datetime
-    import datetime
 
     quote = Quotation.objects.filter(id=quote_id).first()
     if not quote:
@@ -897,7 +940,14 @@ def record_commission_payment(
     else:
         quote.commission_status = "PARTIALLY_PAID"
 
-    quote.save(update_fields=["commission_status", "commission_payment_ref", "commission_paid_at", "updated_by_user_id"])
+    quote.save(
+        update_fields=[
+            "commission_status",
+            "commission_payment_ref",
+            "commission_paid_at",
+            "updated_by_user_id",
+        ]
+    )
     return quote
 
 
@@ -909,13 +959,14 @@ def record_lead_fee_payment(
     actor_user_id: uuid.UUID,
     unit_id: uuid.UUID | None = None,
     amount: Decimal | float | None = None,
-    paid_at = None,
+    paid_at=None,
     notes: str = "",
     proof_files: list | None = None,
 ) -> Enquiry:
+    import datetime
+
     from django.utils import timezone
     from django.utils.dateparse import parse_date, parse_datetime
-    import datetime
 
     enquiry = Enquiry.objects.filter(id=enquiry_id).first()
     if not enquiry:
@@ -986,6 +1037,12 @@ def record_lead_fee_payment(
     else:
         enquiry.lead_fee_status = "PARTIALLY_PAID"
 
-    enquiry.save(update_fields=["lead_fee_status", "lead_fee_payment_ref", "lead_fee_paid_at", "updated_by_user_id"])
+    enquiry.save(
+        update_fields=[
+            "lead_fee_status",
+            "lead_fee_payment_ref",
+            "lead_fee_paid_at",
+            "updated_by_user_id",
+        ]
+    )
     return enquiry
-

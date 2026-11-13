@@ -7,7 +7,7 @@ from rest_framework.response import Response
 from core.api import TenantAPIView
 
 from ..feasibility_engine import calculate_reclaimer_feasibility
-from ..models import CalculatorSettings, ECDosingCalculation
+from ..models import CalculatorSettings
 from ..selectors import (
     get_active_feasibility_template,
     get_ec_calculation,
@@ -187,17 +187,62 @@ DEFAULT_EC_CONSTANTS = {
         "MS": {"key": "MS", "name": "Mild Steel / Iron (Fe)", "molar_mass": 56.0, "valence_n": 2},
     },
     "water_types": [
-        {"id": "algal", "name": "Micro algal green water", "default_dose": 35.0, "settling_time_min": 6},
-        {"id": "laundry", "name": "Laundry Waste Water", "default_dose": 25.0, "settling_time_min": 5},
+        {
+            "id": "algal",
+            "name": "Micro algal green water",
+            "default_dose": 35.0,
+            "settling_time_min": 6,
+        },
+        {
+            "id": "laundry",
+            "name": "Laundry Waste Water",
+            "default_dose": 25.0,
+            "settling_time_min": 5,
+        },
         {"id": "grey", "name": "Domestic Grey water", "default_dose": 20.0, "settling_time_min": 5},
-        {"id": "mixed_sewage", "name": "Mixed Sewage water", "default_dose": 30.0, "settling_time_min": 6},
-        {"id": "black", "name": "Domestic Black Water", "default_dose": 40.0, "settling_time_min": 7},
-        {"id": "industrial_sewage", "name": "Mixed Industrial Sewage", "default_dose": 35.0, "settling_time_min": 7},
-        {"id": "hospital", "name": "Hospital Waste water", "default_dose": 35.0, "settling_time_min": 6},
+        {
+            "id": "mixed_sewage",
+            "name": "Mixed Sewage water",
+            "default_dose": 30.0,
+            "settling_time_min": 6,
+        },
+        {
+            "id": "black",
+            "name": "Domestic Black Water",
+            "default_dose": 40.0,
+            "settling_time_min": 7,
+        },
+        {
+            "id": "industrial_sewage",
+            "name": "Mixed Industrial Sewage",
+            "default_dose": 35.0,
+            "settling_time_min": 7,
+        },
+        {
+            "id": "hospital",
+            "name": "Hospital Waste water",
+            "default_dose": 35.0,
+            "settling_time_min": 6,
+        },
         {"id": "lake", "name": "Lake water", "default_dose": 15.0, "settling_time_min": 5},
-        {"id": "textile", "name": "Textile Dyeing water", "default_dose": 45.0, "settling_time_min": 7},
-        {"id": "starch", "name": "Starch rich waste water", "default_dose": 40.0, "settling_time_min": 7},
-        {"id": "effluent", "name": "Mixed Industrial Effluent water", "default_dose": 45.0, "settling_time_min": 7},
+        {
+            "id": "textile",
+            "name": "Textile Dyeing water",
+            "default_dose": 45.0,
+            "settling_time_min": 7,
+        },
+        {
+            "id": "starch",
+            "name": "Starch rich waste water",
+            "default_dose": 40.0,
+            "settling_time_min": 7,
+        },
+        {
+            "id": "effluent",
+            "name": "Mixed Industrial Effluent water",
+            "default_dose": 45.0,
+            "settling_time_min": 7,
+        },
     ],
     "custom_parameters": {
         "faraday_constant": 96485,
@@ -206,9 +251,13 @@ DEFAULT_EC_CONSTANTS = {
 
 
 class CalculatorSettingsView(TenantAPIView):
-    # These constants decide how every capacity and EC dosing calculation
-    # is sized. One row for the organisation (BaseModel).
+    # THE MOST DANGEROUS WRITE IN THIS MODULE. These constants decide how every
+    # capacity and EC dosing calculation in the organisation is sized, and there
+    # is one row for the whole organisation (`BaseModel`) --- so per C67 only an
+    # organisation-level code may write it, never a dealership's Manager.
+    # Reading is open because the calculator screens need the constants.
     required_permissions: ClassVar[list[str]] = []
+    method_permissions: ClassVar[dict[str, list[str]]] = {"PUT": ["dms.calculator.manage"]}
 
     def get(self, request, org_slug: str):
         try:
@@ -233,25 +282,12 @@ class CalculatorSettingsView(TenantAPIView):
             return Response(serializer.data)
         except Exception as e:
             import traceback
+
             with open("error_log_get.txt", "w") as f:
                 traceback.print_exc(file=f)
             raise e
 
     def put(self, request, org_slug: str):
-        from core.organizations.selectors import permissions_for
-
-        held_perms = permissions_for(self.membership)
-        can_manage = (
-            self.is_manager_or_admin
-            or "dms.calculator.manage" in held_perms
-            or bool(self.membership.role in ("owner", "admin"))
-        )
-        if not can_manage:
-            return Response(
-                {"detail": "You do not have permission to configure calculator constants."},
-                status=status.HTTP_403_FORBIDDEN,
-            )
-
         try:
             settings = CalculatorSettings.objects.first()
             if not settings:
@@ -267,6 +303,7 @@ class CalculatorSettingsView(TenantAPIView):
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
         except Exception as e:
             import traceback
+
             with open("error_log.txt", "w") as f:
                 traceback.print_exc(file=f)
             raise e
@@ -316,10 +353,10 @@ class ECDosingCalculationDetailView(TenantAPIView):
         return Response(status=status.HTTP_204_NO_CONTENT)
 
 
-
 # ============================================================================
 # Feasibility Views
 # ============================================================================
+
 
 class FeasibilityCalculateLiveView(TenantAPIView):
     """
@@ -327,6 +364,7 @@ class FeasibilityCalculateLiveView(TenantAPIView):
     Takes capacity, operating hours, electrode metal, dose, etc., and returns
     full engineering specifications instantaneously without saving to database.
     """
+
     required_permissions: ClassVar[list[str]] = []
 
     def post(self, request, org_slug: str):
@@ -373,6 +411,7 @@ class FeasibilityTemplateView(TenantAPIView):
     Default Feasibility Proposal Content endpoint.
     Returns standard proposal boilerplate without requiring a separate database table.
     """
+
     required_permissions: ClassVar[list[str]] = []
 
     def get(self, request, org_slug: str):
@@ -421,7 +460,9 @@ class FeasibilityReportListView(TenantAPIView):
                 items=data.get("items"),
                 status=data.get("status", "DRAFT"),
             )
-            return Response(FeasibilityReportSerializer(report).data, status=status.HTTP_201_CREATED)
+            return Response(
+                FeasibilityReportSerializer(report).data, status=status.HTTP_201_CREATED
+            )
         except Exception as e:
             return Response({"detail": str(e)}, status=status.HTTP_400_BAD_REQUEST)
 
@@ -469,7 +510,9 @@ class FeasibilityAttachmentView(TenantAPIView):
                 file=request.FILES["file"],
                 caption=request.data.get("caption", ""),
             )
-            return Response(FeasibilityAttachmentSerializer(attachment).data, status=status.HTTP_201_CREATED)
+            return Response(
+                FeasibilityAttachmentSerializer(attachment).data, status=status.HTTP_201_CREATED
+            )
         except Exception as e:
             return Response({"detail": str(e)}, status=status.HTTP_400_BAD_REQUEST)
 
@@ -480,4 +523,3 @@ class FeasibilityAttachmentDetailView(TenantAPIView):
     def delete(self, request, org_slug: str, pk: str, attachment_id: str):
         delete_feasibility_attachment(attachment_id)
         return Response(status=status.HTTP_204_NO_CONTENT)
-

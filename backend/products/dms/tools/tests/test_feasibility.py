@@ -47,7 +47,7 @@ def test_feasibility_engine_iron():
 def test_feasibility_proposal_and_line_items():
     from config.routers import current_tenant_db
     from conftest import TEST_TENANT_ALIAS
-    from products.dms.tools.models import FeasibilityLineItem, FeasibilityReport
+    from products.dms.tools.models import FeasibilityReport
     from products.dms.tools.services import create_feasibility_report, update_feasibility_report
 
     token = current_tenant_db.set(TEST_TENANT_ALIAS)
@@ -90,5 +90,3 @@ def test_feasibility_proposal_and_line_items():
         assert custom_item.total_price == 600000.0
     finally:
         current_tenant_db.reset(token)
-
-

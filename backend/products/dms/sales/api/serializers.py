@@ -119,7 +119,8 @@ class QuotationReadSerializer(serializers.ModelSerializer):
                     {
                         "id": str(att.id),
                         "file_url": att.file.url if att.file else "",
-                        "file_name": att.file_name or (att.file.name.split("/")[-1] if att.file else ""),
+                        "file_name": att.file_name
+                        or (att.file.name.split("/")[-1] if att.file else ""),
                         "file_size": att.file_size,
                     }
                     for att in p.attachments.all()
@@ -154,7 +155,6 @@ class QuotationReadSerializer(serializers.ModelSerializer):
 
     def get_amount(self, obj: Quotation) -> float:
         return float(sum((item.total_amount for item in obj.items.all()), 0))
-
 
 
 class EnquiryReadSerializer(serializers.ModelSerializer):
@@ -237,7 +237,7 @@ class ProductPresetReadSerializer(serializers.ModelSerializer):
             "margin",
             "gst_rate",
             "specs",
-            "image"
+            "image",
         ]
         read_only_fields = fields
 
@@ -249,6 +249,7 @@ class ProductPresetReadSerializer(serializers.ModelSerializer):
 
 
 # ---- Write Serializers (Incoming) -------------------------------------------
+
 
 class BankAccountWriteSerializer(serializers.Serializer):
     bank_name = serializers.CharField(max_length=255)
@@ -367,8 +368,12 @@ class QuotationCreateSerializer(serializers.Serializer):
     agent_id = serializers.UUIDField(required=False, allow_null=True, default=None)
     agent_name = serializers.CharField(max_length=255, required=False, allow_blank=True, default="")
     commission_type = serializers.CharField(max_length=20, required=False, default="PERCENTAGE")
-    commission_rate = serializers.DecimalField(max_digits=5, decimal_places=2, required=False, default=0)
-    commission_amount = serializers.DecimalField(max_digits=12, decimal_places=2, required=False, default=0)
+    commission_rate = serializers.DecimalField(
+        max_digits=5, decimal_places=2, required=False, default=0
+    )
+    commission_amount = serializers.DecimalField(
+        max_digits=12, decimal_places=2, required=False, default=0
+    )
 
 
 class TechnoCommercialDocumentReadSerializer(serializers.ModelSerializer):
@@ -408,5 +413,6 @@ class TechnoCommercialDocumentWriteSerializer(serializers.Serializer):
     site = serializers.UUIDField(required=False, allow_null=True)
     site_name = serializers.CharField(max_length=255, required=False, allow_blank=True, default="")
     quotation = serializers.UUIDField(required=False, allow_null=True)
-    quote_number = serializers.CharField(max_length=100, required=False, allow_blank=True, default="")
-
+    quote_number = serializers.CharField(
+        max_length=100, required=False, allow_blank=True, default=""
+    )

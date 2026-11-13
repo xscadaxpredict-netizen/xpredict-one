@@ -53,15 +53,25 @@ def delete_timer_calculation(calc_id: str) -> None:
     TimerCalculation.objects.filter(id=calc_id).delete()
 
 
-def get_standard_line_items_seed(capacity_kld: float = 15.0, model_name: str = "HIDREC EZ 1000") -> list[dict]:
+def get_standard_line_items_seed(
+    capacity_kld: float = 15.0, model_name: str = "HIDREC EZ 1000"
+) -> list[dict]:
     """Returns default quotation equipment line items."""
     ec_price = 485000.0 if capacity_kld <= 25.0 else 750000.0
     filter_price = 165000.0 if capacity_kld <= 25.0 else 240000.0
     pump_price = 85000.0 if capacity_kld <= 25.0 else 125000.0
     return [
         {
-            "item_name": f"{model_name} Electrocoagulation Reactor Chamber & SMPS Power Electronics",
-            "specification": "SS304 skid, quick-change sacrificial electrode pack, polarity-reversal automation",
+            "item_name": (
+                f"{model_name} Electrocoagulation "
+                "Reactor Chamber & SMPS Power "
+                "Electronics"
+            ),
+            "specification": (
+                "SS304 skid, quick-change sacrificial "
+                "electrode pack, polarity-reversal "
+                "automation"
+            ),
             "quantity": 1,
             "unit": "Lot",
             "unit_price": ec_price,
@@ -69,7 +79,11 @@ def get_standard_line_items_seed(capacity_kld: float = 15.0, model_name: str = "
         },
         {
             "item_name": "Dual Media Sand & Activated Carbon Pressure Filter System",
-            "specification": "FRP vessel, multi-port valve, multi-grade silica sand & high-iodine carbon",
+            "specification": (
+                "FRP vessel, multi-port valve, "
+                "multi-grade silica sand & high-iodine "
+                "carbon"
+            ),
             "quantity": 1,
             "unit": "Set",
             "unit_price": filter_price,
@@ -77,7 +91,10 @@ def get_standard_line_items_seed(capacity_kld: float = 15.0, model_name: str = "
         },
         {
             "item_name": "Raw Sewage Feed Pump & Motorized Actuator Valves Package",
-            "specification": "Non-clog submersible pump, motorized 24V DC actuator valves with fail-safe return",
+            "specification": (
+                "Non-clog submersible pump, motorized 24V "
+                "DC actuator valves with fail-safe return"
+            ),
             "quantity": 1,
             "unit": "Lot",
             "unit_price": pump_price,
@@ -88,24 +105,60 @@ def get_standard_line_items_seed(capacity_kld: float = 15.0, model_name: str = "
 
 DEFAULT_XPREDICT_SCOPE = [
     "Process engineering, equipment sizing, design calculations, and complete P&ID drawings.",
-    "Manufacturing and supply of skid-mounted Electrocoagulation Reactor Chamber with quick-change electrode pack.",
-    "Supply of high-frequency switched-mode DC power supply unit (SMPS) with polarity-reversal automation.",
-    "Supply of tertiary filtration system including FRP vessels, multi-grade media, and multiport control valves.",
-    "Plant testing, wet commissioning, and hands-on operational training for client facility staff.",
+    (
+        "Manufacturing and supply of skid-mounted Electrocoagulation Reactor Chamber with "
+        "quick-change electrode pack."
+    ),
+    (
+        "Supply of high-frequency switched-mode DC power supply unit (SMPS) with "
+        "polarity-reversal automation."
+    ),
+    (
+        "Supply of tertiary filtration system including FRP vessels, multi-grade media, and "
+        "multiport control valves."
+    ),
+    (
+        "Plant testing, wet commissioning, and hands-on operational training for client facility "
+        "staff."
+    ),
 ]
 
 DEFAULT_CLIENT_SCOPE = [
-    "Civil construction of collection sump, raw water holding tanks, and treated water clear well as per engineering layouts.",
-    "Three-phase 415V, 50Hz electrical power termination with dedicated MCCB/ELCB isolator at plant battery limits.",
-    "Inlet sewage raw water piping up to plant skid and treated water distribution pumping from clear well.",
-    "Protected weather shed or well-ventilated plant room with adequate lighting and drainage floor sump.",
+    (
+        "Civil construction of collection sump, raw water holding tanks, and treated water clear "
+        "well as per engineering layouts."
+    ),
+    (
+        "Three-phase 415V, 50Hz electrical power termination with dedicated MCCB/ELCB isolator at "
+        "plant battery limits."
+    ),
+    (
+        "Inlet sewage raw water piping up to plant skid and treated water distribution pumping "
+        "from clear well."
+    ),
+    (
+        "Protected weather shed or well-ventilated plant room with adequate lighting and drainage "
+        "floor sump."
+    ),
 ]
 
 DEFAULT_TERMS_CONDITIONS = [
-    "Payment: 50% advance along with confirmed Purchase Order, 40% against proforma invoice prior to dispatch, 10% after successful wet commissioning.",
-    "Warranty: 12 months comprehensive warranty on all electro-mechanical components from the date of commissioning against manufacturing defects.",
-    "Delivery: Equipment delivery within 4 to 6 weeks from the date of receipt of confirmed Purchase Order and advance payment.",
-    "Validity: Commercial pricing and technical specifications remain valid for 30 days from the proposal submission date.",
+    (
+        "Payment: 50% advance along with confirmed Purchase Order, 40% against proforma invoice "
+        "prior to dispatch, 10% after successful wet commissioning."
+    ),
+    (
+        "Warranty: 12 months comprehensive warranty on all electro-mechanical components from the "
+        "date of commissioning against manufacturing defects."
+    ),
+    (
+        "Delivery: Equipment delivery within 4 to 6 weeks from the date of receipt of confirmed "
+        "Purchase Order and advance payment."
+    ),
+    (
+        "Validity: Commercial pricing and technical specifications remain valid for 30 days from "
+        "the proposal submission date."
+    ),
 ]
 
 
@@ -179,7 +232,9 @@ def create_feasibility_report(
     report.save()
 
     # Create quotation equipment line items
-    raw_items = items if items is not None else get_standard_line_items_seed(capacity_kld, chosen_model)
+    raw_items = (
+        items if items is not None else get_standard_line_items_seed(capacity_kld, chosen_model)
+    )
     for idx, item in enumerate(raw_items, start=1):
         FeasibilityLineItem.objects.create(
             report=report,
@@ -302,6 +357,3 @@ def create_ec_calculation(
 
 def delete_ec_calculation(calculation_id: str) -> None:
     ECDosingCalculation.objects.filter(id=calculation_id).delete()
-
-
-
