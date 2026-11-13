@@ -355,6 +355,19 @@ function EnquiryRow({
                     <MessageIcon />
                     <span>{enquiry.remarks}</span>
                   </div>
+                  {enquiry.agent_name && (
+                    <div className={styles.infoRow} style={{ marginTop: "6px" }}>
+                      <UserIcon />
+                      <span>
+                        <strong>Agent / Referrer:</strong> {enquiry.agent_name}
+                        {Number(enquiry.lead_fee) > 0 ? (
+                          <span style={{ marginLeft: "8px", color: "#7e22ce", fontWeight: 600 }}>
+                            (Lead Sourcing Fee: ₹{Number(enquiry.lead_fee).toLocaleString("en-IN")}{enquiry.lead_fee_status ? ` • ${enquiry.lead_fee_status}` : ""})
+                          </span>
+                        ) : null}
+                      </span>
+                    </div>
+                  )}
                 </div>
 
                 {/* Right: Follow-up history */}
@@ -613,6 +626,15 @@ function MessageIcon() {
   return (
     <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true" className={styles.infoIcon}>
       <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+    </svg>
+  );
+}
+
+function UserIcon() {
+  return (
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" className={styles.infoIcon}>
+      <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
+      <circle cx="12" cy="7" r="4" />
     </svg>
   );
 }

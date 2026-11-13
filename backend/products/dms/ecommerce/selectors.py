@@ -17,9 +17,12 @@ from .models import EcommerceOrder
 def list_spares_catalog() -> QuerySet[ProductCatalog]:
     """
     Return products that belong in the spares catalog --- those with a
-    specific product_type or category.
+    specific product_type or category. In E-commerce (buying from factory),
+    only official OEM products (unit_id IS NULL) are available.
     """
-    return ProductCatalog.objects.filter(is_active=True, product_type="SPARES").order_by("name")
+    return ProductCatalog.all_units.filter(
+        is_active=True, unit_id__isnull=True, product_type="SPARES"
+    ).order_by("name")
 
 
 def get_spare(product_id: uuid.UUID) -> ProductCatalog:

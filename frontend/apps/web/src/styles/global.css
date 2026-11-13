@@ -33,3 +33,48 @@ body {
     transition-duration: 0.01ms !important;
   }
 }
+
+/* Global Print Rules: Hide application shell and allow full multi-page document pagination */
+@media print {
+  header,
+  aside,
+  nav,
+  .noPrint,
+  [data-testid="sidebar"],
+  [class*="sidebar"],
+  [class*="Sidebar"],
+  [class*="topbar"],
+  [class*="Topbar"],
+  [class*="tabBar"],
+  [class*="TabBar"],
+  [class*="tabBarWrapper"],
+  [class*="mobileNav"],
+  [class*="MobileNav"] {
+    display: none !important;
+  }
+
+  html,
+  body,
+  #root,
+  main,
+  [class*="toolsLayoutContainer"],
+  [class*="feasibilityOutlet"],
+  [class*="outletContainer"],
+  [class*="moduleLayout"] {
+    background: #ffffff !important;
+    height: auto !important;
+    min-height: 0 !important;
+    max-height: none !important;
+    overflow: visible !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    border: none !important;
+    box-shadow: none !important;
+    display: block !important;
+  }
+
+  @page {
+    size: A4 portrait;
+    margin: 0;
+  }
+}

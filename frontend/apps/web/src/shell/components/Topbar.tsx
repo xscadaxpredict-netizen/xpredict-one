@@ -13,7 +13,6 @@ import { MobileNav } from "./MobileNav";
 import { OrgSwitcher } from "./OrgSwitcher";
 import { UserMenu } from "./UserMenu";
 import { NotificationMenu } from "./NotificationMenu";
-import { SearchIcon } from "lucide-react";
 import styles from "./Topbar.module.css";
 
 interface TopbarProps {
@@ -56,17 +55,6 @@ export function Topbar({ me, membership, app }: TopbarProps) {
               <span className={styles.appName}>{app.name}</span>
             </>
           )}
-        </div>
-      </div>
-
-      <div className={styles.center}>
-        <div className={styles.searchContainer}>
-          <SearchIcon size={16} className={styles.searchIcon} />
-          <input 
-            type="text" 
-            placeholder="Global search..." 
-            className={styles.searchInput} 
-          />
         </div>
       </div>
 

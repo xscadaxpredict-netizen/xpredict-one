@@ -16,6 +16,7 @@ import {
   createEnquiry,
   deleteQuotation,
   fetchBanks,
+  fetchDealerProfile,
   fetchEnquiries,
   fetchProductPresets,
   saveQuotation,
@@ -28,6 +29,8 @@ import {
   createProductPreset,
   updateProductPreset,
   deleteProductPreset,
+  fetchCommissions,
+  recordCommissionPayment,
 } from "../api/enquiries";
 import { salesKeys } from "../api/keys";
 import type { NewEnquiry, NewFollowup, NewQuotation, BankAccount, ProductPreset } from "../api/types";
@@ -45,6 +48,14 @@ export function useBanks() {
   return useOrgQuery({
     key: salesKeys.banks(),
     queryFn: (orgSlug) => fetchBanks(orgSlug),
+  });
+}
+
+export function useDealerProfile() {
+  return useOrgQuery({
+    key: salesKeys.dealerProfile(),
+    queryFn: (orgSlug) => fetchDealerProfile(orgSlug),
+    staleTime: 5 * 60 * 1000,
   });
 }
 
@@ -214,5 +225,31 @@ export function useDeleteProductPreset() {
   return useOrgMutation({
     mutationFn: (orgSlug, productId: string) => deleteProductPreset(orgSlug, productId),
     invalidates: [salesKeys.products()],
+  });
+}
+
+export function useCommissions() {
+  return useOrgQuery({
+    key: salesKeys.commissions(),
+    queryFn: (orgSlug) => fetchCommissions(orgSlug),
+  });
+}
+
+export function useRecordCommissionPayment() {
+  return useOrgMutation({
+    mutationFn: (
+      orgSlug,
+      payload:
+        | FormData
+        | {
+            type: "COMMISSION" | "LEAD_FEE";
+            reference_id: string;
+            payment_ref: string;
+            amount?: number;
+            paid_at?: string;
+            notes?: string;
+          }
+    ) => recordCommissionPayment(orgSlug, payload),
+    invalidates: [salesKeys.commissions(), salesKeys.enquiryList()],
   });
 }

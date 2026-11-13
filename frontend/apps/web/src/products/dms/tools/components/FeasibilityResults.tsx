@@ -4,9 +4,9 @@ import styles from "./FeasibilityResults.module.css";
 interface FeasibilityResult {
   totalDailyDemand: number;
   stpCapacity: number;
-  wtpCapacity: number;
+  wtpCapacity?: number;
   recommendedTechSTP: string;
-  recommendedTechWTP: string;
+  recommendedTechWTP?: string;
 }
 
 interface Props {
@@ -50,14 +50,6 @@ export function FeasibilityResults({ result }: Props) {
           <div className={styles.techInfo}>
             <div className={styles.techName}>STP: {result.recommendedTechSTP}</div>
             <div className={styles.techDesc}>Ideal for {result.stpCapacity} KLD capacity with optimal footprint and efficiency.</div>
-          </div>
-        </div>
-
-        <div className={styles.techRow}>
-          <div className={styles.techIcon}><CheckCircle2Icon size={20} color="#10B981" /></div>
-          <div className={styles.techInfo}>
-            <div className={styles.techName}>WTP: {result.recommendedTechWTP}</div>
-            <div className={styles.techDesc}>Required capacity: {result.wtpCapacity} KLD (Based on 100% borewell/tanker dependence).</div>
           </div>
         </div>
       </div>

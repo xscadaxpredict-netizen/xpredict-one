@@ -6,6 +6,7 @@
  */
 
 import type { EnquiryStatus } from "./types";
+import type { ListTechnoCommercialFilters } from "./technoCommercial";
 
 export interface EnquiryFilters {
   search?: string;
@@ -20,5 +21,10 @@ export const salesKeys = {
     [...salesKeys.enquiries(), "list", filters] as const,
 
   banks: () => [...salesKeys.all(), "banks"] as const,
+  dealerProfile: () => [...salesKeys.all(), "dealer-profile"] as const,
   products: () => [...salesKeys.all(), "products"] as const,
+  commissions: () => [...salesKeys.all(), "commissions"] as const,
+  technoCommercial: () => [...salesKeys.all(), "techno-commercial"] as const,
+  technoCommercialList: (filters?: ListTechnoCommercialFilters) =>
+    [...salesKeys.technoCommercial(), "list", filters] as const,
 };

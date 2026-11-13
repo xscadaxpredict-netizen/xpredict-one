@@ -53,6 +53,18 @@
   gap: var(--space-1);
 }
 
+.oemBadge {
+  background: #eff6ff;
+  color: #1d4ed8;
+  border: 1px solid #bfdbfe;
+}
+
+.dealerBadge {
+  background: #f0fdf4;
+  color: #15803d;
+  border: 1px solid #bbf7d0;
+}
+
 .row {
   display: flex;
   gap: var(--space-4);

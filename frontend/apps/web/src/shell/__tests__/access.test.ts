@@ -141,4 +141,32 @@ describe("accessFor", () => {
     expect(access.hasModule("sales")).toBe(true);
     expect(access.hasModule("tech-support")).toBe(true);
   });
+
+  describe("settings / configuration module", () => {
+    it("allows organisation owner and admin", () => {
+      const access = accessFor(ownerMembership(), "dms");
+      expect(access.hasModule("settings")).toBe(true);
+    });
+
+    it("allows dealer manager", () => {
+      const manager = membership({
+        role: "member",
+        unit_id: "unit-1",
+        unit_name: "Test Dealership",
+        apps: [
+          appAccess("dms", {
+            modules: ["sales"],
+            permissions: ["dms.order.confirm", "dms.enquiry.close"],
+          }),
+        ],
+      });
+      const access = accessFor(manager, "dms");
+      expect(access.hasModule("settings")).toBe(true);
+    });
+
+    it("refuses dealer salesperson or non-manager", () => {
+      const access = accessFor(salespersonMembership(), "dms");
+      expect(access.hasModule("settings")).toBe(false);
+    });
+  });
 });
