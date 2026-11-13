@@ -26,6 +26,8 @@ const EMPTY: NewEnquiry = {
   remarks: "",
   followup_remarks: "",
   followup_next_date: "",
+  agent_name: "",
+  lead_fee: 0,
 };
 
 export function NewEnquiryDialog({
@@ -49,6 +51,8 @@ export function NewEnquiryDialog({
         remarks: initialData.remarks,
         followup_remarks: "",
         followup_next_date: "",
+        agent_name: initialData.agent_name || "",
+        lead_fee: initialData.lead_fee ? Number(initialData.lead_fee) : 0,
       });
     } else {
       setForm(EMPTY);
@@ -68,7 +72,7 @@ export function NewEnquiryDialog({
 
   };
 
-  const update = (field: keyof NewEnquiry, value: string) => {
+  const update = (field: keyof NewEnquiry, value: any) => {
     setForm((prev) => ({ ...prev, [field]: value }));
   };
 
@@ -182,6 +186,36 @@ export function NewEnquiryDialog({
               value={form.remarks}
               onChange={(e) => update("remarks", e.target.value)}
             />
+          </div>
+
+          <div className={styles.divider} />
+          <h3 className={styles.sectionTitle}>Agent / Referral (Optional)</h3>
+
+          <div className={styles.row}>
+            <div className={styles.field}>
+              <label className={styles.label} htmlFor="enq-agent-name">Agent / Referrer Name</label>
+              <input
+                id="enq-agent-name"
+                type="text"
+                className={styles.input}
+                placeholder="e.g. Rajesh Kumar"
+                value={form.agent_name || ""}
+                onChange={(e) => update("agent_name", e.target.value)}
+              />
+            </div>
+            <div className={styles.field}>
+              <label className={styles.label} htmlFor="enq-lead-fee">Lead Sourcing Fee (₹)</label>
+              <input
+                id="enq-lead-fee"
+                type="number"
+                min="0"
+                step="100"
+                className={styles.input}
+                placeholder="0"
+                value={form.lead_fee || ""}
+                onChange={(e) => update("lead_fee", Number(e.target.value) || 0)}
+              />
+            </div>
           </div>
 
           {!initialData && (

@@ -14,7 +14,8 @@ import { FollowupDialog } from "../components/FollowupDialog";
 import { QuoteBuilderDialog } from "../components/QuoteBuilderDialog";
 import { QuotationPreviewDialog } from "../components/QuotationPreviewDialog";
 import { NewEnquiryDialog } from "../components/NewEnquiryDialog";
-import type { Enquiry, NewFollowup, NewEnquiry } from "../api/types";
+import { RecordPayoutModal, type PayoutTargetRecord } from "../components/RecordPayoutModal";
+import type { Enquiry, NewFollowup, NewEnquiry, Quotation } from "../api/types";
 import { useDialog } from "../../shared/hooks/useDialog";
 import { useDmsPermissions } from "../../shared/hooks/useDmsPermissions";
 import styles from "./ConfirmedOrdersScreen.module.css";
@@ -33,6 +34,24 @@ export function ConfirmedOrdersScreen() {
     quote: import("../api/types").Quotation;
   } | null>(null);
   const [editingOrder, setEditingOrder] = useState<Enquiry | null>(null);
+  const [payingCommissionRecord, setPayingCommissionRecord] = useState<PayoutTargetRecord | null>(null);
+
+  const handleOpenAgentPayout = (quote: Quotation, order: Enquiry) => {
+    setPayingCommissionRecord({
+      type: "COMMISSION",
+      reference_id: quote.id,
+      agent_name: quote.agent_name || order.agent_name || "",
+      customer_name: order.customer_name,
+      deal_title: quote.title || quote.quote_no,
+      amount: quote.commission_amount || 0,
+      paid_amount: quote.paid_amount || 0,
+      balance_amount: quote.balance_amount !== undefined 
+        ? quote.balance_amount 
+        : Math.max(0, (quote.commission_amount || 0) - (quote.paid_amount || 0)),
+      status: quote.commission_status || "PAYABLE",
+      payouts: quote.payouts,
+    });
+  };
 
   const [confirmState, setConfirmState] = useState<{
     title: string;
@@ -191,6 +210,7 @@ export function ConfirmedOrdersScreen() {
                       setViewingQuote({ enquiry: order, quote });
                     }
                   }}
+                  onRecordAgentPayout={handleOpenAgentPayout}
                 />
               ))}
             </tbody>
@@ -245,6 +265,12 @@ export function ConfirmedOrdersScreen() {
         }}
         onCancel={() => setConfirmState(null)}
       />
+      <RecordPayoutModal
+        open={payingCommissionRecord !== null}
+        onClose={() => setPayingCommissionRecord(null)}
+        record={payingCommissionRecord}
+        onSuccess={() => refetch()}
+      />
       <DialogComponent />
     </div>
   );
@@ -263,9 +289,10 @@ interface OrderRowProps {
   onDelete: () => void;
   onEditOrder: () => void;
   onViewQuote: () => void;
+  onRecordAgentPayout?: (quote: Quotation, order: Enquiry) => void;
 }
 
-function OrderRow({ order, isExpanded, isHistoryExpanded, onToggle, onToggleHistory, onFollowup, onUnconfirm, onDelete, onEditOrder, onViewQuote }: OrderRowProps) {
+function OrderRow({ order, isExpanded, isHistoryExpanded, onToggle, onToggleHistory, onFollowup, onUnconfirm, onDelete, onEditOrder, onViewQuote, onRecordAgentPayout }: OrderRowProps) {
   const { canEditEnquiry, canUnconfirmOrder, canDeleteOrder } = useDmsPermissions();
   const confirmedQuote = order.quotes.find((q) => q.id === order.confirmed_quote_id);
 
@@ -289,6 +316,64 @@ function OrderRow({ order, isExpanded, isHistoryExpanded, onToggle, onToggleHist
               <div className={styles.quoteAmount}>
                 ₹ {confirmedQuote.amount.toLocaleString("en-IN")}
               </div>
+              {confirmedQuote.agent_name && (
+                <div style={{ marginTop: "6px", display: "flex", flexDirection: "column", gap: "2px" }}>
+                  <div style={{ fontSize: "0.78rem", fontWeight: 600, color: "var(--color-text, #0f172a)" }}>
+                    👤 Agent: {confirmedQuote.agent_name}
+                  </div>
+                  <div style={{ display: "flex", alignItems: "center", gap: "6px", flexWrap: "wrap", marginTop: "2px" }}>
+                    <span style={{ fontSize: "0.75rem", fontWeight: 700, color: "#047857" }}>
+                      Comm: ₹{Number(confirmedQuote.commission_amount || 0).toLocaleString("en-IN")}
+                    </span>
+                    <span
+                      style={{
+                        fontSize: "0.7rem",
+                        padding: "1px 6px",
+                        borderRadius: "9999px",
+                        fontWeight: 600,
+                        background:
+                          confirmedQuote.commission_status === "PAID"
+                            ? "#f1f5f9"
+                            : confirmedQuote.commission_status === "PARTIALLY_PAID"
+                            ? "#fef3c7"
+                            : "#ecfdf5",
+                        color:
+                          confirmedQuote.commission_status === "PAID"
+                            ? "#475569"
+                            : confirmedQuote.commission_status === "PARTIALLY_PAID"
+                            ? "#92400e"
+                            : "#047857",
+                      }}
+                    >
+                      {confirmedQuote.commission_status === "PAID"
+                        ? "Paid"
+                        : confirmedQuote.commission_status === "PARTIALLY_PAID"
+                        ? `Partial (₹${Number(confirmedQuote.paid_amount || 0).toLocaleString("en-IN")} paid)`
+                        : "Payable"}
+                    </span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onRecordAgentPayout?.(confirmedQuote, order);
+                    }}
+                    style={{
+                      background: "none",
+                      border: "none",
+                      color: "#2563eb",
+                      textDecoration: "underline",
+                      fontSize: "0.74rem",
+                      cursor: "pointer",
+                      textAlign: "left",
+                      padding: 0,
+                      marginTop: "3px",
+                    }}
+                  >
+                    {confirmedQuote.commission_status === "PAID" ? "View Proofs & History" : "Record Payout / Installment"}
+                  </button>
+                </div>
+              )}
             </div>
           ) : (
             <span className={styles.muted}>—</span>
@@ -302,6 +387,20 @@ function OrderRow({ order, isExpanded, isHistoryExpanded, onToggle, onToggleHist
         </td>
         <td className={`${styles.td} ${styles.tdRight}`}>
           <div className={styles.actions}>
+            {confirmedQuote?.agent_name && (
+              <button
+                type="button"
+                className={styles.btnSecondary}
+                style={{ fontSize: "0.75rem", padding: "4px 8px" }}
+                title="Agent Payout & Installments"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onRecordAgentPayout?.(confirmedQuote, order);
+                }}
+              >
+                Agent Payout
+              </button>
+            )}
             {canEditEnquiry && (
               <button
                 type="button"
@@ -363,6 +462,19 @@ function OrderRow({ order, isExpanded, isHistoryExpanded, onToggle, onToggleHist
           <td colSpan={5} className={styles.expandedCell}>
             <div className={styles.expandedContent}>
               <div className={styles.mobileActionsBar}>
+                {confirmedQuote?.agent_name && (
+                  <button
+                    type="button"
+                    className={styles.btnSecondary}
+                    style={{ fontSize: "0.8rem", padding: "6px 12px", minHeight: "36px", display: "inline-flex", alignItems: "center", gap: "4px" }}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onRecordAgentPayout?.(confirmedQuote, order);
+                    }}
+                  >
+                    👤 Agent Payout
+                  </button>
+                )}
                 {canEditEnquiry && (
                   <button
                     type="button"
@@ -423,6 +535,55 @@ function OrderRow({ order, isExpanded, isHistoryExpanded, onToggle, onToggleHist
                   <div className={styles.infoRow}>
                     <MessageIcon /> <span>{order.remarks}</span>
                   </div>
+                  {order.agent_name && (
+                    <div className={styles.infoRow} style={{ marginTop: "6px" }}>
+                      <UserIcon />
+                      <span>
+                        <strong>Agent / Referrer:</strong> {order.agent_name}
+                        {Number(order.lead_fee) > 0 ? (
+                          <span style={{ marginLeft: "8px", color: "#7e22ce", fontWeight: 600 }}>
+                            (Lead Sourcing Fee: ₹{Number(order.lead_fee).toLocaleString("en-IN")}{order.lead_fee_status ? ` • ${order.lead_fee_status}` : ""})
+                          </span>
+                        ) : null}
+                      </span>
+                    </div>
+                  )}
+
+                  {confirmedQuote?.agent_name && (
+                    <div style={{ marginTop: "12px", padding: "10px 12px", background: "var(--color-surface-subtle, #f8fafc)", border: "1px solid var(--color-border, #e2e8f0)", borderRadius: "8px" }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "6px" }}>
+                        <span style={{ fontSize: "0.82rem", fontWeight: 700, color: "var(--color-text, #0f172a)" }}>
+                          Deal Commission ({confirmedQuote.agent_name})
+                        </span>
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onRecordAgentPayout?.(confirmedQuote, order);
+                          }}
+                          style={{
+                            background: "var(--color-primary, #0f172a)",
+                            color: "#ffffff",
+                            border: "none",
+                            borderRadius: "4px",
+                            padding: "3px 8px",
+                            fontSize: "0.74rem",
+                            cursor: "pointer",
+                            fontWeight: 600,
+                          }}
+                        >
+                          {confirmedQuote.commission_status === "PAID" ? "View History" : "Record Payout / Installments"}
+                        </button>
+                      </div>
+                      <div style={{ display: "flex", gap: "12px", flexWrap: "wrap", fontSize: "0.78rem" }}>
+                        <span>Total: <strong>₹{Number(confirmedQuote.commission_amount || 0).toLocaleString("en-IN")}</strong></span>
+                        <span style={{ color: "#047857" }}>Paid: <strong>₹{Number(confirmedQuote.paid_amount || 0).toLocaleString("en-IN")}</strong></span>
+                        <span style={{ color: "#b45309" }}>
+                          Balance Due: <strong>₹{Number(confirmedQuote.balance_amount !== undefined ? confirmedQuote.balance_amount : Math.max(0, (confirmedQuote.commission_amount || 0) - (confirmedQuote.paid_amount || 0))).toLocaleString("en-IN")}</strong>
+                        </span>
+                      </div>
+                    </div>
+                  )}
                 </div>
                 <div>
                   <h4 className={styles.sectionTitle}>Follow-up History</h4>
@@ -546,6 +707,10 @@ function MapPinIcon() {
 
 function MessageIcon() {
   return <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true" className={styles.infoIcon}><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" /></svg>;
+}
+
+function UserIcon() {
+  return <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" className={styles.infoIcon}><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" /><circle cx="12" cy="7" r="4" /></svg>;
 }
 
 function EyeIcon() {

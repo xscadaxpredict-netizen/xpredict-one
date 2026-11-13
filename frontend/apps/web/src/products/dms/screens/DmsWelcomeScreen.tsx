@@ -172,7 +172,7 @@ export function DmsWelcomeScreen() {
           </div>
 
           <h1 className={styles.heroTitle}>
-            Welcome to Dealer Management (DMS)
+            Welcome to Dealer Management System (DMS)
           </h1>
 
           <p className={styles.heroSubtitle}>
@@ -180,8 +180,6 @@ export function DmsWelcomeScreen() {
             to ongoing maintenance, engineering calculations, and spare parts procurement.
             All tools and workflows are ready for use.
           </p>
-
-
         </div>
       </section>
 

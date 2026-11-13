@@ -10,7 +10,15 @@ from __future__ import annotations
 
 from rest_framework import serializers
 
-from ..models import BankAccount, Enquiry, Followup, ProductCatalog, Quotation, QuotationItem
+from ..models import (
+    BankAccount,
+    Enquiry,
+    Followup,
+    ProductCatalog,
+    Quotation,
+    QuotationItem,
+    TechnoCommercialDocument,
+)
 
 # ---- Read Serializers (Outgoing) --------------------------------------------
 
@@ -56,6 +64,9 @@ class QuotationReadSerializer(serializers.ModelSerializer):
     amount = serializers.SerializerMethodField()
     date = serializers.DateTimeField(source="created_at")
     type = serializers.CharField(source="quote_type")
+    paid_amount = serializers.SerializerMethodField()
+    balance_amount = serializers.SerializerMethodField()
+    payouts = serializers.SerializerMethodField()
 
     class Meta:
         model = Quotation
@@ -74,9 +85,48 @@ class QuotationReadSerializer(serializers.ModelSerializer):
             "amount",
             "date",
             "terms",
+            "agent_id",
+            "agent_name",
+            "commission_type",
+            "commission_rate",
+            "commission_amount",
+            "commission_status",
+            "commission_payment_ref",
+            "commission_paid_at",
+            "paid_amount",
+            "balance_amount",
+            "payouts",
             "created_at",
         ]
         read_only_fields = fields
+
+    def get_paid_amount(self, obj: Quotation) -> float:
+        return float(sum((p.amount for p in obj.payouts.all()), 0))
+
+    def get_balance_amount(self, obj: Quotation) -> float:
+        paid = self.get_paid_amount(obj)
+        return max(0.0, float(obj.commission_amount) - paid)
+
+    def get_payouts(self, obj: Quotation) -> list[dict]:
+        return [
+            {
+                "id": str(p.id),
+                "amount": float(p.amount),
+                "payment_ref": p.payment_ref,
+                "paid_at": p.paid_at.isoformat() if p.paid_at else None,
+                "notes": p.notes,
+                "attachments": [
+                    {
+                        "id": str(att.id),
+                        "file_url": att.file.url if att.file else "",
+                        "file_name": att.file_name or (att.file.name.split("/")[-1] if att.file else ""),
+                        "file_size": att.file_size,
+                    }
+                    for att in p.attachments.all()
+                ],
+            }
+            for p in obj.payouts.all()
+        ]
 
     def get_from_details(self, obj: Quotation) -> dict:
         return {
@@ -124,6 +174,12 @@ class EnquiryReadSerializer(serializers.ModelSerializer):
             "status",
             "confirmed_quote_id",
             "oc_number",
+            "agent_id",
+            "agent_name",
+            "lead_fee",
+            "lead_fee_status",
+            "lead_fee_payment_ref",
+            "lead_fee_paid_at",
             "followups",
             "quotes",
             "created_at",
@@ -133,10 +189,27 @@ class EnquiryReadSerializer(serializers.ModelSerializer):
 
 
 class BankAccountReadSerializer(serializers.ModelSerializer):
+    is_org_bank = serializers.BooleanField(read_only=True)
+    ownership = serializers.SerializerMethodField()
+
     class Meta:
         model = BankAccount
-        fields = ["id", "bank_name", "account_no", "ifsc_code"]
+        fields = [
+            "id",
+            "unit_id",
+            "bank_name",
+            "account_no",
+            "ifsc_code",
+            "branch_name",
+            "is_default",
+            "is_active",
+            "is_org_bank",
+            "ownership",
+        ]
         read_only_fields = fields
+
+    def get_ownership(self, obj) -> str:
+        return "ORGANIZATION" if obj.unit_id is None else "DEALER"
 
 
 class ProductPresetReadSerializer(serializers.ModelSerializer):
@@ -145,11 +218,16 @@ class ProductPresetReadSerializer(serializers.ModelSerializer):
     margin = serializers.DecimalField(source="margin_percent", max_digits=5, decimal_places=2)
     specs = serializers.SerializerMethodField()
     image = serializers.FileField(read_only=True)
+    is_global = serializers.BooleanField(read_only=True)
+    ownership = serializers.SerializerMethodField()
 
     class Meta:
         model = ProductCatalog
         fields = [
             "id",
+            "unit_id",
+            "is_global",
+            "ownership",
             "type",
             "name",
             "category",
@@ -165,6 +243,9 @@ class ProductPresetReadSerializer(serializers.ModelSerializer):
 
     def get_specs(self, obj) -> list[str]:
         return list(obj.specs.order_by("sort_order").values_list("spec_value", flat=True))
+
+    def get_ownership(self, obj) -> str:
+        return "OEM" if obj.unit_id is None else "DEALER"
 
 
 # ---- Write Serializers (Incoming) -------------------------------------------
@@ -196,6 +277,7 @@ class ProductCatalogWriteSerializer(serializers.Serializer):
     category = serializers.CharField(max_length=100, required=False, allow_blank=True)
     specs = serializers.CharField(required=False, allow_blank=True)
     image = serializers.FileField(required=False, allow_null=True)
+    is_global = serializers.BooleanField(required=False, allow_null=True)
 
 
 class EnquiryCreateSerializer(serializers.Serializer):
@@ -217,6 +299,9 @@ class EnquiryCreateSerializer(serializers.Serializer):
         default="",
     )
     followup_next_date = serializers.DateField(required=False, allow_null=True, default=None)
+    agent_id = serializers.UUIDField(required=False, allow_null=True, default=None)
+    agent_name = serializers.CharField(max_length=255, required=False, allow_blank=True, default="")
+    lead_fee = serializers.DecimalField(max_digits=10, decimal_places=2, required=False, default=0)
 
 
 class EnquiryUpdateSerializer(serializers.Serializer):
@@ -226,6 +311,9 @@ class EnquiryUpdateSerializer(serializers.Serializer):
     pincode = serializers.CharField(max_length=10, required=False, allow_blank=True)
     phone = serializers.CharField(max_length=20, required=False, allow_blank=True)
     remarks = serializers.CharField(required=False, allow_blank=True)
+    agent_id = serializers.UUIDField(required=False, allow_null=True)
+    agent_name = serializers.CharField(max_length=255, required=False, allow_blank=True)
+    lead_fee = serializers.DecimalField(max_digits=10, decimal_places=2, required=False)
 
 
 class FollowupCreateSerializer(serializers.Serializer):
@@ -276,3 +364,49 @@ class QuotationCreateSerializer(serializers.Serializer):
     selected_bank_id = serializers.UUIDField()
     terms = serializers.CharField(required=False, allow_blank=True)
     items = QuotationItemCreateSerializer(many=True)
+    agent_id = serializers.UUIDField(required=False, allow_null=True, default=None)
+    agent_name = serializers.CharField(max_length=255, required=False, allow_blank=True, default="")
+    commission_type = serializers.CharField(max_length=20, required=False, default="PERCENTAGE")
+    commission_rate = serializers.DecimalField(max_digits=5, decimal_places=2, required=False, default=0)
+    commission_amount = serializers.DecimalField(max_digits=12, decimal_places=2, required=False, default=0)
+
+
+class TechnoCommercialDocumentReadSerializer(serializers.ModelSerializer):
+    file_url = serializers.SerializerMethodField()
+
+    class Meta:
+        model = TechnoCommercialDocument
+        fields = [
+            "id",
+            "title",
+            "file_url",
+            "file_name",
+            "file_size",
+            "mime_type",
+            "notes",
+            "site",
+            "site_name",
+            "quotation",
+            "quote_number",
+            "created_by_user_id",
+            "updated_by_user_id",
+            "created_at",
+            "updated_at",
+        ]
+        read_only_fields = fields
+
+    def get_file_url(self, obj: TechnoCommercialDocument) -> str:
+        if obj.file:
+            return obj.file.url
+        return ""
+
+
+class TechnoCommercialDocumentWriteSerializer(serializers.Serializer):
+    title = serializers.CharField(max_length=255)
+    file = serializers.FileField(required=False)
+    notes = serializers.CharField(required=False, allow_blank=True, default="")
+    site = serializers.UUIDField(required=False, allow_null=True)
+    site_name = serializers.CharField(max_length=255, required=False, allow_blank=True, default="")
+    quotation = serializers.UUIDField(required=False, allow_null=True)
+    quote_number = serializers.CharField(max_length=100, required=False, allow_blank=True, default="")
+

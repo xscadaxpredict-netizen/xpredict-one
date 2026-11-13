@@ -15,7 +15,7 @@ const routes: ModuleRoute[] = [
   { path: "tech-support/*", module: "tech-support", element: <TechSupportRoutes /> },
   { path: "ecommerce/*", module: "ecommerce", element: <EcommerceRoutes /> },
   { path: "tools/*", module: "tools", element: <ToolsRoutes /> },
-  { path: "settings/*", module: "tools", element: <SettingsPage /> },
+  { path: "settings/*", module: "settings", element: <SettingsPage /> },
 ];
 
 export default function DmsRoutes() {

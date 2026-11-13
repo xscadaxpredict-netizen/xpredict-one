@@ -6,7 +6,13 @@
 
 import { useEffect, useRef, useState } from "react";
 import type { QuotationItem, QuoteType, AmcType } from "../api/types";
-import { useBanks, useProductPresets, useEnquiries, useSaveQuotation } from "../hooks/useEnquiries";
+import {
+  useBanks,
+  useDealerProfile,
+  useProductPresets,
+  useEnquiries,
+  useSaveQuotation,
+} from "../hooks/useEnquiries";
 import { useDialog } from "../../shared/hooks/useDialog";
 import { useShellContext } from "../../../../shell/context";
 import styles from "./QuoteBuilderDialog.module.css";
@@ -39,6 +45,7 @@ export function QuoteBuilderDialog({
   const { data: enquiries } = useEnquiries();
   const { data: banks } = useBanks();
   const { data: products } = useProductPresets();
+  const { data: dealerProfile } = useDealerProfile();
   const saveQuote = useSaveQuotation();
   const { showAlert, DialogComponent } = useDialog();
   const { membership } = useShellContext();
@@ -58,14 +65,32 @@ export function QuoteBuilderDialog({
   // From Details
   const [fromName, setFromName] = useState("");
   const [fromAddress, setFromAddress] = useState("");
+  const [fromPhone, setFromPhone] = useState("");
+  const [fromEmail, setFromEmail] = useState("");
+  const [fromGst, setFromGst] = useState("");
+  const [fromPan, setFromPan] = useState("");
+  const [fromState, setFromState] = useState("");
   
   // To Details
   const [toName, setToName] = useState("");
   const [toAddress, setToAddress] = useState("");
+  const [toContactPerson, setToContactPerson] = useState("");
+  const [toPhone, setToPhone] = useState("");
+  const [toEmail, setToEmail] = useState("");
+  const [toGst, setToGst] = useState("");
+  const [toPan, setToPan] = useState("");
+  const [toState, setToState] = useState("");
   
   const [items, setItems] = useState<QuotationItem[]>([]);
   const [bankId, setBankId] = useState("");
   const [terms, setTerms] = useState("");
+
+  // Agent Commission State
+  const [hasAgentCommission, setHasAgentCommission] = useState(false);
+  const [agentName, setAgentName] = useState("");
+  const [commissionType, setCommissionType] = useState<"PERCENTAGE" | "FIXED">("PERCENTAGE");
+  const [commissionRate, setCommissionRate] = useState<number>(0);
+
   // The VALUE is never read -- `submitStatusRef` below is what the submit
   // handler reads, because a state update is not visible to the handler that
   // triggered it. Only the setter is kept, so the state still drives renders.
@@ -82,27 +107,84 @@ export function QuoteBuilderDialog({
         
         setTitle(existingQuote.title);
         setQuoteNo(existingQuote.quote_no);
-        setFromName(existingQuote.from_details.company_name);
-        setFromAddress(existingQuote.from_details.address);
-        setToName(existingQuote.to_details.company_name);
-        setToAddress(existingQuote.to_details.address);
+        setFromName(existingQuote.from_details?.company_name || "");
+        setFromAddress(existingQuote.from_details?.address || "");
+        setFromPhone(existingQuote.from_details?.phone || "");
+        setFromEmail(existingQuote.from_details?.email || "");
+        setFromGst(existingQuote.from_details?.gst || "");
+        setFromPan(existingQuote.from_details?.pan || "");
+        setFromState(existingQuote.from_details?.state || "");
+
+        setToName(existingQuote.to_details?.company_name || "");
+        setToAddress(existingQuote.to_details?.address || "");
+        setToContactPerson(existingQuote.to_details?.contact_person || "");
+        setToPhone(existingQuote.to_details?.phone || "");
+        setToEmail(existingQuote.to_details?.email || "");
+        setToGst(existingQuote.to_details?.gst || "");
+        setToPan(existingQuote.to_details?.pan || "");
+        setToState(existingQuote.to_details?.state || "");
+
         setItems(existingQuote.items.map(i => ({ ...i })));
         setBankId(existingQuote.selected_bank_id);
         setTerms(existingQuote.terms);
+        setHasAgentCommission(Boolean(existingQuote.agent_name || (existingQuote.commission_amount && existingQuote.commission_amount > 0)));
+        setAgentName(existingQuote.agent_name || "");
+        setCommissionType(existingQuote.commission_type || "PERCENTAGE");
+        setCommissionRate(existingQuote.commission_rate ? Number(existingQuote.commission_rate) : 0);
       } else {
         // Defaults for new quote
         setTitle("Quotation for " + (currentEnquiry?.customer_name || ""));
         setQuoteNo(`QT-${new Date().getFullYear()}-${Math.floor(Math.random() * 10000)}`);
-        setFromName(membership?.org_name || "");
-        setFromAddress("");
+        const defaultCompanyName =
+          dealerProfile?.company_name ||
+          membership?.unit_name ||
+          membership?.org_name ||
+          "";
+        setFromName(defaultCompanyName);
+        setFromAddress(dealerProfile?.address || "");
+        setFromPhone(dealerProfile?.phone || "");
+        setFromEmail(dealerProfile?.email || "");
+        setFromGst(dealerProfile?.gstin || "");
+        setFromPan(dealerProfile?.pan || "");
+        setFromState(dealerProfile?.state || "");
+
         setToName(currentEnquiry?.customer_name || "");
         setToAddress(currentEnquiry?.address || "");
+        setToContactPerson(currentEnquiry?.contact_person || "");
+        setToPhone(currentEnquiry?.phone || "");
+        setToEmail("");
+        setToGst("");
+        setToPan("");
+        setToState("");
+
         setItems([{ ...EMPTY_ITEM, id: window.crypto.randomUUID() }]);
-        setBankId(banks?.[0]?.id || "");
+        const defaultBank = banks?.find(b => b.is_default) || banks?.[0];
+        setBankId(defaultBank?.id || "");
         setTerms("1. 100% Advance Payment\n2. Validity: 30 days");
+        setHasAgentCommission(Boolean(currentEnquiry?.agent_name));
+        setAgentName(currentEnquiry?.agent_name || "");
+        setCommissionType("PERCENTAGE");
+        setCommissionRate(0);
       }
     }
-  }, [open, existingQuote, currentEnquiry, banks, membership]);
+  }, [open, existingQuote, currentEnquiry, banks, membership, dealerProfile]);
+
+  // If dealer profile loads after modal opens for a new quote, update company name and address
+  useEffect(() => {
+    if (open && !existingQuote && dealerProfile) {
+      if (!fromName || fromName === membership?.org_name) {
+        setFromName(dealerProfile.company_name || membership?.unit_name || membership?.org_name || "");
+      }
+      if (!fromAddress && dealerProfile.address) {
+        setFromAddress(dealerProfile.address);
+      }
+      if (!fromPhone && dealerProfile.phone) setFromPhone(dealerProfile.phone);
+      if (!fromEmail && dealerProfile.email) setFromEmail(dealerProfile.email);
+      if (!fromGst && dealerProfile.gstin) setFromGst(dealerProfile.gstin);
+      if (!fromPan && dealerProfile.pan) setFromPan(dealerProfile.pan);
+      if (!fromState && dealerProfile.state) setFromState(dealerProfile.state);
+    }
+  }, [open, existingQuote, dealerProfile, membership, fromName, fromAddress, fromPhone, fromEmail, fromGst, fromPan, fromState]);
 
   useEffect(() => {
     const dialog = dialogRef.current;
@@ -118,6 +200,17 @@ export function QuoteBuilderDialog({
     0,
   );
   const grandTotal = taxableTotal + taxTotal;
+  const commissionAmount = commissionType === "PERCENTAGE"
+    ? Math.round((taxableTotal * (commissionRate || 0)) / 100)
+    : (commissionRate || 0);
+  const activeCommission = hasAgentCommission ? commissionAmount : 0;
+  
+  // What we get Before Tax (Base Revenue minus Agent Cut)
+  const ourNetBeforeTax = Math.max(0, taxableTotal - activeCommission);
+  const ourNetBeforeTaxPercentage = taxableTotal > 0 ? ((ourNetBeforeTax / taxableTotal) * 100).toFixed(1) : "0";
+  
+  // Total Cash Customer Pays minus Agent Payout (Cash in Bank before GST remittance)
+  const ourCashInflowAfterCommission = Math.max(0, grandTotal - activeCommission);
 
   // ---- Handlers ----
   const handleAddItem = () => {
@@ -172,26 +265,29 @@ export function QuoteBuilderDialog({
           from_details: { 
             company_name: fromName, 
             address: fromAddress,
-            contact_person: "",
-            phone: "",
-            email: "",
-            gst: "",
-            pan: "",
-            state: ""
+            phone: fromPhone,
+            email: fromEmail,
+            gst: fromGst,
+            pan: fromPan,
+            state: fromState,
           },
           to_details: { 
             company_name: toName, 
             address: toAddress,
-            contact_person: "",
-            phone: "",
-            email: "",
-            gst: "",
-            pan: "",
-            state: ""
+            contact_person: toContactPerson,
+            phone: toPhone,
+            email: toEmail,
+            gst: toGst,
+            pan: toPan,
+            state: toState,
           },
           items,
           selected_bank_id: bankId,
           terms,
+          agent_name: hasAgentCommission && agentName.trim() ? agentName.trim() : undefined,
+          commission_type: hasAgentCommission && agentName.trim() ? commissionType : undefined,
+          commission_rate: hasAgentCommission && agentName.trim() ? (commissionRate || 0) : undefined,
+          commission_amount: hasAgentCommission && agentName.trim() ? commissionAmount : undefined,
         },
       },
       {
@@ -311,35 +407,99 @@ export function QuoteBuilderDialog({
           <div className={styles.grid2}>
             {/* From Details */}
             <div className={styles.card}>
-              <h3 className={styles.cardTitle}>From (Our Details)</h3>
-              <div className={styles.field}>
-                <label className={styles.label}>
-                                  Company Name <span style={{ color: "red" }}>*</span>
-                              </label>
-                <input required className={styles.input} value={fromName} onChange={(e) => setFromName(e.target.value)} />
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <h3 className={styles.cardTitle}>From (Our Details)</h3>
+                <span style={{ fontSize: "0.72rem", color: "var(--color-text-3, #64748b)" }}>From Dealership Profile</span>
               </div>
               <div className={styles.field}>
                 <label className={styles.label}>
-                                  Address <span style={{ color: "red" }}>*</span>
-                              </label>
-                <textarea required className={styles.textarea} value={fromAddress} onChange={(e) => setFromAddress(e.target.value)} />
+                  Company Name <span style={{ color: "red" }}>*</span>
+                </label>
+                <input required className={styles.input} value={fromName} onChange={(e) => setFromName(e.target.value)} />
+              </div>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "var(--space-3)" }}>
+                <div className={styles.field}>
+                  <label className={styles.label}>Phone Number</label>
+                  <input className={styles.input} value={fromPhone} onChange={(e) => setFromPhone(e.target.value)} placeholder="e.g. 9876543210" />
+                </div>
+                <div className={styles.field}>
+                  <label className={styles.label}>Email Address</label>
+                  <input type="email" className={styles.input} value={fromEmail} onChange={(e) => setFromEmail(e.target.value)} placeholder="e.g. info@company.com" />
+                </div>
+              </div>
+              <div className={styles.field}>
+                <label className={styles.label}>State</label>
+                <input className={styles.input} value={fromState} onChange={(e) => setFromState(e.target.value)} placeholder="e.g. Karnataka" />
+              </div>
+              <div className={styles.field}>
+                <label className={styles.label}>
+                  Address <span style={{ color: "red" }}>*</span>
+                </label>
+                <textarea required className={styles.textarea} value={fromAddress} onChange={(e) => setFromAddress(e.target.value)} style={{ minHeight: "50px" }} />
+              </div>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "var(--space-3)" }}>
+                <div className={styles.field}>
+                  <label className={styles.label}>Our GSTIN</label>
+                  <input className={styles.input} value={fromGst} onChange={(e) => setFromGst(e.target.value)} placeholder="29AAAAA0000A1Z5" />
+                </div>
+                <div className={styles.field}>
+                  <label className={styles.label}>Our PAN</label>
+                  <input className={styles.input} value={fromPan} onChange={(e) => setFromPan(e.target.value)} placeholder="AAAAA0000A" />
+                </div>
               </div>
             </div>
 
             {/* To Details */}
             <div className={styles.card}>
-              <h3 className={styles.cardTitle}>To (Customer)</h3>
-              <div className={styles.field}>
-                <label className={styles.label}>
-                                  Customer Name <span style={{ color: "red" }}>*</span>
-                              </label>
-                <input required className={styles.input} value={toName} onChange={(e) => setToName(e.target.value)} />
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <h3 className={styles.cardTitle}>To (Customer)</h3>
+                <span style={{ fontSize: "0.72rem", color: "var(--color-text-3, #64748b)" }}>B2B & Tax details editable</span>
               </div>
               <div className={styles.field}>
                 <label className={styles.label}>
-                                  Billing Address <span style={{ color: "red" }}>*</span>
-                              </label>
-                <textarea required className={styles.textarea} value={toAddress} onChange={(e) => setToAddress(e.target.value)} />
+                  Customer Name <span style={{ color: "red" }}>*</span>
+                </label>
+                <input required className={styles.input} value={toName} onChange={(e) => setToName(e.target.value)} />
+              </div>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "var(--space-3)" }}>
+                <div className={styles.field}>
+                  <label className={styles.label}>Contact Person</label>
+                  <input className={styles.input} value={toContactPerson} onChange={(e) => setToContactPerson(e.target.value)} placeholder="e.g. Ramesh" />
+                </div>
+                <div className={styles.field}>
+                  <label className={styles.label}>Phone Number</label>
+                  <input className={styles.input} value={toPhone} onChange={(e) => setToPhone(e.target.value)} placeholder="e.g. 9876543210" />
+                </div>
+              </div>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "var(--space-3)" }}>
+                <div className={styles.field}>
+                  <label className={styles.label}>Email Address</label>
+                  <input type="email" className={styles.input} value={toEmail} onChange={(e) => setToEmail(e.target.value)} placeholder="e.g. client@domain.com" />
+                </div>
+                <div className={styles.field}>
+                  <label className={styles.label}>State / Place of Supply</label>
+                  <input className={styles.input} value={toState} onChange={(e) => setToState(e.target.value)} placeholder="e.g. Karnataka" />
+                </div>
+              </div>
+              <div className={styles.field}>
+                <label className={styles.label}>
+                  Billing Address <span style={{ color: "red" }}>*</span>
+                </label>
+                <textarea required className={styles.textarea} value={toAddress} onChange={(e) => setToAddress(e.target.value)} style={{ minHeight: "50px" }} />
+              </div>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "var(--space-3)" }}>
+                <div className={styles.field}>
+                  <label className={styles.label}>
+                    Customer GSTIN <span style={{ fontSize: "0.72rem", color: "#64748b", fontWeight: 400 }}>(Optional for B2B)</span>
+                  </label>
+                  <input className={styles.input} value={toGst} onChange={(e) => setToGst(e.target.value.toUpperCase())} placeholder="e.g. 29ABCDE1234F1Z5" />
+                </div>
+                <div className={styles.field}>
+                  <label className={styles.label}>
+                    Customer PAN <span style={{ fontSize: "0.72rem", color: "#64748b", fontWeight: 400 }}>(Optional)</span>
+                  </label>
+                  <input className={styles.input} value={toPan} onChange={(e) => setToPan(e.target.value.toUpperCase())} placeholder="e.g. ABCDE1234F" />
+                </div>
               </div>
             </div>
           </div>
@@ -377,9 +537,15 @@ export function QuoteBuilderDialog({
                             defaultValue=""
                           >
                             <option value="" disabled>Select a preset...</option>
-                            {products?.filter(p => p.type === quoteType).map((p) => (
-                              <option key={p.id} value={p.id}>{p.description}</option>
-                            ))}
+                            {products?.filter(p => p.type === quoteType).map((p) => {
+                              const isOem = p.is_global || !p.unit_id;
+                              const tag = isOem ? "[OEM]" : "[Dealer]";
+                              return (
+                                <option key={p.id} value={p.id}>
+                                  {tag} {p.name || p.description}
+                                </option>
+                              );
+                            })}
                           </select>
                           <input
                             required
@@ -456,17 +622,40 @@ export function QuoteBuilderDialog({
 
             <div className={styles.totals}>
               <div className={styles.totalRow}>
-                <span>Subtotal (Taxable):</span>
+                <span>Subtotal (Taxable Base):</span>
                 <span>₹ {taxableTotal.toLocaleString("en-IN", { minimumFractionDigits: 2 })}</span>
               </div>
               <div className={styles.totalRow}>
-                <span>Total Tax:</span>
+                <span>Total Tax (GST):</span>
                 <span>₹ {taxTotal.toLocaleString("en-IN", { minimumFractionDigits: 2 })}</span>
               </div>
               <div className={`${styles.totalRow} ${styles.grandTotal}`}>
-                <span>Grand Total:</span>
+                <span>Grand Total (Customer Pays):</span>
                 <span>₹ {grandTotal.toLocaleString("en-IN", { minimumFractionDigits: 2 })}</span>
               </div>
+
+              {hasAgentCommission && commissionAmount > 0 && (
+                <div style={{ marginTop: "12px", paddingTop: "10px", borderTop: "2px dashed var(--color-border, #cbd5e1)", display: "flex", flexDirection: "column", gap: "6px" }}>
+                  <div style={{ fontSize: "0.75rem", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em", color: "var(--color-text-3, #64748b)" }}>
+                    Our Realization (Internal Breakdown)
+                  </div>
+                  <div className={styles.totalRow} style={{ color: "#b45309", fontSize: "0.82rem" }}>
+                    <span>− Agent Commission:</span>
+                    <span>− ₹ {commissionAmount.toLocaleString("en-IN", { minimumFractionDigits: 2 })}</span>
+                  </div>
+                  <div className={styles.totalRow} style={{ color: "#047857", fontWeight: 700, fontSize: "0.88rem" }}>
+                    <span>✓ What We Get (Before Tax):</span>
+                    <span>₹ {ourNetBeforeTax.toLocaleString("en-IN", { minimumFractionDigits: 2 })} ({ourNetBeforeTaxPercentage}%)</span>
+                  </div>
+                  <div className={styles.totalRow} style={{ color: "#1e40af", fontWeight: 600, fontSize: "0.85rem" }}>
+                    <span>✓ Net Cash from Customer:</span>
+                    <span>₹ {ourCashInflowAfterCommission.toLocaleString("en-IN", { minimumFractionDigits: 2 })}</span>
+                  </div>
+                  <div style={{ fontSize: "0.72rem", color: "var(--color-text-3, #64748b)", fontStyle: "italic", textAlign: "right", marginTop: "2px" }}>
+                    (Includes ₹{taxTotal.toLocaleString("en-IN", { minimumFractionDigits: 2 })} GST payable to Govt)
+                  </div>
+                </div>
+              )}
             </div>
           </div>
 
@@ -487,10 +676,15 @@ export function QuoteBuilderDialog({
                   <option value="" disabled>Select a bank...</option>
                   {banks?.map((b) => (
                     <option key={b.id} value={b.id}>
-                      {b.bank_name} - {b.account_no}
+                      {b.bank_name} - {b.account_no} {b.is_default ? "(Default)" : ""}
                     </option>
                   ))}
                 </select>
+                {banks && banks.length === 0 && (
+                  <p style={{ fontSize: "0.8rem", color: "var(--color-warning-text, #d97706)", marginTop: "4px" }}>
+                    No bank account found. Please add a bank account under Configuration &gt; Bank Accounts.
+                  </p>
+                )}
               </div>
             </div>
 
@@ -505,6 +699,112 @@ export function QuoteBuilderDialog({
                 onChange={(e) => setTerms(e.target.value)}
               />
             </div>
+          </div>
+
+          {/* Agent Commission (Internal Only) */}
+          <div className={styles.card} style={{ marginTop: "var(--space-4)", background: "var(--color-surface-subtle, #f8fafc)", border: "1px dashed var(--color-border, #cbd5e1)" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <label style={{ display: "flex", alignItems: "center", gap: "10px", cursor: "pointer", userSelect: "none" }}>
+                <input
+                  type="checkbox"
+                  style={{ width: "18px", height: "18px", accentColor: "var(--color-primary, #0f172a)", cursor: "pointer" }}
+                  checked={hasAgentCommission}
+                  onChange={(e) => setHasAgentCommission(e.target.checked)}
+                />
+                <span style={{ fontSize: "0.95rem", fontWeight: 600, color: "var(--color-text, #0f172a)" }}>
+                  Involve Agent / Channel Partner Commission
+                </span>
+              </label>
+              {hasAgentCommission && (
+                <span style={{ fontSize: "0.75rem", padding: "2px 8px", borderRadius: "9999px", background: "#fef3c7", color: "#92400e", fontWeight: 600 }}>
+                  Internal Only (Not on Quote PDF)
+                </span>
+              )}
+            </div>
+
+            {hasAgentCommission && (
+              <div style={{ marginTop: "var(--space-3)", paddingTop: "var(--space-3)", borderTop: "1px dashed var(--color-border, #e2e8f0)" }}>
+                <p style={{ fontSize: "0.82rem", color: "var(--color-text-muted, #64748b)", marginBottom: "var(--space-3)" }}>
+                  Record agent / channel partner success commission. This remains confidential to your organization and is never shared with the customer.
+                </p>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: "var(--space-3)", alignItems: "end" }}>
+                  <div className={styles.field}>
+                    <label className={styles.label}>Agent / Referrer Name</label>
+                    <input
+                      type="text"
+                      className={styles.input}
+                      placeholder="e.g. Rajesh Kumar"
+                      value={agentName}
+                      onChange={(e) => setAgentName(e.target.value)}
+                    />
+                  </div>
+                  <div className={styles.field}>
+                    <label className={styles.label}>Commission Type</label>
+                    <select
+                      className={styles.select}
+                      value={commissionType}
+                      onChange={(e) => setCommissionType(e.target.value as "PERCENTAGE" | "FIXED")}
+                    >
+                      <option value="PERCENTAGE">Percentage (%) of Base</option>
+                      <option value="FIXED">Fixed Amount (₹)</option>
+                    </select>
+                  </div>
+                  <div className={styles.field}>
+                    <label className={styles.label}>
+                      {commissionType === "PERCENTAGE" ? "Commission Rate (%)" : "Commission Amount (₹)"}
+                    </label>
+                    <input
+                      type="number"
+                      min="0"
+                      step={commissionType === "PERCENTAGE" ? "0.1" : "500"}
+                      className={styles.input}
+                      value={commissionRate || ""}
+                      placeholder="0"
+                      onChange={(e) => setCommissionRate(parseFloat(e.target.value) || 0)}
+                    />
+                  </div>
+                  <div className={styles.field}>
+                    <label className={styles.label}>Agent Cut (Commission)</label>
+                    <div style={{ padding: "8px 12px", background: "#fffbeb", border: "1px solid #fde68a", borderRadius: "6px", fontWeight: 700, color: "#b45309", height: "38px", display: "flex", alignItems: "center" }}>
+                      − ₹ {commissionAmount.toLocaleString("en-IN", { minimumFractionDigits: 2 })}
+                    </div>
+                  </div>
+                  <div className={styles.field}>
+                    <label className={styles.label}>What We Get (Before Tax)</label>
+                    <div style={{ padding: "8px 12px", background: "#ecfdf5", border: "1px solid #a7f3d0", borderRadius: "6px", fontWeight: 700, color: "#047857", height: "38px", display: "flex", alignItems: "center" }}>
+                      ₹ {ourNetBeforeTax.toLocaleString("en-IN", { minimumFractionDigits: 2 })}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Detailed Breakdown Strip */}
+                <div style={{ marginTop: "var(--space-3)", padding: "14px 16px", background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: "8px", display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: "14px" }}>
+                  <div style={{ display: "flex", flexDirection: "column", gap: "2px" }}>
+                    <span style={{ fontSize: "0.75rem", textTransform: "uppercase", color: "var(--color-text-3, #64748b)", fontWeight: 600 }}>1. Base Deal (Before Tax)</span>
+                    <strong style={{ fontSize: "1.05rem", color: "var(--color-text, #0f172a)" }}>₹ {taxableTotal.toLocaleString("en-IN", { minimumFractionDigits: 2 })}</strong>
+                    <span style={{ fontSize: "0.75rem", color: "#b45309" }}>Less Agent Cut: − ₹ {commissionAmount.toLocaleString("en-IN", { minimumFractionDigits: 2 })}</span>
+                  </div>
+
+                  <div style={{ display: "flex", flexDirection: "column", gap: "2px", borderLeft: "2px solid #e2e8f0", paddingLeft: "14px" }}>
+                    <span style={{ fontSize: "0.75rem", textTransform: "uppercase", color: "#047857", fontWeight: 700 }}>2. What We Get (Before Tax)</span>
+                    <strong style={{ fontSize: "1.1rem", color: "#047857" }}>₹ {ourNetBeforeTax.toLocaleString("en-IN", { minimumFractionDigits: 2 })}</strong>
+                    <span style={{ fontSize: "0.75rem", color: "#065f46" }}>Retained Revenue ({ourNetBeforeTaxPercentage}%)</span>
+                  </div>
+
+                  <div style={{ display: "flex", flexDirection: "column", gap: "2px", borderLeft: "2px solid #e2e8f0", paddingLeft: "14px" }}>
+                    <span style={{ fontSize: "0.75rem", textTransform: "uppercase", color: "var(--color-text-3, #64748b)", fontWeight: 600 }}>3. Customer Pays (With GST)</span>
+                    <strong style={{ fontSize: "1.05rem", color: "var(--color-text, #0f172a)" }}>₹ {grandTotal.toLocaleString("en-IN", { minimumFractionDigits: 2 })}</strong>
+                    <span style={{ fontSize: "0.75rem", color: "var(--color-text-3, #64748b)" }}>Includes GST: ₹ {taxTotal.toLocaleString("en-IN", { minimumFractionDigits: 2 })}</span>
+                  </div>
+
+                  <div style={{ display: "flex", flexDirection: "column", gap: "2px", borderLeft: "2px solid #e2e8f0", paddingLeft: "14px" }}>
+                    <span style={{ fontSize: "0.75rem", textTransform: "uppercase", color: "#1e40af", fontWeight: 700 }}>4. Net Cash in Bank</span>
+                    <strong style={{ fontSize: "1.1rem", color: "#1e40af" }}>₹ {ourCashInflowAfterCommission.toLocaleString("en-IN", { minimumFractionDigits: 2 })}</strong>
+                    <span style={{ fontSize: "0.75rem", color: "var(--color-text-3, #64748b)" }}>Customer Inflow minus Agent</span>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
         </div>
 

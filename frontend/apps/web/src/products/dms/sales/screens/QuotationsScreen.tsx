@@ -13,6 +13,7 @@ import { QuoteBuilderDialog } from "../components/QuoteBuilderDialog";
 import { QuotationPreviewDialog } from "../components/QuotationPreviewDialog";
 import type { Enquiry, Quotation, QuoteType } from "../api/types";
 import { StatusBadge } from "../components/StatusBadge";
+import { RecordPayoutModal, type PayoutTargetRecord } from "../components/RecordPayoutModal";
 import { useDmsPermissions } from "../../shared/hooks/useDmsPermissions";
 import styles from "./QuotationsScreen.module.css";
 
@@ -27,6 +28,24 @@ export function QuotationsScreen() {
   const [filterType, setFilterType] = useState<"ALL" | QuoteType>("ALL");
   const [filterEnquiryId, setFilterEnquiryId] = useState<string>("ALL");
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [payingCommissionRecord, setPayingCommissionRecord] = useState<PayoutTargetRecord | null>(null);
+
+  const handleOpenAgentPayout = (quote: Quotation, enquiry: Enquiry) => {
+    setPayingCommissionRecord({
+      type: "COMMISSION",
+      reference_id: quote.id,
+      agent_name: quote.agent_name || enquiry.agent_name || "",
+      customer_name: enquiry.customer_name,
+      deal_title: quote.title || quote.quote_no,
+      amount: quote.commission_amount || 0,
+      paid_amount: quote.paid_amount || 0,
+      balance_amount: quote.balance_amount !== undefined
+        ? quote.balance_amount
+        : Math.max(0, (quote.commission_amount || 0) - (quote.paid_amount || 0)),
+      status: quote.commission_status || "PAYABLE",
+      payouts: quote.payouts,
+    });
+  };
 
   const deleteQuote = useDeleteQuotation();
   const confirmOrder = useConfirmOrder();
@@ -219,12 +238,84 @@ export function QuotationsScreen() {
                         <span className={styles.amount}>
                           ₹ {quote.amount.toLocaleString("en-IN")}
                         </span>
+                        {quote.agent_name && (
+                          <div style={{ marginTop: "4px", display: "flex", flexDirection: "column", gap: "2px" }}>
+                            <div style={{ fontSize: "0.76rem", fontWeight: 600, color: "var(--color-text, #0f172a)" }}>
+                              👤 Agent: {quote.agent_name}
+                            </div>
+                            <div style={{ display: "flex", alignItems: "center", gap: "6px", flexWrap: "wrap", marginTop: "2px" }}>
+                              <span style={{ fontSize: "0.74rem", fontWeight: 700, color: "#047857" }}>
+                                Comm: ₹{Number(quote.commission_amount || 0).toLocaleString("en-IN")}
+                              </span>
+                              <span
+                                style={{
+                                  fontSize: "0.68rem",
+                                  padding: "1px 6px",
+                                  borderRadius: "9999px",
+                                  fontWeight: 600,
+                                  background:
+                                    quote.commission_status === "PAID"
+                                      ? "#f1f5f9"
+                                      : quote.commission_status === "PARTIALLY_PAID"
+                                      ? "#fef3c7"
+                                      : "#ecfdf5",
+                                  color:
+                                    quote.commission_status === "PAID"
+                                      ? "#475569"
+                                      : quote.commission_status === "PARTIALLY_PAID"
+                                      ? "#92400e"
+                                      : "#047857",
+                                }}
+                              >
+                                {quote.commission_status === "PAID"
+                                  ? "Paid"
+                                  : quote.commission_status === "PARTIALLY_PAID"
+                                  ? `Partial (₹${Number(quote.paid_amount || 0).toLocaleString("en-IN")} paid)`
+                                  : "Payable"}
+                              </span>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleOpenAgentPayout(quote, enquiry);
+                              }}
+                              style={{
+                                background: "none",
+                                border: "none",
+                                color: "#2563eb",
+                                textDecoration: "underline",
+                                fontSize: "0.72rem",
+                                cursor: "pointer",
+                                textAlign: "left",
+                                padding: 0,
+                                marginTop: "2px",
+                              }}
+                            >
+                              {quote.commission_status === "PAID" ? "View Proofs & History" : "Record Payout / Installment"}
+                            </button>
+                          </div>
+                        )}
                       </td>
                       <td className={styles.td}>
                         <span className={styles.date}>{quote.date}</span>
                       </td>
                       <td className={`${styles.td} ${styles.tdRight}`}>
                         <div className={styles.actions}>
+                          {quote.agent_name && (
+                            <button
+                              type="button"
+                              className={styles.btnSecondary}
+                              style={{ fontSize: "0.75rem", padding: "4px 8px" }}
+                              title="Agent Payout & Installments"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleOpenAgentPayout(quote, enquiry);
+                              }}
+                            >
+                              Agent Payout
+                            </button>
+                          )}
                           <button
                             type="button"
                             className={styles.iconBtn}
@@ -279,6 +370,19 @@ export function QuotationsScreen() {
                         <td colSpan={6} className={styles.expandedCell}>
                           <div className={styles.expandedContent}>
                             <div className={styles.mobileActionsBar}>
+                              {quote.agent_name && (
+                                <button
+                                  type="button"
+                                  className={styles.btnSecondary}
+                                  style={{ fontSize: "0.8rem", padding: "6px 12px", minHeight: "36px", display: "inline-flex", alignItems: "center", gap: "4px" }}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleOpenAgentPayout(quote, enquiry);
+                                  }}
+                                >
+                                  👤 Agent Payout
+                                </button>
+                              )}
                               <button
                                 type="button"
                                 className={styles.iconBtn}
@@ -344,6 +448,40 @@ export function QuotationsScreen() {
                                   <strong>Date:</strong> {quote.date}
                                 </div>
                               </div>
+                              {quote.agent_name && (
+                                <div style={{ gridColumn: "1 / -1", marginTop: "10px", padding: "10px 14px", background: "var(--color-surface-subtle, #f8fafc)", border: "1px solid var(--color-border, #e2e8f0)", borderRadius: "8px" }}>
+                                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "6px" }}>
+                                    <strong style={{ fontSize: "0.85rem" }}>👤 Agent Commission ({quote.agent_name})</strong>
+                                    <button
+                                      type="button"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        handleOpenAgentPayout(quote, enquiry);
+                                      }}
+                                      style={{
+                                        background: "var(--color-primary, #0f172a)",
+                                        color: "#ffffff",
+                                        border: "none",
+                                        borderRadius: "4px",
+                                        padding: "4px 10px",
+                                        fontSize: "0.75rem",
+                                        cursor: "pointer",
+                                        fontWeight: 600,
+                                      }}
+                                    >
+                                      {quote.commission_status === "PAID" ? "View History" : "Pay Installment"}
+                                    </button>
+                                  </div>
+                                  <div style={{ display: "flex", gap: "16px", flexWrap: "wrap", fontSize: "0.8rem" }}>
+                                    <span>Rate: <strong>{quote.commission_type === "PERCENTAGE" ? `${quote.commission_rate}%` : `Fixed ₹${quote.commission_rate}`}</strong></span>
+                                    <span>Total Commission: <strong>₹{Number(quote.commission_amount || 0).toLocaleString("en-IN")}</strong></span>
+                                    <span style={{ color: "#047857" }}>Paid So Far: <strong>₹{Number(quote.paid_amount || 0).toLocaleString("en-IN")}</strong></span>
+                                    <span style={{ color: "#b45309" }}>
+                                      Balance Due: <strong>₹{Number(quote.balance_amount !== undefined ? quote.balance_amount : Math.max(0, (quote.commission_amount || 0) - (quote.paid_amount || 0))).toLocaleString("en-IN")}</strong>
+                                    </span>
+                                  </div>
+                                </div>
+                              )}
                             </div>
                           </div>
                         </td>
@@ -386,6 +524,12 @@ export function QuotationsScreen() {
           setConfirmState(null);
         }}
         onCancel={() => setConfirmState(null)}
+      />
+      <RecordPayoutModal
+        open={payingCommissionRecord !== null}
+        onClose={() => setPayingCommissionRecord(null)}
+        record={payingCommissionRecord}
+        onSuccess={() => refetch()}
       />
     </div>
   );

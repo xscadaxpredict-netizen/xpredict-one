@@ -1,6 +1,7 @@
 import { useEffect, useRef } from "react";
 import type { Quotation, Enquiry } from "../api/types";
 import { useBanks } from "../hooks/useEnquiries";
+import { useShellContext } from "../../../../shell/context";
 import styles from "./QuotationPreviewDialog.module.css";
 
 interface QuotationPreviewDialogProps {
@@ -20,6 +21,7 @@ export function QuotationPreviewDialog({
 }: QuotationPreviewDialogProps) {
   const dialogRef = useRef<HTMLDialogElement>(null);
   const { data: banks } = useBanks();
+  const { membership } = useShellContext();
 
   useEffect(() => {
     const dialog = dialogRef.current;
@@ -83,10 +85,35 @@ export function QuotationPreviewDialog({
         <div className={styles.document}>
           <div className={styles.docHeader}>
             <div>
-              <div className={styles.companyName}>{quotation?.from_details?.company_name || "Company"}</div>
-              <p style={{ whiteSpace: "pre-line", fontSize: "0.9rem", color: "#555" }}>
-                {quotation?.from_details?.address || ""}
-              </p>
+              <div className={styles.companyName}>
+                {quotation?.from_details?.company_name || membership?.unit_name || membership?.org_name || "Company"}
+              </div>
+              {quotation?.from_details?.address && (
+                <p style={{ whiteSpace: "pre-line", fontSize: "0.9rem", color: "#555", margin: "2px 0" }}>
+                  {quotation.from_details.address}
+                </p>
+              )}
+              {(quotation?.from_details?.phone || quotation?.from_details?.email) && (
+                <p style={{ fontSize: "0.85rem", color: "#666", margin: "2px 0" }}>
+                  {[
+                    quotation?.from_details?.phone ? `Phone: ${quotation.from_details.phone}` : null,
+                    quotation?.from_details?.email ? `Email: ${quotation.from_details.email}` : null,
+                  ].filter(Boolean).join(" | ")}
+                </p>
+              )}
+              {quotation?.from_details?.state && (
+                <p style={{ fontSize: "0.85rem", color: "#666", margin: "2px 0" }}>
+                  State: {quotation.from_details.state}
+                </p>
+              )}
+              {(quotation?.from_details?.gst || quotation?.from_details?.pan) && (
+                <p style={{ fontSize: "0.85rem", color: "#0f172a", margin: "3px 0", fontWeight: 500 }}>
+                  {[
+                    quotation?.from_details?.gst ? `GSTIN: ${quotation.from_details.gst}` : null,
+                    quotation?.from_details?.pan ? `PAN: ${quotation.from_details.pan}` : null,
+                  ].filter(Boolean).join(" | ")}
+                </p>
+              )}
             </div>
             <div>
               <div className={styles.docTitle}>
@@ -106,8 +133,40 @@ export function QuotationPreviewDialog({
           <div className={styles.addresses}>
             <div className={styles.addressBlock}>
               <h3>Bill To</h3>
-              <p style={{ fontWeight: 600 }}>{quotation?.to_details?.company_name || _enquiry?.customer_name || "-"}</p>
-              <p style={{ whiteSpace: "pre-line" }}>{quotation?.to_details?.address || _enquiry?.address || ""}</p>
+              <p style={{ fontWeight: 600, fontSize: "0.95rem", color: "#0f172a", marginBottom: "3px" }}>
+                {quotation?.to_details?.company_name || _enquiry?.customer_name || "-"}
+              </p>
+              {quotation?.to_details?.contact_person && (
+                <p style={{ fontSize: "0.85rem", color: "#475569", margin: "2px 0" }}>
+                  <strong>Kind Attn:</strong> {quotation.to_details.contact_person}
+                </p>
+              )}
+              {quotation?.to_details?.address && (
+                <p style={{ whiteSpace: "pre-line", fontSize: "0.85rem", color: "#555", margin: "2px 0" }}>
+                  {quotation.to_details.address}
+                </p>
+              )}
+              {(quotation?.to_details?.phone || quotation?.to_details?.email) && (
+                <p style={{ fontSize: "0.85rem", color: "#666", margin: "2px 0" }}>
+                  {[
+                    quotation?.to_details?.phone ? `Phone: ${quotation.to_details.phone}` : null,
+                    quotation?.to_details?.email ? `Email: ${quotation.to_details.email}` : null,
+                  ].filter(Boolean).join(" | ")}
+                </p>
+              )}
+              {quotation?.to_details?.state && (
+                <p style={{ fontSize: "0.85rem", color: "#666", margin: "2px 0" }}>
+                  <strong>State / Place of Supply:</strong> {quotation.to_details.state}
+                </p>
+              )}
+              {(quotation?.to_details?.gst || quotation?.to_details?.pan) && (
+                <p style={{ fontSize: "0.85rem", color: "#0f172a", margin: "4px 0", fontWeight: 600 }}>
+                  {[
+                    quotation?.to_details?.gst ? `GSTIN: ${quotation.to_details.gst}` : null,
+                    quotation?.to_details?.pan ? `PAN: ${quotation.to_details.pan}` : null,
+                  ].filter(Boolean).join(" | ")}
+                </p>
+              )}
             </div>
             <div className={styles.addressBlock}>
               <h3>Project Details</h3>
