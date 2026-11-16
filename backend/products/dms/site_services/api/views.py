@@ -39,7 +39,6 @@ class SiteProfileUpdateView(TenantAPIView):
         payload.is_valid(raise_exception=True)
         services.update_site_profile(
             site_id=pk,
-            territory_id=request.territory_id,
             **payload.validated_data
         )
         site = selectors.get_site(site_id=pk)
@@ -59,7 +58,6 @@ class ScheduleListCreateView(TenantAPIView):
         payload = ScheduleCreateUpdateSerializer(data=request.data)
         payload.is_valid(raise_exception=True)
         schedule = services.create_schedule(
-            territory_id=request.territory_id,
             **payload.validated_data
         )
         return Response(ScheduleReadSerializer(schedule).data, status=status.HTTP_201_CREATED)
@@ -101,7 +99,6 @@ class ServiceReportListCreateView(TenantAPIView):
         files = request.FILES.getlist("attachments")
         data.pop("attachments", None)
         report = services.create_service_report(
-            territory_id=request.territory_id,
             files=files,
             **data
         )
@@ -159,7 +156,6 @@ class WaterReportListCreateView(TenantAPIView):
         site_id = data.pop("site_id", None)
 
         report = services.create_water_report(
-            territory_id=request.territory_id,
             site_id=site_id,
             attachment=attachment,
             files=files,
@@ -222,7 +218,6 @@ class ComplaintListCreateView(TenantAPIView):
         site_id = data.pop("site_id", None)
 
         complaint = services.create_complaint(
-            territory_id=request.territory_id,
             site_id=site_id,
             actor_user_id=request.user.id if request.user and hasattr(request.user, "id") else None,
             attachment=attachment,

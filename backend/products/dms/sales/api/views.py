@@ -7,6 +7,7 @@ from rest_framework.response import Response
 from core.api import TenantAPIView
 
 from .. import selectors, services
+from ..models import BankAccount, Enquiry, ProductCatalog
 from .serializers import (
     BankAccountReadSerializer,
     BankAccountWriteSerializer,
@@ -36,7 +37,7 @@ class EnquiryListCreateView(TenantAPIView):
         payload.is_valid(raise_exception=True)
 
         enquiry = services.create_enquiry(
-            territory_id=request.territory_id,  # type: ignore
+            territory_id=self.home_for(Enquiry),
             created_by_user_id=request.user.id,
             **payload.validated_data,
         )
@@ -95,7 +96,6 @@ class EnquiryFollowupCreateView(TenantAPIView):
         payload.is_valid(raise_exception=True)
         enquiry = services.add_followup(
             enquiry_id=pk,
-            territory_id=request.territory_id,  # type: ignore
             actor_user_id=request.user.id,
             **payload.validated_data,
         )
@@ -143,7 +143,6 @@ class EnquiryQuotationListCreateView(TenantAPIView):
 
         enquiry = services.save_quotation(
             enquiry_id=pk,
-            territory_id=request.territory_id,  # type: ignore
             actor_user_id=request.user.id,
             quote_data=payload.validated_data,
             existing_quote_id=existing_quote_id,
@@ -179,7 +178,6 @@ class EnquiryConfirmView(TenantAPIView):
         enquiry = services.confirm_order(
             enquiry_id=pk,
             quote_id=quote_id,
-            territory_id=request.territory_id,  # type: ignore
             actor_user_id=request.user.id,
         )
         enquiry_fetched = selectors.get_enquiry(enquiry_id=enquiry.id, is_manager_or_admin=True)
@@ -211,7 +209,7 @@ class BankAccountListView(TenantAPIView):
         payload = BankAccountWriteSerializer(data=request.data)
         payload.is_valid(raise_exception=True)
         bank = services.create_bank_account(
-            territory_id=request.territory_id,
+            territory_id=self.home_for(BankAccount),
             actor_user_id=request.user.id,
             **payload.validated_data,
         )
@@ -250,7 +248,7 @@ class ProductPresetListView(TenantAPIView):
         payload = ProductCatalogWriteSerializer(data=request.data)
         payload.is_valid(raise_exception=True)
         product = services.create_product_catalog(
-            territory_id=request.territory_id,
+            territory_id=self.home_for(ProductCatalog),
             actor_user_id=request.user.id,
             **payload.validated_data,
         )

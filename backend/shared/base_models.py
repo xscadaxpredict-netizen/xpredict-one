@@ -21,7 +21,7 @@ import uuid
 from collections.abc import Iterator
 from contextlib import contextmanager
 from contextvars import ContextVar
-from typing import Final
+from typing import ClassVar, Final
 
 from django.db import models
 
@@ -59,6 +59,16 @@ class TerritoryScopeMissingError(RuntimeError):
     The sibling of `config.routers.TenantContextMissingError`: that one says
     "which DATABASE?" was never answered, this one says "which DEALERSHIPS?"
     was not. A programming error, so a 500 --- never a guess.
+    """
+
+
+class HomeMissingError(RuntimeError):
+    """
+    A child record was saved with no parent to take its home from.
+
+    Every `home_follows` record hangs off a parent (a follow-up off an
+    enquiry, a complaint off a site), so this is a programming error --- a
+    500, never a guess at where the record should live.
     """
 
 
@@ -164,9 +174,30 @@ class TerritoryScopedModel(BaseModel):
     should use `objects` and let get_object_or_404 do the rest. `all_territories` is
     the deliberate escape hatch for fleet-wide reporting, and every use of it
     needs to be justified.
+
+    WHERE A RECORD LIVES --- ITS HOME (C72 piece 3 step 3a, C76). Every
+    concrete subclass declares EXACTLY ONE of these, and
+    `tests/test_record_homes.py` fails for a model that declares neither:
+
+    - `home_kinds`: the kinds of territory this record may be filed at, e.g.
+      `("organisation", "region", "dealer", "branch")` for an enquiry. A
+      person files it, and `core.api.home_for()` offers only these kinds
+      inside the person's subtree. Product structure, decided by us, not a
+      per-customer setting.
+    - `home_follows`: the parent ForeignKey(s) whose home this record takes
+      --- a follow-up lives wherever its enquiry lives, whoever adds it.
+      Several names when a record hangs off one of several parents; the
+      first that is set wins. `save()` copies the parent's `territory_id`
+      every time, so a caller's own place can never leak into a child
+      (the bug this replaced: a regional manager's follow-up on a Delhi
+      East enquiry was filed at Delhi, the first dealership in their region,
+      where Delhi East's people could not see it).
     """
 
     territory_id = models.UUIDField(db_index=True)
+
+    home_kinds: ClassVar[tuple[str, ...] | None] = None
+    home_follows: ClassVar[tuple[str, ...] | None] = None
 
     objects = TerritoryScopedManager()
     # ruff reads `models.Manager()` as a field declaration and flags the
@@ -175,3 +206,19 @@ class TerritoryScopedModel(BaseModel):
 
     class Meta:
         abstract = True
+
+    def save(self, *args, **kwargs):
+        if self.home_follows:
+            self.territory_id = self._parent_home()
+        super().save(*args, **kwargs)
+
+    def _parent_home(self) -> uuid.UUID:
+        # Following a ForeignKey upwards uses Django's base manager, so this
+        # works whatever `allowed_territories` says (see the manager above).
+        for name in self.home_follows or ():
+            parent = getattr(self, name)
+            if parent is not None:
+                return parent.territory_id
+        raise HomeMissingError(
+            f"{type(self).__name__} takes its home from {self.home_follows}, and none is set."
+        )

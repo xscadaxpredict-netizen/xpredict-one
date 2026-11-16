@@ -59,7 +59,6 @@ def create_enquiry(
 
     if followup_remarks or followup_next_date:
         Followup.objects.create(
-            territory_id=territory_id,
             enquiry=enquiry,
             created_by_user_id=created_by_user_id,
             remarks=followup_remarks or "",
@@ -105,7 +104,6 @@ def delete_enquiry(*, enquiry_id: uuid.UUID) -> None:
 def add_followup(
     *,
     enquiry_id: uuid.UUID,
-    territory_id: uuid.UUID | None = None,
     actor_user_id: uuid.UUID | None = None,
     remarks: str = "",
     next_followup_date: str | None = None,
@@ -115,7 +113,6 @@ def add_followup(
         raise not_found("Enquiry")
 
     Followup.objects.create(
-        territory_id=territory_id or enquiry.territory_id,
         enquiry=enquiry,
         created_by_user_id=actor_user_id,
         remarks=remarks or "",
@@ -167,7 +164,6 @@ def delete_followup(
 def save_quotation(
     *,
     enquiry_id: uuid.UUID,
-    territory_id: uuid.UUID,
     actor_user_id: uuid.UUID,
     quote_data: dict,
     existing_quote_id: uuid.UUID | None = None,
@@ -207,7 +203,6 @@ def save_quotation(
         quote.items.all().delete()
     else:
         quote = Quotation(
-            territory_id=territory_id,
             enquiry=enquiry,
             created_by_user_id=actor_user_id,
             bank_account_id=quote_data.pop("selected_bank_id"),
@@ -222,7 +217,6 @@ def save_quotation(
 
     for item in items_data:
         QuotationItem.objects.create(
-            territory_id=territory_id,
             quotation=quote,
             product_id=item.get("product_id"),
             description=item.get("description", ""),
@@ -271,7 +265,6 @@ def confirm_order(
     *,
     enquiry_id: uuid.UUID,
     quote_id: uuid.UUID,
-    territory_id: uuid.UUID,
     actor_user_id: uuid.UUID,
 ) -> Enquiry:
     enquiry = Enquiry.objects.filter(id=enquiry_id).first()
@@ -307,7 +300,9 @@ def confirm_order(
     if not enquiry.customer_id:
         from .models import Customer
         customer = Customer.objects.create(
-            territory_id=territory_id,
+            # The customer lives with the enquiry it came from, never where
+            # the person confirming happens to sit (C72 piece 3 step 3a).
+            territory_id=enquiry.territory_id,
             name=enquiry.customer_name,
             contact_person=enquiry.contact_person,
             phone=enquiry.phone,
@@ -319,7 +314,6 @@ def confirm_order(
         enquiry.save(update_fields=["customer_id"])
 
     ConfirmedSite.objects.create(
-        territory_id=territory_id,
         enquiry=enquiry,
         customer=enquiry.customer,
         confirmed_quote=quote,
@@ -498,7 +492,6 @@ def create_product_catalog(
         for idx, spec in enumerate(spec_list):
             from .models import ProductSpec
             ProductSpec.objects.create(
-                territory_id=territory_id,
                 product=product,
                 spec_value=spec,
                 sort_order=idx,
@@ -542,7 +535,6 @@ def update_product_catalog(
         spec_list = [s.strip() for s in specs.split(",") if s.strip()]
         for idx, spec in enumerate(spec_list):
             ProductSpec.objects.create(
-                territory_id=product.territory_id,
                 product=product,
                 spec_value=spec,
                 sort_order=idx,

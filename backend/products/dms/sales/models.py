@@ -19,6 +19,7 @@ from __future__ import annotations
 from django.db import models
 from django.db.models import F, Value
 
+from products.dms.homes import DEALERSHIP_RECORD
 from shared.base_models import TerritoryScopedModel
 
 # ============================================================================
@@ -33,6 +34,9 @@ class Customer(TerritoryScopedModel):
     pincode, phone).  GST and PAN come from the AddressDetails interface
     used in the quote builder's "To" section.
     """
+
+    # Filed by `confirm_order()` at its enquiry's home.
+    home_kinds = DEALERSHIP_RECORD
 
     name = models.CharField(max_length=255)
     contact_person = models.CharField(max_length=255, blank=True, default="")
@@ -65,6 +69,8 @@ class BankAccount(TerritoryScopedModel):
 
     Frontend ref: BankAccount interface — bank_name, account_no, ifsc_code.
     """
+
+    home_kinds = DEALERSHIP_RECORD
 
     bank_name = models.CharField(max_length=255)
     account_no = models.CharField(max_length=30)
@@ -107,6 +113,8 @@ class Enquiry(TerritoryScopedModel):
     Frontend ref: Enquiry interface — customer_name, contact_person, address,
     pincode, phone, remarks, status, confirmed_quote_id, oc_number.
     """
+
+    home_kinds = DEALERSHIP_RECORD
 
     customer = models.ForeignKey(
         Customer,
@@ -167,6 +175,9 @@ class Followup(TerritoryScopedModel):
     entered_date (which is created_at from BaseModel).
     """
 
+    # Lives wherever its enquiry lives, whoever adds it.
+    home_follows = ("enquiry",)
+
     enquiry = models.ForeignKey(
         Enquiry,
         on_delete=models.CASCADE,
@@ -204,6 +215,8 @@ class ProductCatalog(TerritoryScopedModel):
 
     Schema review #05: per-dealer products (inherits TerritoryScopedModel).
     """
+
+    home_kinds = DEALERSHIP_RECORD
 
     product_type = models.CharField(
         max_length=10,
@@ -247,6 +260,9 @@ class ProductSpec(TerritoryScopedModel):
     Frontend ref: CatalogProduct.specs is an array of strings.  The backend
     stores them as separate rows for flexible ordering and filtering.
     """
+
+    # Lives wherever its product lives.
+    home_follows = ("product",)
 
     product = models.ForeignKey(
         ProductCatalog,
@@ -302,6 +318,9 @@ class Quotation(TerritoryScopedModel):
     service_interval, status, from_details, to_details, selected_bank_id,
     items, terms.
     """
+
+    # Lives wherever its enquiry lives.
+    home_follows = ("enquiry",)
 
     enquiry = models.ForeignKey(
         Enquiry,
@@ -405,6 +424,9 @@ class QuotationItem(TerritoryScopedModel):
     base_price, margin, gst_rate, quantity.
     """
 
+    # Lives wherever its quotation lives.
+    home_follows = ("quotation",)
+
     quotation = models.ForeignKey(
         Quotation,
         on_delete=models.CASCADE,
@@ -482,6 +504,9 @@ class ConfirmedSite(TerritoryScopedModel):
     Frontend ref: ConfirmedOrdersScreen — customer_name, address, oc_number,
     confirmed_quote_id.
     """
+
+    # Lives wherever the enquiry it confirms lives.
+    home_follows = ("enquiry",)
 
     enquiry = models.ForeignKey(
         Enquiry,

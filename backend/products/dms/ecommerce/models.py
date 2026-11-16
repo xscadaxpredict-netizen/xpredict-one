@@ -31,6 +31,9 @@ class EcommerceOrder(TerritoryScopedModel):
     items, total, status, rejectReason.
     """
 
+    # Lives wherever the site it supplies lives.
+    home_follows = ("site",)
+
     site = models.ForeignKey(
         "dms_sales.ConfirmedSite",
         on_delete=models.CASCADE,
@@ -80,6 +83,9 @@ class EcommerceOrderItem(TerritoryScopedModel):
 
     Frontend ref: OrderItem interface — name, qty, price.
     """
+
+    # Lives wherever its order lives.
+    home_follows = ("order",)
 
     order = models.ForeignKey(
         EcommerceOrder,

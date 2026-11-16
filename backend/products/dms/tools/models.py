@@ -73,6 +73,9 @@ class TimerCalculation(TerritoryScopedModel):
     calculation formulas may evolve without requiring migrations.
     """
 
+    # Lives wherever its site lives.
+    home_follows = ("site",)
+
     site = models.ForeignKey(
         "dms_sales.ConfirmedSite",
         on_delete=models.CASCADE,

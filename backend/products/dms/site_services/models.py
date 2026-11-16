@@ -24,6 +24,9 @@ class SiteServiceProfile(TerritoryScopedModel):
     """
     Service details for a confirmed site, editable from the Scheduling screen.
     """
+
+    # Lives wherever its site lives.
+    home_follows = ("site",)
     site = models.OneToOneField(
         "dms_sales.ConfirmedSite",
         on_delete=models.CASCADE,
@@ -67,6 +70,9 @@ class ServiceSchedule(TerritoryScopedModel):
     status, notes.  ScheduleModal — siteId, serviceType, scheduledDate,
     technician, notes.
     """
+
+    # Lives wherever its site lives.
+    home_follows = ("site",)
 
     site = models.ForeignKey(
         "dms_sales.ConfirmedSite",
@@ -135,6 +141,9 @@ class ServiceReport(TerritoryScopedModel):
 
     ServiceReportEntry — report_code, date, technician, zone, remarks, status.
     """
+
+    # Lives wherever its site lives.
+    home_follows = ("site",)
 
     site = models.ForeignKey(
         "dms_sales.ConfirmedSite",
@@ -213,6 +222,9 @@ class ReportAttachment(TerritoryScopedModel):
     Frontend ref: ServiceReportModal — file input with multiple accept types.
     """
 
+    # Lives wherever the report or complaint it is attached to lives.
+    home_follows = ("service_report", "water_report", "complaint")
+
     service_report = models.ForeignKey(
         ServiceReport,
         on_delete=models.CASCADE,
@@ -261,6 +273,9 @@ class WaterReport(TerritoryScopedModel):
     Frontend ref: WaterReportEntry — date, ph, tds, hardness, iron,
     technician, remarks.  WaterReportModal — siteId, date, attachment.
     """
+
+    # Lives wherever its site lives.
+    home_follows = ("site",)
 
     site = models.ForeignKey(
         "dms_sales.ConfirmedSite",
@@ -321,6 +336,9 @@ class Complaint(TerritoryScopedModel):
     servicePersonName, siteId.  ComplaintModal — issue, servicePersonName,
     attachment.
     """
+
+    # Lives wherever its site lives.
+    home_follows = ("site",)
 
     site = models.ForeignKey(
         "dms_sales.ConfirmedSite",

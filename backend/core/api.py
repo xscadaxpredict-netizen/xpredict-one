@@ -1,5 +1,7 @@
+import uuid
+
 from core.organizations.api.base import OrgScopedAPIView
-from core.organizations.models import Territory, TerritoryKind
+from core.organizations.models import Membership, Organization, Territory, TerritoryKind
 from core.organizations.selectors import (
     permissions_for,
     placements_for,
@@ -7,18 +9,7 @@ from core.organizations.selectors import (
 )
 from core.permissions.models import AppCode
 from shared.base_models import allowed_territories
-
-# Where a DMS record may live (C72 piece 3 step 2; the root added by the owner,
-# 2026-11-13 -- the head-office pool). Never a warehouse: that is for stock.
-# ONE LIST FOR EVERY RECORD TYPE, AND ONLY UNTIL STEP 3, when each record type
-# declares its own `home_kinds` (enquiries here; manuals the root only; future
-# stock the root and warehouses) and a model that declares none fails a test.
-FILING_KINDS = (
-    TerritoryKind.ORGANISATION,
-    TerritoryKind.REGION,
-    TerritoryKind.DEALER,
-    TerritoryKind.BRANCH,
-)
+from shared.exceptions import ConflictError
 
 
 class TenantAPIView(OrgScopedAPIView):
@@ -29,9 +20,10 @@ class TenantAPIView(OrgScopedAPIView):
     refuses users of a closed dealership (C63) and requires the permission
     declaration below, all before the handler runs.
 
-    On top of that it sets `request.membership` and `request.territory_id` -- the
-    dealership new unit-scoped rows are written to -- both read from the
-    person's DMS grant (C72 step 2b; see `_resolve_territory_id`).
+    On top of that it sets `request.membership` and the territories this
+    person's records may be read from (`allowed_territories`), both from their
+    grant for `app_code`. Where a NEW record goes is asked per record type:
+    `self.home_for(Model)`.
     """
 
     app_code: str = AppCode.DMS
@@ -58,12 +50,21 @@ class TenantAPIView(OrgScopedAPIView):
     def initial(self, request, *args, **kwargs):
         super().initial(request, *args, **kwargs)
         request.membership = self.membership
-        request.territory_id = self._resolve_territory_id(request, self.organization)
 
         # Enforce dealer isolation for all unit-scoped models (Enquiries, Quotations, Job cards,
         # etc.)
         allowed = resolve_allowed_territories(self.membership, self.app_code)
         allowed_territories.set(allowed)
+
+    def home_for(self, model) -> uuid.UUID:
+        """Where a new `model` record filed by this request goes. See `home_for()`."""
+        return home_for(
+            model,
+            membership=self.membership,
+            organization=self.organization,
+            requested=self.request.headers.get("X-Unit-Id"),
+            app=self.app_code,
+        )
 
     @property
     def is_manager_or_admin(self) -> bool:
@@ -79,45 +80,80 @@ class TenantAPIView(OrgScopedAPIView):
             })
         )
 
-    @staticmethod
-    def _resolve_territory_id(request, organization, app: str = AppCode.DMS):
-        """
-        The territory a new record is filed at -- its HOME (C72 piece 3 step 2).
 
-        Records live where things are sold or managed: a dealership, a branch,
-        a region -- the "regional pool" for enquiries no dealership has been
-        chosen for yet (the owner, 2026-11-13, after Zoho) -- or the root, the
-        HEAD-OFFICE POOL, seen only by people placed at head office. Never a
-        warehouse. See `FILING_KINDS`.
+def home_for(
+    model,
+    *,
+    membership: Membership,
+    organization: Organization,
+    requested: str | None,
+    app: str,
+) -> uuid.UUID:
+    """
+    The territory a new `model` record is filed at -- its HOME (C72 piece 3,
+    step 2; per record type since step 3a).
 
-        In this order:
+    Only for records a PERSON files, which declare `home_kinds`. A record that
+    hangs off another one (`home_follows`: a follow-up, a complaint) is never
+    filed: its `save()` takes its parent's home, so asking here is a mistake.
 
-        1. `X-Unit-Id`, if it names such a place INSIDE the person's subtree.
-           One outside it is ignored, never honoured: it is how a person would
-           otherwise file a record somewhere they cannot see.
-        2. PLACED AT EXACTLY ONE DEALERSHIP OR BRANCH: there. No question to
-           ask. (A branch person's records used to have no home at all --
-           only dealerships were candidates -- and the save failed.)
-        3. OTHERWISE -- a region, the root, or several places -- the first
-           dealership created inside their subtree. TEMPORARY, AND A GUESS:
-           the frontend sends no `X-Unit-Id`, so this is today's behaviour,
-           kept until the create forms gain a "dealership or branch" choice
-           and this step is removed with it (C72 piece 3, its own step).
-        """
-        allowed = resolve_allowed_territories(request.membership, app)
-        places = Territory.objects.filter(organization=organization)
-        if allowed is not None:
-            places = places.filter(id__in=allowed)
+    In this order, considering only places of the record type's `home_kinds`
+    inside the person's subtree:
 
-        requested = request.headers.get("X-Unit-Id")
-        if requested:
-            chosen = places.filter(id=requested, kind__in=FILING_KINDS).first()
-            if chosen:
-                return chosen.id
+    1. `X-Unit-Id`, if it names such a place. Anything else -- outside the
+       subtree, or a kind this record cannot live at (a warehouse, for an
+       enquiry) -- is ignored, never honoured: it is how a person would
+       otherwise file a record somewhere they cannot see, or somewhere it
+       does not belong.
+    2. PLACED AT EXACTLY ONE DEALERSHIP OR BRANCH: there. No question to ask.
+    3. OTHERWISE -- a region, the root, or several places -- the first
+       dealership created inside their subtree. TEMPORARY, AND A GUESS: the
+       frontend sends no `X-Unit-Id`, so this is today's behaviour, kept until
+       the create forms gain a "dealership or branch" choice and this step is
+       removed with it (C72 piece 3, its own step).
+    4. Nowhere: a 409. It used to be `None`, which the database refused with a
+       500 on the insert.
+    """
+    if model.home_follows:
+        raise TypeError(
+            f"{model.__name__} takes its parent's home ({model.home_follows}); "
+            "it is never filed by a person."
+        )
+    kinds = model.home_kinds
 
-        own = placements_for(request.membership, app)
-        if len(own) == 1 and own[0].kind in (TerritoryKind.DEALER, TerritoryKind.BRANCH):
-            return own[0].id
+    allowed = resolve_allowed_territories(membership, app)
+    places = Territory.objects.filter(organization=organization, kind__in=kinds)
+    if allowed is not None:
+        places = places.filter(id__in=allowed)
 
-        first = places.filter(kind=TerritoryKind.DEALER).order_by("created_at").first()
-        return first.id if first else None
+    wanted = _as_uuid(requested)
+    chosen = places.filter(id=wanted).first() if wanted else None
+    if chosen:
+        return chosen.id
+
+    own = placements_for(membership, app)
+    if (
+        len(own) == 1
+        and own[0].kind in (TerritoryKind.DEALER, TerritoryKind.BRANCH)
+        and own[0].kind in kinds
+    ):
+        return own[0].id
+
+    first = places.filter(kind=TerritoryKind.DEALER).order_by("created_at").first()
+    if first:
+        return first.id
+
+    raise ConflictError(
+        code="no_home",
+        message="There is nowhere you can file this record.",
+        model=model.__name__,
+        membership_id=str(membership.pk),
+    )
+
+
+def _as_uuid(value: str | None) -> uuid.UUID | None:
+    """A header that is not a UUID names nothing -- ignored, not a 500."""
+    try:
+        return uuid.UUID(value) if value else None
+    except ValueError:
+        return None

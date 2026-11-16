@@ -10,17 +10,16 @@ dealerships (the owner, answering Q10) sees exactly those.
 
 from __future__ import annotations
 
-from types import SimpleNamespace
-
 import pytest
 
 from conftest import TEST_TENANT_ALIAS
 from core.accounts.models import User
-from core.api import TenantAPIView
+from core.api import home_for
 from core.organizations.models import (
     ActivationCode,
     Membership,
     Territory,
+    TerritoryKind,
 )
 from core.organizations.selectors import (
     me,
@@ -32,6 +31,21 @@ from core.organizations.services import create_dealer, grant_app_access, sign_up
 from core.permissions.models import AppCode, Role
 
 pytestmark = [pytest.mark.django_db(databases=["default", TEST_TENANT_ALIAS])]
+
+
+class DealershipRecord:
+    """
+    Stands in for a DMS record type such as an enquiry: `core` may not import
+    `products` (import-linter's layers), and `home_for()` reads only these two.
+    """
+
+    home_kinds = (
+        TerritoryKind.ORGANISATION,
+        TerritoryKind.REGION,
+        TerritoryKind.DEALER,
+        TerritoryKind.BRANCH,
+    )
+    home_follows = None
 
 
 def found():
@@ -143,8 +157,13 @@ class TestWhichDealershipARequestWritesTo:
         )
 
         def pick(header):
-            request = SimpleNamespace(membership=member, headers={"X-Unit-Id": str(header)})
-            return TenantAPIView._resolve_territory_id(request, result.organization)
+            return home_for(
+                DealershipRecord,
+                membership=member,
+                organization=result.organization,
+                requested=str(header),
+                app=AppCode.DMS,
+            )
 
         assert pick(jaipur.pk) == jaipur.pk
         # A dealership they are not placed at is ignored, never honoured:

@@ -45,17 +45,13 @@ def _decode_base64_signature(b64_string: str, name_prefix: str) -> ContentFile |
 def update_site_profile(
     *,
     site_id: uuid.UUID,
-    territory_id: uuid.UUID,
     **kwargs
 ) -> SiteServiceProfile:
     site = ConfirmedSite.objects.filter(id=site_id).first()
     if not site:
         raise not_found("Site")
 
-    profile, _ = SiteServiceProfile.objects.get_or_create(
-        site=site,
-        defaults={"territory_id": territory_id}
-    )
+    profile, _ = SiteServiceProfile.objects.get_or_create(site=site)
 
     for key, value in kwargs.items():
         if hasattr(profile, key):
@@ -68,7 +64,6 @@ def update_site_profile(
 @transaction.atomic
 def create_schedule(
     *,
-    territory_id: uuid.UUID,
     site_id: uuid.UUID,
     **kwargs
 ) -> ServiceSchedule:
@@ -81,7 +76,6 @@ def create_schedule(
     # We will let frontend call update_site_profile separately if needed.
 
     schedule = ServiceSchedule.objects.create(
-        territory_id=territory_id,
         site=site,
         **kwargs
     )
@@ -114,7 +108,6 @@ def delete_schedule(*, schedule_id: uuid.UUID) -> None:
 @transaction.atomic
 def create_service_report(
     *,
-    territory_id: uuid.UUID,
     site_id: uuid.UUID,
     service_person_signature: str | None = None,
     client_signature: str | None = None,
@@ -135,7 +128,6 @@ def create_service_report(
     report_code = f"SR/{random.randint(1000, 9999)}"  # noqa: S311
 
     report = ServiceReport(
-        territory_id=territory_id,
         site=site,
         report_code=report_code,
         **kwargs
@@ -162,7 +154,6 @@ def create_service_report(
     if files:
         for file in files:
             ReportAttachment.objects.create(
-                territory_id=territory_id,
                 service_report=report,
                 file=file,
                 file_name=file.name,
@@ -220,7 +211,6 @@ def update_service_report(
     if files:
         for file in files:
             ReportAttachment.objects.create(
-                territory_id=report.territory_id,
                 service_report=report,
                 file=file,
                 file_name=file.name,
@@ -239,7 +229,6 @@ def delete_service_report(*, report_id: uuid.UUID) -> None:
 @transaction.atomic
 def create_water_report(
     *,
-    territory_id: uuid.UUID | None = None,
     site_id: uuid.UUID,
     attachment=None,
     files: list | None = None,
@@ -248,8 +237,6 @@ def create_water_report(
     site = ConfirmedSite.objects.filter(id=site_id).first()
     if not site:
         raise not_found("Site")
-
-    resolved_territory_id = territory_id or site.territory_id
 
     valid_fields = {f.name for f in WaterReport._meta.get_fields()}
     filtered_kwargs = {}
@@ -261,7 +248,6 @@ def create_water_report(
                 filtered_kwargs[k] = v
 
     report = WaterReport(
-        territory_id=resolved_territory_id,
         site=site,
         **filtered_kwargs
     )
@@ -272,7 +258,6 @@ def create_water_report(
     if files:
         for file in files:
             ReportAttachment.objects.create(
-                territory_id=report.territory_id,
                 water_report=report,
                 file=file,
                 file_name=file.name,
@@ -317,7 +302,6 @@ def update_water_report(
     if files:
         for file in files:
             ReportAttachment.objects.create(
-                territory_id=report.territory_id,
                 water_report=report,
                 file=file,
                 file_name=file.name,
@@ -336,7 +320,6 @@ def delete_water_report(*, report_id: uuid.UUID) -> None:
 @transaction.atomic
 def create_complaint(
     *,
-    territory_id: uuid.UUID | None = None,
     site_id: uuid.UUID,
     actor_user_id: uuid.UUID | None = None,
     attachment=None,
@@ -346,8 +329,6 @@ def create_complaint(
     site = ConfirmedSite.objects.filter(id=site_id).first()
     if not site:
         raise not_found("Site")
-
-    resolved_territory_id = territory_id or site.territory_id
 
     valid_fields = {f.name for f in Complaint._meta.get_fields()}
     filtered_kwargs = {}
@@ -359,7 +340,6 @@ def create_complaint(
                 filtered_kwargs[k] = v
 
     complaint = Complaint(
-        territory_id=resolved_territory_id,
         site=site,
         complainant_user_id=actor_user_id,
         **filtered_kwargs
@@ -371,7 +351,6 @@ def create_complaint(
     if files:
         for file in files:
             ReportAttachment.objects.create(
-                territory_id=complaint.territory_id,
                 complaint=complaint,
                 file=file,
                 file_name=file.name,
@@ -422,7 +401,6 @@ def update_complaint(
     if files:
         for file in files:
             ReportAttachment.objects.create(
-                territory_id=complaint.territory_id,
                 complaint=complaint,
                 file=file,
                 file_name=file.name,

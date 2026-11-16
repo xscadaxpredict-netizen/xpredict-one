@@ -15,13 +15,11 @@ or created by these services.
 
 from __future__ import annotations
 
-from types import SimpleNamespace
-
 import pytest
 from rest_framework.test import APIClient
 
 from conftest import TEST_TENANT_ALIAS
-from core.api import TenantAPIView
+from core.api import home_for
 from core.organizations.exceptions import (
     TerritoryIsTheOrganisationError,
     TerritoryMoveIntoItselfError,
@@ -43,6 +41,21 @@ from core.permissions.models import AppCode
 from shared.exceptions import NotFoundError
 
 pytestmark = [pytest.mark.django_db(databases=["default", TEST_TENANT_ALIAS])]
+
+
+class DealershipRecord:
+    """
+    Stands in for a DMS record type such as an enquiry: `core` may not import
+    `products` (import-linter's layers), and `home_for()` reads only these two.
+    """
+
+    home_kinds = (
+        TerritoryKind.ORGANISATION,
+        TerritoryKind.REGION,
+        TerritoryKind.DEALER,
+        TerritoryKind.BRANCH,
+    )
+    home_follows = None
 
 ORG, REGION, DEALER, BRANCH, WAREHOUSE = (
     TerritoryKind.ORGANISATION,
@@ -330,10 +343,13 @@ class TestARegionIsNeverTakenForADealership:
         root = Territory.objects.root_for(result.organization)
 
         def filed_at(place):
-            request = SimpleNamespace(
-                membership=result.membership, headers={"X-Unit-Id": str(place.pk)}
+            return home_for(
+                DealershipRecord,
+                membership=result.membership,
+                organization=result.organization,
+                requested=str(place.pk),
+                app=AppCode.DMS,
             )
-            return TenantAPIView._resolve_territory_id(request, result.organization)
 
         assert filed_at(north) == north.pk
         assert filed_at(root) == root.pk

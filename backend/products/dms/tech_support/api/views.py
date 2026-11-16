@@ -113,7 +113,7 @@ class CallRequestListView(TenantAPIView):
         if serializer.is_valid():
             attachment = request.FILES.get("attachment")
             call = create_call_request(
-                territory_id=request.territory_id,
+                territory_id=self.home_for(CallRequest),
                 name=serializer.validated_data["name"],
                 phone=serializer.validated_data.get("phone", ""),
                 email=serializer.validated_data.get("email", ""),

@@ -47,7 +47,6 @@ class OrderListCreateView(TenantAPIView):
         payload = OrderCreateSerializer(data=request.data)
         payload.is_valid(raise_exception=True)
         order = services.place_order(
-            territory_id=request.territory_id,
             **payload.validated_data
         )
         order_fetched = selectors.get_order(order_id=order.id)

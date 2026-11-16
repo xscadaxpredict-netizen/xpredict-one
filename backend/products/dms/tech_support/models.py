@@ -12,6 +12,7 @@ from __future__ import annotations
 
 from django.db import models
 
+from products.dms.homes import DEALERSHIP_RECORD
 from shared.base_models import BaseModel, TerritoryScopedModel
 
 # ============================================================================
@@ -92,6 +93,8 @@ class CallRequest(TerritoryScopedModel):
     message, date, status.  CallRequestDialog — name, phone, email,
     subject, message.
     """
+
+    home_kinds = DEALERSHIP_RECORD
 
     # The platform user who submitted the request.
     requester_user_id = models.UUIDField(null=True, blank=True)
