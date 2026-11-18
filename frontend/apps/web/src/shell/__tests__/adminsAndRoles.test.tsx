@@ -1,0 +1,353 @@
+/**
+ * Admin panel -> User Management -> Admins and Roles (C78): tabs Admins, App
+ * Admins and Roles, each its own address; the Admins tab filtered by Admin
+ * panel role with Admins / Roles / Apps managed; the topbar's box searching
+ * whichever tab is open.
+ */
+
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { act, fireEvent, screen, within } from "@testing-library/react";
+
+import AdminRoutes from "../admin/routes";
+import type * as usersApi from "../admin/api/users";
+import { fetchUsers } from "../admin/api/users";
+import type { Role } from "../admin/api/roles";
+import { fetchRoles } from "../admin/api/roles";
+import { fetchMe } from "../api/auth";
+import type * as authApi from "../api/auth";
+import { renderRoute } from "./harness";
+import { me, ownerMembership } from "./factories";
+
+vi.mock("../api/auth", async (importOriginal) => ({
+  ...(await importOriginal<typeof authApi>()),
+  fetchMe: vi.fn(),
+  logout: vi.fn().mockResolvedValue(undefined),
+}));
+
+vi.mock("../admin/api/users", async (importOriginal) => ({
+  ...(await importOriginal<typeof usersApi>()),
+  fetchUsers: vi.fn(),
+}));
+
+vi.mock("../admin/api/applications", () => ({
+  fetchApplications: vi.fn().mockResolvedValue([
+    { code: "dms", name: "DMS", active: true, members: 3, owner: null },
+    { code: "crm", name: "CRM", active: true, members: 1, owner: null },
+    { code: "ecommerce", name: "E-commerce", active: false, members: 0, owner: null },
+  ]),
+  fetchApplicationMembers: vi.fn().mockResolvedValue([]),
+}));
+
+vi.mock("../admin/api/roles", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../admin/api/roles")>()),
+  fetchRoles: vi.fn(),
+}));
+
+const mockFetchMe = vi.mocked(fetchMe);
+const mockFetchUsers = vi.mocked(fetchUsers);
+const mockFetchRoles = vi.mocked(fetchRoles);
+
+const withAdmin = [{ path: "admin/*", element: <AdminRoutes /> }];
+const BASE = "/acme-motors/admin/admins-and-roles";
+
+function user(overrides: Partial<usersApi.OrgUser> & { id: string }): usersApi.OrgUser {
+  return {
+    first_name: "First",
+    last_name: "Last",
+    email: `${overrides.id}@acme.test`,
+    unit_name: null,
+    unit_id: null,
+    role: "member",
+    status: "active",
+    apps: [],
+    administers: null,
+    ...overrides,
+  };
+}
+
+const PEOPLE = [
+  user({ id: "asha", first_name: "Asha", last_name: "Rao", role: "owner" }),
+  user({ id: "ravi", first_name: "Ravi", last_name: "Kumar", role: "admin" }),
+  user({ id: "nish", first_name: "Nishanth", last_name: "S", role: "member" }),
+];
+
+const ROLES: Role[] = [
+  {
+    code: "dms.manager",
+    name: "Manager",
+    app: "dms",
+    level: "unit",
+    summary: "Runs a dealership.",
+    administers: false,
+  },
+  {
+    code: "dms.technician",
+    name: "Technician",
+    app: "dms",
+    level: "unit",
+    summary: "Service and water reports on site.",
+    administers: false,
+  },
+];
+
+function names() {
+  return screen
+    .queryAllByRole("rowheader")
+    .map((cell) => within(cell).getByRole("link").textContent);
+}
+
+function topbarSearch() {
+  return screen.getByRole("searchbox", { name: "Search" });
+}
+
+beforeEach(() => {
+  vi.clearAllMocks();
+  mockFetchMe.mockResolvedValue(me({ memberships: [ownerMembership()] }));
+  mockFetchUsers.mockResolvedValue(PEOPLE);
+  mockFetchRoles.mockResolvedValue(ROLES);
+});
+
+describe("the tabs", () => {
+  it("are Admins, App Admins and Roles, opening on Admins", async () => {
+    renderRoute({ path: BASE, children: withAdmin });
+    await screen.findByRole("table");
+
+    const tabs = screen.getAllByRole("tab");
+    expect(tabs.map((tab) => tab.textContent)).toEqual(["Admins", "App Admins", "Roles"]);
+    expect(tabs[0]).toHaveAttribute("aria-selected", "true");
+    expect(tabs[1]).toHaveAttribute("href", `${BASE}/app-admins`);
+    expect(tabs[2]).toHaveAttribute("href", `${BASE}/roles`);
+  });
+
+  it("open on the tab their address names, as after a refresh", async () => {
+    renderRoute({ path: `${BASE}/roles`, children: withAdmin });
+
+    expect(await screen.findByRole("heading", { name: "DMS roles" })).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "Roles" })).toHaveAttribute("aria-selected", "true");
+  });
+
+  it("send the old Roles address to the Roles tab", async () => {
+    const { router } = renderRoute({ path: "/acme-motors/admin/roles", children: withAdmin });
+
+    await screen.findByRole("heading", { name: "DMS roles" });
+    expect(router.state.location.pathname).toBe(`${BASE}/roles`);
+  });
+
+  it("say App Admins is being built", async () => {
+    renderRoute({ path: `${BASE}/app-admins`, children: withAdmin });
+
+    expect(await screen.findByText("This tab is being built.")).toBeInTheDocument();
+  });
+});
+
+describe("the Admins tab", () => {
+  it("lists the owner and the organisation admins, never a member", async () => {
+    renderRoute({ path: BASE, children: withAdmin });
+    await screen.findByRole("table");
+
+    expect(names()).toEqual(["Asha Rao", "Ravi Kumar"]);
+    expect(screen.getAllByRole("columnheader").map((th) => th.textContent)).toEqual([
+      "Admins",
+      "Roles",
+      "Apps managed",
+      "Actions",
+    ]);
+    const owner = screen.getByRole("row", { name: /Asha Rao/ });
+    expect(within(owner).getByText("Organization Owner")).toBeInTheDocument();
+    expect(within(owner).getByText("All")).toBeInTheDocument();
+    const admin = screen.getByRole("row", { name: /Ravi Kumar/ });
+    expect(within(admin).getByText("Organization Admin")).toBeInTheDocument();
+  });
+
+  it("filters by Admin panel role", async () => {
+    renderRoute({ path: BASE, children: withAdmin });
+    await screen.findByRole("table");
+    const filter = screen.getByRole("combobox", { name: "Show" });
+
+    expect(within(filter).getAllByRole("option").map((o) => o.textContent)).toEqual([
+      "All admins",
+      "Organization Owner",
+      "Organization Admin",
+    ]);
+
+    fireEvent.change(filter, { target: { value: "owner" } });
+    expect(names()).toEqual(["Asha Rao"]);
+
+    fireEvent.change(filter, { target: { value: "admin" } });
+    expect(names()).toEqual(["Ravi Kumar"]);
+  });
+
+  it("has an Assign Admin button on the filter's row, greyed out", async () => {
+    renderRoute({ path: BASE, children: withAdmin });
+    await screen.findByRole("table");
+
+    const assign = screen.getByRole("button", { name: "Assign Admin" });
+    expect(assign).toHaveAttribute("aria-disabled", "true");
+    expect(assign.parentElement).toContainElement(screen.getByRole("combobox", { name: "Show" }));
+  });
+
+  it("links each admin to their own panel", async () => {
+    renderRoute({ path: BASE, children: withAdmin });
+    await screen.findByRole("table");
+
+    expect(screen.getByRole("link", { name: "Ravi Kumar" })).toHaveAttribute(
+      "href",
+      `${BASE}/admin/ravi`,
+    );
+  });
+});
+
+describe("the topbar search follows the tab", () => {
+  it("searches admins by name or email on Admins", async () => {
+    renderRoute({ path: BASE, children: withAdmin });
+    await screen.findByRole("table");
+
+    expect(topbarSearch()).toHaveAttribute("placeholder", "Search admins");
+    fireEvent.change(topbarSearch(), { target: { value: "ravi@" } });
+    expect(names()).toEqual(["Ravi Kumar"]);
+
+    fireEvent.change(topbarSearch(), { target: { value: "nishanth" } });
+    expect(screen.getByText("No admins match “nishanth”.")).toBeInTheDocument();
+  });
+
+  it("searches roles on Roles", async () => {
+    renderRoute({ path: `${BASE}/roles`, children: withAdmin });
+    await screen.findByRole("heading", { name: "DMS roles" });
+
+    expect(topbarSearch()).toHaveAttribute("placeholder", "Search roles");
+    fireEvent.change(topbarSearch(), { target: { value: "water" } });
+
+    expect(screen.getByText("Technician")).toBeInTheDocument();
+    expect(screen.queryByText("Manager")).not.toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Organisation roles" })).not.toBeInTheDocument();
+  });
+
+  it("says Search app admins on App Admins", async () => {
+    renderRoute({ path: `${BASE}/app-admins`, children: withAdmin });
+    await screen.findByText("This tab is being built.");
+
+    expect(topbarSearch()).toHaveAttribute("placeholder", "Search app admins");
+  });
+
+  it("empties when the tab changes", async () => {
+    const { router } = renderRoute({ path: BASE, children: withAdmin });
+    await screen.findByRole("table");
+    fireEvent.change(topbarSearch(), { target: { value: "ravi" } });
+
+    await act(() => router.navigate(`${BASE}/roles`));
+    await screen.findByRole("heading", { name: "DMS roles" });
+
+    expect(topbarSearch()).toHaveValue("");
+  });
+});
+
+
+describe("the ⋮ on an admin", () => {
+  it("offers Manage Roles and Unassign, both greyed out for now", async () => {
+    renderRoute({ path: BASE, children: withAdmin });
+    await screen.findByRole("table");
+
+    fireEvent.keyDown(screen.getByRole("button", { name: "More actions for Ravi Kumar" }), {
+      key: "Enter",
+    });
+    const menu = await screen.findByRole("menu");
+
+    const items = within(menu).getAllByRole("menuitem");
+    expect(items.map((item) => item.textContent)).toEqual(["Manage Roles", "Unassign"]);
+    for (const item of items) {
+      expect(item).toHaveAttribute("aria-disabled", "true");
+    }
+  });
+
+  it("is not on the owner's row", async () => {
+    renderRoute({ path: BASE, children: withAdmin });
+    await screen.findByRole("table");
+
+    expect(
+      screen.queryByRole("button", { name: "More actions for Asha Rao" }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("does not open the admin's panel", async () => {
+    const { router } = renderRoute({ path: BASE, children: withAdmin });
+    await screen.findByRole("table");
+
+    fireEvent.click(screen.getByRole("button", { name: "More actions for Ravi Kumar" }));
+
+    expect(router.state.location.pathname).toBe(BASE);
+  });
+});
+
+describe("an admin opened beside the list", () => {
+  it("opens when the row is clicked, at its own address", async () => {
+    const { router } = renderRoute({ path: BASE, children: withAdmin });
+    await screen.findByRole("table");
+
+    fireEvent.click(screen.getByRole("row", { name: /Ravi Kumar/ }));
+
+    const panel = await screen.findByRole("complementary", { name: "Ravi Kumar" });
+    expect(router.state.location.pathname).toBe(`${BASE}/admin/ravi`);
+    expect(within(panel).getByRole("heading", { name: "Ravi Kumar" })).toBeInTheDocument();
+    expect(within(panel).getByText("ravi@acme.test")).toBeInTheDocument();
+    expect(
+      within(panel).getByRole("button", { name: "More actions for Ravi Kumar" }),
+    ).toBeInTheDocument();
+  });
+
+  it("has Applications working and Groups greyed out", async () => {
+    renderRoute({ path: `${BASE}/admin/ravi`, children: withAdmin });
+    const panel = await screen.findByRole("complementary", { name: "Ravi Kumar" });
+
+    const tabs = within(panel).getAllByRole("tab");
+    expect(tabs.map((tab) => tab.textContent)).toEqual(["Applications", "Groups"]);
+    expect(tabs[0]).toHaveAttribute("aria-selected", "true");
+    expect(tabs[1]).toHaveAttribute("aria-disabled", "true");
+  });
+
+  it("lists every active app as managed", async () => {
+    renderRoute({ path: `${BASE}/admin/ravi`, children: withAdmin });
+    const panel = await screen.findByRole("complementary", { name: "Ravi Kumar" });
+
+    const apps = await within(panel).findByRole("list", { name: "Apps Ravi Kumar manages" });
+    const names = within(apps)
+      .getAllByRole("listitem")
+      .map((item) => item.querySelector("span + div span")?.textContent);
+    expect(names).toEqual(["DMS", "CRM"]);
+    expect(within(panel).getByText(/As an organization admin, manages every app/)).toBeInTheDocument();
+  });
+
+  it("says the owner manages everything, and has no ⋮", async () => {
+    renderRoute({ path: `${BASE}/admin/asha`, children: withAdmin });
+    const panel = await screen.findByRole("complementary", { name: "Asha Rao" });
+
+    expect(within(panel).getByText(/As the owner, manages every app/)).toBeInTheDocument();
+    expect(within(panel).queryByRole("button", { name: /More actions/ })).not.toBeInTheDocument();
+  });
+
+  it("stays open while the list is searched", async () => {
+    renderRoute({ path: `${BASE}/admin/ravi`, children: withAdmin });
+    await screen.findByRole("complementary", { name: "Ravi Kumar" });
+
+    fireEvent.change(topbarSearch(), { target: { value: "asha" } });
+
+    expect(names()).toEqual(["Asha Rao"]);
+    expect(screen.getByRole("complementary", { name: "Ravi Kumar" })).toBeInTheDocument();
+    expect(topbarSearch()).toHaveAttribute("placeholder", "Search admins");
+  });
+
+  it("closes back to the list", async () => {
+    const { router } = renderRoute({ path: `${BASE}/admin/ravi`, children: withAdmin });
+    await screen.findByRole("complementary", { name: "Ravi Kumar" });
+
+    fireEvent.click(screen.getByRole("button", { name: "Close details" }));
+
+    expect(router.state.location.pathname).toBe(BASE);
+  });
+
+  it("says so for somebody who is not an admin", async () => {
+    renderRoute({ path: `${BASE}/admin/nish`, children: withAdmin });
+
+    expect(await screen.findByText(/That person is not an admin here/)).toBeInTheDocument();
+    expect(screen.queryByRole("complementary")).not.toBeInTheDocument();
+  });
+});

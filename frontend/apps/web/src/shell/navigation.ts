@@ -51,6 +51,19 @@ export interface NavItem {
    * matching them with a pattern.
    */
   module: string | null;
+
+  /**
+   * What the topbar's search box searches while this page is open, as a
+   * plural noun: "applications" makes the box say "Search applications" and
+   * the page filters by what is typed (C78, `pageSearchStore`). Left out, the
+   * box is the general search it always was.
+   *
+   * A PAGE WITH TABS gives a function of the address below the item's own
+   * path ("app-admins", "" for the first tab), so the box searches whichever
+   * tab is open. Each tab is its own address, so switching tab empties the box
+   * like switching page does.
+   */
+  search?: string | ((rest: string) => string);
 }
 
 /**
@@ -64,6 +77,18 @@ export interface NavItem {
 export interface NavGroup {
   /** Shown above the group. A single unnamed group renders without a heading. */
   label: string | null;
+  /**
+   * The MODULE's own icon, drawn on its accordion row. Settings areas only
+   * (C78): there a group is a row you open and close, and its items are the
+   * sub-modules underneath. A product's sidebar ignores it.
+   */
+  icon?: NavIconName;
+  /**
+   * Shown greyed out with "Soon", and cannot be opened: a module that is
+   * planned but not built (the Admin panel's Dashboard). Kept even with no
+   * items, so the plan is visible.
+   */
+  comingSoon?: boolean;
   items: NavItem[];
 }
 
@@ -80,6 +105,15 @@ export interface AppDefinition {
    * about whether the app can be opened.
    */
   section: AppSection;
+  /**
+   * A PRODUCT is something you work in: it has a tile in the launcher and a
+   * row in the apps panel. A SETTINGS area is somewhere you go to configure
+   * things: no tile and no row, reached from its own button in the topbar
+   * (C78).
+   *
+   * Required, like `module` on a nav item: a new app has to say which it is.
+   */
+  kind: "product" | "settings";
   nav: NavGroup[];
 }
 
@@ -104,6 +138,7 @@ export const APP_CATALOG: AppDefinition[] = [
     description: "Dealership management",
     initials: "DM",
     section: "Operations",
+    kind: "product",
     /*
      * Q19 answered 2026-09-26 from the owner's UI mock: Sales, Service and
      * Tech support are the MODULES; enquiries, quotations and the rest are
@@ -202,6 +237,7 @@ export const APP_CATALOG: AppDefinition[] = [
     description: "Leads & marketing",
     initials: "CR",
     section: "Sales & marketing",
+    kind: "product",
     // Built after DMS ships. An empty sidebar is honest; invented links are not.
     nav: [],
   },
@@ -211,23 +247,69 @@ export const APP_CATALOG: AppDefinition[] = [
     description: "Storefront & orders",
     initials: "EC",
     section: "Sales & marketing",
+    kind: "product",
     nav: [],
   },
   {
+    /*
+     * THE ADMIN PANEL (C78). Still an entry here, because the shell draws its
+     * name block and sidebar from this catalogue like any app's -- but a
+     * settings area, not a product: no launcher tile, reached from the shield
+     * in the topbar. The sections below are today's screens, kept until the
+     * owner's list of modules and sub-modules replaces them.
+     */
     key: "admin",
-    name: "Administration",
+    name: "Admin panel",
     description: "Dealers, people, billing",
     initials: "AD",
     section: "Platform",
+    kind: "settings",
+    /*
+     * The owner's modules and sub-modules (2026-11-17), drawn as an accordion.
+     *
+     * Profile, Applications and Admins and Roles are about the WHOLE
+     * organisation, which a dealer admin (who holds `users` alone, C23) never
+     * sees: their modules are `organization`, `applications`
+     * (`admin.organization_info.view`, `admin.application.view`) and `roles`.
+     *
+     * DEALERS IS NOT IN THE OWNER'S LIST. Its screen and route still exist
+     * (`/admin/dealers`), but nothing in the sidebar leads to it.
+     */
     nav: [
+      { label: "Dashboard", icon: "gauge", comingSoon: true, items: [] },
       {
-        label: "Organisation",
+        label: "Organization",
+        icon: "building",
+        items: [{ label: "Profile", path: "profile", icon: "building", module: "organization" }],
+      },
+      {
+        label: "App Management",
+        icon: "grid",
         items: [
-          { label: "Users", path: "users", icon: "users", module: "users" },
-          { label: "Dealers", path: "dealers", icon: "store", module: "dealers" },
-          { label: "Roles", path: "roles", icon: "key", module: "roles" },
-          { label: "Apps & billing", path: "billing", icon: "card", module: "billing" },
-          { label: "Audit log", path: "audit", icon: "history", module: "audit" },
+          {
+            label: "Applications",
+            path: "applications",
+            icon: "grid",
+            module: "applications",
+            search: "applications",
+          },
+        ],
+      },
+      {
+        label: "User Management",
+        icon: "user",
+        items: [
+          { label: "Users", path: "users", icon: "users", module: "users", search: "users" },
+          // ONE sub-module, as Zoho has it (the owner, 2026-11-18), with three
+          // tabs: Admins, App Admins, Roles, each its own address.
+          {
+            label: "Admins and Roles",
+            path: "admins-and-roles",
+            icon: "key",
+            module: "roles",
+            search: (tab) =>
+              tab.startsWith("app-admins") ? "app admins" : tab.startsWith("roles") ? "roles" : "admins",
+          },
         ],
       },
     ],
@@ -236,6 +318,42 @@ export const APP_CATALOG: AppDefinition[] = [
 
 export function findApp(key: string | undefined): AppDefinition | undefined {
   return APP_CATALOG.find((app) => app.key === key);
+}
+
+/**
+ * What the topbar's search box searches at `pathname` ("applications",
+ * "admins"), or undefined for the general search. See `NavItem.search`.
+ */
+export function pageSearchLabel(
+  app: AppDefinition | undefined,
+  orgSlug: string,
+  pathname: string,
+): string | undefined {
+  const item = currentNavItem(app, orgSlug, pathname);
+  if (!item?.search || !app) return undefined;
+  if (typeof item.search === "string") return item.search;
+
+  const own = `/${orgSlug}/${app.key}/${item.path}`;
+  return item.search(pathname.slice(own.length).replace(/^\//, ""));
+}
+
+/**
+ * The sidebar item for the page at `pathname`, if any: the one whose path the
+ * address is, or starts with followed by a slash (`users/42` is Users).
+ */
+export function currentNavItem(
+  app: AppDefinition | undefined,
+  orgSlug: string,
+  pathname: string,
+): NavItem | undefined {
+  if (!app) return undefined;
+  const base = `/${orgSlug}/${app.key}/`;
+  if (!pathname.startsWith(base)) return undefined;
+  const rest = pathname.slice(base.length);
+
+  return app.nav
+    .flatMap((group) => group.items)
+    .find((item) => item.path !== "" && (rest === item.path || rest.startsWith(`${item.path}/`)));
 }
 
 /** An app as the launcher needs it: what to draw, plus whether it can be opened. */
@@ -281,6 +399,28 @@ export function visibleApps(membership: Membership): LauncherApp[] {
   }
 
   return result;
+}
+
+/**
+ * The apps to draw as tiles in the launcher and rows in the apps panel:
+ * `visibleApps()`, products only.
+ *
+ * A NARROWER LIST, NOT A DIFFERENT RULE. `visibleApps()` still answers "what
+ * may I open" -- the shell's route guard asks it, and the Admin panel must
+ * stay openable -- so the settings areas are dropped here, where only the
+ * drawing is decided, and not there (C78).
+ */
+export function launcherApps(membership: Membership): LauncherApp[] {
+  return visibleApps(membership).filter((app) => app.definition.kind === "product");
+}
+
+/**
+ * May this person open the Admin panel? Decides whether the topbar shows the
+ * shield. The same entitlement rule as everything else -- `visibleApps()` --
+ * so the button and the route guard cannot disagree.
+ */
+export function canOpenAdminPanel(membership: Membership): boolean {
+  return visibleApps(membership).some((app) => app.definition.key === "admin" && app.enabled);
 }
 
 /**

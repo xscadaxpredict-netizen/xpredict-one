@@ -646,7 +646,7 @@ class TestTheLinkAnAdminCopies:
 
     def test_it_needs_more_than_permission_to_read_the_list(self, client):
         """
-        `admin.person.invite`, not `admin.person.view`. Reading the list tells
+        `admin.user.create`, not `admin.user.view`. Reading the list tells
         you somebody was invited; this hands over the credential that joins as
         them.
         """

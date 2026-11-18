@@ -2,11 +2,12 @@
  * The grid button at the right of the topbar, and the panel it opens: every
  * app in the suite, grouped under a heading, with a filter at the top.
  *
- * WHICH apps appear is not decided here. It is `visibleApps()`, the same rule
+ * WHICH apps appear is not decided here. It is `launcherApps()`, the same rule
  * the launcher page uses, so the two cannot drift: subscribed and open is a
  * row you can click, not subscribed is a greyed row that says so (C16), and
- * subscribed but not yours is not listed at all (C22). This file only decides
- * how that list is drawn.
+ * subscribed but not yours is not listed at all (C22). Products only: the
+ * Admin panel is reached from its own button in the topbar (C78). This file
+ * only decides how that list is drawn.
  *
  * A drawer at the right edge (`TopbarDrawer`), not a menu. The old switcher
  * was a dropdown menu, which is right for a short list of commands; this has a
@@ -19,7 +20,7 @@ import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
 import type { Membership } from "../api/auth";
-import { APP_SECTIONS, visibleApps } from "../navigation";
+import { APP_SECTIONS, launcherApps } from "../navigation";
 import { AppIcon } from "./AppIcon";
 import { DrawerClose, DrawerTitle, TopbarDrawer } from "./TopbarDrawer";
 import styles from "./AppsPanel.module.css";
@@ -62,7 +63,7 @@ export function AppsPanel({ membership, currentAppKey }: AppsPanelProps) {
   }
 
   const needle = query.trim().toLowerCase();
-  const apps = visibleApps(membership).filter(
+  const apps = launcherApps(membership).filter(
     (app) =>
       needle === "" ||
       app.definition.name.toLowerCase().includes(needle) ||

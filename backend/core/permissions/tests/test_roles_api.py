@@ -7,7 +7,7 @@ all, including an empty list, so the counts and the names are spelled out:
 nine roles (C35, C36), exactly one of which administers (C36 split that away
 from Manager), and `administers` derived rather than stored (C40, C44).
 
-THE INTERESTING TEST IS THE DEALER ADMIN. They hold `admin.person.invite` and
+THE INTERESTING TEST IS THE DEALER ADMIN. They hold `admin.user.create` and
 not `admin.role.view`, so gating this endpoint on `admin.role.view` alone -- the
 obvious reading -- would have given them an invite form with an empty role
 picker and no error to explain it (Q35).
@@ -184,7 +184,7 @@ class TestWhoMayAsk:
         """
         THE Q35 CASE. A dealer admin assigns roles at their own dealership and
         never sees the Roles reference page, so they need the names and not the
-        page. `admin.person.invite` is what lets them through.
+        page. `admin.user.create` is what lets them through.
         """
         result = found()
         unit = Territory.objects.create(organization=result.organization, name="Whitefield")

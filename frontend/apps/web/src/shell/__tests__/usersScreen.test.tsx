@@ -101,6 +101,11 @@ describe("the detail panel is rebuilt per person", () => {
     await screen.findByText(/New link ready/);
     expect(screen.getByLabelText("Invitation link")).toBeInTheDocument();
 
+    // Priya has not joined yet: pending people are under "Pending users", not
+    // the default "Active users".
+    fireEvent.change(screen.getByRole("combobox", { name: "Show" }), {
+      target: { value: "pending" },
+    });
     fireEvent.click(screen.getByRole("link", { name: "Priya Raghunathan" }));
 
     const next = await screen.findByRole("complementary", { name: "Priya Raghunathan" });
@@ -125,13 +130,13 @@ describe("the search filters the list, not the open record", () => {
 
     await screen.findByRole("complementary", { name: "Sanjay Desai" });
 
-    // By its placeholder: the topbar has a search box of its own.
-    fireEvent.change(screen.getByPlaceholderText("Search by name or email"), {
+    // The topbar's box is this page's search now (C78).
+    fireEvent.change(screen.getByPlaceholderText("Search users"), {
       target: { value: "zzzzz" },
     });
 
     // The list says there are no matches...
-    expect(await screen.findByText("No users match your search")).toBeInTheDocument();
+    expect(await screen.findByText("No active users match “zzzzz”.")).toBeInTheDocument();
 
     // ...and the record somebody is reading is still on screen.
     expect(screen.getByRole("complementary", { name: "Sanjay Desai" })).toBeInTheDocument();
@@ -145,74 +150,42 @@ describe("the search filters the list, not the open record", () => {
   });
 });
 
-describe("the role column is standing, and only standing", () => {
+describe("the columns are name and email, and how many apps", () => {
   /*
-   * IT USED TO CARRY APP ROLES TOO, and this file argued hard that it had to:
-   * C40 makes a dealer admin `member`, so a column showing standing alone
-   * labels the person who runs a dealership "Member" beside a salesperson who
-   * also reads "Member".
-   *
-   * THE OWNER ASKED FOR THEM OUT ANYWAY, knowing that, because the detail
-   * panel already shows what somebody does in each app and the list is for
-   * scanning. These tests now pin the decision rather than the argument --- if
-   * app roles reappear in this column, it should be because somebody changed
-   * their mind, not because a component drifted.
+   * THE OWNER'S COLUMNS (2026-11-17), replacing Role and Status. Standing and
+   * what somebody does in each app are one click away in the panel; the list
+   * is for scanning. Pinned so a Role column does not drift back in.
    */
-  it("shows the same standing for a dealer admin and a salesperson", async () => {
+  it("shows name, email and an apps count, and no role", async () => {
     mockFetchUsers.mockResolvedValue([
       user({
         id: "boss",
         first_name: "Vikram",
         last_name: "Nair",
-        unit_id: "unit-2",
-        unit_name: "Bangalore — Whitefield",
+        email: "vikram@acme.test",
         role: "member",
         apps: [
           { app: "dms", role_code: "dms.system_admin", role_name: "System administrator" },
+          { app: "crm", role_code: "crm.member", role_name: "Member" },
         ],
         administers: "dealer",
-      }),
-      user({
-        id: "seller",
-        first_name: "Sanjay",
-        last_name: "Desai",
-        unit_id: "unit-2",
-        unit_name: "Bangalore — Whitefield",
-        role: "member",
-        apps: [
-          {
-            app: "dms",
-            role_code: "dms.sales_representative",
-            role_name: "Sales representative",
-          },
-        ],
       }),
     ]);
 
     renderRoute({ path: "/acme-motors/admin/users", children: adminRoutes });
 
-    const boss = (await screen.findByRole("link", { name: "Vikram Nair" })).closest("tr");
-    const seller = screen.getByRole("link", { name: "Sanjay Desai" }).closest("tr");
-
-    expect(within(boss!).getByText("Member")).toBeInTheDocument();
-    expect(within(seller!).getByText("Member")).toBeInTheDocument();
-
-    // AND NOTHING ELSE IN THAT CELL. What they do lives one click away.
-    expect(within(boss!).queryByText(/System administrator/)).not.toBeInTheDocument();
-    expect(within(boss!).queryByText(/Dealer admin/)).not.toBeInTheDocument();
-    expect(within(seller!).queryByText(/Sales representative/)).not.toBeInTheDocument();
+    const row = (await screen.findByRole("link", { name: "Vikram Nair" })).closest("tr");
+    expect(screen.getAllByRole("columnheader").map((th) => th.textContent)).toEqual([
+      "Name / Email address",
+      "Apps",
+      "Actions",
+    ]);
+    expect(within(row!).getByText("vikram@acme.test")).toBeInTheDocument();
+    expect(within(row!).getByText("2")).toBeInTheDocument();
+    expect(within(row!).queryByText(/System administrator|Member/)).not.toBeInTheDocument();
   });
 
-  it("shows standing for somebody who holds no apps at all", async () => {
-    /*
-     * A real case, not a defensive branch: an organisation admin who
-     * administers and opens nothing.
-     *
-     * The row used to say "No apps" here, because the cell listed app roles
-     * and an empty one read as data still loading. With the cell showing
-     * standing only there is nothing to be empty, and "no apps yet" is the
-     * detail panel's line.
-     */
+  it("counts no apps as 0", async () => {
     mockFetchUsers.mockResolvedValue([
       user({ id: "lonely", first_name: "Asha", last_name: "Menon", role: "admin", apps: [] }),
     ]);
@@ -220,8 +193,6 @@ describe("the role column is standing, and only standing", () => {
     renderRoute({ path: "/acme-motors/admin/users", children: adminRoutes });
 
     const row = (await screen.findByRole("link", { name: "Asha Menon" })).closest("tr");
-
-    expect(within(row!).getByText("Admin")).toBeInTheDocument();
-    expect(within(row!).queryByText("No apps")).not.toBeInTheDocument();
+    expect(within(row!).getByText("0")).toBeInTheDocument();
   });
 });

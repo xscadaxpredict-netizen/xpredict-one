@@ -53,17 +53,33 @@ type EditFields = z.infer<typeof editSchema>;
 interface EditUserDialogProps {
   user: OrgUser;
   membership: Membership;
+  /**
+   * Opened from elsewhere — a row's ⋮ menu — rather than its own Edit
+   * button. Pass both, and the dialog draws no button of its own.
+   */
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
 }
 
-export function EditUserDialog({ user, membership }: EditUserDialogProps) {
-  const [open, setOpen] = useState(false);
-  console.log(membership);
+export function EditUserDialog({
+  user,
+  membership,
+  open: openFromOutside,
+  onOpenChange,
+}: EditUserDialogProps) {
+  const [ownOpen, setOwnOpen] = useState(false);
+  const controlled = openFromOutside !== undefined;
+  const open = controlled ? openFromOutside : ownOpen;
+  const setOpen = controlled ? (onOpenChange ?? (() => undefined)) : setOwnOpen;
+
   return (
     <Dialog.Root open={open} onOpenChange={setOpen}>
-      <Dialog.Trigger className={styles.trigger}>
-        <PencilIcon />
-        Edit
-      </Dialog.Trigger>
+      {!controlled && (
+        <Dialog.Trigger className={styles.trigger}>
+          <PencilIcon />
+          Edit
+        </Dialog.Trigger>
+      )}
 
       <Dialog.Portal>
         <Dialog.Overlay className={styles.overlay} />

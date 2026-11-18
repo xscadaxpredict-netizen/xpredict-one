@@ -36,10 +36,25 @@ interface RemoveUserDialogProps {
   orgName: string;
   /** Closes the detail panel: the record it was showing no longer exists. */
   onRemoved: () => void;
+  /**
+   * Opened from elsewhere — a row's ⋮ menu — rather than its own button.
+   * Pass both, and the dialog draws no button of its own.
+   */
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
 }
 
-export function RemoveUserDialog({ user, orgName, onRemoved }: RemoveUserDialogProps) {
-  const [open, setOpen] = useState(false);
+export function RemoveUserDialog({
+  user,
+  orgName,
+  onRemoved,
+  open: openFromOutside,
+  onOpenChange,
+}: RemoveUserDialogProps) {
+  const [ownOpen, setOwnOpen] = useState(false);
+  const controlled = openFromOutside !== undefined;
+  const open = controlled ? openFromOutside : ownOpen;
+  const setOpen = controlled ? (onOpenChange ?? (() => undefined)) : setOwnOpen;
   const [error, setError] = useState<string | null>(null);
   const { mutateAsync: remove, isPending } = useRemoveUser();
 
@@ -66,9 +81,11 @@ export function RemoveUserDialog({ user, orgName, onRemoved }: RemoveUserDialogP
         setError(null);
       }}
     >
-      <Dialog.Trigger className={styles.trigger}>
-        {isInvited ? "Cancel invitation" : "Remove from organisation"}
-      </Dialog.Trigger>
+      {!controlled && (
+        <Dialog.Trigger className={styles.trigger}>
+          {isInvited ? "Cancel invitation" : "Remove from organisation"}
+        </Dialog.Trigger>
+      )}
 
       <Dialog.Portal>
         <Dialog.Overlay className={styles.overlay} />
@@ -95,7 +112,7 @@ export function RemoveUserDialog({ user, orgName, onRemoved }: RemoveUserDialogP
           {!isInvited && (
             <p className={styles.alternative}>
               To stop them signing in without removing them, use{" "}
-              <strong>Mark as inactive</strong> instead — that can be undone.
+              <strong>Deactivate</strong> instead — that can be undone.
             </p>
           )}
 

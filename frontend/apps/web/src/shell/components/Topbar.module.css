@@ -122,6 +122,15 @@
   color: var(--color-text);
 }
 
+/* The Admin panel's shield while the panel is open: it marks where you are,
+   the same tint as the current link in the sidebar. */
+.iconButton[aria-current="page"],
+.iconButton[aria-current="page"]:hover {
+  background: var(--color-primary-050);
+  border-color: var(--color-primary-100);
+  color: var(--color-primary-800);
+}
+
 .iconButton:focus-visible {
   outline: 2px solid var(--color-primary);
   outline-offset: -2px;

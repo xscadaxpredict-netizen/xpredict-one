@@ -75,7 +75,7 @@ class OrgScopedAPIView(APIView):
     forgot.
 
     Scope is a separate question, answered by `can_manage()` and raising 404
-    rather than 403 --- holding `admin.person.update` does not say WHOSE
+    rather than 403 --- holding `admin.user.update` does not say WHOSE
     record you may touch.
     """
 

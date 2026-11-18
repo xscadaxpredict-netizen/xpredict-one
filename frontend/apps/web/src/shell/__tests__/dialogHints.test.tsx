@@ -82,7 +82,7 @@ describe("the invite dialog explains itself", () => {
   it("offers a hint beside the title, and opens it above the dialog", async () => {
     renderRoute({ path: "/acme-motors/admin/users", children: routes });
 
-    fireEvent.click(await screen.findByRole("button", { name: "Invite user" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Add User" }));
 
     const dialog = await screen.findByRole("dialog");
     const hint = within(dialog).getByRole("button", { name: "About inviting somebody" });
@@ -99,7 +99,7 @@ describe("the invite dialog explains itself", () => {
      */
     renderRoute({ path: "/acme-motors/admin/users", children: routes });
 
-    fireEvent.click(await screen.findByRole("button", { name: "Invite user" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Add User" }));
     const dialog = await screen.findByRole("dialog");
 
     fireEvent.click(within(dialog).getByRole("button", { name: "About inviting somebody" }));

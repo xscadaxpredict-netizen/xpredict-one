@@ -100,7 +100,9 @@ class TestTheRole:
         assert set(role.permissions.values_list("code", flat=True)) == set(
             Permission.objects.filter(app=AppCode.ADMIN).values_list("code", flat=True)
         )
-        assert role.permissions.count() == 14
+        # 14 when the role was made (0010); 0012 and 0013 made 16; the owner's
+        # final list (0018, C79) added thirteen.
+        assert role.permissions.count() == 29
 
 
 class TestEveryWriterKeepsItInStep:

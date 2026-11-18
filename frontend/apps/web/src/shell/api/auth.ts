@@ -13,7 +13,11 @@
 
 import { ApiError, type Problem, request } from "@xpredict/api-client";
 
-/** The apps the suite can offer. Administration is one of them, not a settings page. */
+/**
+ * The apps the suite knows. `admin` is the Admin panel: the server grants it
+ * like an app (C71), and the frontend draws it as a settings area reached from
+ * the topbar, not a launcher tile (C78).
+ */
 export type AppKey = "dms" | "crm" | "ecommerce" | "admin";
 
 /**
@@ -289,7 +293,7 @@ const FAKE_ME: Me = {
            * feature later is the backend adding a word to this list; no
            * frontend release, nothing to delete and re-add.
            */
-          modules: ["users", "dealers", "roles"],
+          modules: ["users", "dealers", "roles", "organization", "applications"],
           /*
            * A SUBSET of the 11 `admin.*` permissions the real `/me` sends an
            * owner — but every string is a real one from the catalogue.
@@ -297,7 +301,7 @@ const FAKE_ME: Me = {
            * These read `org.dealer.create`, `org.person.invite` and
            * `org.role.assign` until 2026-10-04, and none of the three exists.
            * C42 put the scope OUT of permission names — there is one
-           * `admin.person.invite`, narrowed by `Membership.unit_id` — and C42
+           * `admin.user.create`, narrowed by `Membership.unit_id` — and C42
            * claimed only one frontend string needed changing. It was four.
            *
            * `org.role.assign` was the worst of them: it is not a rename but a
@@ -306,7 +310,7 @@ const FAKE_ME: Me = {
            * promising it is the same shape of bug as the role summary that
            * advertised a password capability the platform forbids.
            */
-          permissions: ["admin.person.invite", "admin.dealer.create", "admin.role.view"],
+          permissions: ["admin.user.create", "admin.dealer.create", "admin.role.view"],
         },
       ],
     },
@@ -375,10 +379,10 @@ const FAKE_ME: Me = {
           summary: "Your dealer’s people",
           modules: ["users"],
           /*
-           * THE SAME SIX `admin.person.*` PERMISSIONS THE OWNER HOLDS, and
+           * THE SAME SIX `admin.user.*` PERMISSIONS THE OWNER HOLDS, and
            * that is the point of C42 rather than an oversight. One permission
            * set, narrowed by `Membership.unit_id`: a dealer admin and an org
-           * admin both hold `admin.person.invite`, and what differs is whose
+           * admin both hold `admin.user.create`, and what differs is whose
            * people they reach. Spelling the scope into the name would make two
            * things that have to agree.
            *
@@ -388,12 +392,12 @@ const FAKE_ME: Me = {
            * This read `unit.person.invite` — the one string C42 did flag.
            */
           permissions: [
-            "admin.person.view",
-            "admin.person.invite",
-            "admin.person.update",
-            "admin.person.remove",
-            "admin.person.set_status",
-            "admin.person.resend_invitation",
+            "admin.user.view",
+            "admin.user.create",
+            "admin.user.update",
+            "admin.user.delete",
+            "admin.user.deactivate",
+            "admin.user.resend_invitation",
           ],
         },
       ],

@@ -5,18 +5,20 @@
  * organisation, your account, and the way to every other app. Anything that
  * belongs to one screen belongs on that screen.
  *
- * THE SAME BAR FOR EVERY APP. DMS, CRM, Administration and whatever comes next
+ * THE SAME BAR FOR EVERY APP. DMS, CRM, the Admin panel and whatever comes next
  * get this exact component; only the name and icon in the brand block change,
  * and those come from the app's catalogue entry. An app never ships its own
  * topbar.
  */
 
-import { Link } from "react-router-dom";
+import { useEffect } from "react";
+import { Link, useLocation } from "react-router-dom";
 import * as Tooltip from "@radix-ui/react-tooltip";
-import { SearchIcon, SettingsIcon } from "lucide-react";
+import { SearchIcon } from "lucide-react";
 
 import type { Me, Membership } from "../api/auth";
-import type { AppDefinition } from "../navigation";
+import { canOpenAdminPanel, pageSearchLabel, type AppDefinition } from "../navigation";
+import { usePageSearch } from "../../stores/pageSearchStore";
 import { useUiStore } from "../../stores/uiStore";
 import { AppIcon } from "./AppIcon";
 import { AppsPanel } from "./AppsPanel";
@@ -51,6 +53,20 @@ export function Topbar({ me, membership, app }: TopbarProps) {
 
   const home = app ? `/${membership.org_slug}/${app.key}` : `/${membership.org_slug}`;
 
+  /*
+   * What the search box searches: the open page's own list, when the
+   * catalogue says so (`NavItem.search`), otherwise nothing in particular.
+   * The text is cleared whenever the address changes, so a search never
+   * follows you to the next page.
+   */
+  const { pathname } = useLocation();
+  const pageSearch = pageSearchLabel(app, membership.org_slug, pathname);
+  const query = usePageSearch((state) => state.query);
+  const setQuery = usePageSearch((state) => state.setQuery);
+  useEffect(() => {
+    setQuery("");
+  }, [pathname, setQuery]);
+
   return (
     <header className={styles.topbar}>
       <Link
@@ -83,12 +99,34 @@ export function Topbar({ me, membership, app }: TopbarProps) {
           <label htmlFor="topbar-search" className={styles.visuallyHidden}>
             Search
           </label>
-          <input
-            id="topbar-search"
-            type="search"
-            placeholder="Search…"
-            className={styles.searchInput}
-          />
+          {pageSearch ? (
+            /*
+             * THE PAGE'S OWN SEARCH (C78): this page says in the catalogue that
+             * the topbar box searches it, so what is typed goes to
+             * `pageSearchStore` and the page filters by it.
+             *
+             * A `key` on each of the two boxes, so switching page swaps the
+             * element instead of React reusing it: reused, the box would keep
+             * the old page's text on a page that does not search it.
+             */
+            <input
+              key="page-search"
+              id="topbar-search"
+              type="search"
+              placeholder={`Search ${pageSearch}`}
+              className={styles.searchInput}
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+            />
+          ) : (
+            <input
+              key="general-search"
+              id="topbar-search"
+              type="search"
+              placeholder="Search…"
+              className={styles.searchInput}
+            />
+          )}
         </div>
 
         <div className={styles.spacer} />
@@ -103,7 +141,9 @@ export function Topbar({ me, membership, app }: TopbarProps) {
 
         <div className={styles.actions}>
           <NotificationMenu orgSlug={membership.org_slug} />
-          <SettingsButton />
+          {canOpenAdminPanel(membership) && (
+            <AdminPanelButton orgSlug={membership.org_slug} isOpen={app?.key === "admin"} />
+          )}
           <UserMenu me={me} membership={membership} />
           {/*
             No app open means this IS the launcher, and a button that opens a
@@ -118,28 +158,42 @@ export function Topbar({ me, membership, app }: TopbarProps) {
   );
 }
 
+interface AdminPanelButtonProps {
+  orgSlug: string;
+  /** True while the Admin panel itself is open, so the button shows it. */
+  isOpen: boolean;
+}
+
 /**
- * A placeholder: there are no settings to open yet. It is here so the bar's
- * layout is settled before they exist, and it says so — `aria-disabled` keeps
- * it reachable by keyboard and its tooltip readable, which `disabled` would not.
+ * The shield: the way into the Admin panel (C78), which used to be a tile in
+ * the launcher. The same shield as the panel's own name block.
+ *
+ * A LINK, not a button, because it goes somewhere — so it can be opened in a
+ * new tab, and a screen reader announces it as a link.
+ *
+ * There is no "Back to …" link in the panel: the apps icon beside it already
+ * goes anywhere, the launcher included (C78).
+ *
+ * Only drawn for someone who may open the panel. COURTESY, NOT SECURITY: the
+ * route guard and, behind it, every endpoint refuse anyone else regardless.
  */
-function SettingsButton() {
+function AdminPanelButton({ orgSlug, isOpen }: AdminPanelButtonProps) {
   return (
     <Tooltip.Provider delayDuration={400}>
       <Tooltip.Root>
         <Tooltip.Trigger asChild>
-          <button
-            type="button"
+          <Link
+            to={`/${orgSlug}/admin`}
             className={styles.iconButton}
-            aria-label="Settings"
-            aria-disabled="true"
+            aria-label="Admin panel"
+            aria-current={isOpen ? "page" : undefined}
           >
-            <SettingsIcon size={18} aria-hidden="true" />
-          </button>
+            <AppIcon app="admin" size={20} />
+          </Link>
         </Tooltip.Trigger>
         <Tooltip.Portal>
           <Tooltip.Content className={styles.tooltip} side="bottom" sideOffset={6}>
-            Settings
+            Admin panel
             <Tooltip.Arrow className={styles.tooltipArrow} width={10} height={5} />
           </Tooltip.Content>
         </Tooltip.Portal>

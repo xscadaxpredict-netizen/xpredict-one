@@ -29,6 +29,7 @@ from core.billing.models import AppSubscription, SubscriptionStatus
 from core.organizations.models import (
     Invitation,
     Membership,
+    MembershipAppAccess,
     MembershipAppRole,
     MembershipAppTerritory,
     MembershipRole,
@@ -38,7 +39,7 @@ from core.organizations.models import (
     TerritoryKind,
     UnitStatus,
 )
-from core.permissions.models import AppCode, Permission
+from core.permissions.models import App, AppCode, Permission
 from core.permissions.registry import is_unit_aware
 from shared.exceptions import not_found
 
@@ -371,7 +372,7 @@ def _membership_data(
     # Every permission this person holds here, from BOTH sources -- the
     # owner rule and their grants -- bucketed by the app the permission belongs
     # to, which is not always the app of the role that granted it. The DMS
-    # System administrator role grants `admin.person.*`, and that is how a
+    # System administrator role grants `admin.user.*`, and that is how a
     # dealer admin reaches Administration (C40).
     #
     # NO STANDING SOURCE SINCE C72 STEP 2c: an organisation admin holds
@@ -552,7 +553,7 @@ def permissions_for(membership: Membership) -> frozenset[str]:
 
     ONE KNOWN ASYMMETRY, inherited rather than introduced: Administration is
     never bought, so its bucket is not gated on a subscription. A dealer admin
-    whose organization cancelled DMS therefore keeps `admin.person.*`, because
+    whose organization cancelled DMS therefore keeps `admin.user.*`, because
     those permissions arrive through the DMS System administrator role but land
     in the `admin` bucket. Whether that is right is a product question -- it is
     arguably correct, since somebody has to be able to manage people in an
@@ -593,7 +594,7 @@ def can_manage(membership: Membership, target_unit_id: uuid.UUID | None) -> bool
       nobody else's -- not another dealership's, and not an organization-wide
       person, who is senior to them and whose scope they do not share.
 
-    THIS ANSWERS SCOPE ONLY, never capability. Holding `admin.person.update` is
+    THIS ANSWERS SCOPE ONLY, never capability. Holding `admin.user.update` is
     a separate question asked by the view; a Sales representative passes this
     function for their own dealership and still may not manage anybody. Both
     checks are required and they refuse differently: failing this is a 404,
@@ -1008,3 +1009,203 @@ def invitation_preview(token: str) -> InvitationPreview:
         requires_sign_in=User.objects.filter(email__iexact=invitation.email).exists(),
         invited_by=invited_by,
     )
+
+
+# --- The organisation's profile (C78) -----------------------------------------
+
+
+@dataclass(frozen=True)
+class OwnerData:
+    name: str
+    email: str
+
+
+@dataclass(frozen=True)
+class OrganizationProfileData:
+    name: str
+    slug: str
+    created_at: datetime
+    is_ready: bool
+    owner: OwnerData | None
+
+
+def organization_profile(organization: Organization) -> OrganizationProfileData:
+    """
+    What the Admin panel's Organization -> Profile page shows: only what the
+    platform already stores (the owner, 2026-11-17 -- nothing editable yet).
+
+    `owner` is None only for an organisation with no owner row, which the
+    database's one-owner rule makes a broken record rather than a real state;
+    answering None keeps the page up instead of turning it into a 500.
+    """
+    owner = (
+        Membership.objects.filter(organization=organization, is_owner=True)
+        .select_related("user")
+        .first()
+    )
+    return OrganizationProfileData(
+        name=organization.name,
+        slug=organization.slug,
+        created_at=organization.created_at,
+        is_ready=organization.is_ready,
+        owner=_owner_data(owner.user) if owner else None,
+    )
+
+
+def _owner_data(user: User) -> OwnerData:
+    # A name if they gave one, otherwise the address: never a blank line.
+    full = f"{user.first_name} {user.last_name}".strip()
+    return OwnerData(name=full or user.email, email=user.email)
+
+
+# --- The organisation's applications (C78) ------------------------------------
+
+
+@dataclass(frozen=True)
+class ApplicationData:
+    code: str
+    name: str
+    active: bool
+    members: int
+    owner: OwnerData | None
+
+
+def applications_for(organization: Organization) -> list[ApplicationData]:
+    """
+    Every app the platform sells, as the Admin panel's Applications page lists
+    it: whether this organisation subscribes, who owns it, and how many people
+    can open it. Administration itself is not an app you buy, so it is not here.
+
+    ACTIVE is an active subscription. A cancelled one is inactive, and its
+    leftover grants open nothing (C16), so it counts no members.
+
+    MEMBERS are the people who can open it today: active members holding a
+    grant for it, plus the owner, who holds every app by rule (C72) and is
+    counted once even if they also hold a grant.
+
+    OWNER is the organisation's owner, on every active app -- the owner's
+    choice, 2026-11-17, until apps have owners of their own.
+
+    Three queries whatever the number of apps or people.
+    """
+    owner_row = (
+        Membership.objects.filter(organization=organization, is_owner=True)
+        .select_related("user")
+        .first()
+    )
+    active = set(
+        AppSubscription.objects.filter(
+            organization=organization, status=SubscriptionStatus.ACTIVE
+        ).values_list("app_id", flat=True)
+    )
+    holders: dict[str, set[uuid.UUID]] = {}
+    for app_code, membership_id in MembershipAppAccess.objects.filter(
+        membership__organization=organization,
+        membership__status=MembershipStatus.ACTIVE,
+    ).values_list("app_id", "membership_id"):
+        holders.setdefault(app_code, set()).add(membership_id)
+
+    result = []
+    for app in App.objects.exclude(code=AppCode.ADMIN).order_by("display_order", "code"):
+        is_active = app.code in active
+        people = set(holders.get(app.code, set()))
+        if owner_row is not None:
+            people.add(owner_row.pk)
+        result.append(
+            ApplicationData(
+                code=app.code,
+                name=app.name,
+                active=is_active,
+                members=len(people) if is_active else 0,
+                owner=_owner_data(owner_row.user) if is_active and owner_row else None,
+            )
+        )
+    return result
+
+
+
+@dataclass(frozen=True)
+class ApplicationMemberData:
+    id: uuid.UUID
+    name: str
+    email: str
+    is_owner: bool
+    role: str | None
+    places: list[str]
+
+
+def application_members(organization: Organization, app_code: str) -> list[ApplicationMemberData]:
+    """
+    The people who can open one app, for its panel on the Applications page
+    (C78): exactly the people `applications_for()` counts as its members.
+
+    Active members holding a grant for it, each with the role and the places
+    that grant gives them, and the owner -- first, and once -- who holds every
+    app by rule (C72) and so may have no grant of their own (`role` None).
+
+    An app that is not subscribed opens for nobody (C16): an empty list.
+    Administration, or a code that is not an app, is 404 -- it is not on the
+    Applications page, so it has no panel.
+
+    Three queries for the grants (with their roles and places) plus three for
+    the app, its subscription and the owner, however many people.
+    """
+    app = App.objects.exclude(code=AppCode.ADMIN).filter(code=app_code).first()
+    if app is None:
+        raise not_found("Application")
+
+    subscribed = AppSubscription.objects.filter(
+        organization=organization, app=app, status=SubscriptionStatus.ACTIVE
+    ).exists()
+    if not subscribed:
+        return []
+
+    grants = (
+        MembershipAppAccess.objects.filter(
+            app=app,
+            membership__organization=organization,
+            membership__status=MembershipStatus.ACTIVE,
+        )
+        .select_related("membership__user")
+        .prefetch_related(
+            Prefetch("roles", queryset=MembershipAppRole.objects.select_related("role")),
+            Prefetch(
+                "territories",
+                queryset=MembershipAppTerritory.objects.select_related(
+                    "territory__organization"
+                ),
+            ),
+        )
+    )
+
+    people: dict[uuid.UUID, ApplicationMemberData] = {}
+    for grant in grants:
+        membership = grant.membership
+        role = next(iter(grant.roles.all()), None)
+        people[membership.pk] = ApplicationMemberData(
+            id=membership.pk,
+            name=_owner_data(membership.user).name,
+            email=membership.user.email,
+            is_owner=bool(membership.is_owner),
+            role=role.role.name if role else None,
+            places=sorted(
+                placement.territory.display_name for placement in grant.territories.all()
+            ),
+        )
+
+    owner = (
+        Membership.objects.filter(organization=organization, is_owner=True)
+        .select_related("user")
+        .first()
+    )
+    if owner is not None and owner.pk not in people:
+        people[owner.pk] = ApplicationMemberData(
+            id=owner.pk,
+            name=_owner_data(owner.user).name,
+            email=owner.user.email,
+            is_owner=True,
+            role=None,
+            places=[],
+        )
+
+    return sorted(people.values(), key=lambda person: (not person.is_owner, person.name.lower()))

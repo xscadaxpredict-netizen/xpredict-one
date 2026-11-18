@@ -34,7 +34,7 @@ class RolesView(OrgScopedAPIView):
       `admin.role.view`, which is what puts the `roles` module in somebody's
       sidebar.
     - **The invite and edit forms**, which need role NAMES to render a picker.
-      A dealer admin holds `admin.person.invite` and `admin.person.update` and
+      A dealer admin holds `admin.user.create` and `admin.user.update` and
       deliberately does NOT hold `admin.role.view`: the DMS System
       administrator role grants the `users` module and not the `roles` one.
 
@@ -53,8 +53,8 @@ class RolesView(OrgScopedAPIView):
 
     required_any_permission: ClassVar[list[str]] = [
         "admin.role.view",
-        "admin.person.invite",
-        "admin.person.update",
+        "admin.user.create",
+        "admin.user.update",
     ]
 
     # Nothing on top of the "any of" above. Spelled out rather than left to

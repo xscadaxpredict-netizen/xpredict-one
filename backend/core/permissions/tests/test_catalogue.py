@@ -22,26 +22,29 @@ pytestmark = pytest.mark.django_db
 
 
 class TestPermissions:
-    def test_there_are_58(self):
+    def test_there_are_73(self):
         """
         C42 settled on 48, C67 added seven, and C72 piece 1 added three
-        (`admin.territory.view/create/update`, `permissions/0009`). A number
+        (`admin.territory.view/create/update`, `permissions/0009`), and C78 one
+        (`admin.organization_info.view`, `permissions/0012`) and one more
+        (`admin.application.view`, `permissions/0013`). A number
         that drifts is a decision nobody made -- which is exactly what this
         assertion is for, and it did its job: the seven codes were added with a
         comment saying the catalogue had grown and this test was not updated
         with them.
         """
-        assert Permission.objects.count() == 58
+        assert Permission.objects.count() == 73
 
     def test_split_by_app_as_decided(self):
         """
         DMS went 36 -> 43 with C67's seven: two for the reference library
         (manuals, videos), three for tools (marketing material, the calculator
         constants, deleting a saved calculation) and two for store orders.
-        Administration went 11 -> 14 with C72's territory three. Each app is
+        Administration went 11 -> 14 with C72's territory three, and to 16 with
+        C78's `admin.organization_info.view` and `admin.application.view`. Each app is
         asserted separately so a change to one cannot quietly reach another.
         """
-        assert Permission.objects.filter(app_id=AppCode.ADMIN).count() == 14
+        assert Permission.objects.filter(app_id=AppCode.ADMIN).count() == 29
         assert Permission.objects.filter(app_id=AppCode.DMS).count() == 43
         assert Permission.objects.filter(app_id=AppCode.CRM).count() == 1
 
@@ -197,7 +200,7 @@ class TestRoles:
         )
 
         assert "dms.enquiry.view" in codes
-        assert "admin.person.invite" in codes
+        assert "admin.user.create" in codes
 
     def test_a_dealer_role_never_grants_dealership_management(self):
         """
@@ -330,11 +333,29 @@ class TestTheSeedCanBeRunAgain:
         module.seed(state.apps, None)
 
     def test_running_it_again_changes_nothing(self):
-        before = (Permission.objects.count(), Role.objects.count())
+        """
+        EXCEPT THE RENAMED ROWS, BY DESIGN. `0002` still knows the Admin
+        panel's people permissions by their old names (renamed by `0017` and
+        `0018`, C79), so re-running it writes those names again. Django never
+        re-runs an applied migration; this test does, and the codes it may add
+        are exactly those.
+        """
+        before = set(Permission.objects.values_list("code", flat=True))
+        roles = Role.objects.count()
 
         self._seed()
 
-        assert (Permission.objects.count(), Role.objects.count()) == before
+        after = set(Permission.objects.values_list("code", flat=True))
+        assert after - before <= {
+            "admin.person.view",
+            "admin.person.invite",
+            "admin.person.update",
+            "admin.person.remove",
+            "admin.person.set_status",
+            "admin.person.resend_invitation",
+        }
+        assert before <= after
+        assert Role.objects.count() == roles
 
     def test_it_repairs_a_half_applied_run(self):
         """
@@ -358,8 +379,8 @@ class TestTheSeedCanBeRunAgain:
         leaves a capability the catalogue says was removed.
         """
         technician = Role.objects.get(code="dms.technician")
-        technician.permissions.add(Permission.objects.get(code="admin.person.remove"))
+        technician.permissions.add(Permission.objects.get(code="admin.user.delete"))
 
         self._seed()
 
-        assert not technician.permissions.filter(code="admin.person.remove").exists()
+        assert not technician.permissions.filter(code="admin.user.delete").exists()

@@ -68,7 +68,7 @@ class NeedsTwoPermissions(OrgScopedAPIView):
 
     required_permissions: ClassVar[list[str]] = [
         "admin.dealer.create",
-        "admin.person.invite",
+        "admin.user.create",
     ]
 
     def get(self, request: Request, org_slug: str) -> Response:
@@ -80,7 +80,7 @@ class NeedsAnyOf(OrgScopedAPIView):
     required_permissions: ClassVar[list[str]] = []
     required_any_permission: ClassVar[list[str]] = [
         "admin.role.view",
-        "admin.person.invite",
+        "admin.user.create",
     ]
 
     def get(self, request: Request, org_slug: str) -> Response:
@@ -181,7 +181,7 @@ class TestPermissionsFor:
         held = permissions_for(membership)
 
         assert "admin.dealer.create" in held
-        assert "admin.person.invite" in held
+        assert "admin.user.create" in held
         assert "admin.role.view" in held
 
     def test_a_dealer_admin_holds_the_people_permissions_and_not_the_dealer_ones(self):
@@ -192,15 +192,15 @@ class TestPermissionsFor:
         held = permissions_for(membership)
 
         # They manage their own dealership's people...
-        assert "admin.person.view" in held
-        assert "admin.person.invite" in held
+        assert "admin.user.view" in held
+        assert "admin.user.create" in held
         # ...and cannot create or close a dealership, which is the
         # organization's job (C23). This is the privilege test the plan asks
         # for, at the permission layer.
         assert "admin.dealer.create" not in held
         assert "admin.dealer.set_status" not in held
         # And they do not reach the Roles reference page, which is why the
-        # roles endpoint accepts `admin.person.invite` as well (Q35).
+        # roles endpoint accepts `admin.user.create` as well (Q35).
         assert "admin.role.view" not in held
 
     def test_a_sales_representative_holds_no_admin_permission_at_all(self):
@@ -293,7 +293,7 @@ class TestTheViewLayer:
 
     def test_required_permissions_is_an_and_not_an_or(self, client):
         """
-        A dealer admin holds `admin.person.invite` and not
+        A dealer admin holds `admin.user.create` and not
         `admin.dealer.create`. If the base class ever loosened to "any of",
         this is the test that catches it.
         """
@@ -309,7 +309,7 @@ class TestTheViewLayer:
 
     def test_required_any_permission_accepts_either(self, client):
         """
-        The dealer admin holds `admin.person.invite` but not
+        The dealer admin holds `admin.user.create` but not
         `admin.role.view`, and must still get through -- which is exactly the
         role-catalogue case.
         """

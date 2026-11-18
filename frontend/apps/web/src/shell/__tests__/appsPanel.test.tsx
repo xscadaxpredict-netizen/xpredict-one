@@ -51,7 +51,18 @@ describe("the apps panel", () => {
     const headings = within(panel)
       .getAllByRole("heading", { level: 3 })
       .map((heading) => heading.textContent);
-    expect(headings).toEqual(["Operations", "Sales & marketing", "Platform"]);
+    // No "Platform": the Admin panel is not an app in this list (C78).
+    expect(headings).toEqual(["Operations", "Sales & marketing"]);
+  });
+
+  it("does not list the Admin panel, which has its own button in the topbar (C78)", async () => {
+    mockFetchMe.mockResolvedValue(me({ memberships: [ownerMembership()] }));
+
+    renderRoute({ path: "/acme-motors/admin/users" });
+    const panel = await openPanel();
+
+    expect(within(panel).getByRole("button", { name: /DMS/ })).toBeInTheDocument();
+    expect(within(panel).queryByText(/Admin panel|Administration/)).not.toBeInTheDocument();
   });
 
   it("shows an unbought app greyed out and says why, with nothing to press (C16)", async () => {
@@ -73,7 +84,7 @@ describe("the apps panel", () => {
             apps: [
               appAccess("dms", { modules: ["sales"] }),
               appAccess("crm", { accessible: false }),
-              appAccess("admin", { modules: ["users"], permissions: ["admin.person.view"] }),
+              appAccess("admin", { modules: ["users"], permissions: ["admin.user.view"] }),
             ],
           }),
         ],
@@ -90,14 +101,17 @@ describe("the apps panel", () => {
   it("marks the app you are in", async () => {
     mockFetchMe.mockResolvedValue(me({ memberships: [ownerMembership()] }));
 
-    renderRoute({ path: "/acme-motors/admin/users" });
+    renderRoute({
+      path: "/acme-motors/dms",
+      children: [{ path: "dms/*", element: <p>DMS home</p> }],
+    });
     const panel = await openPanel();
 
-    expect(within(panel).getByRole("button", { name: /Administration/ })).toHaveAttribute(
+    expect(within(panel).getByRole("button", { name: /DMS/ })).toHaveAttribute(
       "aria-current",
       "page",
     );
-    expect(within(panel).getByRole("button", { name: /DMS/ })).not.toHaveAttribute("aria-current");
+    expect(within(panel).getByRole("button", { name: /CRM/ })).not.toHaveAttribute("aria-current");
   });
 
   it("filters by name and says so when nothing matches", async () => {

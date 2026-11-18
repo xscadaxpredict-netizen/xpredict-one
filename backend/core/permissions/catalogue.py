@@ -37,13 +37,18 @@ PERMISSIONS: list[tuple[str, str, str, str, str]] = [
     # Held by organisation admins through standing, and by the DMS System
     # administrator role narrowed to one dealership (C40). The strings are the
     # same either way: scope decides whose people they reach, not the name.
-    ("admin.person.view", "admin", "users", "People", "See the people in this organisation"),
-    ("admin.person.invite", "admin", "users", "People", "Invite somebody"),
-    ("admin.person.update", "admin", "users", "People", "Change somebody's access"),
-    ("admin.person.remove", "admin", "users", "People", "Remove somebody"),
-    ("admin.person.set_status", "admin", "users", "People", "Switch somebody off, or back on"),
+    # Renamed from `admin.person.*` (and `admin.organization.view`) by
+    # `permissions/0018` -- the owner's final list, C79. Same rows, so the roles
+    # holding them kept them.
+    ("admin.user.view", "admin", "users", "People", "See the people in this organisation"),
+    ("admin.user.create", "admin", "users", "People", "Invite somebody"),
+    ("admin.user.update", "admin", "users", "People", "Change somebody's access"),
+    # Was `admin.person.remove`; the basic Delete for Users since C79
+    # (`permissions/0017`). Same row, so the roles holding it kept it.
+    ("admin.user.delete", "admin", "users", "People", "Remove somebody"),
+    ("admin.user.deactivate", "admin", "users", "People", "Switch somebody off, or back on"),
     (
-        "admin.person.resend_invitation",
+        "admin.user.resend_invitation",
         "admin",
         "users",
         "People",
@@ -65,6 +70,48 @@ PERMISSIONS: list[tuple[str, str, str, str, str]] = [
     ),
     ("admin.territory.update", "admin", "dealers", "Territories", "Rename or move a territory"),
     ("admin.role.view", "admin", "roles", "Roles", "Read what each role grants"),
+    # The Admin panel's Organization -> Profile page (C78, `permissions/0012`).
+    (
+        "admin.organization_info.view",
+        "admin",
+        "organization",
+        "Organization",
+        "See the organization's profile",
+    ),
+    # The Admin panel's App Management -> Applications page (C78, `permissions/0013`).
+    (
+        "admin.application.view",
+        "admin",
+        "applications",
+        "Applications",
+        "See the organization's applications",
+    ),
+    # --- The owner's final Admin panel list (C79, `permissions/0018`) --------
+    ("admin.application.create", "admin", "applications", "Applications", "Add apps"),
+    (
+        "admin.application.view_users",
+        "admin",
+        "applications",
+        "Applications",
+        "See an app's members",
+    ),
+    (
+        "admin.application.view_conditional_assignment",
+        "admin",
+        "applications",
+        "Applications",
+        "See an app's conditional assignment",
+    ),
+    ("admin.user.assign_app", "admin", "users", "People", "Give somebody an app"),
+    ("admin.user.unassign_app", "admin", "users", "People", "Take an app away from somebody"),
+    ("admin.user.disable_app", "admin", "users", "People", "Disable somebody's app"),
+    ("admin.admin.view", "admin", "roles", "Admins", "See the organisation's admins"),
+    ("admin.admin.assign_admin", "admin", "roles", "Admins", "Make somebody an admin"),
+    ("admin.admin.unassign_admin", "admin", "roles", "Admins", "Remove somebody's admin role"),
+    ("admin.app_admin.view", "admin", "roles", "App admins", "See the app admins"),
+    ("admin.role.create", "admin", "roles", "Roles", "Build a role"),
+    ("admin.role.update", "admin", "roles", "Roles", "Edit a role"),
+    ("admin.role.delete", "admin", "roles", "Roles", "Delete a role"),
     # --- DMS: Sales ---------------------------------------------------------
     ("dms.enquiry.view", "dms", "sales", "Enquiries", "See enquiries"),
     ("dms.enquiry.create", "dms", "sales", "Enquiries", "Raise an enquiry"),
@@ -175,7 +222,17 @@ _SERVICE = [code for code, _app, module, *_ in PERMISSIONS if module == "service
 # Tech support, a dealership role, was quietly handed the cross-dealership
 # edits C67 forbids. A module is a screen, not a job.
 _TICKETS = [code for code, *_rest in PERMISSIONS if code.startswith("dms.ticket.")]
-_ADMIN_PEOPLE = [code for code, _app, module, *_ in PERMISSIONS if module == "users"]
+# Written out, not "everything in the users module": the owner's final list
+# (C79, `permissions/0018`) added assign_app / unassign_app / disable_app to
+# Users, and the DMS System administrator keeps exactly what it had.
+_ADMIN_PEOPLE = [
+    "admin.user.view",
+    "admin.user.create",
+    "admin.user.update",
+    "admin.user.delete",
+    "admin.user.deactivate",
+    "admin.user.resend_invitation",
+]
 
 _DMS_READS = [code for code, app, *_rest in PERMISSIONS if app == "dms" and code.endswith(".view")]
 _DMS_EXPORTS = [

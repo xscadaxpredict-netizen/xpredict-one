@@ -176,14 +176,18 @@ beforeEach(() => {
 
 async function openInviteForm() {
   renderRoute({ path: "/acme-motors/admin/users", children: routes });
-  fireEvent.click(await screen.findByRole("button", { name: "Invite user" }));
+  fireEvent.click(await screen.findByRole("button", { name: "Add User" }));
   return screen.findByRole("dialog");
 }
 
 async function openEditForm(userId: string, name: string) {
   renderRoute({ path: `/acme-motors/admin/users/${userId}`, children: routes });
-  await screen.findByRole("complementary", { name });
-  fireEvent.click(screen.getByRole("button", { name: "Edit" }));
+  const panel = await screen.findByRole("complementary", { name });
+  // Edit lives in the panel's ⋮ now, beside Deactivate and Delete (C78).
+  fireEvent.keyDown(within(panel).getByRole("button", { name: `More actions for ${name}` }), {
+    key: "Enter",
+  });
+  fireEvent.click(within(await screen.findByRole("menu")).getByRole("menuitem", { name: "Edit" }));
   return screen.findByRole("dialog");
 }
 
@@ -824,7 +828,7 @@ describe("what an administrator may hand out", () => {
         appAccess("dms", { accessible: false, modules: [], permissions: [] }),
         appAccess("admin", {
           modules: ["users", "dealers", "roles"],
-          permissions: ["admin.person.invite", "admin.person.update", "admin.role.view"],
+          permissions: ["admin.user.create", "admin.user.update", "admin.role.view"],
         }),
       ],
     });
@@ -850,7 +854,7 @@ describe("what an administrator may hand out", () => {
         appAccess("crm", { subscribed: false, accessible: false }),
         appAccess("admin", {
           modules: ["users", "dealers", "roles"],
-          permissions: ["admin.person.invite", "admin.role.view"],
+          permissions: ["admin.user.create", "admin.role.view"],
         }),
       ],
     });

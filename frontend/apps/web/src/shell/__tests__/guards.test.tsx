@@ -179,13 +179,10 @@ describe("module privilege", () => {
   });
 
   /*
-   * OUT OF THE FIRST RELEASE (C38), and that is expressed by not granting the
-   * module — not by deleting the screen. The placeholder and its route still
-   * exist, so shipping the feature later is the backend adding a word to
-   * `modules[]`, with no frontend release.
-   *
-   * Worth a test because the failure is invisible: grant the module by
-   * accident and an unfinished screen reads as a finished one.
+   * OUT OF THE FIRST RELEASE (C38), and since the owner's Admin panel modules
+   * (C78) its placeholder route is gone too: Audit log and Apps & billing are
+   * not in the list. Kept so an old link still lands on "Page not found", not
+   * on an unfinished screen that reads as a finished one.
    */
   it("does not expose a module held back from the release", async () => {
     mockFetchMe.mockResolvedValue(me({ memberships: [ownerMembership()] }));

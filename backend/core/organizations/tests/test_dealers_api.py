@@ -9,7 +9,7 @@ fails rather than quietly becoming the answer to Q21.
 
 THE PRIVILEGE CASE IS THE ONE TO READ FIRST. Dealerships are managed by the
 ORGANIZATION and people by each dealership (C3, C23), so a dealer admin --
-who holds every `admin.person.*` permission -- must be refused here. That is
+who holds every `admin.user.*` permission -- must be refused here. That is
 the plan's "a dealer admin cannot create dealers", and it is the assertion
 most likely to be broken by somebody being helpful.
 """
@@ -677,7 +677,7 @@ class TestWhoMayManageDealerships:
         """
         THE PRIVILEGE TEST. Dealerships are the organization's to create and
         people are each dealership's to manage (C3, C23). A dealer admin holds
-        every `admin.person.*` permission and none of `admin.dealer.*`.
+        every `admin.user.*` permission and none of `admin.dealer.*`.
         """
         result = found()
         unit = Territory.objects.create(organization=result.organization, name="Whitefield")

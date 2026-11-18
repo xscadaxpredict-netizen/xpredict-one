@@ -21,10 +21,13 @@ from rest_framework.response import Response
 
 from core.organizations.api.base import OrgScopedAPIView
 from core.organizations.api.serializers import (
+    ApplicationMemberSerializer,
+    ApplicationSerializer,
     DealerCreateSerializer,
     DealerDetailsSerializer,
     DealerSerializer,
     InviteLinkSerializer,
+    OrganizationProfileSerializer,
     OrgUserSerializer,
     PersonDetailsSerializer,
     TerritoryCreateSerializer,
@@ -33,7 +36,14 @@ from core.organizations.api.serializers import (
     TerritorySerializer,
 )
 from core.organizations.models import MembershipStatus, Territory, TerritoryKind
-from core.organizations.selectors import dealers_for, org_users, territories_for
+from core.organizations.selectors import (
+    application_members,
+    applications_for,
+    dealers_for,
+    org_users,
+    organization_profile,
+    territories_for,
+)
 from core.organizations.services import (
     close_dealer,
     create_dealer,
@@ -333,9 +343,9 @@ class UsersView(OrgScopedAPIView):
     invitations for people who have not.
     """
 
-    required_permissions: ClassVar[list[str]] = ["admin.person.view"]
+    required_permissions: ClassVar[list[str]] = ["admin.user.view"]
     method_permissions: ClassVar[dict[str, list[str]]] = {
-        "POST": ["admin.person.invite"],
+        "POST": ["admin.user.create"],
     }
 
     def get(self, request: Request, org_slug: str) -> Response:
@@ -373,10 +383,10 @@ class UserDetailView(OrgScopedAPIView):
     is what once reported a successful logout as a failure.
     """
 
-    required_permissions: ClassVar[list[str]] = ["admin.person.view"]
+    required_permissions: ClassVar[list[str]] = ["admin.user.view"]
     method_permissions: ClassVar[dict[str, list[str]]] = {
-        "PUT": ["admin.person.update"],
-        "DELETE": ["admin.person.remove"],
+        "PUT": ["admin.user.update"],
+        "DELETE": ["admin.user.delete"],
     }
 
     def put(self, request: Request, org_slug: str, user_id: str) -> Response:
@@ -421,7 +431,7 @@ class UserStatusView(OrgScopedAPIView):
     dealership has since closed, say -- they split.
     """
 
-    required_permissions: ClassVar[list[str]] = ["admin.person.set_status"]
+    required_permissions: ClassVar[list[str]] = ["admin.user.deactivate"]
 
     # The whole vocabulary this route accepts. A bare `else` would turn every
     # unrecognised verb into "deactivate", so a typo in a URL would switch
@@ -459,7 +469,7 @@ class ResendInvitationView(OrgScopedAPIView):
     and Phase 2 still owes it.
     """
 
-    required_permissions: ClassVar[list[str]] = ["admin.person.resend_invitation"]
+    required_permissions: ClassVar[list[str]] = ["admin.user.resend_invitation"]
 
     def post(self, request: Request, org_slug: str, user_id: str) -> Response:
         resend_invitation(
@@ -484,7 +494,7 @@ class InviteLinkView(OrgScopedAPIView):
     different verbs: Copy sends the same link again, Resend kills it and mints
     another.
 
-    `admin.person.invite`, NOT `admin.person.view`. Reading the list tells you
+    `admin.user.create`, NOT `admin.user.view`. Reading the list tells you
     somebody was invited; this hands over the credential that joins the
     organisation as them, and the permission that creates an invitation is the
     one that should be able to re-read it. A dealer admin holds it and
@@ -492,7 +502,7 @@ class InviteLinkView(OrgScopedAPIView):
     404, like everywhere else.
     """
 
-    required_permissions: ClassVar[list[str]] = ["admin.person.invite"]
+    required_permissions: ClassVar[list[str]] = ["admin.user.create"]
 
     def get(self, request: Request, org_slug: str, user_id: str) -> Response:
         invitation = invitation_for_link(
@@ -505,3 +515,58 @@ class InviteLinkView(OrgScopedAPIView):
                 {"link": invitation_link(invitation), "expires_at": invitation.expires_at}
             ).data
         )
+
+
+class OrganizationProfileView(OrgScopedAPIView):
+    """
+    The organisation's profile: name, web address, owner, when it was created
+    and whether its workspace is ready (C78, Organization -> Profile).
+
+    `admin.organization_info.view` is held by the owner and the Organisation admin
+    role; a dealer admin does not hold it, and gets 403 -- they are a member,
+    so the organisation is no secret to them, they just may not open this.
+    """
+
+    required_permissions: ClassVar[list[str]] = ["admin.organization_info.view"]
+
+    def get(self, request: Request, org_slug: str) -> Response:
+        profile = organization_profile(self.organization)
+        return Response(OrganizationProfileSerializer(profile).data)
+
+
+class ApplicationsView(OrgScopedAPIView):
+    """
+    The organisation's applications: each app, whether it is subscribed, its
+    owner and how many people can open it (C78, App Management ->
+    Applications). Read-only.
+
+    `admin.application.view` is held by the owner and the Organisation admin
+    role; a dealer admin gets 403.
+    """
+
+    required_permissions: ClassVar[list[str]] = ["admin.application.view"]
+
+    def get(self, request: Request, org_slug: str) -> Response:
+        rows = applications_for(self.organization)
+        return Response(ApplicationSerializer(rows, many=True).data)
+
+
+class ApplicationMembersView(OrgScopedAPIView):
+    """
+    The people who can open one app, with their role and places -- its panel
+    on the Applications page (C78). Read-only.
+
+    THE MEMBERS TAB'S OWN PERMISSION (C79, the owner's final list): seeing who
+    is in an app is `admin.application.view_users`, a special action on top of
+    seeing the list. Both are asked, because a special action never stands
+    without its section's view.
+    """
+
+    required_permissions: ClassVar[list[str]] = [
+        "admin.application.view",
+        "admin.application.view_users",
+    ]
+
+    def get(self, request: Request, org_slug: str, app_code: str) -> Response:
+        people = application_members(self.organization, app_code)
+        return Response(ApplicationMemberSerializer(people, many=True).data)

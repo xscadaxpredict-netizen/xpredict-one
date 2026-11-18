@@ -373,3 +373,49 @@ class AcceptResultSerializer(serializers.Serializer):
 
     org_slug = serializers.CharField(read_only=True)
     account_created = serializers.BooleanField(read_only=True)
+
+
+class OwnerSerializer(serializers.Serializer):
+    name = serializers.CharField(read_only=True)
+    email = serializers.EmailField(read_only=True)
+
+
+class OrganizationProfileSerializer(serializers.Serializer):
+    """
+    The Admin panel's Organization -> Profile page (C78). Read-only: the page
+    shows what the platform stores and edits nothing. Mirrors
+    `OrganizationProfile` in `shell/admin/api/organization.ts`.
+    """
+
+    name = serializers.CharField(read_only=True)
+    slug = serializers.CharField(read_only=True)
+    created_at = serializers.DateTimeField(read_only=True)
+    is_ready = serializers.BooleanField(read_only=True)
+    owner = OwnerSerializer(read_only=True, allow_null=True)
+
+
+class ApplicationSerializer(serializers.Serializer):
+    """
+    One row of the Admin panel's Applications page (C78). Mirrors
+    `Application` in `shell/admin/api/applications.ts`.
+    """
+
+    code = serializers.CharField(read_only=True)
+    name = serializers.CharField(read_only=True)
+    active = serializers.BooleanField(read_only=True)
+    members = serializers.IntegerField(read_only=True)
+    owner = OwnerSerializer(read_only=True, allow_null=True)
+
+
+class ApplicationMemberSerializer(serializers.Serializer):
+    """
+    One person in an app's panel on the Applications page (C78). Mirrors
+    `ApplicationMember` in `shell/admin/api/applications.ts`.
+    """
+
+    id = serializers.UUIDField(read_only=True)
+    name = serializers.CharField(read_only=True)
+    email = serializers.EmailField(read_only=True)
+    is_owner = serializers.BooleanField(read_only=True)
+    role = serializers.CharField(read_only=True, allow_null=True)
+    places = serializers.ListField(child=serializers.CharField(), read_only=True)

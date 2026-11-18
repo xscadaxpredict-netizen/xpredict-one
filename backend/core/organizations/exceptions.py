@@ -404,7 +404,7 @@ class AppNotSubscribedError(ConflictError):
     the first place, so an admin could hand out an app nobody had bought and
     the only symptom was a launcher tile that never became clickable.
 
-    NOT `AuthorizationError`. The caller may well hold `admin.person.update`;
+    NOT `AuthorizationError`. The caller may well hold `admin.user.update`;
     it is the organization's billing state that does not allow this, which is
     what `ConflictError` is for --- resubmitting the same request after
     subscribing would succeed.

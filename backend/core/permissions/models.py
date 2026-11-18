@@ -87,6 +87,136 @@ class App(BaseModel):
         return self.code
 
 
+class SectionLevel(models.TextChoices):
+    MODULE = "module", "Module"
+    SUB_MODULE = "sub_module", "Sub-module"
+    TAB = "tab", "Tab"
+
+
+# Which level a section's parent must be. A module has none.
+PARENT_LEVEL: dict[str, str | None] = {
+    SectionLevel.MODULE: None,
+    SectionLevel.SUB_MODULE: SectionLevel.MODULE,
+    SectionLevel.TAB: SectionLevel.SUB_MODULE,
+}
+
+
+class AppSection(BaseModel):
+    """
+    One section of an app: a MODULE, a SUB-MODULE or a TAB (C79).
+
+    THE SAME SHAPE IN EVERY APP. An app has modules; a module is a group of
+    sub-modules; a sub-module is a group of tabs, or has none and is then its
+    own single tab. Permissions attach to the bottom level -- the LEAF -- and
+    everything above is a container that shows when anything under it does.
+
+        admin   User Management                     module
+                  Users                (person)     sub-module, a leaf
+                  Admins and Roles                  sub-module
+                    Admins             (admin)      tab, a leaf
+                    Roles              (role)       tab, a leaf
+
+    SELF-REFERENCING: `parent` is another row of this table. A plain parent
+    column, not django-treebeard like `Territory`: this tree is OURS -- at most
+    three deep, written only by migrations, tens of rows -- where the
+    territory tree is every customer's, any depth, and edited live.
+
+    `code` IS THE LEAF'S NAME IN ITS PERMISSIONS: section `enquiry` holds
+    `dms.enquiry.view`. It is unique within an app and never carries the menu
+    path, so moving a section is a change of `parent` and no permission code
+    changes. `name` is what people see -- the Users section's code is `person`
+    because its permissions were already `admin.user.*`.
+
+    THE RULES. The database enforces what it can see in one row: `app` + `code`
+    is unique, and a module has no parent while every other level has one.
+    `save()` enforces what needs the parent row too -- a sub-module sits under
+    a module, a tab under a sub-module, and both rows belong to the same app --
+    and refuses with a `ValueError` at the line that went wrong, as
+    `Territory.save()` does. Rows arrive by data migration; nobody writes them
+    at runtime.
+
+    NAMED `AppSection` by the owner (2026-11-18). "Feature" said nothing about
+    what a row is; "Module" is one of the levels; "Resource" is the code's
+    middle part; "MenuItem" would tie a permissions table to the menu.
+    """
+
+    app = models.ForeignKey(
+        App,
+        to_field="code",
+        db_column="app",
+        on_delete=models.PROTECT,
+        related_name="sections",
+    )
+    parent = models.ForeignKey(
+        "self",
+        null=True,
+        blank=True,
+        # A section with sections under it cannot be deleted out from under
+        # them: move or delete the children first.
+        on_delete=models.PROTECT,
+        related_name="children",
+    )
+    level = models.CharField(max_length=12, choices=SectionLevel.choices)
+    code = models.CharField(
+        max_length=40,
+        help_text="Unique in its app; a leaf's code is the middle of its permission codes.",
+    )
+    name = models.CharField(max_length=60, help_text='What people see: "User Management".')
+    display_order = models.PositiveSmallIntegerField(
+        default=0, help_text="Position among its siblings in the sidebar or tab row."
+    )
+    icon = models.CharField(
+        max_length=30, blank=True, default="", help_text="The sidebar icon, for a module."
+    )
+
+    class Meta:
+        ordering = ["app_id", "display_order", "code"]
+        constraints = [
+            models.UniqueConstraint(fields=["app", "code"], name="appsection_unique_app_code"),
+            models.CheckConstraint(
+                condition=models.Q(level__in=SectionLevel.values),
+                name="appsection_level_known",
+            ),
+            # One row's worth of the tree's shape: modules are the top, and
+            # nothing else is.
+            models.CheckConstraint(
+                condition=(
+                    models.Q(level=SectionLevel.MODULE, parent__isnull=True)
+                    | (~models.Q(level=SectionLevel.MODULE) & models.Q(parent__isnull=False))
+                ),
+                name="appsection_only_modules_are_top_level",
+            ),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.app_id}.{self.code}"
+
+    def save(self, *args, **kwargs) -> None:
+        self._check_place()
+        super().save(*args, **kwargs)
+
+    def _check_place(self) -> None:
+        """The rules that need the parent row, which a database check cannot read."""
+        wanted = PARENT_LEVEL.get(self.level)
+        if wanted is None:
+            if self.parent_id is not None:
+                raise ValueError(f"A module has no parent; {self.code!r} was given one.")
+            return
+
+        if self.parent is None:
+            raise ValueError(f"A {self.level} needs a parent {wanted}; {self.code!r} has none.")
+        if self.parent.level != wanted:
+            raise ValueError(
+                f"A {self.level} sits under a {wanted}; {self.code!r} was put under the "
+                f"{self.parent.level} {self.parent.code!r}."
+            )
+        if self.parent.app_id != self.app_id:
+            raise ValueError(
+                f"{self.code!r} belongs to {self.app_id!r} but its parent "
+                f"{self.parent.code!r} belongs to {self.parent.app_id!r}."
+            )
+
+
 class RoleLevel(models.TextChoices):
     """
     Whether a role scopes its holder to one dealership or to the whole
@@ -99,6 +229,70 @@ class RoleLevel(models.TextChoices):
 
     ORG = "org", "Organisation"
     UNIT = "unit", "Dealership"
+
+
+class ActionKind(models.TextChoices):
+    BASIC = "basic", "Basic"
+    SPECIAL = "special", "Special"
+
+
+# THE BASIC FOUR, in the role builder's column order (C79, amended 2026-11-18).
+# Every other verb is special.
+BASIC_ACTIONS: tuple[str, ...] = ("view", "create", "update", "delete")
+
+
+class Action(BaseModel):
+    """
+    One verb a permission can name: view, create, export, assign... (C79).
+
+    The last part of a permission's code (`dms.enquiry.EXPORT`), and a column
+    of the role builder -- sections as rows, actions as tick-boxes -- which is
+    what `name` and `display_order` are for (View first).
+
+    BASIC OR SPECIAL (the owner, 2026-11-18). Exactly four are basic -- view,
+    create, update, delete -- and the role builder always shows them as four
+    fixed columns, greyed where a section lacks one. Every other verb is
+    special, listed beside them only for the sections that have it. `save()`
+    works the kind out from the code, and the database refuses a row where the
+    two disagree, so "export is basic" cannot happen by either route.
+
+    Permissions link to it BY CODE, as they link to `App`, so a row in
+    `permissions_permission` reads `action = 'view'` in Workbench rather than
+    an id. Seeded by data migration with the verbs in use; nobody adds one at
+    runtime.
+    """
+
+    code = models.CharField(max_length=30, unique=True)
+    name = models.CharField(max_length=40, help_text='The role builder\'s column: "Export".')
+    kind = models.CharField(
+        max_length=10,
+        choices=ActionKind.choices,
+        default=ActionKind.SPECIAL,
+        help_text="basic for view, create, update and delete; special for every other verb.",
+    )
+    display_order = models.PositiveSmallIntegerField(
+        default=0, help_text="Column order in the role builder; View first."
+    )
+
+    class Meta:
+        ordering = ["display_order", "code"]
+        constraints = [
+            # Basic means exactly the four, and the four are exactly basic.
+            models.CheckConstraint(
+                condition=(
+                    models.Q(code__in=BASIC_ACTIONS, kind=ActionKind.BASIC)
+                    | (~models.Q(code__in=BASIC_ACTIONS) & models.Q(kind=ActionKind.SPECIAL))
+                ),
+                name="action_kind_matches_code",
+            ),
+        ]
+
+    def __str__(self) -> str:
+        return self.code
+
+    def save(self, *args, **kwargs) -> None:
+        self.kind = ActionKind.BASIC if self.code in BASIC_ACTIONS else ActionKind.SPECIAL
+        super().save(*args, **kwargs)
 
 
 class Permission(BaseModel):
@@ -119,6 +313,18 @@ class Permission(BaseModel):
 
     SEEDED BY DATA MIGRATION, never written through the API. Nobody authors
     permissions at runtime; they arrive with a release, like a column does.
+
+    `section` AND `action` (C79): the LEAF section it acts on -- a tab, or a
+    sub-module with no tabs -- and the verb. OPTIONAL WHILE DMS IS OUTSIDE THE
+    SECTION TREE (C79, amended 2026-11-18): the Admin panel's permissions get
+    both; DMS's keep neither, and their `module` and `group`, until the owner
+    restructures DMS. Then both become required and `module` / `group` go.
+
+    THE RULES, once a permission has a section. The database: both or neither,
+    and one permission per section and action. `save()`: the section is a leaf
+    in the same app, and the code is exactly `<app>.<section code>.<action>` --
+    so the code a view checks and the row the role editor ticks can never
+    describe two different things.
     """
 
     code = models.CharField(max_length=80, unique=True)
@@ -135,6 +341,26 @@ class Permission(BaseModel):
     )
     group = models.CharField(max_length=60, help_text='Display grouping: "Enquiries".')
     label = models.CharField(max_length=120, help_text='What it lets you do: "Create an enquiry".')
+    section = models.ForeignKey(
+        AppSection,
+        null=True,
+        blank=True,
+        # A section that permissions point at cannot be deleted out from
+        # under them.
+        on_delete=models.PROTECT,
+        related_name="permissions",
+        help_text="The leaf section it acts on (C79). Empty for DMS until it moves over.",
+    )
+    action = models.ForeignKey(
+        Action,
+        null=True,
+        blank=True,
+        to_field="code",
+        db_column="action",
+        on_delete=models.PROTECT,
+        related_name="permissions",
+        help_text="The verb: view, create, export... Empty for DMS until it moves over.",
+    )
 
     class Meta:
         ordering = ["app_id", "module", "group", "code"]
@@ -143,9 +369,48 @@ class Permission(BaseModel):
             # permissions touch", so the lookup leads with app.
             models.Index(fields=["app", "module"]),
         ]
+        constraints = [
+            # A section with no verb, or a verb on nothing, describes nothing.
+            models.CheckConstraint(
+                condition=(
+                    models.Q(section__isnull=True, action__isnull=True)
+                    | models.Q(section__isnull=False, action__isnull=False)
+                ),
+                name="permission_section_and_action_together",
+            ),
+            models.UniqueConstraint(
+                fields=["section", "action"], name="permission_unique_section_action"
+            ),
+        ]
 
     def __str__(self) -> str:
         return self.code
+
+    def save(self, *args, **kwargs) -> None:
+        self._check_section()
+        super().save(*args, **kwargs)
+
+    def _check_section(self) -> None:
+        """The rules that need the section's row, which a database check cannot read."""
+        if self.section_id is None:
+            return  # DMS, until it moves into the tree (C79, amended).
+
+        section = self.section
+        if section.app_id != self.app_id:
+            raise ValueError(
+                f"{self.code!r} belongs to {self.app_id!r} but its section "
+                f"{section.code!r} belongs to {section.app_id!r}."
+            )
+        if section.children.exists():
+            raise ValueError(
+                f"{self.code!r} points at {section.code!r}, which has sections under it: "
+                "permissions belong to a leaf -- a tab, or a sub-module with no tabs."
+            )
+        expected = f"{self.app_id}.{section.code}.{self.action_id}"
+        if self.code != expected:
+            raise ValueError(
+                f"{self.code!r} must be {expected!r}: <app>.<section code>.<action>."
+            )
 
 
 class Role(BaseModel):

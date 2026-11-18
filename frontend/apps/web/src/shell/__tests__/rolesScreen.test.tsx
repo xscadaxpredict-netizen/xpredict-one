@@ -18,7 +18,7 @@ import { screen, within } from "@testing-library/react";
 
 import { fetchRoles } from "../admin/api/roles";
 import type * as rolesApi from "../admin/api/roles";
-import { RolesScreen } from "../admin/screens/RolesScreen";
+import { RolesTab } from "../admin/screens/RolesScreen";
 import { fetchMe } from "../api/auth";
 import type * as authApi from "../api/auth";
 import { renderRoute } from "./harness";
@@ -38,7 +38,7 @@ vi.mock("../admin/api/roles", async (importOriginal) => ({
 const mockFetchMe = vi.mocked(fetchMe);
 const mockFetchRoles = vi.mocked(fetchRoles);
 
-const routes = [{ path: "admin/roles", element: <RolesScreen /> }];
+const routes = [{ path: "admin/roles", element: <RolesTab /> }];
 
 /** Only the fields the page reads; the rest is noise here. */
 function role(overrides: Partial<rolesApi.Role> & { code: string }): rolesApi.Role {

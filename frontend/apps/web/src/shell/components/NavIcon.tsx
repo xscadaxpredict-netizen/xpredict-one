@@ -26,7 +26,10 @@ export type NavIconName =
   | "key"
   | "card"
   | "history"
-  | "grid";
+  | "grid"
+  | "gauge"
+  | "building"
+  | "user";
 
 interface NavIconProps {
   name: NavIconName;
@@ -144,6 +147,35 @@ function glyph(name: NavIconName) {
           <rect x="14" y="3" width="7" height="7" rx="1.5" />
           <rect x="14" y="14" width="7" height="7" rx="1.5" />
           <rect x="3" y="14" width="7" height="7" rx="1.5" />
+        </>
+      );
+
+    // Admin panel dashboard — a gauge.
+    case "gauge":
+      return (
+        <>
+          <path d="M3.4 17.2a9 9 0 1 1 17.2 0" />
+          <path d="m12 14 3.6-3.6" />
+          <circle cx="12" cy="14" r="1.2" />
+        </>
+      );
+
+    // Organization — an office building.
+    case "building":
+      return (
+        <>
+          <rect x="4.6" y="2.8" width="14.8" height="18.4" rx="1.6" />
+          <path d="M9.6 21.2v-3.8h4.8v3.8" />
+          <path d="M8.6 7h.01M12 7h.01M15.4 7h.01M8.6 10.6h.01M12 10.6h.01M15.4 10.6h.01M8.6 14.2h.01M15.4 14.2h.01" />
+        </>
+      );
+
+    // User management — one figure.
+    case "user":
+      return (
+        <>
+          <circle cx="12" cy="8" r="3.8" />
+          <path d="M5 20.6a7 7 0 0 1 14 0" />
         </>
       );
   }

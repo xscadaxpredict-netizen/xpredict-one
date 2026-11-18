@@ -8,7 +8,8 @@
  * app somebody cannot open produces a "no access" screen as the first thing
  * they see after typing a correct password.
  *
- * The tiles come from `visibleApps`, shared with the topbar dropdown so the two
+ * The tiles come from `launcherApps` (products only -- the Admin panel has its
+ * own button in the topbar, C78), shared with the topbar dropdown so the two
  * cannot disagree about what is shown or what is merely disabled.
  *
  * There is no organisation switcher on this screen. One was built here and
@@ -26,13 +27,13 @@ import { useNavigate } from "react-router-dom";
 import type { Membership } from "../api/auth";
 import { useShellContext } from "../context";
 import { AppTile } from "../components/AppTile";
-import { visibleApps } from "../navigation";
+import { launcherApps } from "../navigation";
 import styles from "./LauncherScreen.module.css";
 
 export function LauncherScreen() {
   const navigate = useNavigate();
   const { membership } = useShellContext();
-  const apps = visibleApps(membership);
+  const apps = launcherApps(membership);
 
   return (
     <div className={styles.page}>

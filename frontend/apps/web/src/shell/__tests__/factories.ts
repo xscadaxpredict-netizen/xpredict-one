@@ -94,8 +94,8 @@ export function ownerMembership(): Membership {
        * `/me`, so a test written against it describes the product that ships.
        */
       appAccess("admin", {
-        modules: ["users", "dealers", "roles"],
-        permissions: ["admin.person.invite", "admin.dealer.create", "admin.role.view"],
+        modules: ["users", "dealers", "roles", "organization", "applications"],
+        permissions: ["admin.user.create", "admin.dealer.create", "admin.role.view"],
       }),
     ],
   });
@@ -110,7 +110,7 @@ export function ownerMembership(): Membership {
  * database REFUSES outright — `membership_org_standing_has_no_unit` requires
  * `unit_id IS NULL` for anything above `member`. What makes this person an
  * admin is holding the DMS System administrator role, which grants
- * `admin.person.*`; nothing is written into their standing.
+ * `admin.user.*`; nothing is written into their standing.
  *
  * That is also why the permissions are spelled out here rather than left
  * empty: they are now the ONLY thing that distinguishes a dealer admin from a
@@ -131,12 +131,12 @@ export function dealerAdminMembership(): Membership {
       appAccess("admin", {
         modules: ["users"],
         permissions: [
-          "admin.person.view",
-          "admin.person.invite",
-          "admin.person.update",
-          "admin.person.remove",
-          "admin.person.set_status",
-          "admin.person.resend_invitation",
+          "admin.user.view",
+          "admin.user.create",
+          "admin.user.update",
+          "admin.user.delete",
+          "admin.user.deactivate",
+          "admin.user.resend_invitation",
         ],
       }),
     ],

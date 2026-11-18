@@ -48,7 +48,7 @@ describe("accessFor", () => {
     const access = accessFor(salespersonMembership(), "admin");
 
     expect(access.hasModule("users")).toBe(false);
-    expect(access.can("admin.person.invite")).toBe(false);
+    expect(access.can("admin.user.create")).toBe(false);
     expect(access.permissions).toEqual([]);
   });
 

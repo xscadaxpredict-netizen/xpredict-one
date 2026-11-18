@@ -19,6 +19,7 @@ import { NavLink } from "react-router-dom";
 import type { AppDefinition } from "../navigation";
 import { useAccess } from "../access";
 import { useUiStore } from "../../stores/uiStore";
+import { AccordionNav } from "./AccordionNav";
 import { NavIcon } from "./NavIcon";
 import styles from "./Sidebar.module.css";
 
@@ -65,7 +66,8 @@ export function Sidebar({ app, orgSlug, inDrawer = false, onNavigate }: SidebarP
       ...group,
       items: group.items.filter((item) => item.module === null || access.hasModule(item.module)),
     }))
-    .filter((group) => group.items.length > 0);
+    // A "Soon" module has no items on purpose and stays, so the plan shows.
+    .filter((group) => group.items.length > 0 || group.comingSoon);
 
   return (
     <nav
@@ -74,51 +76,75 @@ export function Sidebar({ app, orgSlug, inDrawer = false, onNavigate }: SidebarP
       data-drawer={inDrawer || undefined}
       aria-label={`${app.name} navigation`}
     >
-      <div className={styles.groups}>
-        {groups.map((group, groupIndex) => (
-          <div
-            // Groups have no id of their own and an unlabelled group has no
-            // name either, so the index is the only stable key available. Safe
-            // here because this list is static config, never reordered at runtime.
-            key={group.label ?? `group-${String(groupIndex)}`}
-            className={styles.group}
-          >
-            {group.label && <div className={styles.groupLabel}>{group.label}</div>}
+      {app.kind === "settings" ? (
+        /*
+         * A settings area (the Admin panel, C78) is an accordion of modules.
+         * The permission filter above has already run, so the accordion
+         * only ever draws what this person may open.
+         */
+        <div className={styles.groups}>
+          <AccordionNav
+            appKey={app.key}
+            orgSlug={orgSlug}
+            groups={groups}
+            isCollapsed={isCollapsed}
+            onNavigate={onNavigate}
+          />
+        </div>
+      ) : (
+        <div className={styles.groups}>
+          {groups.map((group, groupIndex) => (
+            <div
+              // Groups have no id of their own and an unlabelled group has no
+              // name either, so the index is the only stable key available. Safe
+              // here because this list is static config, never reordered at runtime.
+              key={group.label ?? `group-${String(groupIndex)}`}
+              className={styles.group}
+            >
+              {group.label && (
+                <div className={styles.groupLabel}>{group.label}</div>
+              )}
 
-            <ul className={styles.list}>
-              {group.items.map((item) => (
-                <li key={item.path}>
-                  <NavLink
-                    to={`/${orgSlug}/${app.key}/${item.path}`.replace(/\/$/, "")}
-                    end={item.path === ""}
-                    className={({ isActive }) =>
-                      isActive ? `${styles.link} ${styles.linkActive}` : styles.link
-                    }
-                    // The label is hidden when collapsed, so the icon-only link
-                    // gets a tooltip as well as its clipped accessible name.
-                    title={isCollapsed ? item.label : undefined}
-                    onClick={onNavigate}
-                  >
-                    <span className={styles.icon}>
-                      <NavIcon name={item.icon} />
-                    </span>
-                    <span className={styles.linkLabel}>{item.label}</span>
-                  </NavLink>
-                </li>
-              ))}
-            </ul>
-          </div>
-        ))}
+              <ul className={styles.list}>
+                {group.items.map((item) => (
+                  <li key={item.path}>
+                    <NavLink
+                      to={`/${orgSlug}/${app.key}/${item.path}`.replace(
+                        /\/$/,
+                        "",
+                      )}
+                      end={item.path === ""}
+                      className={({ isActive }) =>
+                        isActive
+                          ? `${styles.link} ${styles.linkActive}`
+                          : styles.link
+                      }
+                      // The label is hidden when collapsed, so the icon-only link
+                      // gets a tooltip as well as its clipped accessible name.
+                      title={isCollapsed ? item.label : undefined}
+                      onClick={onNavigate}
+                    >
+                      <span className={styles.icon}>
+                        <NavIcon name={item.icon} />
+                      </span>
+                      <span className={styles.linkLabel}>{item.label}</span>
+                    </NavLink>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ))}
 
-        {groups.length === 0 && (
-          <p className={styles.empty}>
-            {/* Covers both "this app has no modules yet" (CRM) and "none of
+          {groups.length === 0 && (
+            <p className={styles.empty}>
+              {/* Covers both "this app has no modules yet" (CRM) and "none of
                 them are yours". Deliberately the same sentence: a different
                 message for the second case would confirm that modules exist. */}
-            No modules yet.
-          </p>
-        )}
-      </div>
+              No modules yet.
+            </p>
+          )}
+        </div>
+      )}
 
       {!inDrawer && (
         <button
@@ -128,7 +154,13 @@ export function Sidebar({ app, orgSlug, inDrawer = false, onNavigate }: SidebarP
           aria-label={isCollapsed ? "Expand sidebar" : "Collapse sidebar"}
           aria-expanded={!isCollapsed}
         >
-          <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true" focusable="false">
+          <svg
+            width="14"
+            height="14"
+            viewBox="0 0 14 14"
+            aria-hidden="true"
+            focusable="false"
+          >
             <path
               d={isCollapsed ? "M5 3.5 8.5 7 5 10.5" : "M9 3.5 5.5 7 9 10.5"}
               fill="none"

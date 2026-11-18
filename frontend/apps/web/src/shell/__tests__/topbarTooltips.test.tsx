@@ -44,7 +44,6 @@ describe("topbar tooltips", () => {
     [/^Account:/, "My profile"],
     [/^All apps$/, "All apps"],
     [/^Switch organisation/, "Acme Motors"],
-    [/^Settings$/, "Settings"],
   ])("names the %s button", async (button, tip) => {
     renderRoute({ path: "/acme-motors/admin/users" });
 
@@ -64,13 +63,11 @@ describe("topbar tooltips", () => {
     expect(screen.queryByRole("tooltip")).not.toBeInTheDocument();
   });
 
-  it("has a settings button beside the bell that does nothing yet", async () => {
+  it("has no settings placeholder any more: the Admin panel's shield took its place", async () => {
     renderRoute({ path: "/acme-motors/admin/users" });
 
-    const settings = await screen.findByRole("button", { name: "Settings" });
-    expect(settings).toHaveAttribute("aria-disabled", "true");
-    // Straight after the bell, in the bar's own order.
-    const bell = screen.getByRole("button", { name: /^Notifications/ });
-    expect(bell.nextElementSibling).toBe(settings);
+    const bell = await screen.findByRole("button", { name: /^Notifications/ });
+    expect(bell.nextElementSibling).toHaveAccessibleName("Admin panel");
+    expect(screen.queryByRole("button", { name: "Settings" })).not.toBeInTheDocument();
   });
 });

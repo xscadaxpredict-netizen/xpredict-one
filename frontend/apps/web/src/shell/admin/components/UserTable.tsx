@@ -1,134 +1,124 @@
 /**
- * The organisation's people: person, role, status. Nothing else.
+ * The Users list (C78): name and email, how many apps, and a ⋮ — in the same
+ * format as every Admin panel list page (`ListPage.module.css`).
  *
- * IT USED TO CARRY SCOPE AND APPS TOO, and at four columns of real content it
- * needed 720px and scrolled sideways on anything smaller. Scanning a list of
- * people is a different job from reading one of them: the list answers "who
- * is here and are they switched on", and everything else belongs to the row
- * you picked. Both now live in the detail panel.
+ * THE OWNER'S COLUMNS (2026-11-17), replacing Role and Status. What somebody
+ * does in each app, and their standing, are one click away in the panel; a
+ * pending or inactive person carries a tag beside their name, so the state the
+ * filter chooses is still visible under "All users".
  *
- * A real `<table>` with `<th scope>`, not divs with ARIA roles — a screen
- * reader can then announce "row 3 of 7, Role, Admin" as you move about, which
- * is the entire reason tabular data goes in a table.
- *
- * THE LINK IS THE NAME, not the row. A `<tr onClick>` is invisible to the
- * keyboard and announces nothing; a real link is focusable, reachable by tab,
- * works with middle-click and can be copied. The row's own click handler is a
- * convenience layered on top, and it goes to the same place, so a stray double
- * fire changes nothing.
+ * The ⋮ is `UserActions`, the same one the panel's header carries.
  */
 
+import { useState } from "react";
 import { Link } from "react-router-dom";
 
+import type { Membership } from "../../api/auth";
 import type { OrgUser } from "../api/users";
-import styles from "./UserTable.module.css";
+import styles from "../screens/ListPage.module.css";
+import { UserActions, displayName } from "./UserActions";
 
 interface UserTableProps {
   users: OrgUser[];
-  /** Base path for a person's detail, e.g. `/acme-motors/admin/users`. */
+  membership: Membership;
   basePath: string;
-  /** The person currently open in the detail panel, if any. */
   selectedId: string | undefined;
   onSelect: (userId: string) => void;
-}
-
-export function UserTable({ users, basePath, selectedId, onSelect }: UserTableProps) {
-  return (
-    <div className={styles.wrapper}>
-      <table className={styles.table}>
-        <caption className={styles.srOnly}>
-          Everyone in this organisation. Select a person to see their apps and scope.
-        </caption>
-
-        <thead>
-          <tr>
-            <th scope="col">Person</th>
-            <th scope="col">Role</th>
-            <th scope="col">Status</th>
-          </tr>
-        </thead>
-
-        <tbody>
-          {users.map((user) => (
-            <tr
-              key={user.id}
-              className={styles.row}
-              data-selected={user.id === selectedId || undefined}
-              onClick={() => onSelect(user.id)}
-            >
-              <th scope="row" className={styles.personCell}>
-                <span className={styles.personLayout}>
-                  <span className={styles.avatar} aria-hidden="true">
-                    {initials(user)}
-                  </span>
-
-                  <span className={styles.person}>
-                    <Link
-                      to={`${basePath}/${user.id}`}
-                      className={styles.name}
-                      // The row handler fires too; stopping it here would mean
-                      // the link and the row disagreed about what a click does.
-                      onClick={(event) => event.stopPropagation()}
-                    >
-                      {user.first_name} {user.last_name}
-                    </Link>
-                    <span className={styles.email}>{user.email}</span>
-                  </span>
-                </span>
-              </th>
-
-              <td>
-                <RolePill role={user.role} />
-              </td>
-
-              <td>
-                <StatusPill status={user.status} />
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
-  );
-}
-
-/**
- * Standing in the organisation, and ONLY standing — Owner, Admin or Member.
- *
- * THE COLUMN USED TO ALSO LIST APP ROLES, and the owner asked for them out:
- * the detail panel already shows what somebody does in each app, and a list
- * is for scanning rather than for reading a person's whole grant.
- *
- * WHAT IS GIVEN UP, so nobody rediscovers it as a surprise: a dealer admin
- * and a salesperson at the same dealership both read "Member" here, because
- * C40 made standing and app roles independent and a dealer admin's power
- * comes from the DMS System administrator role rather than from standing.
- * Telling them apart is a click into the person. That is the owner's call,
- * made knowing the trade.
- */
-function RolePill({ role }: { role: OrgUser["role"] }) {
-  const label = role === "owner" ? "Owner" : role === "admin" ? "Admin" : "Member";
-
-  return (
-    <span className={styles.role} data-role={role}>
-      {label}
-    </span>
-  );
-}
-
-function StatusPill({ status }: { status: OrgUser["status"] }) {
-  /*
-   * Colour is never the only signal — each pill says its state in words too.
-   * Roughly one man in twelve cannot separate the green from the amber, and
-   * "is this person switched off" is not a guess worth making.
+  /** After somebody is deleted: closes their panel if it was open. */
+  onRemoved: (userId: string) => void;
+  /**
+   * What to say when there are no rows to show ("No active users match …").
+   * Drawn INSIDE the table's card, under its headings, as Applications and
+   * Admins do — not below the card, which left an empty heading strip
+   * floating over a message on the page background.
    */
-  const label =
-    status === "active" ? "Active" : status === "invited" ? "Invitation sent" : "Disabled";
+  emptyText: string;
+}
+
+export function UserTable({
+  users,
+  membership,
+  basePath,
+  selectedId,
+  onSelect,
+  onRemoved,
+  emptyText,
+}: UserTableProps) {
+  const [statusError, setStatusError] = useState<string | null>(null);
 
   return (
-    <span className={styles.status} data-status={status}>
-      {label}
-    </span>
+    <>
+      {statusError && (
+        <p className={styles.missing} role="alert">
+          {statusError}
+        </p>
+      )}
+
+      <div className={styles.tableWrap}>
+        <table className={styles.table}>
+          <caption className={styles.visuallyHidden}>
+            Everyone in this organisation. Select a person to see their apps and scope.
+          </caption>
+
+          <thead>
+            <tr>
+              <th scope="col">Name / Email address</th>
+              <th scope="col" className={styles.number}>
+                Apps
+              </th>
+              <th scope="col" className={styles.actions}>
+                <span className={styles.visuallyHidden}>Actions</span>
+              </th>
+            </tr>
+          </thead>
+
+          <tbody>
+            {users.map((user) => (
+              <tr
+                key={user.id}
+                className={styles.row}
+                data-open={user.id === selectedId || undefined}
+                onClick={() => onSelect(user.id)}
+              >
+                <th scope="row">
+                  <div className={styles.entity}>
+                    <span className={styles.badge} aria-hidden="true">
+                      {initials(user)}
+                    </span>
+                    <div className={styles.stack}>
+                      <Link
+                        to={`${basePath}/${user.id}`}
+                        className={styles.primary}
+                        aria-current={user.id === selectedId ? "page" : undefined}
+                        onClick={(event) => event.stopPropagation()}
+                      >
+                        {displayName(user)}
+                      </Link>
+                      <span className={styles.sub}>{user.email}</span>
+                    </div>
+                    {user.status === "invited" && <span className={styles.tag}>Pending</span>}
+                    {user.status === "disabled" && <span className={styles.tag}>Inactive</span>}
+                  </div>
+                </th>
+
+                <td className={styles.number}>{user.apps.length}</td>
+
+                <td className={styles.actions}>
+                  <UserActions
+                    user={user}
+                    membership={membership}
+                    onRemoved={() => onRemoved(user.id)}
+                    onStatusError={setStatusError}
+                  />
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+
+        {users.length === 0 && <p className={styles.empty}>{emptyText}</p>}
+      </div>
+    </>
   );
 }
 

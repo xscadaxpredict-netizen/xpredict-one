@@ -69,10 +69,20 @@ const routes = [
   { path: "admin/users/:userId", element: <UsersScreen /> },
 ];
 
-/** Radix menus open on pointerdown; Enter is the keyboard path jsdom supports. */
+/**
+ * The ⋮ in the open person's panel header (C78): Edit, Deactivate, Delete.
+ * Radix menus open on pointerdown; Enter is the keyboard path jsdom supports.
+ */
 async function openActionsMenu() {
-  const trigger = await screen.findByRole("button", { name: "More actions" });
+  const panel = await screen.findByRole("complementary");
+  const trigger = within(panel).getByRole("button", { name: /^More actions for / });
   fireEvent.keyDown(trigger, { key: "Enter" });
+  return screen.findByRole("menu");
+}
+
+async function openEdit() {
+  const menu = await openActionsMenu();
+  fireEvent.click(within(menu).getByRole("menuitem", { name: "Edit" }));
 }
 
 beforeEach(() => {
@@ -91,15 +101,11 @@ describe("the owner is protected", () => {
     renderRoute({ path: "/acme-motors/admin/users/owner", children: routes });
 
     await screen.findByRole("complementary", { name: "Rahul Kandaswamy" });
-    await openActionsMenu();
+    const menu = await openActionsMenu();
 
-    const menu = await screen.findByRole("menu");
-
-    expect(within(menu).getByRole("menuitem", { name: "Mark as inactive" })).toHaveAttribute(
-      "aria-disabled",
-      "true",
-    );
-    expect(within(menu).queryByText(/Remove from organisation/)).not.toBeInTheDocument();
+    for (const name of ["Deactivate", "Delete"]) {
+      expect(within(menu).getByRole("menuitem", { name })).toHaveAttribute("aria-disabled", "true");
+    }
     expect(menu).toHaveTextContent(/Transfer ownership first/i);
   });
 });
@@ -109,9 +115,9 @@ describe("removing somebody", () => {
     renderRoute({ path: "/acme-motors/admin/users/anita", children: routes });
 
     await screen.findByRole("complementary", { name: "Anita Fernandes" });
-    await openActionsMenu();
+    const menu = await openActionsMenu();
 
-    fireEvent.click(await screen.findByRole("button", { name: "Remove from organisation" }));
+    fireEvent.click(within(menu).getByRole("menuitem", { name: "Delete" }));
 
     const confirm = await screen.findByRole("dialog");
 
@@ -119,7 +125,7 @@ describe("removing somebody", () => {
     expect(confirm).toHaveTextContent(/account is not deleted/i);
     expect(confirm).toHaveTextContent(/name stays on the records they created/i);
     // And it points at the reversible alternative.
-    expect(confirm).toHaveTextContent(/Mark as inactive/i);
+    expect(confirm).toHaveTextContent(/Deactivate/i);
 
     expect(mockRemoveUser).not.toHaveBeenCalled();
   });
@@ -128,8 +134,7 @@ describe("removing somebody", () => {
     renderRoute({ path: "/acme-motors/admin/users/anita", children: routes });
 
     await screen.findByRole("complementary", { name: "Anita Fernandes" });
-    await openActionsMenu();
-    fireEvent.click(await screen.findByRole("button", { name: "Remove from organisation" }));
+    fireEvent.click(within(await openActionsMenu()).getByRole("menuitem", { name: "Delete" }));
 
     mockFetchUsers.mockResolvedValue([OWNER, INVITED]);
 
@@ -151,21 +156,24 @@ describe("removing somebody", () => {
     await waitFor(() => {
       expect(screen.queryByRole("complementary")).not.toBeInTheDocument();
     });
+    // Back at the list's own address -- not left on theirs, being told they
+    // are "no longer in" an organisation the admin just removed them from.
+    await waitFor(() => {
+      expect(screen.queryByText(/no longer in/i)).not.toBeInTheDocument();
+    });
   });
 
   it("calls it cancelling an invitation when nobody has accepted", async () => {
     renderRoute({ path: "/acme-motors/admin/users/sanjay", children: routes });
 
     await screen.findByRole("complementary", { name: "Sanjay Desai" });
-    await openActionsMenu();
-
-    fireEvent.click(await screen.findByRole("button", { name: "Cancel invitation" }));
+    fireEvent.click(within(await openActionsMenu()).getByRole("menuitem", { name: "Delete" }));
 
     const confirm = await screen.findByRole("dialog");
 
     expect(confirm).toHaveTextContent(/has not accepted yet/i);
     // Deactivating somebody who was never active is not a sensible offer.
-    expect(confirm).not.toHaveTextContent(/Mark as inactive/i);
+    expect(confirm).not.toHaveTextContent(/Deactivate/i);
   });
 });
 
@@ -179,7 +187,7 @@ describe("editing somebody", () => {
     renderRoute({ path: "/acme-motors/admin/users/anita", children: routes });
 
     await screen.findByRole("complementary", { name: "Anita Fernandes" });
-    fireEvent.click(screen.getByRole("button", { name: "Edit" }));
+    await openEdit();
 
     const dialog = await screen.findByRole("dialog");
 
@@ -191,7 +199,7 @@ describe("editing somebody", () => {
     renderRoute({ path: "/acme-motors/admin/users/sanjay", children: routes });
 
     await screen.findByRole("complementary", { name: "Sanjay Desai" });
-    fireEvent.click(screen.getByRole("button", { name: "Edit" }));
+    await openEdit();
 
     const dialog = await screen.findByRole("dialog");
 
@@ -202,7 +210,7 @@ describe("editing somebody", () => {
     renderRoute({ path: "/acme-motors/admin/users/anita", children: routes });
 
     await screen.findByRole("complementary", { name: "Anita Fernandes" });
-    fireEvent.click(screen.getByRole("button", { name: "Edit" }));
+    await openEdit();
 
     const dialog = await screen.findByRole("dialog");
     const roleSelect = within(dialog).getByLabelText("Organisation role");
@@ -223,7 +231,7 @@ describe("editing somebody", () => {
     renderRoute({ path: "/acme-motors/admin/users/anita", children: routes });
 
     await screen.findByRole("complementary", { name: "Anita Fernandes" });
-    fireEvent.click(screen.getByRole("button", { name: "Edit" }));
+    await openEdit();
 
     const dialog = await screen.findByRole("dialog");
 

@@ -93,7 +93,7 @@ export interface PersonAccess {
    * The conclusion it stood for is still true, and true for three reasons that
    * all live elsewhere: the check constraint forces `member` standing on
    * anyone with a dealership, the route guard means only somebody holding
-   * `admin.person.*` reaches this code, and `dms.system_admin` is the only
+   * `admin.user.*` reaches this code, and `dms.system_admin` is the only
    * role granting it. Chain those and a unit-scoped caller here IS a dealer
    * admin — but that is a conclusion drawn from three other files, not
    * something this line checks, so it is no longer what the name claims.

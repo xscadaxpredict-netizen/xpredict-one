@@ -128,14 +128,18 @@ class TestTheOwner:
         assert membership.unit_id is None
         assert membership.unit_name is None
 
-    def test_administration_comes_from_standing_with_all_fourteen_permissions(self):
+    def test_administration_comes_from_standing_with_all_twenty_nine_permissions(self):
         """
         Owners and org admins hold every `admin.*` permission and NOT through a
         Role row (C42) -- which is also why they get the dealers and roles
         modules and a dealer admin does not. Eleven until C72 piece 1 added the
         three `admin.territory.*` codes, which reach them by the same rule with
-        no grant written; they sit in the `dealers` module, so the modules
-        below are unchanged.
+        no grant written; they sit in the `dealers` module. C78 added the
+        fifteenth and sixteenth, `admin.organization_info.view` and
+        `admin.application.view`, in modules of their own -- `organization`
+        and `applications`, the Admin panel's Profile and Applications pages; the
+        owner's final list (C79, `permissions/0018`) made it twenty-nine, in the
+        same modules.
         """
         result = found()
 
@@ -143,8 +147,8 @@ class TestTheOwner:
 
         assert admin.subscribed is True
         assert admin.accessible is True
-        assert len(admin.permissions) == 14
-        assert admin.modules == ["dealers", "roles", "users"]
+        assert len(admin.permissions) == 29
+        assert admin.modules == ["applications", "dealers", "organization", "roles", "users"]
 
     def test_administration_is_reported_subscribed_without_being_bought(self):
         """
@@ -301,12 +305,12 @@ class TestTheDealerAdmin:
         assert admin.accessible is True
         assert admin.modules == ["users"]
         assert sorted(admin.permissions) == [
-            "admin.person.invite",
-            "admin.person.remove",
-            "admin.person.resend_invitation",
-            "admin.person.set_status",
-            "admin.person.update",
-            "admin.person.view",
+            "admin.user.create",
+            "admin.user.deactivate",
+            "admin.user.delete",
+            "admin.user.resend_invitation",
+            "admin.user.update",
+            "admin.user.view",
         ]
 
     def test_they_cannot_create_dealers_or_read_the_role_catalogue(self):
@@ -473,7 +477,7 @@ class TestAClosedDealership:
     def test_nothing_is_accessible_including_administration(self):
         """
         ADMINISTRATION IS THE ONE THAT WOULD SLIP THROUGH. A dealer admin
-        reaches it by holding `admin.person.*` through the DMS System
+        reaches it by holding `admin.user.*` through the DMS System
         administrator role (C40), not through a subscription -- so a rule
         written in terms of subscriptions would leave their Administration
         tile clickable, and it would lead straight to a 403.

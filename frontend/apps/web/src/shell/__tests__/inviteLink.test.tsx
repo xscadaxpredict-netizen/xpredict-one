@@ -209,6 +209,11 @@ describe("one person's link never appears under another person's name", () => {
       );
     });
 
+    // Priya has not joined yet: pending people are under "Pending users", not
+    // the default "Active users".
+    fireEvent.change(screen.getByRole("combobox", { name: "Show" }), {
+      target: { value: "pending" },
+    });
     fireEvent.click(screen.getByRole("link", { name: "Priya Raghunathan" }));
     const next = await screen.findByRole("complementary", { name: "Priya Raghunathan" });
 

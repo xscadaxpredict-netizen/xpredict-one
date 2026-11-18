@@ -1,5 +1,8 @@
 /**
- * Administration → Roles. What every role is, and what it covers.
+ * Admin panel → Admins and Roles → the ROLES TAB. What every role is, and
+ * what it covers. The page around it — title, tabs — is
+ * `AdminsAndRolesScreen`; the topbar's box searches it ("Search roles", by
+ * name or description).
  *
  * A REFERENCE PAGE, NOT AN EDITOR. Roles are built-in and defined by Xpredict;
  * an organisation cannot create, clone or edit one (C28). So this exists to
@@ -39,8 +42,9 @@
  */
 
 import { asProblem } from "@xpredict/api-client";
-import { ErrorState, InfoHint, TableSkeleton } from "@xpredict/ui";
+import { ErrorState, TableSkeleton } from "@xpredict/ui";
 
+import { usePageSearch } from "../../../stores/pageSearchStore";
 import { useShellContext } from "../../context";
 import { findApp } from "../../navigation";
 import type { Role } from "../api/roles";
@@ -77,21 +81,27 @@ const ORG_ROLES = [
   },
 ];
 
-export function RolesScreen() {
+/** A role whose name or description contains what was typed in the topbar. */
+function matches(role: { name: string; summary: string }, needle: string): boolean {
+  return (
+    needle === "" ||
+    role.name.toLowerCase().includes(needle) ||
+    role.summary.toLowerCase().includes(needle)
+  );
+}
+
+export function RolesTab() {
   const { membership } = useShellContext();
   const { data: roles, isPending, isError, error, refetch } = useRoles();
+  const query = usePageSearch((state) => state.query);
+  const needle = query.trim().toLowerCase();
+
+  const orgRoles = ORG_ROLES.filter((role) => matches(role, needle));
+  const appRoles = roles?.filter((role) => matches(role, needle));
 
   return (
     <div className={styles.page}>
-      <header className={styles.heading}>
-        <h1 className={styles.title}>Roles</h1>
-        <InfoHint label="About the Roles screen">
-          Every role in {membership.org_name}, and what it covers. Roles are the same for
-          every organisation and cannot be edited here — they are assigned to people on the
-          Users screen.
-        </InfoHint>
-      </header>
-
+      {orgRoles.length > 0 && (
       <section className={styles.section}>
         <h2 className={styles.sectionTitle}>Organisation roles</h2>
         <p className={styles.sectionNote}>
@@ -100,7 +110,7 @@ export function RolesScreen() {
         </p>
 
         <dl className={styles.roles}>
-          {ORG_ROLES.map((role) => (
+          {orgRoles.map((role) => (
             <div key={role.name} className={styles.role}>
               <dt className={styles.roleName}>{role.name}</dt>
               <dd className={styles.roleSummary}>{role.summary}</dd>
@@ -108,6 +118,7 @@ export function RolesScreen() {
           ))}
         </dl>
       </section>
+      )}
 
       {isPending && <TableSkeleton label="roles" columns={[240, "grow"]} rows={6} />}
 
@@ -120,7 +131,11 @@ export function RolesScreen() {
         />
       )}
 
-      {roles && <AppRoleSections roles={roles} />}
+      {appRoles && <AppRoleSections roles={appRoles} />}
+
+      {appRoles && orgRoles.length === 0 && appRoles.length === 0 && (
+        <p className={styles.sectionNote}>No roles match “{query.trim()}”.</p>
+      )}
     </div>
   );
 }

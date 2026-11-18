@@ -107,6 +107,15 @@ services (`_assert_organisation_wide`), not the database constraint it used to b
 **The frontend ships Administration; the backend runs on MySQL and signs people in.**
 Keep this section current — it is the first thing a new developer reads.
 
+**ON `feat/admin-panel` (2026-11-18, NOT YET COMMITTED): ADMINISTRATION IS NOW THE
+ADMIN PANEL (C78)** -- reached from the shield in the topbar, not the launcher; an
+accordion of the owner's modules (Organization, App Management, User Management); every
+list page shares `ListPage.module.css` / `ListFilter` / `RowMenu` and every side panel
+`RecordPanel.module.css`. **Its permissions hang off a section tree (C79):**
+`AppSection` (module / sub-module / tab), `Action` (basic or special), codes
+`<app>.<leaf>.<action>`; the people permissions are `admin.user.*`. Read C78/C79
+before touching any of it.
+
 **Frontend — built, merged, and running on Django.** Sign-in, the app launcher, the
 shell and Administration (Users, Dealers, Roles) all work in a browser against the
 real backend. **NO `USE_FAKE_*` FLAG IS SWITCHED ON ANYWHERE.** Administration's
@@ -133,10 +142,14 @@ Set the database up once, as a MySQL admin: `mysql -u root -p < backend/scripts/
 `Territory` (was `BusinessUnit`), `Membership`, `Invitation`, `InvitationAppGrant` in
 `core/organizations`, with the grants `MembershipAppAccess`, `MembershipAppRole` and
 `MembershipAppTerritory`; `App`, `Permission`, `Role`, `RolePermission` in
-`core/permissions`; `AppSubscription` in `core/billing`; and `User`. **58 permissions and
+`core/permissions`; `AppSubscription` in `core/billing`; and `User`. **73 permissions and
 ten roles are seeded** — 48 permissions by `permissions/0002`, seven by `0004` (C67),
-three by `0009` (`admin.territory.*`, C72); the tenth role, "Organisation admin"
-(`admin.org_admin`), by `0010` (Q60).
+three by `0009` (`admin.territory.*`, C72), one each by `0012` and `0013` (C78), and
+thirteen by `0018`, the owner's final Admin panel list (C79); the tenth role,
+"Organisation admin" (`admin.org_admin`), by `0010` (Q60). **The Admin panel's people
+permissions are `admin.user.*`, not `admin.person.*`** (renamed by `0017`/`0018`), and
+its 22 permissions hang off the `AppSection` tree with an `Action` each (C79); DMS's do
+not, yet.
 
 **NO MIGRATION READS `catalogue.py`.** `0002` and `0003` read a frozen copy,
 `migrations/_catalogue_2026_10_03.py`; reading the live file replayed TODAY's catalogue
@@ -389,8 +402,8 @@ user row on every request and refuses an inactive one, so **disabling somebody t
 effect on their next request**, not after a token expires. The 15-minute access
 lifetime is how long a STOLEN token survives a logout.
 
-**Gates:** `npm run test -w web` (228), `npm run typecheck -w web`, and in `backend/`:
-`pytest` (592), `ruff check .`, `manage.py makemigrations --check`, and
+**Gates:** `npm run test -w web` (314), `npm run typecheck -w web`, and in `backend/`:
+`pytest` (814), `ruff check .`, `manage.py makemigrations --check`, and
 `.venv/Scripts/lint-imports.exe` — **not** `python -m importlinter.cli`, which exits 0
 without running. Run them before pushing. **`npm run lint` is NOT green and never has
 been on this code:** 139 errors in `apps/web`, inherited with the DMS modules and

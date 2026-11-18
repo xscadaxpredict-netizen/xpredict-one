@@ -73,9 +73,11 @@ export function InviteUserDialog({ membership, openForUnitId }: InviteUserDialog
 
   return (
     <Dialog.Root open={open} onOpenChange={setOpen}>
+      {/* "Add user", the Zoho word (the owner, 2026-11-17); what it does is
+          invite them, which the dialog says. */}
       <Dialog.Trigger className={styles.trigger}>
         <PlusIcon />
-        Invite user
+        Add User
       </Dialog.Trigger>
 
       <Dialog.Portal>

@@ -5,7 +5,7 @@ The three kinds of refusal, as everywhere in Administration:
 
 - SCOPE -> 404: another organisation's territory, or a parent in another
   organisation's tree, is indistinguishable from one that does not exist.
-- CAPABILITY -> 403: a dealer admin holds `admin.person.*` and nothing of
+- CAPABILITY -> 403: a dealer admin holds `admin.user.*` and nothing of
   `admin.territory.*`, so a dealership cannot redraw the tree it sits in.
 - STATE -> 409: the tree refuses the arrangement (a branch at the top level, a
   region moved inside itself).

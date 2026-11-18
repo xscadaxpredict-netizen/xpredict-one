@@ -35,10 +35,22 @@ export type Theme = "light" | "dark" | "system";
 interface UiState {
   isSidebarCollapsed: boolean;
   theme: Theme;
+  /**
+   * Which accordion module is open in each settings area's sidebar, by app
+   * key: `{ admin: "User Management" }`. `null` means the person closed them
+   * all; a missing key means they have not touched it yet, and the sidebar
+   * opens the module of the page they are on (C78).
+   *
+   * SAFE TO PERSIST: module names are the product's structure, the same for
+   * every organisation and every person — nothing here says who or which
+   * customer.
+   */
+  openSettingsModule: Record<string, string | null>;
 
   toggleSidebar: () => void;
   setSidebarCollapsed: (collapsed: boolean) => void;
   setTheme: (theme: Theme) => void;
+  setOpenSettingsModule: (appKey: string, module: string | null) => void;
 }
 
 /**
@@ -52,6 +64,7 @@ export const useUiStore = create<UiState>()(
     (set) => ({
       isSidebarCollapsed: false,
       theme: "system",
+      openSettingsModule: {},
 
       // `set` takes either a plain object to merge, or a function receiving the
       // current state. Use the function form whenever the new value depends on
@@ -60,6 +73,10 @@ export const useUiStore = create<UiState>()(
 
       setSidebarCollapsed: (collapsed) => set({ isSidebarCollapsed: collapsed }),
       setTheme: (theme) => set({ theme }),
+      setOpenSettingsModule: (appKey, module) =>
+        set((state) => ({
+          openSettingsModule: { ...state.openSettingsModule, [appKey]: module },
+        })),
     }),
     {
       /*

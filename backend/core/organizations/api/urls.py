@@ -13,10 +13,13 @@ from __future__ import annotations
 from django.urls import include, path
 
 from core.organizations.api.views import (
+    ApplicationMembersView,
+    ApplicationsView,
     DealerDetailView,
     DealerStatusView,
     DealersView,
     InviteLinkView,
+    OrganizationProfileView,
     ProvisioningView,
     ResendInvitationView,
     TerritoriesView,
@@ -45,6 +48,13 @@ urlpatterns = [
     # match; it is the same failure shape as the missing CSRF header, where
     # the reads worked and only the writes were broken.
     # ---------------------------------------------------------------------
+    path("admin/organization/", OrganizationProfileView.as_view(), name="organization"),
+    path("admin/applications/", ApplicationsView.as_view(), name="applications"),
+    path(
+        "admin/applications/<str:app_code>/members/",
+        ApplicationMembersView.as_view(),
+        name="application-members",
+    ),
     path("admin/users/", UsersView.as_view(), name="users"),
     path("admin/users/<str:user_id>/", UserDetailView.as_view(), name="user-detail"),
     # BEFORE the activate/deactivate route below, which would otherwise match

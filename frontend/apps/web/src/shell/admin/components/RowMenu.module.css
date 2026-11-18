@@ -1,0 +1,69 @@
+/* The ⋮ at the end of a row on an Admin panel list page (C78). */
+
+.trigger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: var(--radius-pill);
+  background: transparent;
+  color: var(--color-primary);
+  cursor: pointer;
+}
+
+.trigger:hover,
+.trigger[data-state="open"] {
+  background: var(--color-primary-050);
+  border-color: var(--color-primary-100);
+}
+
+.trigger:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+}
+
+/* Same as the Users screen's menu (UserDetailPanel.module.css). */
+.menu {
+  min-width: 180px;
+  padding: var(--space-2);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lg);
+  z-index: 50;
+}
+
+.item {
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-md);
+  font-size: var(--text-md);
+  color: var(--color-text);
+  cursor: pointer;
+  outline: none;
+  user-select: none;
+}
+
+.item[data-highlighted] {
+  background: var(--color-surface-alt);
+}
+
+.item[data-danger] {
+  color: var(--color-danger);
+}
+
+.item[data-disabled] {
+  color: var(--color-text-disabled);
+  cursor: default;
+}
+
+.note {
+  max-width: 240px;
+  margin: 0;
+  padding: var(--space-1) var(--space-3) var(--space-2);
+  font-size: var(--text-xs);
+  line-height: 1.4;
+  color: var(--color-text-3);
+}

@@ -6,7 +6,7 @@ export function useDmsPermissions() {
   const { membership } = useShellContext();
 
   const isOwnerOrAdmin = membership.role === "owner" || membership.role === "admin";
-  const isSystemAdmin = membership.apps.some((a) => a.permissions.includes("admin.person.invite"));
+  const isSystemAdmin = membership.apps.some((a) => a.permissions.includes("admin.user.create"));
   const isManager = access.can("dms.enquiry.close") && access.can("dms.order.confirm");
   const isManagerOrAdmin = isOwnerOrAdmin || isManager || isSystemAdmin;
 
