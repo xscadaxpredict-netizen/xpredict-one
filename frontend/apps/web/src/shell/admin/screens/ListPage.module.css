@@ -372,11 +372,21 @@ a.primary:hover {
   outline-offset: -2px;
 }
 
-/* A tab whose content is not a table: it scrolls under the fixed tabs. */
-.tabBody {
-  flex: 1;
-  min-height: 0;
-  overflow-y: auto;
+/* A planned tab (App Admins): a button, not a link, so it needs the link's
+   look without a button's own border and background. Greyed, not pressable. */
+button.tab {
+  border-top: 0;
+  border-right: 0;
+  border-left: 0;
+  background: none;
+  font: inherit;
+  font-size: var(--text-md);
+}
+
+.tab[aria-disabled="true"],
+.tab[aria-disabled="true"]:hover {
+  color: var(--color-text-disabled);
+  cursor: not-allowed;
 }
 
 /* An admin's role, as an outlined pill. */

@@ -301,14 +301,13 @@ export const APP_CATALOG: AppDefinition[] = [
         items: [
           { label: "Users", path: "users", icon: "users", module: "users", search: "users" },
           // ONE sub-module, as Zoho has it (the owner, 2026-11-18), with three
-          // tabs: Admins, App Admins, Roles, each its own address.
+          // tabs: Admins, App Admins (greyed out until it has a page), Roles.
           {
             label: "Admins and Roles",
             path: "admins-and-roles",
             icon: "key",
             module: "roles",
-            search: (tab) =>
-              tab.startsWith("app-admins") ? "app admins" : tab.startsWith("roles") ? "roles" : "admins",
+            search: (tab) => (tab.startsWith("roles") ? "roles" : "admins"),
           },
         ],
       },

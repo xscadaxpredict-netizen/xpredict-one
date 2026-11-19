@@ -11,8 +11,8 @@ import { act, fireEvent, screen, within } from "@testing-library/react";
 import AdminRoutes from "../admin/routes";
 import type * as usersApi from "../admin/api/users";
 import { fetchUsers } from "../admin/api/users";
-import type { Role } from "../admin/api/roles";
-import { fetchRoles } from "../admin/api/roles";
+import type { PanelRole } from "../admin/api/roles";
+import { fetchPanelRoles } from "../admin/api/roles";
 import { fetchMe } from "../api/auth";
 import type * as authApi from "../api/auth";
 import { renderRoute } from "./harness";
@@ -40,12 +40,12 @@ vi.mock("../admin/api/applications", () => ({
 
 vi.mock("../admin/api/roles", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../admin/api/roles")>()),
-  fetchRoles: vi.fn(),
+  fetchPanelRoles: vi.fn(),
 }));
 
 const mockFetchMe = vi.mocked(fetchMe);
 const mockFetchUsers = vi.mocked(fetchUsers);
-const mockFetchRoles = vi.mocked(fetchRoles);
+const mockFetchPanelRoles = vi.mocked(fetchPanelRoles);
 
 const withAdmin = [{ path: "admin/*", element: <AdminRoutes /> }];
 const BASE = "/acme-motors/admin/admins-and-roles";
@@ -71,22 +71,22 @@ const PEOPLE = [
   user({ id: "nish", first_name: "Nishanth", last_name: "S", role: "member" }),
 ];
 
-const ROLES: Role[] = [
+const ROLES: PanelRole[] = [
   {
-    code: "dms.manager",
-    name: "Manager",
-    app: "dms",
-    level: "unit",
-    summary: "Runs a dealership.",
-    administers: false,
+    code: "owner",
+    name: "Organization Owner",
+    summary: "Every permission, by rule.",
+    built_in: true,
+    users: 1,
+    modified_by: null,
   },
   {
-    code: "dms.technician",
-    name: "Technician",
-    app: "dms",
-    level: "unit",
-    summary: "Service and water reports on site.",
-    administers: false,
+    code: "admin.org_admin",
+    name: "Organization Admin",
+    summary: "Runs the organisation.",
+    built_in: true,
+    users: 1,
+    modified_by: null,
   },
 ];
 
@@ -104,7 +104,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   mockFetchMe.mockResolvedValue(me({ memberships: [ownerMembership()] }));
   mockFetchUsers.mockResolvedValue(PEOPLE);
-  mockFetchRoles.mockResolvedValue(ROLES);
+  mockFetchPanelRoles.mockResolvedValue(ROLES);
 });
 
 describe("the tabs", () => {
@@ -115,28 +115,41 @@ describe("the tabs", () => {
     const tabs = screen.getAllByRole("tab");
     expect(tabs.map((tab) => tab.textContent)).toEqual(["Admins", "App Admins", "Roles"]);
     expect(tabs[0]).toHaveAttribute("aria-selected", "true");
-    expect(tabs[1]).toHaveAttribute("href", `${BASE}/app-admins`);
     expect(tabs[2]).toHaveAttribute("href", `${BASE}/roles`);
+  });
+
+  it("grey out App Admins: no link, and pressing it goes nowhere", async () => {
+    const { router } = renderRoute({ path: BASE, children: withAdmin });
+    await screen.findByRole("table");
+
+    const appAdmins = screen.getByRole("tab", { name: "App Admins" });
+    expect(appAdmins).toHaveAttribute("aria-disabled", "true");
+    expect(appAdmins).not.toHaveAttribute("href");
+
+    fireEvent.click(appAdmins);
+    expect(router.state.location.pathname).toBe(BASE);
   });
 
   it("open on the tab their address names, as after a refresh", async () => {
     renderRoute({ path: `${BASE}/roles`, children: withAdmin });
 
-    expect(await screen.findByRole("heading", { name: "DMS roles" })).toBeInTheDocument();
+    expect(await screen.findByRole("columnheader", { name: "Role Name" })).toBeInTheDocument();
     expect(screen.getByRole("tab", { name: "Roles" })).toHaveAttribute("aria-selected", "true");
   });
 
   it("send the old Roles address to the Roles tab", async () => {
     const { router } = renderRoute({ path: "/acme-motors/admin/roles", children: withAdmin });
 
-    await screen.findByRole("heading", { name: "DMS roles" });
+    await screen.findByRole("columnheader", { name: "Role Name" });
     expect(router.state.location.pathname).toBe(`${BASE}/roles`);
   });
 
-  it("say App Admins is being built", async () => {
-    renderRoute({ path: `${BASE}/app-admins`, children: withAdmin });
+  it("send App Admins' old address to Admins", async () => {
+    const { router } = renderRoute({ path: `${BASE}/app-admins`, children: withAdmin });
 
-    expect(await screen.findByText("This tab is being built.")).toBeInTheDocument();
+    await screen.findByRole("table");
+    expect(router.state.location.pathname).toBe(BASE);
+    expect(screen.getByRole("tab", { name: "Admins" })).toHaveAttribute("aria-selected", "true");
   });
 });
 
@@ -212,21 +225,13 @@ describe("the topbar search follows the tab", () => {
 
   it("searches roles on Roles", async () => {
     renderRoute({ path: `${BASE}/roles`, children: withAdmin });
-    await screen.findByRole("heading", { name: "DMS roles" });
+    await screen.findByRole("columnheader", { name: "Role Name" });
 
     expect(topbarSearch()).toHaveAttribute("placeholder", "Search roles");
-    fireEvent.change(topbarSearch(), { target: { value: "water" } });
+    fireEvent.change(topbarSearch(), { target: { value: "owner" } });
 
-    expect(screen.getByText("Technician")).toBeInTheDocument();
-    expect(screen.queryByText("Manager")).not.toBeInTheDocument();
-    expect(screen.queryByRole("heading", { name: "Organisation roles" })).not.toBeInTheDocument();
-  });
-
-  it("says Search app admins on App Admins", async () => {
-    renderRoute({ path: `${BASE}/app-admins`, children: withAdmin });
-    await screen.findByText("This tab is being built.");
-
-    expect(topbarSearch()).toHaveAttribute("placeholder", "Search app admins");
+    expect(screen.getByText("Organization Owner")).toBeInTheDocument();
+    expect(screen.queryByText("Organization Admin")).not.toBeInTheDocument();
   });
 
   it("empties when the tab changes", async () => {
@@ -235,7 +240,7 @@ describe("the topbar search follows the tab", () => {
     fireEvent.change(topbarSearch(), { target: { value: "ravi" } });
 
     await act(() => router.navigate(`${BASE}/roles`));
-    await screen.findByRole("heading", { name: "DMS roles" });
+    await screen.findByRole("columnheader", { name: "Role Name" });
 
     expect(topbarSearch()).toHaveValue("");
   });

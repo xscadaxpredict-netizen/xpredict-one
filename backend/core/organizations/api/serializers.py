@@ -419,3 +419,18 @@ class ApplicationMemberSerializer(serializers.Serializer):
     is_owner = serializers.BooleanField(read_only=True)
     role = serializers.CharField(read_only=True, allow_null=True)
     places = serializers.ListField(child=serializers.CharField(), read_only=True)
+
+
+class PanelRoleSerializer(serializers.Serializer):
+    """
+    One row of the Admin panel's Roles tab (C78). Mirrors `PanelRole` in
+    `shell/admin/api/roles.ts` -- hand-written on both sides (C43), so a
+    renamed field here is an empty column there.
+    """
+
+    code = serializers.CharField(read_only=True)
+    name = serializers.CharField(read_only=True)
+    summary = serializers.CharField(read_only=True)
+    built_in = serializers.BooleanField(read_only=True)
+    users = serializers.IntegerField(read_only=True)
+    modified_by = serializers.CharField(read_only=True, allow_null=True)

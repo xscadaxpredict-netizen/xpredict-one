@@ -78,7 +78,13 @@ from core.organizations.models import (
     TerritoryKind,
     UnitStatus,
 )
-from core.organizations.selectors import GRANTS_PREFETCH, can_manage, can_manage_person, reach
+from core.organizations.selectors import (
+    GRANTS_PREFETCH,
+    ORGANISATION_ADMIN_ROLE,
+    can_manage,
+    can_manage_person,
+    reach,
+)
 from core.organizations.tasks import schedule_provisioning
 from core.permissions.models import App, AppCode, Role, RoleLevel
 from shared.exceptions import AuthorizationError, FieldError, InvalidInputError, not_found
@@ -662,10 +668,6 @@ def _assert_organisation_wide(standing: str, unit_id: uuid.UUID | None) -> None:
     """
     if unit_id is not None and standing in (MembershipRole.OWNER, MembershipRole.ADMIN):
         raise RoleScopeMismatchError
-
-
-# The one built-in Administration role (Q60; `permissions/0010`).
-ORGANISATION_ADMIN_ROLE = "admin.org_admin"
 
 
 def _grant_administration_if_admin(

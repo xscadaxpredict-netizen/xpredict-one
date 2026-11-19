@@ -1,24 +1,17 @@
 /**
- * Administration → Roles, the reference page.
- *
- * WHAT IS WORTH PINNING HERE is not that twelve rows render — it is the two
- * things a reader could be misled about:
- *
- *   the LEVEL, because it decides which roles somebody can even be offered;
- *   and which roles ADMINISTER, because that is the only property of a role
- *   that changes standing in the organisation rather than describing what it
- *   does (C31), and it is not visible from a job title.
- *
- * A page that quietly showed every role as "Dealer", or dropped the badge from
- * System administrator, would look completely normal.
+ * Admin panel → Admins and Roles → Roles (C78): the Admin panel's own roles
+ * in the shared list format — a filter (All / Built-in / Custom roles), a
+ * greyed Add Role, and a table of Role Name, Users and Modified By, searched
+ * by the topbar's box by role NAME only (the owner, 2026-11-18).
  */
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { screen, within } from "@testing-library/react";
+import { fireEvent, screen, within } from "@testing-library/react";
 
-import { fetchRoles } from "../admin/api/roles";
+import { fetchPanelRoles } from "../admin/api/roles";
 import type * as rolesApi from "../admin/api/roles";
-import { RolesTab } from "../admin/screens/RolesScreen";
+import { RolesTab, roleInitials } from "../admin/screens/RolesScreen";
+import { usePageSearch } from "../../stores/pageSearchStore";
 import { fetchMe } from "../api/auth";
 import type * as authApi from "../api/auth";
 import { renderRoute } from "./harness";
@@ -32,114 +25,160 @@ vi.mock("../api/auth", async (importOriginal) => ({
 
 vi.mock("../admin/api/roles", async (importOriginal) => ({
   ...(await importOriginal<typeof rolesApi>()),
-  fetchRoles: vi.fn(),
+  fetchPanelRoles: vi.fn(),
 }));
 
 const mockFetchMe = vi.mocked(fetchMe);
-const mockFetchRoles = vi.mocked(fetchRoles);
+const mockFetchPanelRoles = vi.mocked(fetchPanelRoles);
 
 const routes = [{ path: "admin/roles", element: <RolesTab /> }];
+const PATH = "/acme-motors/admin/roles";
 
-/** Only the fields the page reads; the rest is noise here. */
-function role(overrides: Partial<rolesApi.Role> & { code: string }): rolesApi.Role {
+function panelRole(overrides: Partial<rolesApi.PanelRole> & { code: string }): rolesApi.PanelRole {
   return {
     name: overrides.code,
-    app: "dms",
-    level: "unit",
     summary: "Does things.",
-    administers: false,
+    built_in: true,
+    users: 0,
+    modified_by: null,
     ...overrides,
   };
 }
 
-beforeEach(() => {
-  vi.clearAllMocks();
-  mockFetchMe.mockResolvedValue(me({ memberships: [ownerMembership()] }));
+const OWNER = panelRole({
+  code: "owner",
+  name: "Organization Owner",
+  summary: "Every permission, by rule.",
+  users: 1,
+});
+const ADMIN = panelRole({
+  code: "admin.org_admin",
+  name: "Organization Admin",
+  summary: "Runs the organisation: its people, dealerships and territories.",
+  users: 3,
 });
 
-/** The row for a role, found by its name. */
-async function rowFor(name: string) {
-  const term = await screen.findByText(name);
-  const row = term.closest("div");
-  if (!row) throw new Error(`no row for ${name}`);
-  return row;
+const KNOWN = ["Organization Owner", "Organization Admin", "Billing Admin"];
+
+/** The role named in each body row, top to bottom. */
+function names(): (string | undefined)[] {
+  return screen
+    .queryAllByRole("row")
+    .slice(1)
+    .map((row) => KNOWN.find((name) => row.textContent?.includes(name)));
 }
 
-describe("the Roles reference page", () => {
-  /*
-   * The whole reason this page has two sections. Somebody who sees "Admin"
-   * against a person on Users and then opens Roles has to find it here, or
-   * they will reasonably decide the page is incomplete — and go looking for an
-   * app role called Admin that does not exist.
-   */
-  it("explains the organisation roles as well as the app ones", async () => {
-    mockFetchRoles.mockResolvedValue([role({ code: "dms.manager", name: "Manager" })]);
+beforeEach(() => {
+  vi.clearAllMocks();
+  usePageSearch.setState({ query: "" });
+  mockFetchMe.mockResolvedValue(me({ memberships: [ownerMembership()] }));
+  mockFetchPanelRoles.mockResolvedValue([OWNER, ADMIN]);
+});
 
-    renderRoute({ path: "/acme-motors/admin/roles", children: routes });
+describe("the Roles tab", () => {
+  it("lists the Admin panel's roles with Role Name, Users and Modified By", async () => {
+    renderRoute({ path: PATH, children: routes });
+    await screen.findByRole("table");
 
-    expect(await screen.findByRole("heading", { name: "Organisation roles" })).toBeInTheDocument();
-    for (const name of ["Owner", "Admin", "Member"]) {
-      expect(screen.getByText(name)).toBeInTheDocument();
-    }
+    expect(screen.getAllByRole("columnheader").map((th) => th.textContent)).toEqual([
+      "Role Name",
+      "Users",
+      "Modified By",
+    ]);
+    expect(names()).toEqual(["Organization Owner", "Organization Admin"]);
 
-    expect(await screen.findByRole("heading", { name: "DMS roles" })).toBeInTheDocument();
+    const owner = screen.getByRole("row", { name: /Organization Owner/ });
+    expect(within(owner).getByText("Every permission, by rule.")).toBeInTheDocument();
+    expect(within(owner).getByText("OO")).toBeInTheDocument();
+    expect(within(owner).getByText("1")).toBeInTheDocument();
+    expect(within(owner).getByText("—")).toBeInTheDocument();
+
+    const admin = screen.getByRole("row", { name: /Organization Admin/ });
+    expect(within(admin).getByText("3")).toBeInTheDocument();
   });
 
-  it("says which scope each app role belongs to", async () => {
-    mockFetchRoles.mockResolvedValue([
-      role({ code: "dms.manager", name: "Manager", level: "unit" }),
-      role({ code: "dms.fleet_viewer", name: "Fleet viewer", level: "org" }),
+  it("shows who modified a role when somebody has", async () => {
+    mockFetchPanelRoles.mockResolvedValue([
+      panelRole({ code: "c1", name: "Billing Admin", built_in: false, modified_by: "Asha Rao" }),
     ]);
+    renderRoute({ path: PATH, children: routes });
 
-    renderRoute({ path: "/acme-motors/admin/roles", children: routes });
-
-    expect(await rowFor("Manager")).toHaveTextContent("Dealer");
-    expect(await rowFor("Fleet viewer")).toHaveTextContent("Organisation");
+    const row = await screen.findByRole("row", { name: /Billing Admin/ });
+    expect(within(row).getByText("Asha Rao")).toBeInTheDocument();
   });
 
-  /*
-   * `administers` means the role grants `admin.*` permissions, and it writes
-   * nothing into standing (C40 — C31's write-back is gone). A role that
-   * carries it grants more than its description implies, so the page marks it
-   * — and must not mark the ones that do not.
-   */
-  it("marks only the roles that manage users", async () => {
-    mockFetchRoles.mockResolvedValue([
-      role({ code: "dms.manager", name: "Manager", administers: false }),
-      role({ code: "dms.system_admin", name: "System administrator", administers: true }),
+  it("filters All roles, Built-in roles and Custom roles", async () => {
+    mockFetchPanelRoles.mockResolvedValue([
+      OWNER,
+      ADMIN,
+      panelRole({ code: "c1", name: "Billing Admin", built_in: false }),
     ]);
+    renderRoute({ path: PATH, children: routes });
+    await screen.findByRole("table");
+    const filter = screen.getByRole("combobox", { name: "Show" });
 
-    renderRoute({ path: "/acme-motors/admin/roles", children: routes });
+    expect(within(filter).getAllByRole("option").map((o) => o.textContent)).toEqual([
+      "All roles",
+      "Built-in roles",
+      "Custom roles",
+    ]);
+    expect(names()).toEqual(["Organization Owner", "Organization Admin", "Billing Admin"]);
 
-    expect(await rowFor("System administrator")).toHaveTextContent("Manages users");
-    expect(await rowFor("Manager")).not.toHaveTextContent("Manages users");
+    fireEvent.change(filter, { target: { value: "built_in" } });
+    expect(names()).toEqual(["Organization Owner", "Organization Admin"]);
+
+    fireEvent.change(filter, { target: { value: "custom" } });
+    expect(names()).toEqual(["Billing Admin"]);
   });
 
-  /*
-   * An app the server names that this frontend has never heard of still
-   * appears, under its raw key. Dropping it would hide a role somebody can
-   * actually be given, which is worse than an unpolished heading.
-   */
-  it("shows an app it does not recognise rather than hiding its roles", async () => {
-    mockFetchRoles.mockResolvedValue([
-      role({ code: "warranty.assessor", name: "Assessor", app: "warranty" }),
-    ]);
+  it("says there are no custom roles yet", async () => {
+    renderRoute({ path: PATH, children: routes });
+    await screen.findByRole("table");
 
-    renderRoute({ path: "/acme-motors/admin/roles", children: routes });
+    fireEvent.change(screen.getByRole("combobox", { name: "Show" }), {
+      target: { value: "custom" },
+    });
 
-    expect(await screen.findByRole("heading", { name: "warranty roles" })).toBeInTheDocument();
-    expect(screen.getByText("Assessor")).toBeInTheDocument();
+    expect(screen.getByText("No custom roles yet.")).toBeInTheDocument();
+    expect(screen.getByText("0 roles")).toBeInTheDocument();
+  });
+
+  it("has Add Role on the filter's row, greyed out", async () => {
+    renderRoute({ path: PATH, children: routes });
+    await screen.findByRole("table");
+
+    const add = screen.getByRole("button", { name: "Add Role" });
+    expect(add).toHaveAttribute("aria-disabled", "true");
+    expect(add.parentElement).toContainElement(screen.getByRole("combobox", { name: "Show" }));
+  });
+
+  it("searches by role name only, never the summary", async () => {
+    renderRoute({ path: PATH, children: routes });
+    await screen.findByRole("table");
+
+    usePageSearch.setState({ query: "admin" });
+    expect(await screen.findByText("1 role")).toBeInTheDocument();
+    expect(names()).toEqual(["Organization Admin"]);
+
+    // In Organization Admin's summary, not in any name.
+    usePageSearch.setState({ query: "dealerships" });
+    expect(await screen.findByText("No roles match “dealerships”.")).toBeInTheDocument();
   });
 
   it("offers a retry when the roles cannot be loaded", async () => {
-    mockFetchRoles.mockRejectedValue(new Error("nope"));
+    mockFetchPanelRoles.mockRejectedValue(new Error("nope"));
 
-    renderRoute({ path: "/acme-motors/admin/roles", children: routes });
+    renderRoute({ path: PATH, children: routes });
 
-    expect(await screen.findByText(/Could not load app roles/i)).toBeInTheDocument();
+    expect(await screen.findByText(/Could not load roles/i)).toBeInTheDocument();
+  });
+});
 
-    // The organisation roles are written here, so they survive the failure —
-    // half a page beats an error where three constants could have been shown.
-    expect(within(await rowFor("Owner")).getByText("Owner")).toBeInTheDocument();
+describe("roleInitials", () => {
+  it("is the first letter of the first two words", () => {
+    expect(roleInitials("Organization Owner")).toBe("OO");
+    expect(roleInitials("Organization Admin")).toBe("OA");
+    expect(roleInitials("Helpdesk  admin for things")).toBe("HA");
+    expect(roleInitials("Auditor")).toBe("A");
   });
 });

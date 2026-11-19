@@ -29,6 +29,7 @@ from core.organizations.api.serializers import (
     InviteLinkSerializer,
     OrganizationProfileSerializer,
     OrgUserSerializer,
+    PanelRoleSerializer,
     PersonDetailsSerializer,
     TerritoryCreateSerializer,
     TerritoryMoveSerializer,
@@ -37,6 +38,7 @@ from core.organizations.api.serializers import (
 )
 from core.organizations.models import MembershipStatus, Territory, TerritoryKind
 from core.organizations.selectors import (
+    admin_panel_roles,
     application_members,
     applications_for,
     dealers_for,
@@ -549,6 +551,26 @@ class ApplicationsView(OrgScopedAPIView):
     def get(self, request: Request, org_slug: str) -> Response:
         rows = applications_for(self.organization)
         return Response(ApplicationSerializer(rows, many=True).data)
+
+
+class PanelRolesView(OrgScopedAPIView):
+    """
+    The Admin panel's roles -- Organization Owner and Organization Admin --
+    with how many people hold each (C78, Admins and Roles -> Roles).
+    Read-only.
+
+    `admin.role.view`, the Roles tab's own permission (C79): the server checks
+    what the screen does. A dealer admin does not hold it and gets 403 -- the
+    counts are organisation-wide, which is not theirs to read. The role
+    PICKER on the invite and edit forms reads `/admin/roles/` instead, which
+    they can reach (Q35).
+    """
+
+    required_permissions: ClassVar[list[str]] = ["admin.role.view"]
+
+    def get(self, request: Request, org_slug: str) -> Response:
+        rows = admin_panel_roles(self.organization)
+        return Response(PanelRoleSerializer(rows, many=True).data)
 
 
 class ApplicationMembersView(OrgScopedAPIView):

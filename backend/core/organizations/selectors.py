@@ -39,7 +39,7 @@ from core.organizations.models import (
     TerritoryKind,
     UnitStatus,
 )
-from core.permissions.models import App, AppCode, Permission
+from core.permissions.models import App, AppCode, Permission, Role
 from core.permissions.registry import is_unit_aware
 from shared.exceptions import not_found
 
@@ -1209,3 +1209,77 @@ def application_members(organization: Organization, app_code: str) -> list[Appli
         )
 
     return sorted(people.values(), key=lambda person: (not person.is_owner, person.name.lower()))
+
+
+# --- The Admin panel's roles (C78, Admins and Roles -> Roles) ---------------
+
+# The one built-in Administration role (Q60; `permissions/0010`). Services
+# reads it from here.
+ORGANISATION_ADMIN_ROLE = "admin.org_admin"
+
+
+@dataclass(frozen=True)
+class PanelRoleData:
+    code: str
+    name: str
+    summary: str
+    built_in: bool
+    users: int
+    modified_by: str | None
+
+
+def admin_panel_roles(organization: Organization) -> list[PanelRoleData]:
+    """
+    The Admin panel's roles, as its Roles tab lists them (the owner,
+    2026-11-18): Organization Owner and Organization Admin. App roles (DMS's)
+    are not here -- they belong to each app's own settings, which are not built
+    yet (C78).
+
+    BOTH ARE BUILT-IN. Nobody can make a role until C72 piece 5's role
+    builder, so `built_in` is always True and `modified_by` always None today;
+    the fields exist so the tab's "Custom roles" filter and "Modified By"
+    column read real data the day that changes.
+
+    ORGANIZATION OWNER IS NOT A `Role` ROW. The owner holds everything by rule
+    (C72 step 2c), so its row is written here. ORGANIZATION ADMIN IS the
+    "Organisation admin" role (Q60); its summary comes from that row.
+
+    USERS COUNTS EVERYONE HOLDING IT (the owner, 2026-11-18): active,
+    deactivated and pending -- exactly the people the Users page's "All users"
+    filter and the Admins tab show with that role. An admin is a membership
+    holding an Administration grant (the rule `standing()` reads) or an
+    invitation whose `role` is admin (invitations keep `role` until piece 5).
+
+    Four queries, however many people.
+    """
+    owners = Membership.objects.filter(organization=organization, is_owner=True).count()
+    # One grant per person per app (`grant_unique_membership_app`), so counting
+    # grants counts people. The owner is never an admin here, as in `standing()`.
+    admin_members = MembershipAppAccess.objects.filter(
+        membership__organization=organization,
+        membership__is_owner__isnull=True,
+        app_id=AppCode.ADMIN,
+    ).count()
+    admin_invitations = Invitation.objects.filter(
+        organization=organization, accepted_at__isnull=True, role=MembershipRole.ADMIN
+    ).count()
+    org_admin = Role.objects.get(app_id=AppCode.ADMIN, code=ORGANISATION_ADMIN_ROLE)
+
+    return [
+        PanelRoleData(
+            code="owner",
+            name="Organization Owner",
+            summary="Every permission, by rule -- including the ones no role can give.",
+            built_in=True,
+            users=owners,
+            modified_by=None,
+        ),
+        PanelRoleData(
+            code=org_admin.code,
+            name="Organization Admin",
+            summary=org_admin.summary,
+            built_in=True,
+            users=admin_members + admin_invitations,
+            modified_by=None,
+        ),
+    ]

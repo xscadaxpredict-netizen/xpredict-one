@@ -5,12 +5,15 @@
  *   Admins      who runs the organisation: its owner and its organisation
  *               admins, filtered by their Admin panel role, with what they
  *               manage. Searched by name or email.
- *   App Admins  people who run one app. Not built yet: what it lists is
- *               still to be decided.
- *   Roles       every role and what it covers (`RolesTab`).
+ *   App Admins  people who run one app. GREYED OUT (the owner, 2026-11-18):
+ *               nothing works behind it yet and what it lists is undecided
+ *               (Q63), so it is drawn like Profile's planned tabs -- visible,
+ *               not pressable -- and its old address goes to Admins.
+ *   Roles       the Admin panel's roles -- Organization Owner and Organization
+ *               Admin -- with how many people hold each (`RolesTab`).
  *
- * EACH TAB IS ITS OWN ADDRESS (`/admin/admins-and-roles`, `…/app-admins`,
- * `…/roles`), and so is an admin opened beside the list
+ * EACH TAB IS ITS OWN ADDRESS (`/admin/admins-and-roles`, `…/roles`), and so
+ * is an admin opened beside the list
  * (`…/admin/<membership id>`), so a refresh or a link opens the same thing, and the topbar's box
  * searches the open tab — "Search admins", "Search roles" — emptying when the
  * tab changes, the same as when the page does (`NavItem.search`).
@@ -19,7 +22,7 @@
 import { asProblem } from "@xpredict/api-client";
 import { ErrorState, InfoHint, TableSkeleton } from "@xpredict/ui";
 import { useState } from "react";
-import { Link, useNavigate, useParams } from "react-router-dom";
+import { Link, Navigate, useNavigate, useParams } from "react-router-dom";
 
 import { usePageSearch } from "../../../stores/pageSearchStore";
 import { useShellContext } from "../../context";
@@ -32,11 +35,11 @@ import { useUsers } from "../hooks/useUsers";
 import styles from "./ListPage.module.css";
 import { RolesTab } from "./RolesScreen";
 
-const TABS = [
+const TABS: readonly { id: string; label: string; disabled?: true }[] = [
   { id: "", label: "Admins" },
-  { id: "app-admins", label: "App Admins" },
+  { id: "app-admins", label: "App Admins", disabled: true },
   { id: "roles", label: "Roles" },
-] as const;
+];
 
 export function AdminsAndRolesScreen() {
   const { membership } = useShellContext();
@@ -44,42 +47,55 @@ export function AdminsAndRolesScreen() {
   const { tab = "", personId } = useParams<{ tab: string; personId: string }>();
   const basePath = `/${membership.org_slug}/admin/admins-and-roles`;
 
+  // A greyed-out tab has no page: its address (a bookmark from before it was
+  // greyed) lands on Admins rather than on an empty screen.
+  if (TABS.some((item) => item.disabled && item.id === tab)) {
+    return <Navigate to={basePath} replace />;
+  }
+
   return (
     <div className={styles.page}>
       <div className={styles.heading}>
         <h1 className={styles.title}>Admins and Roles</h1>
         <InfoHint label="About Admins and Roles">
-          Who runs {membership.org_name}, and every role and what it covers. Roles are the same
-          for every organisation and cannot be edited here — they are given to people on the
-          Users screen.
+          Who runs {membership.org_name}, and the Admin panel&rsquo;s roles. They are built in
+          and cannot be edited yet. An app&rsquo;s own roles are given to people on the Users
+          screen.
         </InfoHint>
       </div>
 
       <div className={styles.tabs} role="tablist" aria-label="Admins and Roles">
-        {TABS.map((item) => (
-          <Link
-            key={item.id}
-            to={item.id ? `${basePath}/${item.id}` : basePath}
-            role="tab"
-            aria-selected={tab === item.id}
-            className={styles.tab}
-          >
-            {item.label}
-          </Link>
-        ))}
+        {TABS.map((item) =>
+          item.disabled ? (
+            // `aria-disabled` rather than `disabled`, as on Profile: a keyboard
+            // still reaches it and "Coming later" can be read.
+            <button
+              key={item.id}
+              type="button"
+              role="tab"
+              aria-selected="false"
+              aria-disabled="true"
+              title="Coming later"
+              className={styles.tab}
+            >
+              {item.label}
+            </button>
+          ) : (
+            <Link
+              key={item.id}
+              to={item.id ? `${basePath}/${item.id}` : basePath}
+              role="tab"
+              aria-selected={tab === item.id}
+              className={styles.tab}
+            >
+              {item.label}
+            </Link>
+          ),
+        )}
       </div>
 
       {tab === "" && <AdminsTab basePath={basePath} personId={personId} />}
-      {tab === "app-admins" && (
-        <p className={styles.empty} role="tabpanel" aria-label="App Admins">
-          This tab is being built.
-        </p>
-      )}
-      {tab === "roles" && (
-        <div className={styles.tabBody} role="tabpanel" aria-label="Roles">
-          <RolesTab />
-        </div>
-      )}
+      {tab === "roles" && <RolesTab />}
     </div>
   );
 }

@@ -1,203 +1,168 @@
 /**
- * Admin panel → Admins and Roles → the ROLES TAB. What every role is, and
- * what it covers. The page around it — title, tabs — is
- * `AdminsAndRolesScreen`; the topbar's box searches it ("Search roles", by
- * name or description).
+ * Admin panel → Admins and Roles → the ROLES TAB (C78). The page around it —
+ * title, tabs — is `AdminsAndRolesScreen`.
  *
- * A REFERENCE PAGE, NOT AN EDITOR. Roles are built-in and defined by Xpredict;
- * an organisation cannot create, clone or edit one (C28). So this exists to
- * answer "what am I about to give this person?" for somebody standing in the
- * invite dialog, and nothing else.
+ * THE ADMIN PANEL'S ROLES ONLY (the owner, 2026-11-18): Organization Owner and
+ * Organization Admin, in the same list format as every other Admin panel page
+ * (`ListPage.module.css`). App roles — DMS's Manager, Technician… — are not
+ * here: they belong to each app's own settings (C78), which are not built yet.
+ * The invite and edit forms still offer them, from `useRoles()`.
  *
- * IT DOES NOT LIST PERMISSIONS, and that is why it can exist at all. Which
- * permissions each role grants is Q12 and still unanswered — the description
- * is what the server has, and the description is enough to choose between
- * roles. Listing permissions was what made this screen look blocked; it was
- * only ever the permissions that were.
+ *   Filter     All roles (default), Built-in roles, Custom roles. Every role is
+ *              built-in until organisations can build their own (C72 piece 5),
+ *              so Custom roles is empty and says so.
+ *   Add Role   drawn only, greyed out — the role builder is C72 piece 5.
+ *   Table      Role Name (with its summary under it), Users (everyone holding
+ *              it: active, deactivated and pending) and Modified By ("—" for a
+ *              built-in role, which nobody modifies).
  *
- * TWO SECTIONS, BECAUSE THERE ARE TWO THINGS CALLED A ROLE and confusing them
- * is the mistake this page exists to prevent:
- *
- *   Organisation role  — Owner / Admin / Member. Standing in the ORGANISATION,
- *                        and ALWAYS organisation-wide: anything above Member
- *                        must have no dealership attached, which the database
- *                        enforces with a check constraint (C40). It is the
- *                        column the Users screen shows.
- *
- *   App role           — Sales representative, Service advisor. What you may
- *                        do INSIDE an app. Says nothing about administering.
- *
- * THE TWO NEVER TOUCH, and neither is derived from the other (C40). A dealer
- * admin is a MEMBER holding the DMS System administrator role — not an Admin
- * with a dealership, which is the C31 model this page used to describe and
- * which `membership_org_standing_has_no_unit` now rejects outright.
- *
- * AND A PERSON WITH NO DEALERSHIP IS UNRESTRICTED, not unscoped-by-accident.
- * `resolve_allowed_units()` returns None for them, so somebody organisation-
- * wide in DMS sees every dealership's records (C7) — which is the whole reason
- * the two org-level DMS roles exist and why one of them is read-only.
- *
- * Somebody who sees "Admin" against a person on Users and then opens this page
- * has to find it here, or they will reasonably decide the page is incomplete.
+ * The topbar's box searches it ("Search roles") BY ROLE NAME ONLY.
  */
 
 import { asProblem } from "@xpredict/api-client";
 import { ErrorState, TableSkeleton } from "@xpredict/ui";
+import { useState } from "react";
 
 import { usePageSearch } from "../../../stores/pageSearchStore";
-import { useShellContext } from "../../context";
-import { findApp } from "../../navigation";
-import type { Role } from "../api/roles";
-import { useRoles } from "../hooks/useRoles";
-import styles from "./RolesScreen.module.css";
+import type { PanelRole } from "../api/roles";
+import { ListFilter } from "../components/ListFilter";
+import { usePanelRoles } from "../hooks/useRoles";
+import styles from "./ListPage.module.css";
 
-/**
- * The three organisation roles, written here rather than fetched.
- *
- * A SMALL, DELIBERATE EXCEPTION to the backend owning the vocabulary (C19).
- * These are a closed enum the frontend already types — `OrgUser.role` is
- * `"owner" | "admin" | "member"` — so the words are here whether or not this
- * page repeats them, and adding an endpoint to serve three constants that
- * cannot change without a frontend release would be ceremony.
- *
- * App roles are the opposite case and come from the server: the backend can
- * add one without a release, which is exactly why they must not be listed
- * here.
- */
-const ORG_ROLES = [
-  {
-    name: "Owner",
-    summary:
-      "The one person who owns the organisation. Exactly one, never assignable, and cannot be removed or switched off — an organisation without an owner has nobody who could appoint one.",
-  },
-  {
-    name: "Admin",
-    summary:
-      "Manages the whole organisation: dealers, people and billing. Always organisation-wide — somebody who administers a single dealership is a Member holding the DMS System administrator role instead.",
-  },
-  {
-    name: "Member",
-    summary: "Uses the apps they have been given. Administers nothing.",
-  },
-];
+type RoleFilter = "all" | "built_in" | "custom";
 
-/** A role whose name or description contains what was typed in the topbar. */
-function matches(role: { name: string; summary: string }, needle: string): boolean {
-  return (
-    needle === "" ||
-    role.name.toLowerCase().includes(needle) ||
-    role.summary.toLowerCase().includes(needle)
-  );
+const ROLE_FILTERS = [
+  { value: "all", label: "All roles" },
+  { value: "built_in", label: "Built-in roles" },
+  { value: "custom", label: "Custom roles" },
+] as const;
+
+const FILTER_WORD: Record<RoleFilter, string> = {
+  all: "",
+  built_in: "built-in ",
+  custom: "custom ",
+};
+
+/** "Organization Owner" → "OO": the first letter of each of the first two words. */
+export function roleInitials(name: string): string {
+  return name
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((word) => word[0])
+    .join("")
+    .toUpperCase();
 }
 
 export function RolesTab() {
-  const { membership } = useShellContext();
-  const { data: roles, isPending, isError, error, refetch } = useRoles();
+  const { data: roles, isPending, isError, error, refetch } = usePanelRoles();
   const query = usePageSearch((state) => state.query);
+  const [filter, setFilter] = useState<RoleFilter>("all");
+
   const needle = query.trim().toLowerCase();
-
-  const orgRoles = ORG_ROLES.filter((role) => matches(role, needle));
-  const appRoles = roles?.filter((role) => matches(role, needle));
-
-  return (
-    <div className={styles.page}>
-      {orgRoles.length > 0 && (
-      <section className={styles.section}>
-        <h2 className={styles.sectionTitle}>Organisation roles</h2>
-        <p className={styles.sectionNote}>
-          Somebody&rsquo;s standing in {membership.org_name}. This is the Role column on the
-          Users screen, and it is separate from what they can do inside an app.
-        </p>
-
-        <dl className={styles.roles}>
-          {orgRoles.map((role) => (
-            <div key={role.name} className={styles.role}>
-              <dt className={styles.roleName}>{role.name}</dt>
-              <dd className={styles.roleSummary}>{role.summary}</dd>
-            </div>
-          ))}
-        </dl>
-      </section>
-      )}
-
-      {isPending && <TableSkeleton label="roles" columns={[240, "grow"]} rows={6} />}
-
-      {isError && (
-        <ErrorState
-          title="Could not load app roles"
-          code={asProblem(error).code}
-          traceId={asProblem(error).trace_id}
-          onRetry={() => void refetch()}
-        />
-      )}
-
-      {appRoles && <AppRoleSections roles={appRoles} />}
-
-      {appRoles && orgRoles.length === 0 && appRoles.length === 0 && (
-        <p className={styles.sectionNote}>No roles match “{query.trim()}”.</p>
-      )}
-    </div>
-  );
-}
-
-/**
- * App roles, grouped by the app they belong to.
- *
- * GROUPED IN THE ORDER THE SERVER SENT THEM, not sorted here. The list is
- * ordered deliberately — most capable first, which is the order the invite
- * dialog shows too — and re-sorting would put this page and that dialog in
- * different orders for no reason.
- *
- * An app the server names that this frontend has never heard of still appears,
- * under its raw key. Dropping it would hide a role somebody can actually be
- * given, which is worse than an unpolished heading.
- */
-function AppRoleSections({ roles }: { roles: Role[] }) {
-  const appKeys = [...new Set(roles.map((role) => role.app))];
+  const shown = roles
+    ?.filter((role) => filter === "all" || role.built_in === (filter === "built_in"))
+    .filter((role) => needle === "" || role.name.toLowerCase().includes(needle));
 
   return (
     <>
-      {appKeys.map((appKey) => (
-        <section key={appKey} className={styles.section}>
-          <h2 className={styles.sectionTitle}>{findApp(appKey)?.name ?? appKey} roles</h2>
+      <div className={styles.toolbar}>
+        <ListFilter id="roles-filter" value={filter} options={ROLE_FILTERS} onChange={setFilter} />
+        {shown && (
+          <span className={styles.count} aria-live="polite">
+            {shown.length === 1 ? "1 role" : `${String(shown.length)} roles`}
+          </span>
+        )}
+        <span className={styles.spacer} />
+        {/*
+          DRAWN ONLY: greyed out until the role builder (C72 piece 5).
+          `aria-disabled` rather than `disabled`, so a keyboard still reaches it
+          and "Coming later" can be read — the same as Assign Admin.
+        */}
+        <button
+          type="button"
+          className={styles.primaryButton}
+          aria-disabled="true"
+          title="Coming later"
+        >
+          <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true" focusable="false">
+            <path
+              d="M7 2.5v9M2.5 7h9"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.8"
+              strokeLinecap="round"
+            />
+          </svg>
+          Add Role
+        </button>
+      </div>
 
-          <dl className={styles.roles}>
-            {roles
-              .filter((role) => role.app === appKey)
-              .map((role) => (
-                <div key={role.code} className={styles.role}>
-                  <dt className={styles.roleName}>
-                    {role.name}
-                    <span className={styles.badges}>
-                      {/*
-                        The level is the thing most worth showing, because it
-                        decides which roles a person can even be offered: a
-                        dealer-scoped person can hold only a dealer role, and
-                        somebody organisation-wide only an organisation one.
-                      */}
-                      <span className={styles.badge}>
-                        {role.level === "unit" ? "Dealer" : "Organisation"}
-                      </span>
+      <div className={styles.split} role="tabpanel" aria-label="Roles">
+        <div className={styles.listArea}>
+          {isPending && <TableSkeleton label="roles" columns={[360, 120, 160]} rows={2} />}
 
-                      {/*
-                        Worth calling out separately. It is the only property of
-                        a role that changes somebody's standing in the
-                        organisation rather than what they can do in an app
-                        (C31), and it is not obvious from a job title.
-                      */}
-                      {role.administers && (
-                        <span className={`${styles.badge} ${styles.administers}`}>
-                          Manages users
-                        </span>
-                      )}
-                    </span>
-                  </dt>
-                  <dd className={styles.roleSummary}>{role.summary}</dd>
-                </div>
-              ))}
-          </dl>
-        </section>
-      ))}
+          {isError && (
+            <ErrorState
+              title="Could not load roles"
+              code={asProblem(error).code}
+              traceId={asProblem(error).trace_id}
+              onRetry={() => void refetch()}
+            />
+          )}
+
+          {shown && (
+            <div className={styles.tableWrap}>
+              <table className={styles.table}>
+                <thead>
+                  <tr>
+                    <th scope="col">Role Name</th>
+                    <th scope="col" className={styles.number}>
+                      Users
+                    </th>
+                    <th scope="col">Modified By</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {shown.map((role) => (
+                    <RoleRow key={role.code} role={role} />
+                  ))}
+                </tbody>
+              </table>
+
+              {shown.length === 0 && (
+                <p className={styles.empty}>
+                  {needle
+                    ? `No ${FILTER_WORD[filter]}roles match “${query.trim()}”.`
+                    : filter === "custom"
+                      ? "No custom roles yet."
+                      : `No ${FILTER_WORD[filter]}roles.`}
+                </p>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
     </>
+  );
+}
+
+function RoleRow({ role }: { role: PanelRole }) {
+  return (
+    <tr>
+      <th scope="row">
+        <div className={styles.entity}>
+          <span className={styles.badge} aria-hidden="true">
+            {roleInitials(role.name)}
+          </span>
+          <div className={styles.stack}>
+            <span className={styles.primary}>{role.name}</span>
+            <span className={styles.sub}>{role.summary}</span>
+          </div>
+        </div>
+      </th>
+      <td className={styles.number}>{role.users}</td>
+      <td>{role.modified_by ?? <span className={styles.none}>—</span>}</td>
+    </tr>
   );
 }

@@ -20,6 +20,7 @@ from core.organizations.api.views import (
     DealersView,
     InviteLinkView,
     OrganizationProfileView,
+    PanelRolesView,
     ProvisioningView,
     ResendInvitationView,
     TerritoriesView,
@@ -55,6 +56,9 @@ urlpatterns = [
         ApplicationMembersView.as_view(),
         name="application-members",
     ),
+    # The Roles tab (C78). Not `admin/roles/`: that is the role catalogue the
+    # invite and edit forms' pickers read, owned by `core.permissions`.
+    path("admin/panel-roles/", PanelRolesView.as_view(), name="panel-roles"),
     path("admin/users/", UsersView.as_view(), name="users"),
     path("admin/users/<str:user_id>/", UserDetailView.as_view(), name="user-detail"),
     # BEFORE the activate/deactivate route below, which would otherwise match

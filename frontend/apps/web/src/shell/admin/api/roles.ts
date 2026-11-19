@@ -99,3 +99,31 @@ export async function fetchRoles(orgSlug: string): Promise<Role[]> {
 export function rolesFor(roles: Role[], app: string, unitScoped: boolean): Role[] {
   return roles.filter((role) => role.app === app && role.level === (unitScoped ? "unit" : "org"));
 }
+
+/* ------------------------- the Admin panel's roles ------------------------ */
+
+/**
+ * One row of the Admin panel's Roles tab (C78): Organization Owner or
+ * Organization Admin. Mirrors `PanelRoleSerializer` -- hand-written on both
+ * sides (C43), so a field renamed there is an empty column here.
+ *
+ * NOT `Role`. That is an APP role (DMS's Manager, Technician) and is what the
+ * invite and edit forms' pickers read; this is the Admin panel's own, with how
+ * many people hold it in THIS organisation.
+ */
+export interface PanelRole {
+  /** "owner" for the owner (a rule, not a role row), else the role's code. */
+  code: string;
+  name: string;
+  summary: string;
+  /** Always true until organisations can build roles (C72 piece 5). */
+  built_in: boolean;
+  /** Everyone holding it: active, deactivated and pending. */
+  users: number;
+  /** Who last changed it -- always null for a built-in role. */
+  modified_by: string | null;
+}
+
+export async function fetchPanelRoles(orgSlug: string): Promise<PanelRole[]> {
+  return request<PanelRole[]>(`/api/v1/orgs/${orgSlug}/admin/panel-roles/`);
+}

@@ -8,10 +8,11 @@
 
 import { useOrgQuery } from "@xpredict/api-client";
 
-import { fetchRoles } from "../api/roles";
+import { fetchPanelRoles, fetchRoles } from "../api/roles";
 
 export const roleKeys = {
   all: () => ["admin", "roles"] as const,
+  panel: () => ["admin", "panel-roles"] as const,
 };
 
 interface UseRolesOptions {
@@ -35,5 +36,17 @@ export function useRoles({ enabled = true }: UseRolesOptions = {}) {
      * identical is the day an unkeyed cache becomes a leak nobody looks for.
      */
     staleTime: 60 * 60 * 1000,
+  });
+}
+
+/**
+ * The Admin panel's roles for its Roles tab, with how many people hold each.
+ * NOT reference data like `useRoles`: the counts change whenever somebody is
+ * invited, made an admin or removed, so the default freshness applies.
+ */
+export function usePanelRoles() {
+  return useOrgQuery({
+    key: roleKeys.panel(),
+    queryFn: (orgSlug) => fetchPanelRoles(orgSlug),
   });
 }

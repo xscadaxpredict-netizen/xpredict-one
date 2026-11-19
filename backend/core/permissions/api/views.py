@@ -27,13 +27,12 @@ class RolesView(OrgScopedAPIView):
     Every built-in role: what it is called, which app it belongs to, whether it
     scopes to a dealership, and whether holding it administers that scope.
 
-    TWO SCREENS READ THIS, which is why the requirement is an "any of" and not
-    `admin.role.view` alone:
+    THE ROLE PICKERS READ THIS, which is why the requirement is an "any of" and
+    not `admin.role.view` alone. (The Admin panel's Roles tab used to read it
+    too; since 2026-11-18 it lists the Admin panel's own roles from
+    `/admin/panel-roles/` instead, and app roles are not on it.)
 
-    - **The Roles page**, a read-only reference (C37). Reaching it needs
-      `admin.role.view`, which is what puts the `roles` module in somebody's
-      sidebar.
-    - **The invite and edit forms**, which need role NAMES to render a picker.
+    - **The invite and edit forms** need role NAMES to render a picker.
       A dealer admin holds `admin.user.create` and `admin.user.update` and
       deliberately does NOT hold `admin.role.view`: the DMS System
       administrator role grants the `users` module and not the `roles` one.
