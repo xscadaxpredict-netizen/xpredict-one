@@ -1323,6 +1323,30 @@ def application_members(organization: Organization, app_code: str) -> list[Appli
 ORGANISATION_ADMIN_ROLE = "admin.org_admin"
 
 
+def _owners(organization: Organization):
+    """The organisation's owner, as a queryset (one row; `is_owner` is unique)."""
+    return Membership.objects.filter(organization=organization, is_owner=True)
+
+
+def _admin_members(organization: Organization):
+    """
+    Its organisation admins who are members -- active or deactivated: a
+    membership holding an Administration grant, the rule `standing()` reads.
+    The owner is never one, as in `standing()`. One grant per person per app
+    (`grant_unique_membership_app`), so no person comes back twice.
+    """
+    return Membership.objects.filter(
+        organization=organization, is_owner__isnull=True, grants__app_id=AppCode.ADMIN
+    )
+
+
+def _admin_invitations(organization: Organization):
+    """Invitations still waiting to make somebody an admin (`role` until piece 5)."""
+    return Invitation.objects.filter(
+        organization=organization, accepted_at__isnull=True, role=MembershipRole.ADMIN
+    )
+
+
 @dataclass(frozen=True)
 class PanelRoleData:
     code: str
@@ -1355,19 +1379,15 @@ def admin_panel_roles(organization: Organization) -> list[PanelRoleData]:
     holding an Administration grant (the rule `standing()` reads) or an
     invitation whose `role` is admin (invitations keep `role` until piece 5).
 
+    THE SAME PEOPLE THE ADMINS TAB LISTS (`admins_for()`): both count from
+    `_owners()`, `_admin_members()` and `_admin_invitations()`, so the number
+    here and the rows there cannot disagree.
+
     Four queries, however many people.
     """
-    owners = Membership.objects.filter(organization=organization, is_owner=True).count()
-    # One grant per person per app (`grant_unique_membership_app`), so counting
-    # grants counts people. The owner is never an admin here, as in `standing()`.
-    admin_members = MembershipAppAccess.objects.filter(
-        membership__organization=organization,
-        membership__is_owner__isnull=True,
-        app_id=AppCode.ADMIN,
-    ).count()
-    admin_invitations = Invitation.objects.filter(
-        organization=organization, accepted_at__isnull=True, role=MembershipRole.ADMIN
-    ).count()
+    owners = _owners(organization).count()
+    admin_members = _admin_members(organization).count()
+    admin_invitations = _admin_invitations(organization).count()
     org_admin = Role.objects.get(app_id=AppCode.ADMIN, code=ORGANISATION_ADMIN_ROLE)
 
     return [
@@ -1388,3 +1408,98 @@ def admin_panel_roles(organization: Organization) -> list[PanelRoleData]:
             modified_by=None,
         ),
     ]
+
+
+# --- The Admin panel's admins (C78, Admins and Roles -> Admins) -------------
+
+
+@dataclass(frozen=True)
+class ManagedAppData:
+    code: str
+    name: str
+
+
+@dataclass(frozen=True)
+class AdminData:
+    id: uuid.UUID
+    first_name: str
+    last_name: str
+    email: str
+    role: str
+    status: str
+    apps_managed: list[ManagedAppData]
+
+
+def admins_for(organization: Organization) -> list[AdminData]:
+    """
+    The organisation's admins, as the Admins tab lists them (C78): its owner
+    and its organisation admins -- active, deactivated and pending. Never a
+    member, never a dealer admin (they administer one dealership through a DMS
+    role, not the organisation).
+
+    ITS OWN ENDPOINT, NOT THE USERS LIST (C79: the server checks what the
+    screen does). It needs `admin.admin.view`, not `admin.user.view`, and it
+    sends only these people and only what the tab and its panel show.
+
+    THE SAME PEOPLE THE ROLES TAB COUNTS: built from `_owners()`,
+    `_admin_members()` and `_admin_invitations()`, like `admin_panel_roles()`.
+
+    `id` is the membership's, or the invitation's while pending -- the same id
+    the Users page uses for that person. `status` is `active`, `disabled`, or
+    `invited`.
+
+    APPS MANAGED is every app the organisation subscribes to, for every row:
+    the owner holds every app by rule and an organisation admin administers the
+    whole organisation (C72; the owner, 2026-11-18). Sent with the row, so the
+    panel needs no second endpoint -- and no second permission.
+
+    THE OWNER FIRST, then in the order people were added, like the Users page.
+    Five queries, however many admins.
+    """
+    active = set(
+        AppSubscription.objects.filter(
+            organization=organization, status=SubscriptionStatus.ACTIVE
+        ).values_list("app_id", flat=True)
+    )
+    apps = [
+        ManagedAppData(code=app.code, name=app.name)
+        for app in App.objects.exclude(code=AppCode.ADMIN)
+        .filter(code__in=active)
+        .order_by("display_order", "code")
+    ]
+
+    def member_row(membership: Membership, role: str) -> AdminData:
+        return AdminData(
+            id=membership.id,
+            first_name=membership.user.first_name,
+            last_name=membership.user.last_name,
+            email=membership.user.email,
+            role=role,
+            status=membership.status,
+            apps_managed=apps,
+        )
+
+    owners = [
+        member_row(m, MembershipRole.OWNER) for m in _owners(organization).select_related("user")
+    ]
+    admins = [
+        (m.created_at, str(m.id), member_row(m, MembershipRole.ADMIN))
+        for m in _admin_members(organization).select_related("user")
+    ] + [
+        (
+            invitation.created_at,
+            str(invitation.id),
+            AdminData(
+                id=invitation.id,
+                first_name=invitation.first_name,
+                last_name=invitation.last_name,
+                email=invitation.email,
+                role=MembershipRole.ADMIN,
+                status="invited",
+                apps_managed=apps,
+            ),
+        )
+        for invitation in _admin_invitations(organization)
+    ]
+    return owners + [row for _, _, row in sorted(admins, key=lambda entry: entry[:2])]
+

@@ -21,6 +21,7 @@ from rest_framework.response import Response
 
 from core.organizations.api.base import OrgScopedAPIView
 from core.organizations.api.serializers import (
+    AdminSerializer,
     ApplicationMemberSerializer,
     ApplicationSerializer,
     DealerCreateSerializer,
@@ -39,6 +40,7 @@ from core.organizations.api.serializers import (
 from core.organizations.models import MembershipStatus, Territory, TerritoryKind
 from core.organizations.selectors import (
     admin_panel_roles,
+    admins_for,
     application_members,
     applications_for,
     dealers_for,
@@ -551,6 +553,23 @@ class ApplicationsView(OrgScopedAPIView):
     def get(self, request: Request, org_slug: str) -> Response:
         rows = applications_for(self.organization)
         return Response(ApplicationSerializer(rows, many=True).data)
+
+
+class AdminsView(OrgScopedAPIView):
+    """
+    The organisation's owner and admins -- active, deactivated and pending --
+    with the apps they manage (C78, Admins and Roles -> Admins). Read-only.
+
+    `admin.admin.view`, the Admins tab's own permission (C79): the server
+    checks what the screen does. This used to be the Users list filtered in the
+    browser, which needed `admin.user.view` and sent every person to show two.
+    A dealer admin does not hold it and gets 403.
+    """
+
+    required_permissions: ClassVar[list[str]] = ["admin.admin.view"]
+
+    def get(self, request: Request, org_slug: str) -> Response:
+        return Response(AdminSerializer(admins_for(self.organization), many=True).data)
 
 
 class PanelRolesView(OrgScopedAPIView):

@@ -37,12 +37,11 @@ import { usePageSearch } from "../../../stores/pageSearchStore";
 import { useAccess } from "../../access";
 import { useShellContext } from "../../context";
 import { tabsOf } from "../../navigation";
-import type { OrgUser } from "../api/users";
-import { AdminActions, AdminDetailPanel, type Admin } from "../components/AdminDetailPanel";
+import { AdminActions, AdminDetailPanel } from "../components/AdminDetailPanel";
 import { ListFilter } from "../components/ListFilter";
 import { displayName } from "../components/UserActions";
 import { initials } from "../components/UserTable";
-import { useUsers } from "../hooks/useUsers";
+import { useAdmins } from "../hooks/useAdmins";
 import styles from "./ListPage.module.css";
 import { RolesTab } from "./RolesScreen";
 
@@ -135,9 +134,11 @@ export const ROLE_LABEL: Record<"owner" | "admin", string> = {
 };
 
 /**
- * The organisation's admins, from the same list the Users page reads: the
- * owner and everybody whose standing is "admin" — which, since C72 step 2d,
- * is holding the "Organisation admin" role at the root.
+ * The organisation's admins -- its owner and everybody holding the
+ * "Organisation admin" role at the root (C72 step 2d) -- from their OWN
+ * endpoint, `GET /admin/admins/`, on the Admins tab's own permission
+ * (`admin.admin.view`, C79). It used to be the Users list filtered here,
+ * which needed `admin.user.view` and fetched every person to show two.
  *
  * APPS MANAGED is "All" for both. Each holds every app by rule or by role,
  * organisation-wide; an admin of ONE app is what the App Admins tab is for.
@@ -148,23 +149,20 @@ export const ROLE_LABEL: Record<"owner" | "admin", string> = {
  */
 function AdminsTab({ basePath, personId }: { basePath: string; personId: string | undefined }) {
   const navigate = useNavigate();
-  const { data: users, isPending, isError, error, refetch } = useUsers();
+  const { data: everyAdmin, isPending, isError, error, refetch } = useAdmins();
   const query = usePageSearch((state) => state.query);
   const [filter, setFilter] = useState<AdminFilter>("all");
 
   const needle = query.trim().toLowerCase();
-  const admins = users
-    ?.filter((user): user is OrgUser & { role: "owner" | "admin" } => user.role !== "member")
-    .filter((user) => filter === "all" || user.role === filter)
+  const admins = everyAdmin
+    ?.filter((user) => filter === "all" || user.role === filter)
     .filter(
       (user) =>
         needle === "" ||
         `${user.first_name} ${user.last_name} ${user.email}`.toLowerCase().includes(needle),
     );
   const filterWord = filter === "all" ? "" : `${ROLE_LABEL[filter]} `;
-  const selected = personId
-    ? users?.find((user): user is Admin => user.id === personId && user.role !== "member")
-    : undefined;
+  const selected = personId ? everyAdmin?.find((user) => user.id === personId) : undefined;
   const openPath = (id: string) => `${basePath}/admin/${id}`;
 
   return (
@@ -289,7 +287,7 @@ function AdminsTab({ basePath, personId }: { basePath: string; personId: string 
             </div>
           )}
 
-          {personId && users && !selected && (
+          {personId && everyAdmin && !selected && (
             <p className={styles.missing} role="status">
               That person is not an admin here.{" "}
               <Link to={basePath} className={styles.linkButton}>

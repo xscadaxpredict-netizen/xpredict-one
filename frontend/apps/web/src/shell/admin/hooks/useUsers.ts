@@ -26,6 +26,7 @@ import {
   type UserDetails,
   type UserStatus,
 } from "../api/users";
+import { roleKeys } from "./useRoles";
 
 /**
  * Module-relative cache keys. The organisation is prepended by the hooks, so
@@ -34,7 +35,16 @@ import {
  */
 export const adminKeys = {
   users: () => ["admin", "users"] as const,
+  /** The Admins tab (`useAdmins`). */
+  admins: () => ["admin", "admins"] as const,
 };
+
+/**
+ * WHAT A CHANGE TO A PERSON MAKES STALE: the Users list, and -- because any
+ * person can be, become or stop being an admin -- the Admins tab and the
+ * Roles tab's counts. One list, so a new action cannot forget one of them.
+ */
+export const PEOPLE_CHANGED = [adminKeys.users(), adminKeys.admins(), roleKeys.panel()];
 
 export function useUsers() {
   return useOrgQuery({
@@ -46,7 +56,7 @@ export function useUsers() {
 export function useInviteUser() {
   return useOrgMutation({
     mutationFn: (orgSlug, body: NewInvitation) => inviteUser(orgSlug, body),
-    invalidates: [adminKeys.users()],
+    invalidates: PEOPLE_CHANGED,
   });
 }
 
@@ -63,7 +73,7 @@ export function useSetUserStatus() {
       orgSlug,
       variables: { userId: string; status: Extract<UserStatus, "active" | "disabled"> },
     ) => setUserStatus(orgSlug, variables.userId, variables.status),
-    invalidates: [adminKeys.users()],
+    invalidates: PEOPLE_CHANGED,
   });
 }
 
@@ -105,13 +115,13 @@ export function useUpdateUser() {
   return useOrgMutation({
     mutationFn: (orgSlug, variables: { userId: string; body: UserDetails }) =>
       updateUser(orgSlug, variables.userId, variables.body),
-    invalidates: [adminKeys.users()],
+    invalidates: PEOPLE_CHANGED,
   });
 }
 
 export function useRemoveUser() {
   return useOrgMutation({
     mutationFn: (orgSlug, userId: string) => removeUser(orgSlug, userId),
-    invalidates: [adminKeys.users()],
+    invalidates: PEOPLE_CHANGED,
   });
 }

@@ -13,6 +13,7 @@ from __future__ import annotations
 from django.urls import include, path
 
 from core.organizations.api.views import (
+    AdminsView,
     ApplicationMembersView,
     ApplicationsView,
     DealerDetailView,
@@ -59,6 +60,8 @@ urlpatterns = [
     # The Roles tab (C78). Not `admin/roles/`: that is the role catalogue the
     # invite and edit forms' pickers read, owned by `core.permissions`.
     path("admin/panel-roles/", PanelRolesView.as_view(), name="panel-roles"),
+    # The Admins tab (C78), on its own permission (C79).
+    path("admin/admins/", AdminsView.as_view(), name="admins"),
     path("admin/users/", UsersView.as_view(), name="users"),
     path("admin/users/<str:user_id>/", UserDetailView.as_view(), name="user-detail"),
     # BEFORE the activate/deactivate route below, which would otherwise match

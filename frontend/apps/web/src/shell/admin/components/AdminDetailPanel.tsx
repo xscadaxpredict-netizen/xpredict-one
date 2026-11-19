@@ -7,22 +7,23 @@
  * TWO TABS. "Applications" works: what this admin manages -- every app the
  * organisation has, because both the owner and an organisation admin hold
  * every app (C72). "Groups" is Zoho's and greyed out: we have no groups yet.
+ *
+ * THE APPS COME WITH THE ROW (`apps_managed`, from `GET /admin/admins/`), not
+ * from the Applications page's endpoint: that one needs
+ * `admin.application.view`, and somebody allowed the Admins tab is not
+ * necessarily allowed Applications (C79).
  */
 
 import { DetailPanel } from "@xpredict/ui";
 
 import { useShellContext } from "../../context";
 import { findApp } from "../../navigation";
-import type { OrgUser } from "../api/users";
-import { useApplications } from "../hooks/useApplications";
+import type { Admin } from "../api/admins";
 import panel from "./RecordPanel.module.css";
 import { RowMenu } from "./RowMenu";
 import { displayName } from "./UserActions";
 import tiles from "./UserDetailPanel.module.css";
 import { initials } from "./UserTable";
-
-/** Somebody on the Admins tab: the owner, or an organisation admin. */
-export type Admin = OrgUser & { role: "owner" | "admin" };
 
 /**
  * The ⋮ for one admin: Manage Roles and Unassign (the owner, 2026-11-18).
@@ -111,8 +112,7 @@ export function AdminDetailPanel({ admin, onClose }: AdminDetailPanelProps) {
 
 function ManagedApps({ admin }: { admin: Admin }) {
   const { membership } = useShellContext();
-  const { data: apps } = useApplications();
-  const active = apps?.filter((app) => app.active) ?? [];
+  const active = admin.apps_managed;
 
   return (
     <>

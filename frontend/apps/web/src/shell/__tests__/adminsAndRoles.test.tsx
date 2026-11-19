@@ -9,6 +9,9 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { act, fireEvent, screen, within } from "@testing-library/react";
 
 import AdminRoutes from "../admin/routes";
+import type { Admin } from "../admin/api/admins";
+import { fetchAdmins } from "../admin/api/admins";
+import { fetchApplications } from "../admin/api/applications";
 import type * as usersApi from "../admin/api/users";
 import { fetchUsers } from "../admin/api/users";
 import type { PanelRole } from "../admin/api/roles";
@@ -23,6 +26,10 @@ vi.mock("../api/auth", async (importOriginal) => ({
   fetchMe: vi.fn(),
   logout: vi.fn().mockResolvedValue(undefined),
 }));
+
+// The Admins tab's own endpoint (C79). The Users list is mocked only so a
+// test can say it was never asked for.
+vi.mock("../admin/api/admins", () => ({ fetchAdmins: vi.fn() }));
 
 vi.mock("../admin/api/users", async (importOriginal) => ({
   ...(await importOriginal<typeof usersApi>()),
@@ -44,31 +51,36 @@ vi.mock("../admin/api/roles", async (importOriginal) => ({
 }));
 
 const mockFetchMe = vi.mocked(fetchMe);
+const mockFetchAdmins = vi.mocked(fetchAdmins);
 const mockFetchUsers = vi.mocked(fetchUsers);
+const mockFetchApplications = vi.mocked(fetchApplications);
 const mockFetchPanelRoles = vi.mocked(fetchPanelRoles);
 
 const withAdmin = [{ path: "admin/*", element: <AdminRoutes /> }];
 const BASE = "/acme-motors/admin/admins-and-roles";
 
-function user(overrides: Partial<usersApi.OrgUser> & { id: string }): usersApi.OrgUser {
+/** The apps an admin manages, as `GET /admin/admins/` sends them. */
+const MANAGED = [
+  { code: "dms", name: "DMS" },
+  { code: "crm", name: "CRM" },
+];
+
+function admin(overrides: Partial<Admin> & { id: string }): Admin {
   return {
     first_name: "First",
     last_name: "Last",
     email: `${overrides.id}@acme.test`,
-    unit_name: null,
-    unit_id: null,
-    role: "member",
+    role: "admin",
     status: "active",
-    apps: [],
-    administers: null,
+    apps_managed: MANAGED,
     ...overrides,
   };
 }
 
-const PEOPLE = [
-  user({ id: "asha", first_name: "Asha", last_name: "Rao", role: "owner" }),
-  user({ id: "ravi", first_name: "Ravi", last_name: "Kumar", role: "admin" }),
-  user({ id: "nish", first_name: "Nishanth", last_name: "S", role: "member" }),
+/** What the server sends: the owner and the organisation admins, never a member. */
+const ADMINS = [
+  admin({ id: "asha", first_name: "Asha", last_name: "Rao", role: "owner" }),
+  admin({ id: "ravi", first_name: "Ravi", last_name: "Kumar", role: "admin" }),
 ];
 
 const ROLES: PanelRole[] = [
@@ -103,7 +115,7 @@ function topbarSearch() {
 beforeEach(() => {
   vi.clearAllMocks();
   mockFetchMe.mockResolvedValue(me({ memberships: [ownerMembership()] }));
-  mockFetchUsers.mockResolvedValue(PEOPLE);
+  mockFetchAdmins.mockResolvedValue(ADMINS);
   mockFetchPanelRoles.mockResolvedValue(ROLES);
 });
 
@@ -154,6 +166,14 @@ describe("the tabs", () => {
 });
 
 describe("the Admins tab", () => {
+  it("reads its own endpoint, never the Users list", async () => {
+    renderRoute({ path: BASE, children: withAdmin });
+    await screen.findByRole("table");
+
+    expect(mockFetchAdmins).toHaveBeenCalledWith("acme-motors");
+    expect(mockFetchUsers).not.toHaveBeenCalled();
+  });
+
   it("lists the owner and the organisation admins, never a member", async () => {
     renderRoute({ path: BASE, children: withAdmin });
     await screen.findByRole("table");
@@ -321,6 +341,15 @@ describe("an admin opened beside the list", () => {
     expect(within(panel).getByText(/As an organization admin, manages every app/)).toBeInTheDocument();
   });
 
+  it("takes the apps from the row, never from the Applications endpoint", async () => {
+    // That endpoint needs `admin.application.view`, which the Admins tab does not (C79).
+    renderRoute({ path: `${BASE}/admin/ravi`, children: withAdmin });
+    const panel = await screen.findByRole("complementary", { name: "Ravi Kumar" });
+    await within(panel).findByRole("list", { name: "Apps Ravi Kumar manages" });
+
+    expect(mockFetchApplications).not.toHaveBeenCalled();
+  });
+
   it("says the owner manages everything, and has no ⋮", async () => {
     renderRoute({ path: `${BASE}/admin/asha`, children: withAdmin });
     const panel = await screen.findByRole("complementary", { name: "Asha Rao" });
@@ -391,7 +420,8 @@ describe("each tab follows its own section (C79)", () => {
   });
 
   it("keeps somebody without Roles' view off the Roles tab", async () => {
-    mockFetchMe.mockResolvedValue(holdingTabs(["admin"], ["admin.admin.view", "admin.user.view"]));
+    // `admin.admin.view` ALONE: no `admin.user.view`, and the Admins tab still loads.
+    mockFetchMe.mockResolvedValue(holdingTabs(["admin"], ["admin.admin.view"]));
 
     const { router } = renderRoute({ path: `${BASE}/roles`, children: withAdmin });
 

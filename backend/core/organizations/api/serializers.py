@@ -434,3 +434,24 @@ class PanelRoleSerializer(serializers.Serializer):
     built_in = serializers.BooleanField(read_only=True)
     users = serializers.IntegerField(read_only=True)
     modified_by = serializers.CharField(read_only=True, allow_null=True)
+
+
+class ManagedAppSerializer(serializers.Serializer):
+    code = serializers.CharField(read_only=True)
+    name = serializers.CharField(read_only=True)
+
+
+class AdminSerializer(serializers.Serializer):
+    """
+    One row of the Admin panel's Admins tab (C78). Mirrors `Admin` in
+    `shell/admin/api/admins.ts` -- hand-written on both sides (C43).
+    """
+
+    id = serializers.UUIDField(read_only=True)
+    first_name = serializers.CharField(read_only=True)
+    last_name = serializers.CharField(read_only=True)
+    email = serializers.EmailField(read_only=True)
+    role = serializers.CharField(read_only=True)
+    status = serializers.CharField(read_only=True)
+    apps_managed = ManagedAppSerializer(many=True, read_only=True)
+
