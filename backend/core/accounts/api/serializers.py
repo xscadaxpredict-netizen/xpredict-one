@@ -123,6 +123,20 @@ class SignupResultSerializer(serializers.Serializer):
     is_ready = serializers.BooleanField(read_only=True)
 
 
+class SubModuleSerializer(serializers.Serializer):
+    """A visible sub-module and its visible tabs. Mirrors `AppSubModule` in auth.ts."""
+
+    code = serializers.CharField(read_only=True)
+    tabs = serializers.ListField(child=serializers.CharField(), read_only=True)
+
+
+class ModuleSerializer(serializers.Serializer):
+    """A visible module and its visible sub-modules. Mirrors `AppModule` in auth.ts."""
+
+    code = serializers.CharField(read_only=True)
+    sub_modules = SubModuleSerializer(many=True, read_only=True)
+
+
 class AppAccessSerializer(serializers.Serializer):
     """
     One app's availability inside one organization.
@@ -138,7 +152,9 @@ class AppAccessSerializer(serializers.Serializer):
     subscribed = serializers.BooleanField(read_only=True)
     accessible = serializers.BooleanField(read_only=True)
     summary = serializers.CharField(read_only=True, allow_null=True)
-    modules = serializers.ListField(child=serializers.CharField(), read_only=True)
+    # The app's tree -- module -> sub-module -> tab -- as far as the person may
+    # see it (C79, the owner 2026-11-19). DMS's modules have no sub-modules yet.
+    modules = ModuleSerializer(many=True, read_only=True)
     permissions = serializers.ListField(child=serializers.CharField(), read_only=True)
 
 

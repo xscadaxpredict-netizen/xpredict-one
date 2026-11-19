@@ -9,13 +9,14 @@
 
 import { describe, expect, it } from "vitest";
 
-import { accessFor } from "../access";
+import { accessFor, allows } from "../access";
 import {
   appAccess,
   dealerAdminMembership,
   membership,
   ownerMembership,
   salespersonMembership,
+  modulesOf,
 } from "./factories";
 
 describe("accessFor", () => {
@@ -60,7 +61,7 @@ describe("accessFor", () => {
         appAccess("ecommerce", {
           subscribed: false,
           accessible: true,
-          modules: ["storefront"],
+          modules: modulesOf("storefront"),
           permissions: ["ecommerce.order.refund"],
         }),
       ],
@@ -101,17 +102,24 @@ describe("accessFor", () => {
    * apart, which is the whole reason modules exist alongside apps.
    */
   describe("a dealer admin", () => {
-    it("can open Administration", () => {
-      expect(accessFor(dealerAdminMembership(), "admin").hasModule("users")).toBe(true);
+    it("can open Users, under User Management", () => {
+      const access = accessFor(dealerAdminMembership(), "admin");
+
+      expect(access.canSee("user")).toBe(true);
+      expect(access.canSee("user_management")).toBe(true);
+      expect(access.hasModule("user_management")).toBe(true);
     });
 
     it("cannot reach the organisation's own screens inside it", () => {
       const access = accessFor(dealerAdminMembership(), "admin");
 
-      expect(access.hasModule("dealers")).toBe(false);
-      expect(access.hasModule("roles")).toBe(false);
-      expect(access.hasModule("billing")).toBe(false);
-      expect(access.hasModule("audit")).toBe(false);
+      for (const section of ["organization", "profile", "app_management", "application"]) {
+        expect(access.canSee(section)).toBe(false);
+      }
+      for (const section of ["admins_and_roles", "admin", "app_admin", "role"]) {
+        expect(access.canSee(section)).toBe(false);
+      }
+      expect(access.can("admin.dealer.view")).toBe(false);
     });
 
     it("has a dealer on their membership, which is what narrows them", () => {
@@ -140,5 +148,64 @@ describe("accessFor", () => {
 
     expect(access.hasModule("sales")).toBe(true);
     expect(access.hasModule("tech-support")).toBe(true);
+  });
+});
+
+describe("the section tree (C79)", () => {
+  it("lets the owner see every level: modules, sub-modules and tabs", () => {
+    const access = accessFor(ownerMembership(), "admin");
+
+    for (const code of ["organization", "user_management"]) expect(access.canSee(code)).toBe(true);
+    for (const code of ["profile", "application", "user", "admins_and_roles"]) {
+      expect(access.canSee(code)).toBe(true);
+    }
+    for (const code of ["organization_info", "admin", "app_admin", "role"]) {
+      expect(access.canSee(code)).toBe(true);
+    }
+  });
+
+  it("sees only what the tree holds — a code it lacks is not seen", () => {
+    const rolesOnly = membership({
+      apps: [
+        appAccess("admin", {
+          modules: [
+            { code: "user_management", sub_modules: [{ code: "admins_and_roles", tabs: ["role"] }] },
+          ],
+          permissions: ["admin.role.view"],
+        }),
+      ],
+    });
+    const access = accessFor(rolesOnly, "admin");
+
+    expect(access.canSee("role")).toBe(true);
+    expect(access.canSee("admins_and_roles")).toBe(true);
+    expect(access.canSee("admin")).toBe(false);
+    expect(access.canSee("user")).toBe(false);
+  });
+
+  it("sees nothing in an app that is not open to them", () => {
+    expect(accessFor(salespersonMembership(), "admin").canSee("user")).toBe(false);
+  });
+});
+
+describe("allows — the one reading of a screen's gate", () => {
+  const access = accessFor(dealerAdminMembership(), "admin");
+
+  it("reads a section gate from the tree", () => {
+    expect(allows(access, { section: "user" })).toBe(true);
+    expect(allows(access, { section: "profile" })).toBe(false);
+  });
+
+  it("reads a permission gate from the permissions", () => {
+    expect(allows(access, { permission: "admin.user.create" })).toBe(true);
+    expect(allows(access, { permission: "admin.dealer.view" })).toBe(false);
+  });
+
+  it("reads a module gate from the top-level modules, and null as anyone", () => {
+    const dms = accessFor(salespersonMembership(), "dms");
+
+    expect(allows(dms, { module: "sales" })).toBe(true);
+    expect(allows(dms, { module: "service" })).toBe(false);
+    expect(allows(dms, { module: null })).toBe(true);
   });
 });

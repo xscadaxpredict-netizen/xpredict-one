@@ -18,8 +18,13 @@ three sessions.
 
 from __future__ import annotations
 
+from dataclasses import asdict
+
 import pytest
+from django.db import connection
+from django.test.utils import CaptureQueriesContext
 from django.utils import timezone
+from rest_framework.test import APIClient
 
 from core.accounts.models import User
 from core.billing.models import AppSubscription, SubscriptionStatus
@@ -33,9 +38,9 @@ from core.organizations.models import (
     Territory,
     UnitStatus,
 )
-from core.organizations.selectors import me, resolve_allowed_territories
+from core.organizations.selectors import me, permissions_for, resolve_allowed_territories
 from core.organizations.services import grant_app_access, sign_up
-from core.permissions.models import AppCode, Permission, Role
+from core.permissions.models import AppCode, Permission, Role, RolePermission
 
 pytestmark = pytest.mark.django_db
 
@@ -65,6 +70,39 @@ def add_dealer_admin(organization, unit, email="dealeradmin@acme.test"):
         territories=[unit],
     )
     return user, membership
+
+
+def codes(modules) -> list[str]:
+    """The top-level module codes, in the order sent."""
+    return [module.code for module in modules]
+
+
+def tree(modules) -> list[dict]:
+    """The tree as plain data, so a whole tree compares in one assertion."""
+    return [asdict(module) for module in modules]
+
+
+def module(code, *sub_modules) -> dict:
+    return {"code": code, "sub_modules": list(sub_modules)}
+
+
+def sub(code, *tabs) -> dict:
+    return {"code": code, "tabs": list(tabs)}
+
+
+# The Admin panel's whole tree (`permissions/0017`, `0018`), in MENU order --
+# the owner's: Organization, App Management, User Management (C78). Spelled
+# out, not read from the database: a test comparing the payload with
+# `AppSection.objects.all()` would pass for an empty tree.
+WHOLE_ADMIN_PANEL = [
+    module("organization", sub("profile", "organization_info")),
+    module("app_management", sub("application")),
+    module(
+        "user_management",
+        sub("user"),
+        sub("admins_and_roles", "admin", "app_admin", "role"),
+    ),
+]
 
 
 def app_of(payload, org_slug, key):
@@ -140,6 +178,10 @@ class TestTheOwner:
         and `applications`, the Admin panel's Profile and Applications pages; the
         owner's final list (C79, `permissions/0018`) made it twenty-nine, in the
         same modules.
+
+        `modules` IS THE ADMIN PANEL'S TREE since C79 (the owner, 2026-11-19):
+        module -> sub-module -> tab, in menu order. Dealers and Territories
+        are not on it (Q64), so the old `dealers` word is no longer sent.
         """
         result = found()
 
@@ -148,7 +190,9 @@ class TestTheOwner:
         assert admin.subscribed is True
         assert admin.accessible is True
         assert len(admin.permissions) == 29
-        assert admin.modules == ["applications", "dealers", "organization", "roles", "users"]
+        # The Admin panel's whole tree (C79): the old `dealers` word is gone
+        # with the rest of the flat list -- Dealers is not in the tree (Q64).
+        assert tree(admin.modules) == WHOLE_ADMIN_PANEL
 
     def test_administration_is_reported_subscribed_without_being_bought(self):
         """
@@ -184,7 +228,7 @@ class TestTheOwner:
         dms = app_of(me(result.user), "acme-motors", AppCode.DMS)
 
         assert dms.accessible is True
-        assert dms.modules == ["ecommerce", "sales", "service", "tech-support", "tools"]
+        assert codes(dms.modules) == ["ecommerce", "sales", "service", "tech-support", "tools"]
         assert dms.permissions == sorted(
             Permission.objects.filter(app=AppCode.DMS).values_list("code", flat=True)
         )
@@ -293,8 +337,9 @@ class TestTheDealerAdmin:
     def test_administration_opens_through_the_role_with_users_only(self):
         """
         The app appears because they hold `admin.*` permissions, whatever the
-        source (C40). They get `users` and NOT `dealers` or `roles`: those
-        modules are reachable only through standing, which they do not have.
+        source (C40). They see Users under User Management and nothing else:
+        Admins and Roles, Profile and Applications need permissions only an
+        organisation admin's role or the owner's rule gives (C79).
         """
         result = found()
         unit = Territory.objects.create(organization=result.organization, name="Whitefield")
@@ -303,7 +348,7 @@ class TestTheDealerAdmin:
         admin = app_of(me(user), "acme-motors", AppCode.ADMIN)
 
         assert admin.accessible is True
-        assert admin.modules == ["users"]
+        assert tree(admin.modules) == [module("user_management", sub("user"))]
         assert sorted(admin.permissions) == [
             "admin.user.create",
             "admin.user.deactivate",
@@ -340,7 +385,7 @@ class TestTheDealerAdmin:
 
         dms = app_of(me(user), "acme-motors", AppCode.DMS)
 
-        assert dms.modules == ["sales", "service", "tech-support"]
+        assert codes(dms.modules) == ["sales", "service", "tech-support"]
         assert sorted(dms.permissions) == [
             "dms.enquiry.view",
             "dms.jobcard.view",
@@ -378,7 +423,7 @@ class TestSomebodyWithNoAdministration:
 
         assert app_of(payload, "acme-motors", AppCode.ADMIN).accessible is False
         assert app_of(payload, "acme-motors", AppCode.ADMIN).permissions == []
-        assert app_of(payload, "acme-motors", AppCode.DMS).modules == ["sales"]
+        assert codes(app_of(payload, "acme-motors", AppCode.DMS).modules) == ["sales"]
 
 
 class TestASubscriptionThatLapsed:
@@ -559,3 +604,185 @@ class TestMembershipsThatShouldNotAppear:
         )
 
         assert me(result.user).memberships == []
+
+
+# --- C79: the app's tree, as far as the person may see it -------------------
+
+
+def add_org_admin(organization, email="orgadmin@acme.test"):
+    user = User.objects.create_user(email=email, password="x")
+    membership = Membership.objects.create(user=user, organization=organization)
+    grant_app_access(
+        membership=membership,
+        app=AppCode.ADMIN,
+        role=Role.objects.get(app_id=AppCode.ADMIN, code="admin.org_admin"),
+        territories=[Territory.objects.root_for(organization)],
+    )
+    return user
+
+
+def holding_only(organization, *codes, email="someone@acme.test"):
+    """
+    Somebody whose ONLY Administration permissions are `codes`: a made-up DMS
+    role carrying them, granted at the root. Built-in roles hold whole sets, so
+    a single permission needs a role of its own.
+    """
+    role = Role.objects.create(
+        code="dms.test_only",
+        name="Test role",
+        app_id=AppCode.DMS,
+        level="org",
+        summary="Made up for a test.",
+    )
+    for code in codes:
+        RolePermission.objects.create(role=role, permission=Permission.objects.get(code=code))
+    user = User.objects.create_user(email=email, password="x")
+    membership = Membership.objects.create(user=user, organization=organization)
+    grant_app_access(
+        membership=membership,
+        app=AppCode.DMS,
+        role=role,
+        territories=[Territory.objects.root_for(organization)],
+    )
+    return user
+
+
+class TestTheAdminPanelTree:
+    def test_the_owner_sees_the_whole_admin_panel_in_menu_order(self):
+        result = found()
+
+        admin = app_of(me(result.user), result.organization.slug, AppCode.ADMIN)
+
+        assert tree(admin.modules) == WHOLE_ADMIN_PANEL
+
+    def test_an_organisation_admin_sees_the_whole_admin_panel(self):
+        result = found()
+        user = add_org_admin(result.organization)
+
+        admin = app_of(me(user), result.organization.slug, AppCode.ADMIN)
+
+        assert tree(admin.modules) == WHOLE_ADMIN_PANEL
+
+    def test_a_dealer_admin_sees_users_under_user_management_only(self):
+        result = found()
+        unit = Territory.objects.create(organization=result.organization, name="Whitefield")
+        user, _ = add_dealer_admin(result.organization, unit)
+
+        admin = app_of(me(user), result.organization.slug, AppCode.ADMIN)
+
+        assert tree(admin.modules) == [module("user_management", sub("user"))]
+
+    def test_a_tab_brings_its_sub_module_and_module_and_nothing_beside_it(self):
+        result = found()
+        user = holding_only(result.organization, "admin.admin.view")
+
+        admin = app_of(me(user), result.organization.slug, AppCode.ADMIN)
+
+        assert tree(admin.modules) == [
+            module("user_management", sub("admins_and_roles", "admin")),
+        ]
+
+    def test_only_a_view_opens_a_section(self):
+        """
+        C79 rule 5: you cannot act on a page you cannot see. Holding Users'
+        update and delete without its view shows nothing -- even though the
+        Admin panel itself is open to them, because they hold `admin.*`.
+        """
+        result = found()
+        user = holding_only(result.organization, "admin.user.update", "admin.user.delete")
+
+        admin = app_of(me(user), result.organization.slug, AppCode.ADMIN)
+
+        assert admin.accessible is True
+        assert admin.modules == []
+
+    def test_a_permission_with_no_section_shows_nothing(self):
+        """
+        Dealers and Territories are not in the tree yet (Q64): the old
+        `dealers` module word is no longer sent for the Admin panel.
+        """
+        result = found()
+        user = holding_only(result.organization, "admin.dealer.view")
+
+        admin = app_of(me(user), result.organization.slug, AppCode.ADMIN)
+
+        assert admin.modules == []
+
+
+class TestAnAppNotOnTheTreeYet:
+    def test_dms_modules_keep_their_words_with_no_sub_modules(self):
+        """
+        C79, amended: DMS moves onto the section tree later. Until then its
+        modules are the old words, in the same shape as every other app.
+        """
+        result = found()
+
+        dms = app_of(me(result.user), result.organization.slug, AppCode.DMS)
+
+        assert tree(dms.modules) == [
+            module("ecommerce"),
+            module("sales"),
+            module("service"),
+            module("tech-support"),
+            module("tools"),
+        ]
+
+    def test_an_app_nobody_can_open_reports_no_modules(self):
+        result = found()
+
+        crm = app_of(me(result.user), result.organization.slug, AppCode.CRM)
+
+        assert crm.accessible is False
+        assert crm.modules == []
+
+
+class TestTheTreeCost:
+    @staticmethod
+    def section_queries(context) -> int:
+        return sum("permissions_appsection" in q["sql"] for q in context.captured_queries)
+
+    def test_me_reads_the_tree_once_however_many_organisations(self):
+        first = found()
+        other = found(name="Northway", email="owner@northway.test", code="CODE-NORTH")
+        Membership.objects.create(user=first.user, organization=other.organization)
+
+        with CaptureQueriesContext(connection) as context:
+            payload = me(first.user)
+
+        assert len(payload.memberships) == 2
+        assert self.section_queries(context) == 1
+
+    def test_a_permission_check_never_reads_the_tree(self):
+        """`permissions_for()` runs on every request and never uses the tree."""
+        result = found()
+
+        with CaptureQueriesContext(connection) as context:
+            permissions_for(result.membership)
+
+        assert self.section_queries(context) == 0
+
+
+class TestTheMeEndpoint:
+    def test_each_app_has_exactly_the_fields_auth_ts_declares(self):
+        """
+        `AppAccess`, `AppModule` and `AppSubModule` in `shell/api/auth.ts` are
+        hand-written (C43), so a field missing here is a frontend reading
+        `undefined`.
+        """
+        result = found()
+        client = APIClient()
+        client.force_authenticate(user=result.user)
+
+        body = client.get("/api/v1/me/").json()
+
+        apps = {app["key"]: app for app in body["memberships"][0]["apps"]}
+        assert set(apps["admin"]) == {
+            "key",
+            "subscribed",
+            "accessible",
+            "summary",
+            "modules",
+            "permissions",
+        }
+        assert apps["admin"]["modules"] == WHOLE_ADMIN_PANEL
+        assert apps["dms"]["modules"][0] == {"code": "ecommerce", "sub_modules": []}

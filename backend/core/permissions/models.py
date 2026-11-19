@@ -124,8 +124,8 @@ class AppSection(BaseModel):
     `code` IS THE LEAF'S NAME IN ITS PERMISSIONS: section `enquiry` holds
     `dms.enquiry.view`. It is unique within an app and never carries the menu
     path, so moving a section is a change of `parent` and no permission code
-    changes. `name` is what people see -- the Users section's code is `person`
-    because its permissions were already `admin.user.*`.
+    changes. `name` is what people see -- "Users" -- and `code` follows its
+    permissions: `user`, for `admin.user.*` (`permissions/0018`).
 
     THE RULES. The database enforces what it can see in one row: `app` + `code`
     is unique, and a module has no parent while every other level has one.
@@ -238,7 +238,8 @@ class ActionKind(models.TextChoices):
 
 # THE BASIC FOUR, in the role builder's column order (C79, amended 2026-11-18).
 # Every other verb is special.
-BASIC_ACTIONS: tuple[str, ...] = ("view", "create", "update", "delete")
+VIEW_ACTION = "view"
+BASIC_ACTIONS: tuple[str, ...] = (VIEW_ACTION, "create", "update", "delete")
 
 
 class Action(BaseModel):

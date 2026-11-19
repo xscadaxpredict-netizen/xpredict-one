@@ -8,7 +8,7 @@
  */
 
 import type { Role } from "../admin/api/roles";
-import type { AppAccess, AppKey, Me, Membership } from "../api/auth";
+import type { AppAccess, AppKey, AppModule, Me, Membership } from "../api/auth";
 
 export function appAccess(key: AppKey, overrides: Partial<AppAccess> = {}): AppAccess {
   return {
@@ -21,6 +21,35 @@ export function appAccess(key: AppKey, overrides: Partial<AppAccess> = {}): AppA
     ...overrides,
   };
 }
+
+/**
+ * Modules with no sub-modules — DMS's shape until it moves onto the section
+ * tree (C79): `modulesOf("sales", "service")`.
+ */
+export function modulesOf(...codes: string[]): AppModule[] {
+  return codes.map((code) => ({ code, sub_modules: [] }));
+}
+
+/**
+ * The Admin panel's whole tree, in menu order, as `/me` sends an owner or an
+ * organisation admin (C79, `permissions/0017`-`0018`).
+ */
+export const ADMIN_PANEL_TREE: AppModule[] = [
+  { code: "organization", sub_modules: [{ code: "profile", tabs: ["organization_info"] }] },
+  { code: "app_management", sub_modules: [{ code: "application", tabs: [] }] },
+  {
+    code: "user_management",
+    sub_modules: [
+      { code: "user", tabs: [] },
+      { code: "admins_and_roles", tabs: ["admin", "app_admin", "role"] },
+    ],
+  },
+];
+
+/** Users alone, under User Management: what `/me` sends a dealer admin (C79). */
+export const USERS_ONLY_TREE: AppModule[] = [
+  { code: "user_management", sub_modules: [{ code: "user", tabs: [] }] },
+];
 
 export function membership(overrides: Partial<Membership> = {}): Membership {
   return {
@@ -60,7 +89,7 @@ export function salespersonMembership(): Membership {
     unit_name: "Chennai — Guindy",
     apps: [
       appAccess("dms", {
-        modules: ["sales"],
+        modules: modulesOf("sales"),
         permissions: ["dms.enquiry.create"],
       }),
       appAccess("crm", { accessible: false }),
@@ -83,7 +112,7 @@ export function ownerMembership(): Membership {
     role: "owner",
     apps: [
       appAccess("dms", {
-        modules: ["sales", "service", "tech-support"],
+        modules: modulesOf("sales", "service", "tech-support"),
         permissions: ["dms.enquiry.create"],
       }),
       appAccess("crm"),
@@ -94,8 +123,15 @@ export function ownerMembership(): Membership {
        * `/me`, so a test written against it describes the product that ships.
        */
       appAccess("admin", {
-        modules: ["users", "dealers", "roles", "organization", "applications"],
-        permissions: ["admin.user.create", "admin.dealer.create", "admin.role.view"],
+        modules: ADMIN_PANEL_TREE,
+        permissions: [
+          "admin.user.create",
+          "admin.dealer.create",
+          "admin.role.view",
+          // The Applications panel's two tabs (C79): the owner holds them by rule.
+          "admin.application.view_users",
+          "admin.application.view_conditional_assignment",
+        ],
       }),
     ],
   });
@@ -123,13 +159,13 @@ export function dealerAdminMembership(): Membership {
     unit_name: "Bangalore — Whitefield",
     apps: [
       appAccess("dms", {
-        modules: ["sales", "service"],
+        modules: modulesOf("sales", "service"),
         permissions: ["dms.enquiry.view", "dms.jobcard.view"],
       }),
       appAccess("crm", { accessible: false }),
       appAccess("ecommerce", { subscribed: false, accessible: false }),
       appAccess("admin", {
-        modules: ["users"],
+        modules: USERS_ONLY_TREE,
         permissions: [
           "admin.user.view",
           "admin.user.create",

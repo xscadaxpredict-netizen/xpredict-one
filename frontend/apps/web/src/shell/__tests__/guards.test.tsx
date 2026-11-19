@@ -16,7 +16,14 @@ import { fetchMe } from "../api/auth";
 import { ModuleRoutes, type ModuleRoute } from "../routing";
 import AdminRoutes from "../admin/routes";
 import { renderRoute } from "./harness";
-import { appAccess, me, membership, ownerMembership, salespersonMembership } from "./factories";
+import {
+  appAccess,
+  me,
+  membership,
+  modulesOf,
+  ownerMembership,
+  salespersonMembership,
+} from "./factories";
 
 /*
  * Only `fetchMe` and `logout` are replaced; the module's types and its other
@@ -235,7 +242,7 @@ describe("module privilege", () => {
     // level down.
     const serviceOnly = membership({
       unit_name: "Chennai — Guindy",
-      apps: [appAccess("dms", { modules: ["service"] })],
+      apps: [appAccess("dms", { modules: modulesOf("service") })],
     });
     mockFetchMe.mockResolvedValue(me({ memberships: [serviceOnly] }));
 

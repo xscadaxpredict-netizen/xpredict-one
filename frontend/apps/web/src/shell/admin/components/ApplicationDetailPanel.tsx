@@ -8,6 +8,13 @@
  * planned and drawn greyed out, with `aria-disabled` rather than `disabled`
  * so a keyboard still reaches it and its "coming later" hint is readable.
  *
+ * EACH TAB HAS ITS OWN PERMISSION (C79, the owner's final list): Members needs
+ * `admin.application.view_users` -- the same one its endpoint checks -- and
+ * Conditional Assignment `admin.application.view_conditional_assignment`.
+ * Things inside an opened record are special actions on its leaf, not
+ * sections, so these are `can()` checks. A tab the person lacks is not drawn,
+ * and the members are never asked for.
+ *
  * `key` it by the app's code where it is rendered, so opening another app
  * mounts a fresh panel and the previous one's search does not carry over.
  */
@@ -17,6 +24,7 @@ import { DetailPanel, ErrorState } from "@xpredict/ui";
 import { SearchIcon } from "lucide-react";
 import { useState } from "react";
 
+import { useAccess } from "../../access";
 import { findApp } from "../../navigation";
 import type { Application, ApplicationMember } from "../api/applications";
 import { useApplicationMembers } from "../hooks/useApplications";
@@ -30,6 +38,9 @@ interface ApplicationDetailPanelProps {
 
 export function ApplicationDetailPanel({ app, onClose }: ApplicationDetailPanelProps) {
   const definition = findApp(app.code);
+  const access = useAccess();
+  const canSeeMembers = access.can("admin.application.view_users");
+  const canSeeConditional = access.can("admin.application.view_conditional_assignment");
 
   return (
     <DetailPanel
@@ -48,43 +59,51 @@ export function ApplicationDetailPanel({ app, onClose }: ApplicationDetailPanelP
         </>
       }
     >
-      <div className={styles.tabs} role="tablist" aria-label={`${app.name} details`}>
-        <button
-          type="button"
-          role="tab"
-          id="application-tab-members"
-          aria-selected="true"
-          aria-controls="application-panel-members"
-          className={styles.tab}
-        >
-          Members
-        </button>
-        <button
-          type="button"
-          role="tab"
-          aria-selected="false"
-          aria-disabled="true"
-          title="Coming later"
-          className={styles.tab}
-        >
-          Conditional Assignment
-        </button>
-      </div>
+      {(canSeeMembers || canSeeConditional) && (
+        <div className={styles.tabs} role="tablist" aria-label={`${app.name} details`}>
+          {canSeeMembers && (
+            <button
+              type="button"
+              role="tab"
+              id="application-tab-members"
+              aria-selected="true"
+              aria-controls="application-panel-members"
+              className={styles.tab}
+            >
+              Members
+            </button>
+          )}
+          {canSeeConditional && (
+            <button
+              type="button"
+              role="tab"
+              aria-selected="false"
+              aria-disabled="true"
+              title="Coming later"
+              className={styles.tab}
+            >
+              Conditional Assignment
+            </button>
+          )}
+        </div>
+      )}
 
-      <div
-        role="tabpanel"
-        id="application-panel-members"
-        aria-labelledby="application-tab-members"
-        className={styles.panel}
-      >
-        {app.active ? (
-          <Members app={app} />
-        ) : (
-          <p className={styles.note}>
-            Your organization doesn&rsquo;t subscribe to {app.name}, so nobody can open it.
-          </p>
-        )}
-      </div>
+      {canSeeMembers && (
+        <div
+          role="tabpanel"
+          id="application-panel-members"
+          aria-labelledby="application-tab-members"
+          className={styles.panel}
+        >
+          {app.active ? (
+            <Members app={app} />
+          ) : (
+            <p className={styles.note}>
+              Your organization doesn&rsquo;t subscribe to {app.name}, so nobody can open it.
+            </p>
+          )}
+        </div>
+      )}
     </DetailPanel>
   );
 }

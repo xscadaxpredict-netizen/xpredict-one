@@ -40,6 +40,8 @@ import {
   membership,
   ownerMembership,
   roleCatalogue,
+  ADMIN_PANEL_TREE,
+  modulesOf,
 } from "./factories";
 
 vi.mock("../api/auth", async (importOriginal) => ({
@@ -827,7 +829,7 @@ describe("what an administrator may hand out", () => {
         // Paid for, and this admin has given up their own access to it.
         appAccess("dms", { accessible: false, modules: [], permissions: [] }),
         appAccess("admin", {
-          modules: ["users", "dealers", "roles"],
+          modules: ADMIN_PANEL_TREE,
           permissions: ["admin.user.create", "admin.user.update", "admin.role.view"],
         }),
       ],
@@ -850,10 +852,10 @@ describe("what an administrator may hand out", () => {
     const noCrm = membership({
       role: "owner",
       apps: [
-        appAccess("dms", { modules: ["sales"], permissions: ["dms.enquiry.view"] }),
+        appAccess("dms", { modules: modulesOf("sales"), permissions: ["dms.enquiry.view"] }),
         appAccess("crm", { subscribed: false, accessible: false }),
         appAccess("admin", {
-          modules: ["users", "dealers", "roles"],
+          modules: ADMIN_PANEL_TREE,
           permissions: ["admin.user.create", "admin.role.view"],
         }),
       ],

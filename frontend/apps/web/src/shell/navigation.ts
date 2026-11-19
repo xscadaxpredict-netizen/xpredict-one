@@ -19,10 +19,23 @@
  * typeable.
  */
 
+import type { Gate } from "./access";
 import type { AppAccess, AppKey, Membership } from "./api/auth";
 import type { NavIconName } from "./components/NavIcon";
 
-export interface NavItem {
+/**
+ * One link in an app's sidebar, and the GATE that decides whether it shows:
+ * `section` (an app on the section tree, C79), `permission` or `module` (DMS)
+ * -- see `Gate` in `access.ts`.
+ *
+ * THE GATE IS REQUIRED, not optional, and that is the point. An optional field
+ * is one a developer adding a screen at 5pm does not notice; a required one is
+ * a compile error. `module: null` is allowed but has to be typed deliberately,
+ * so it shows up in a diff as a decision rather than an omission.
+ */
+export type NavItem = NavItemFields & Gate;
+
+interface NavItemFields {
   /** Sidebar label. */
   label: string;
   /** Path relative to `/:orgSlug/<app key>/`. Empty string means the app root. */
@@ -31,26 +44,12 @@ export interface NavItem {
    * The icon beside the label, and the only thing left once the rail is
    * collapsed to 64px.
    *
-   * Required, like `module` below — a new screen has to choose one, and a
+   * Required, like the gate — a new screen has to choose one, and a
    * missing icon is a compile error rather than a blank square nobody spots.
    * Icons are named by what they draw, so picking one is not a claim that no
    * other module may use it.
    */
   icon: NavIconName;
-
-  /**
-   * The module key this link needs, or `null` for a link anyone inside the app
-   * may follow.
-   *
-   * REQUIRED, not optional, and that is the point. An optional field is one a
-   * developer adding a screen at 5pm does not notice; a required one is a
-   * compile error. `null` is allowed but has to be typed deliberately, so it
-   * shows up in a diff as a decision rather than an omission.
-   *
-   * Same reasoning as listing the ESLint exemptions file by file instead of
-   * matching them with a pattern.
-   */
-  module: string | null;
 
   /**
    * What the topbar's search box searches while this page is open, as a
@@ -64,6 +63,25 @@ export interface NavItem {
    * like switching page does.
    */
   search?: string | ((rest: string) => string);
+
+  /**
+   * THE TABS OF THIS SUB-MODULE (C79), when it has any: the bottom level of
+   * the owner's structure, module -> sub-module -> tab, the same tree `/me`
+   * sends. In order. The page draws its tab row from here, so the tabs are
+   * written once, beside the sub-module they belong to.
+   */
+  tabs?: NavTab[];
+}
+
+/** One tab of a sub-module's page (C79). Each is its own address. */
+export interface NavTab {
+  label: string;
+  /** Below the sub-module's path: "" for the first tab, which is the page's own address. */
+  path: string;
+  /** Its section in the tree: drawn only if `/me`'s tree has it. */
+  section: string;
+  /** Planned, not built: drawn greyed out, never opened (App Admins, Q63). */
+  comingSoon?: true;
 }
 
 /**
@@ -267,10 +285,11 @@ export const APP_CATALOG: AppDefinition[] = [
     /*
      * The owner's modules and sub-modules (2026-11-17), drawn as an accordion.
      *
-     * Profile, Applications and Admins and Roles are about the WHOLE
-     * organisation, which a dealer admin (who holds `users` alone, C23) never
-     * sees: their modules are `organization`, `applications`
-     * (`admin.organization_info.view`, `admin.application.view`) and `roles`.
+     * EACH SUB-MODULE IS GATED BY ITS OWN SECTION (C79): it shows if `/me`'s
+     * tree has it, i.e. if the person holds the `view` of it or of a tab under
+     * it. A module shows if any of its sub-modules does. A dealer admin sees
+     * Users alone; Profile, Applications and Admins and Roles are about the
+     * WHOLE organisation.
      *
      * DEALERS IS NOT IN THE OWNER'S LIST. Its screen and route still exist
      * (`/admin/dealers`), but nothing in the sidebar leads to it.
@@ -280,7 +299,7 @@ export const APP_CATALOG: AppDefinition[] = [
       {
         label: "Organization",
         icon: "building",
-        items: [{ label: "Profile", path: "profile", icon: "building", module: "organization" }],
+        items: [{ label: "Profile", path: "profile", icon: "building", section: "profile" }],
       },
       {
         label: "App Management",
@@ -290,7 +309,7 @@ export const APP_CATALOG: AppDefinition[] = [
             label: "Applications",
             path: "applications",
             icon: "grid",
-            module: "applications",
+            section: "application",
             search: "applications",
           },
         ],
@@ -299,15 +318,20 @@ export const APP_CATALOG: AppDefinition[] = [
         label: "User Management",
         icon: "user",
         items: [
-          { label: "Users", path: "users", icon: "users", module: "users", search: "users" },
+          { label: "Users", path: "users", icon: "users", section: "user", search: "users" },
           // ONE sub-module, as Zoho has it (the owner, 2026-11-18), with three
           // tabs: Admins, App Admins (greyed out until it has a page), Roles.
           {
             label: "Admins and Roles",
             path: "admins-and-roles",
             icon: "key",
-            module: "roles",
+            section: "admins_and_roles",
             search: (tab) => (tab.startsWith("roles") ? "roles" : "admins"),
+            tabs: [
+              { label: "Admins", path: "", section: "admin" },
+              { label: "App Admins", path: "app-admins", section: "app_admin", comingSoon: true },
+              { label: "Roles", path: "roles", section: "role" },
+            ],
           },
         ],
       },
@@ -317,6 +341,22 @@ export const APP_CATALOG: AppDefinition[] = [
 
 export function findApp(key: string | undefined): AppDefinition | undefined {
   return APP_CATALOG.find((app) => app.key === key);
+}
+
+/**
+ * The tabs of one sub-module's page, from the catalogue: `tabsOf("admin",
+ * "admins-and-roles")`.
+ *
+ * THROWS if the page is not in the catalogue or has no tabs, rather than
+ * returning none: a page with an empty tab row would look like somebody had
+ * lost access, when it is a typo in the code.
+ */
+export function tabsOf(appKey: AppKey, path: string): NavTab[] {
+  const item = findApp(appKey)
+    ?.nav.flatMap((group) => group.items)
+    .find((candidate) => candidate.path === path);
+  if (!item?.tabs) throw new Error(`No tabs for ${appKey}/${path} in APP_CATALOG`);
+  return item.tabs;
 }
 
 /**
@@ -396,7 +436,6 @@ export function visibleApps(membership: Membership): LauncherApp[] {
 
     result.push({ definition, access, enabled: access.subscribed && access.accessible });
   }
-
   return result;
 }
 

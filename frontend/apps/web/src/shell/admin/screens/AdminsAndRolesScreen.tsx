@@ -12,6 +12,15 @@
  *   Roles       the Admin panel's roles -- Organization Owner and Organization
  *               Admin -- with how many people hold each (`RolesTab`).
  *
+ * THE TABS ARE IN THE CATALOGUE (`tabs` on this page's item in
+ * `navigation.ts`): label, address, section, and whether it is coming soon.
+ * This screen draws them; it does not list them.
+ *
+ * EACH TAB IS GATED BY ITS OWN SECTION (C79) -- `admin`, `app_admin`, `role`,
+ * the tabs of `admins_and_roles` in `/me`'s tree. A tab the person may not see
+ * is not drawn, and its address goes to the first tab they may open: somebody
+ * holding only `admin.role.view` lands on Roles and never sees Admins.
+ *
  * EACH TAB IS ITS OWN ADDRESS (`/admin/admins-and-roles`, `…/roles`), and so
  * is an admin opened beside the list
  * (`…/admin/<membership id>`), so a refresh or a link opens the same thing, and the topbar's box
@@ -25,7 +34,9 @@ import { useState } from "react";
 import { Link, Navigate, useNavigate, useParams } from "react-router-dom";
 
 import { usePageSearch } from "../../../stores/pageSearchStore";
+import { useAccess } from "../../access";
 import { useShellContext } from "../../context";
+import { tabsOf } from "../../navigation";
 import type { OrgUser } from "../api/users";
 import { AdminActions, AdminDetailPanel, type Admin } from "../components/AdminDetailPanel";
 import { ListFilter } from "../components/ListFilter";
@@ -35,22 +46,28 @@ import { useUsers } from "../hooks/useUsers";
 import styles from "./ListPage.module.css";
 import { RolesTab } from "./RolesScreen";
 
-const TABS: readonly { id: string; label: string; disabled?: true }[] = [
-  { id: "", label: "Admins" },
-  { id: "app-admins", label: "App Admins", disabled: true },
-  { id: "roles", label: "Roles" },
-];
+/** The tabs, from the catalogue (C79): written once, beside the sub-module. */
+const TABS = tabsOf("admin", "admins-and-roles");
 
 export function AdminsAndRolesScreen() {
   const { membership } = useShellContext();
+  const access = useAccess();
   // `…/admin/<id>` is the Admins tab with somebody open: no `tab` segment.
   const { tab = "", personId } = useParams<{ tab: string; personId: string }>();
   const basePath = `/${membership.org_slug}/admin/admins-and-roles`;
+  const pathOf = (tabPath: string) => (tabPath ? `${basePath}/${tabPath}` : basePath);
 
-  // A greyed-out tab has no page: its address (a bookmark from before it was
-  // greyed) lands on Admins rather than on an empty screen.
-  if (TABS.some((item) => item.disabled && item.id === tab)) {
-    return <Navigate to={basePath} replace />;
+  // The tabs this person may see; of those, the ones that open (not greyed).
+  const shown = TABS.filter((item) => access.canSee(item.section));
+  const openable = shown.filter((item) => !item.comingSoon);
+
+  // An address for a tab they may not open -- hidden, greyed out, or unknown
+  // -- goes to the first one they may. With none (only a greyed tab is
+  // theirs) the page stays, saying so, rather than bouncing back here forever
+  // through the panel's front door.
+  const first = openable[0];
+  if (first && !openable.some((item) => item.path === tab)) {
+    return <Navigate to={pathOf(first.path)} replace />;
   }
 
   return (
@@ -65,12 +82,12 @@ export function AdminsAndRolesScreen() {
       </div>
 
       <div className={styles.tabs} role="tablist" aria-label="Admins and Roles">
-        {TABS.map((item) =>
-          item.disabled ? (
+        {shown.map((item) =>
+          item.comingSoon ? (
             // `aria-disabled` rather than `disabled`, as on Profile: a keyboard
             // still reaches it and "Coming later" can be read.
             <button
-              key={item.id}
+              key={item.path}
               type="button"
               role="tab"
               aria-selected="false"
@@ -82,10 +99,10 @@ export function AdminsAndRolesScreen() {
             </button>
           ) : (
             <Link
-              key={item.id}
-              to={item.id ? `${basePath}/${item.id}` : basePath}
+              key={item.path}
+              to={pathOf(item.path)}
               role="tab"
-              aria-selected={tab === item.id}
+              aria-selected={tab === item.path}
               className={styles.tab}
             >
               {item.label}
@@ -94,8 +111,9 @@ export function AdminsAndRolesScreen() {
         )}
       </div>
 
-      {tab === "" && <AdminsTab basePath={basePath} personId={personId} />}
-      {tab === "roles" && <RolesTab />}
+      {!first && <p className={styles.empty}>Nothing here is ready for you yet.</p>}
+      {first && tab === "" && <AdminsTab basePath={basePath} personId={personId} />}
+      {first && tab === "roles" && <RolesTab />}
     </div>
   );
 }

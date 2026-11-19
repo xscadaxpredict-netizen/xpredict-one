@@ -17,7 +17,7 @@
 import { NavLink } from "react-router-dom";
 
 import type { AppDefinition } from "../navigation";
-import { useAccess } from "../access";
+import { allows, useAccess } from "../access";
 import { useUiStore } from "../../stores/uiStore";
 import { AccordionNav } from "./AccordionNav";
 import { NavIcon } from "./NavIcon";
@@ -64,11 +64,12 @@ export function Sidebar({ app, orgSlug, inDrawer = false, onNavigate }: SidebarP
   const groups = app.nav
     .map((group) => ({
       ...group,
-      items: group.items.filter((item) => item.module === null || access.hasModule(item.module)),
+      items: group.items.filter((item) => allows(access, item)),
     }))
     // A "Soon" module has no items on purpose and stays, so the plan shows.
     .filter((group) => group.items.length > 0 || group.comingSoon);
 
+    console.log(groups);
   return (
     <nav
       className={styles.sidebar}

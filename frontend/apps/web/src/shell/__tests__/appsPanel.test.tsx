@@ -13,7 +13,14 @@ import { fireEvent, screen, within } from "@testing-library/react";
 import { fetchMe } from "../api/auth";
 import type * as authApi from "../api/auth";
 import { renderRoute } from "./harness";
-import { appAccess, me, membership, ownerMembership } from "./factories";
+import {
+  appAccess,
+  me,
+  membership,
+  modulesOf,
+  ownerMembership,
+  USERS_ONLY_TREE,
+} from "./factories";
 
 vi.mock("../api/auth", async (importOriginal) => ({
   ...(await importOriginal<typeof authApi>()),
@@ -82,9 +89,9 @@ describe("the apps panel", () => {
         memberships: [
           membership({
             apps: [
-              appAccess("dms", { modules: ["sales"] }),
+              appAccess("dms", { modules: modulesOf("sales") }),
               appAccess("crm", { accessible: false }),
-              appAccess("admin", { modules: ["users"], permissions: ["admin.user.view"] }),
+              appAccess("admin", { modules: USERS_ONLY_TREE, permissions: ["admin.user.view"] }),
             ],
           }),
         ],

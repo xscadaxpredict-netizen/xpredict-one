@@ -19,7 +19,14 @@ import {
 } from "../admin/api/applications";
 import { useUiStore } from "../../stores/uiStore";
 import { renderRoute } from "./harness";
-import { dealerAdminMembership, me, ownerMembership } from "./factories";
+import {
+  ADMIN_PANEL_TREE,
+  appAccess,
+  dealerAdminMembership,
+  me,
+  membership,
+  ownerMembership,
+} from "./factories";
 
 vi.mock("../api/auth", async (importOriginal) => ({
   ...(await importOriginal<typeof authApi>()),
@@ -422,5 +429,46 @@ describe("an app opened beside the list", () => {
 
     expect(await screen.findByText(/That application isn.t on this list/)).toBeInTheDocument();
     expect(screen.queryByRole("complementary")).not.toBeInTheDocument();
+  });
+});
+
+describe("the panel's tabs follow their permissions (C79)", () => {
+  function holding(permissions: string[]) {
+    return me({
+      memberships: [
+        membership({
+          role: "member",
+          apps: [
+            appAccess("admin", {
+              modules: ADMIN_PANEL_TREE,
+              permissions: ["admin.application.view", ...permissions],
+            }),
+          ],
+        }),
+      ],
+    });
+  }
+
+  it("hides Members, and never asks for them, without view_users", async () => {
+    mockFetchMe.mockResolvedValue(holding(["admin.application.view_conditional_assignment"]));
+
+    renderRoute({ path: "/acme-motors/admin/applications/crm", children: withAdmin });
+    const panel = await screen.findByRole("complementary", { name: "CRM" });
+
+    expect(within(panel).queryByRole("tab", { name: "Members" })).not.toBeInTheDocument();
+    expect(within(panel).getByRole("tab", { name: "Conditional Assignment" })).toBeInTheDocument();
+    expect(mockFetchMembers).not.toHaveBeenCalled();
+  });
+
+  it("hides Conditional Assignment without its permission", async () => {
+    mockFetchMe.mockResolvedValue(holding(["admin.application.view_users"]));
+
+    renderRoute({ path: "/acme-motors/admin/applications/crm", children: withAdmin });
+    const panel = await screen.findByRole("complementary", { name: "CRM" });
+
+    expect(within(panel).getByRole("tab", { name: "Members" })).toBeInTheDocument();
+    expect(
+      within(panel).queryByRole("tab", { name: "Conditional Assignment" }),
+    ).not.toBeInTheDocument();
   });
 });

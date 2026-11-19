@@ -24,7 +24,7 @@
 
 import { useMemo } from "react";
 
-import type { AppAccess, Membership } from "./api/auth";
+import type { AppAccess, AppModule, Membership } from "./api/auth";
 import { useShellContext } from "./context";
 
 export interface Access {
@@ -32,9 +32,20 @@ export interface Access {
    * May this person open this module of the current app?
    *
    * Module keys are URL segments the frontend already names — "sales",
-   * "service" — so checking one here is not inventing vocabulary.
+   * "service" — so checking one here is not inventing vocabulary. A TOP-LEVEL
+   * module only: for a sub-module or a tab, ask `canSee`.
    */
   hasModule: (moduleKey: string) => boolean;
+
+  /**
+   * May this person SEE this section of the current app — a module, a
+   * sub-module or a tab, anywhere in the tree `/me` sent (C79)?
+   *
+   * The server already left out everything they may not see: a tab is there
+   * if they hold its `view`, and everything above it comes with it. So this is
+   * "is the code in the tree", at any level.
+   */
+  canSee: (sectionCode: string) => boolean;
 
   /**
    * May this person take this action?
@@ -46,8 +57,32 @@ export interface Access {
   can: (permission: string) => boolean;
 
   /** Everything granted, for debugging and for tests. Never iterate this to build UI. */
-  modules: readonly string[];
+  modules: readonly AppModule[];
   permissions: readonly string[];
+}
+
+/**
+ * WHAT A SCREEN NEEDS before it is shown — a route, or a link in the sidebar.
+ * Exactly ONE of three, and always written down: a screen declared with none
+ * is a TypeScript error, so a forgotten guard is caught at compile time.
+ *
+ *   `section`     an app on the section tree (the Admin panel, C79): the
+ *                 sub-module or tab the screen IS. Preferred.
+ *   `permission`  a screen not on the tree yet — the Admin panel's Dealers
+ *                 (Q64) — guarded by the permission its endpoint checks.
+ *   `module`      DMS, until it moves onto the tree: its module word, or
+ *                 `null` for a screen anyone inside the app may open.
+ */
+export type Gate =
+  | { section: string; permission?: never; module?: never }
+  | { permission: string; section?: never; module?: never }
+  | { module: string | null; section?: never; permission?: never };
+
+/** Whether `access` lets somebody through `gate`. The ONE reading of a gate. */
+export function allows(access: Access, gate: Gate): boolean {
+  if (gate.section !== undefined) return access.canSee(gate.section);
+  if (gate.permission !== undefined) return access.can(gate.permission);
+  return gate.module === null || access.hasModule(gate.module);
 }
 
 /**
@@ -60,6 +95,7 @@ export interface Access {
  */
 const NO_ACCESS: Access = {
   hasModule: () => false,
+  canSee: () => false,
   can: () => false,
   modules: [],
   permissions: [],
@@ -80,7 +116,14 @@ export function accessFor(membership: Membership, appKey: string | undefined): A
   // should never have reached cannot hand out permissions on the way past.
   if (!app || !app.subscribed || !app.accessible) return NO_ACCESS;
 
-  const modules = new Set(app.modules);
+  const modules = new Set(app.modules.map((module) => module.code));
+  // Every code in the tree, at every level: modules, sub-modules and tabs.
+  const visible = new Set(
+    app.modules.flatMap((module) => [
+      module.code,
+      ...module.sub_modules.flatMap((sub) => [sub.code, ...sub.tabs]),
+    ]),
+  );
   const permissions = new Set(app.permissions);
 
   const isDealerAdmin = membership.apps.some((a) =>
@@ -98,6 +141,7 @@ export function accessFor(membership: Membership, appKey: string | undefined): A
     hasModule: (moduleKey) =>
       modules.has(moduleKey) ||
       (isManagerOrAdmin && (moduleKey === "ecommerce" || moduleKey === "tools")),
+    canSee: (sectionCode) => visible.has(sectionCode),
     can: (permission) => permissions.has(permission),
     modules: app.modules,
     permissions: app.permissions,

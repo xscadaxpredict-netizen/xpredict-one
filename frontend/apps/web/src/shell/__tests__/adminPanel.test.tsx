@@ -8,12 +8,15 @@ import { act, fireEvent, screen, within } from "@testing-library/react";
 
 import { fetchMe } from "../api/auth";
 import type * as authApi from "../api/auth";
+import type { AppModule } from "../api/auth";
 import AdminRoutes from "../admin/routes";
 import { useUiStore } from "../../stores/uiStore";
 import { renderRoute } from "./harness";
 import {
+  appAccess,
   dealerAdminMembership,
   me,
+  membership,
   ownerMembership,
   salespersonMembership,
 } from "./factories";
@@ -276,5 +279,65 @@ describe("the Admin panel's accordion", () => {
       .getAllByRole("link")
       .map((link) => link.textContent);
     expect(links).toEqual(["Users"]);
+  });
+});
+
+describe("the sidebar follows the section tree (C79)", () => {
+  beforeEach(() => {
+    window.localStorage.clear();
+    useUiStore.setState({ openSettingsModule: {}, isSidebarCollapsed: false });
+  });
+
+  function holding(modules: AppModule[], permissions: string[]) {
+    return me({
+      memberships: [membership({ role: "member", apps: [appAccess("admin", { modules, permissions })] })],
+    });
+  }
+
+  it("shows a sub-module whose tab is all they may see, under its module", async () => {
+    mockFetchMe.mockResolvedValue(
+      holding(
+        [{ code: "user_management", sub_modules: [{ code: "admins_and_roles", tabs: ["role"] }] }],
+        ["admin.role.view"],
+      ),
+    );
+
+    renderRoute({ path: "/acme-motors/admin/profile", children: withAdmin });
+    await screen.findByRole("heading", { name: "Page not found" });
+
+    const rows = within(sidebar())
+      .getAllByRole("button")
+      .map((button) => button.textContent);
+    expect(rows).toEqual(["User Management", "Collapse"]);
+
+    fireEvent.click(moduleRow("User Management"));
+    const links = within(sidebar())
+      .getAllByRole("link")
+      .map((link) => link.textContent);
+    expect(links).toEqual(["Admins and Roles"]);
+  });
+
+  it("does not open Users for somebody whose tree lacks it", async () => {
+    mockFetchMe.mockResolvedValue(
+      holding([{ code: "app_management", sub_modules: [{ code: "application", tabs: [] }] }], [
+        "admin.application.view",
+        // Users' other actions without its view: still not Users (C79 rule 5).
+        "admin.user.update",
+      ]),
+    );
+
+    // A person's own address, not `/admin/users`: the harness mounts that one
+    // straight onto the Users screen for other tests, outside the guard.
+    renderRoute({ path: "/acme-motors/admin/users/ravi", children: withAdmin });
+
+    expect(await screen.findByRole("heading", { name: "Page not found" })).toBeInTheDocument();
+  });
+
+  it("keeps Dealers, which is not in the tree, behind its permission", async () => {
+    mockFetchMe.mockResolvedValue(me({ memberships: [dealerAdminMembership()] }));
+
+    renderRoute({ path: "/acme-motors/admin/dealers", children: withAdmin });
+
+    expect(await screen.findByRole("heading", { name: "Page not found" })).toBeInTheDocument();
   });
 });

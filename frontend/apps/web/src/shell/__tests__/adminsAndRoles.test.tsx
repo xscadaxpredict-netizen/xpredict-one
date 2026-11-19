@@ -16,7 +16,7 @@ import { fetchPanelRoles } from "../admin/api/roles";
 import { fetchMe } from "../api/auth";
 import type * as authApi from "../api/auth";
 import { renderRoute } from "./harness";
-import { me, ownerMembership } from "./factories";
+import { appAccess, me, membership, ownerMembership } from "./factories";
 
 vi.mock("../api/auth", async (importOriginal) => ({
   ...(await importOriginal<typeof authApi>()),
@@ -354,5 +354,60 @@ describe("an admin opened beside the list", () => {
 
     expect(await screen.findByText(/That person is not an admin here/)).toBeInTheDocument();
     expect(screen.queryByRole("complementary")).not.toBeInTheDocument();
+  });
+});
+
+describe("each tab follows its own section (C79)", () => {
+  function holdingTabs(tabs: string[], permissions: string[]) {
+    return me({
+      memberships: [
+        membership({
+          role: "member",
+          apps: [
+            appAccess("admin", {
+              modules: [
+                { code: "user_management", sub_modules: [{ code: "admins_and_roles", tabs }] },
+              ],
+              permissions,
+            }),
+          ],
+        }),
+      ],
+    });
+  }
+
+  function tabNames() {
+    return screen.getAllByRole("tab").map((tab) => tab.textContent);
+  }
+
+  it("shows only Roles to somebody holding only its view, and sends them there", async () => {
+    mockFetchMe.mockResolvedValue(holdingTabs(["role"], ["admin.role.view"]));
+
+    const { router } = renderRoute({ path: BASE, children: withAdmin });
+
+    await screen.findByRole("columnheader", { name: "Role Name" });
+    expect(router.state.location.pathname).toBe(`${BASE}/roles`);
+    expect(tabNames()).toEqual(["Roles"]);
+  });
+
+  it("keeps somebody without Roles' view off the Roles tab", async () => {
+    mockFetchMe.mockResolvedValue(holdingTabs(["admin"], ["admin.admin.view", "admin.user.view"]));
+
+    const { router } = renderRoute({ path: `${BASE}/roles`, children: withAdmin });
+
+    await screen.findByRole("columnheader", { name: "Admins" });
+    expect(router.state.location.pathname).toBe(BASE);
+    expect(tabNames()).toEqual(["Admins"]);
+    expect(mockFetchPanelRoles).not.toHaveBeenCalled();
+  });
+
+  it("says so, without bouncing, when only a greyed-out tab is theirs", async () => {
+    mockFetchMe.mockResolvedValue(holdingTabs(["app_admin"], ["admin.app_admin.view"]));
+
+    const { router } = renderRoute({ path: BASE, children: withAdmin });
+
+    expect(await screen.findByText("Nothing here is ready for you yet.")).toBeInTheDocument();
+    expect(router.state.location.pathname).toBe(BASE);
+    expect(screen.getByRole("tab", { name: "App Admins" })).toHaveAttribute("aria-disabled", "true");
   });
 });

@@ -39,7 +39,7 @@ from core.organizations.models import (
     TerritoryKind,
     UnitStatus,
 )
-from core.permissions.models import App, AppCode, Permission, Role
+from core.permissions.models import VIEW_ACTION, App, AppCode, AppSection, Permission, Role
 from core.permissions.registry import is_unit_aware
 from shared.exceptions import not_found
 
@@ -255,6 +255,22 @@ def is_shut_out_by_closure(membership: Membership) -> bool:
 
 
 @dataclass(frozen=True)
+class SubModuleData:
+    """A sub-module the person may see, with its visible tabs (C79)."""
+
+    code: str
+    tabs: list[str]
+
+
+@dataclass(frozen=True)
+class ModuleData:
+    """A module the person may see, with its visible sub-modules (C79)."""
+
+    code: str
+    sub_modules: list[SubModuleData]
+
+
+@dataclass(frozen=True)
 class AppAccessData:
     """One app's availability for one membership. Mirrors `AppAccess` in auth.ts."""
 
@@ -262,7 +278,15 @@ class AppAccessData:
     subscribed: bool
     accessible: bool
     summary: str | None
-    modules: list[str]
+
+    modules: list[ModuleData]
+    """
+    WHAT THE PERSON MAY SEE, AS THE APP'S OWN TREE (C79, the owner 2026-11-19):
+    module -> sub-module -> tab, only the parts they may see, in menu order.
+    See `module_tree()`. Every app has this shape; DMS's modules have no
+    sub-modules until DMS moves onto the section tree.
+    """
+
     permissions: list[str]
 
 
@@ -345,6 +369,10 @@ def me(user) -> MeData:
     # because the catalogue is platform-wide (C28).
     catalogue = list(Permission.objects.all())
 
+    # Every app's section tree, fetched once for the same reason: tens of rows,
+    # platform-wide, and walked in memory for each membership (C79).
+    sections = {section.id: section for section in AppSection.objects.all()}
+
     active_subscriptions = set(
         AppSubscription.objects.filter(
             organization_id__in=[m.organization_id for m in memberships],
@@ -358,7 +386,7 @@ def me(user) -> MeData:
         first_name=user.first_name,
         last_name=user.last_name,
         memberships=[
-            _membership_data(membership, catalogue, active_subscriptions)
+            _membership_data(membership, catalogue, sections, active_subscriptions)
             for membership in memberships
         ],
     )
@@ -367,6 +395,7 @@ def me(user) -> MeData:
 def _membership_data(
     membership: Membership,
     catalogue: list[Permission],
+    sections: dict[uuid.UUID, AppSection] | None,
     active_subscriptions: set[tuple[uuid.UUID, str]],
 ) -> MembershipData:
     # Every permission this person holds here, from BOTH sources -- the
@@ -418,7 +447,9 @@ def _membership_data(
         is_ready=membership.organization.is_ready,
         unit_closed=unit_closed,
         apps=[
-            _app_data(app, membership, held, granted_apps, active_subscriptions, unit_closed)
+            _app_data(
+                app, membership, held, sections, granted_apps, active_subscriptions, unit_closed
+            )
             for app in AppCode
         ],
     )
@@ -428,6 +459,7 @@ def _app_data(
     app: str,
     membership: Membership,
     held: dict[str, set[Permission]],
+    sections: dict[uuid.UUID, AppSection] | None,
     granted_apps: set[str],
     active_subscriptions: set[tuple[uuid.UUID, str]],
     unit_closed: bool = False,
@@ -486,9 +518,80 @@ def _app_data(
         subscribed=subscribed,
         accessible=True,
         summary=_summary(app, membership),
-        modules=sorted({permission.module for permission in permissions}),
+        # None from `permissions_for()`, which never reads the tree (see there).
+        modules=module_tree(app, permissions, sections) if sections is not None else [],
         permissions=sorted(permission.code for permission in permissions),
     )
+
+
+def module_tree(
+    app: str, permissions: set[Permission], sections: dict[uuid.UUID, AppSection]
+) -> list[ModuleData]:
+    """
+    The parts of `app` these permissions let somebody SEE, as the app's own
+    tree: modules, each with its sub-modules, each with its tabs (C79; the
+    shape the owner chose for `/me`, 2026-11-19).
+
+    AN APP ON THE SECTION TREE (the Admin panel) is answered from it, by
+    `_visible_section_ids()`'s rules, in the menu's own order (`display_order`).
+    A permission with no section -- the Admin panel's Dealers and Territories
+    (Q64) -- shows nothing here.
+
+    AN APP NOT ON IT YET (DMS, C79 amended) is answered the old way: the
+    `module` of each permission held, as modules with no sub-modules, sorted.
+    The same words as before, in the same shape as every other app, until DMS
+    moves onto the tree and this branch goes.
+    """
+    if not any(section.app_id == app for section in sections.values()):
+        return [
+            ModuleData(code=code, sub_modules=[])
+            for code in sorted({permission.module for permission in permissions})
+        ]
+
+    children: dict[uuid.UUID | None, list[AppSection]] = {}
+    for section_id in _visible_section_ids(permissions, sections):
+        section = sections[section_id]
+        children.setdefault(section.parent_id, []).append(section)
+
+    def under(parent_id: uuid.UUID | None) -> list[AppSection]:
+        return sorted(children.get(parent_id, []), key=lambda s: (s.display_order, s.code))
+
+    return [
+        ModuleData(
+            code=module.code,
+            sub_modules=[
+                SubModuleData(code=sub.code, tabs=[tab.code for tab in under(sub.id)])
+                for sub in under(module.id)
+            ],
+        )
+        for module in under(None)
+    ]
+
+
+def _visible_section_ids(
+    permissions: set[Permission], sections: dict[uuid.UUID, AppSection]
+) -> set[uuid.UUID]:
+    """
+    The sections these permissions let somebody SEE (C79, "what shows").
+
+    A LEAF SHOWS IF THEY HOLD ITS `view`, and only its view: holding another
+    action of a leaf without its view opens nothing (C79 rule 5) -- you cannot
+    act on a page you cannot see.
+
+    A SUB-MODULE OR MODULE SHOWS IF ANYTHING UNDER IT DOES. Nobody is granted
+    a container, so each visible leaf brings every section above it, which is
+    what lets a menu draw the path down to it.
+    """
+    visible: set[uuid.UUID] = set()
+    for permission in permissions:
+        if permission.action_id != VIEW_ACTION or permission.section_id is None:
+            continue
+        section_id: uuid.UUID | None = permission.section_id
+        # Stop at a section already added: everything above it is in too.
+        while section_id is not None and section_id not in visible:
+            visible.add(section_id)
+            section_id = sections[section_id].parent_id
+    return visible
 
 
 def _summary(app: str, membership: Membership) -> str | None:
@@ -571,7 +674,9 @@ def permissions_for(membership: Membership) -> frozenset[str]:
         ).values_list("organization_id", "app")
     )
 
-    data = _membership_data(membership, catalogue, active_subscriptions)
+    # NO SECTIONS (`None`): a permission check never reads them, and this runs
+    # on every request -- fetching the tree here would be a query for nothing.
+    data = _membership_data(membership, catalogue, None, active_subscriptions)
 
     return frozenset(code for app in data.apps if app.accessible for code in app.permissions)
 

@@ -12,10 +12,11 @@
  * perfectly for everyone who has access, and nobody will notice until somebody
  * who should not have access opens it.
  *
- * So a screen is declared as data with a REQUIRED `module` field, and this file
- * is the only thing that turns that data into routes. Leaving the field out is
- * a TypeScript error; `module: null` is allowed but has to be written down, so
- * it appears in review as a decision rather than an oversight.
+ * So a screen is declared as data with a REQUIRED gate — `section`,
+ * `permission` or `module` (`Gate` in `access.ts`) — and this file is the only
+ * thing that turns that data into routes. Leaving the gate out is a TypeScript
+ * error; `module: null` is allowed but has to be written down, so it appears in
+ * review as a decision rather than an oversight.
  *
  * STILL NOT SECURITY. This decides which screen renders. The fetch behind the
  * screen is what matters and only Django can refuse it.
@@ -24,22 +25,19 @@
 import type { ReactElement } from "react";
 import { Navigate, Route, Routes } from "react-router-dom";
 
-import { useAccess } from "./access";
+import { allows, useAccess, type Gate } from "./access";
 import { useShellContext } from "./context";
 import { NotFoundScreen } from "./screens/NotFoundScreen";
 
-export interface ModuleRoute {
+/**
+ * One screen of a product. Its gate — `section`, `permission` or `module` —
+ * is required; see the note above and `Gate` in `access.ts`.
+ */
+export type ModuleRoute = {
   /** Relative to the app root: `/:orgSlug/<app>/<path>`. */
   path: string;
-
-  /**
-   * The module key this screen belongs to, or `null` for a screen anyone
-   * inside the app may open. Required — see the note above.
-   */
-  module: string | null;
-
   element: ReactElement;
-}
+} & Gate;
 
 interface ModuleRoutesProps {
   routes: ModuleRoute[];
@@ -57,8 +55,7 @@ interface ModuleRoutesProps {
 export function ModuleRoutes({ routes }: ModuleRoutesProps) {
   const access = useAccess();
   const { membership } = useShellContext();
-
-  const permitted = routes.filter((route) => route.module === null || access.hasModule(route.module));
+  const permitted = routes.filter((route) => allows(access, route));
 
   /*
    * If there is an explicit app-root/overview route (`path === ""`), render it at index.
@@ -66,7 +63,7 @@ export function ModuleRoutes({ routes }: ModuleRoutesProps) {
    * (e.g. `/*`) so navigation never directs to an asterisk string.
    */
   const rootRoute = permitted.find((route) => route.path === "");
-  const first = permitted.find((route) => route.path !== "" && (route.module !== null ? access.hasModule(route.module) : true)) ?? permitted[0];
+  const first = permitted.find((route) => route.path !== "") ?? permitted[0];
   const targetPath = first ? first.path.replace(/\/\*$/, "") : "";
 
   return (

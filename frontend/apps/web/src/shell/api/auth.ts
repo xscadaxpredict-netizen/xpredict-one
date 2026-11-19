@@ -48,14 +48,19 @@ export interface AppAccess {
   summary: string | null;
 
   /**
-   * Module keys inside this app that this person may open — "sales",
-   * "service". A module they may not open is simply absent.
+   * WHAT THIS PERSON MAY SEE, AS THE APP'S OWN TREE (C79, the owner
+   * 2026-11-19): modules, each with its sub-modules, each with its tabs, in
+   * menu order. Anything they may not see is simply absent — a tab is here if
+   * they hold its `view` permission, and everything above it comes with it.
    *
-   * Module keys are safe for the frontend to know because it already names
-   * them: they are URL segments and they are in the catalog. Contrast
-   * `permissions` below.
+   * THE SAME SHAPE FOR EVERY APP. DMS is not on the section tree yet, so its
+   * modules ("sales", "service") come with no sub-modules until it moves.
+   *
+   * Codes are safe for the frontend to know because it already names them:
+   * they are in the catalog (`navigation.ts`). Contrast `permissions` below.
+   * Read it through `useAccess()` (`hasModule`, `canSee`), never directly.
    */
-  modules: string[];
+  modules: AppModule[];
 
   /**
    * What this person may DO, as opaque strings — "dms.enquiry.create".
@@ -73,6 +78,18 @@ export interface AppAccess {
    * is the one that matters. If the two ever disagree, this is the bug.
    */
   permissions: string[];
+}
+
+/** A module the person may see, with the sub-modules under it they may see. */
+export interface AppModule {
+  code: string;
+  sub_modules: AppSubModule[];
+}
+
+/** A sub-module the person may see, with its tabs they may see (often none). */
+export interface AppSubModule {
+  code: string;
+  tabs: string[];
 }
 
 export interface Membership {
@@ -252,7 +269,13 @@ const FAKE_ME: Me = {
           subscribed: true,
           accessible: true,
           summary: "Sales · Service · Tech support · E-commerce · Tools across 12 dealers",
-          modules: ["sales", "service", "tech-support", "ecommerce", "tools"],
+          modules: [
+            { code: "sales", sub_modules: [] },
+            { code: "service", sub_modules: [] },
+            { code: "tech-support", sub_modules: [] },
+            { code: "ecommerce", sub_modules: [] },
+            { code: "tools", sub_modules: [] },
+          ],
           permissions: [
             "dms.enquiry.create",
             "dms.enquiry.assign",
@@ -293,7 +316,21 @@ const FAKE_ME: Me = {
            * feature later is the backend adding a word to this list; no
            * frontend release, nothing to delete and re-add.
            */
-          modules: ["users", "dealers", "roles", "organization", "applications"],
+          // The Admin panel's whole tree, as the real `/me` sends an owner (C79).
+          modules: [
+            {
+              code: "organization",
+              sub_modules: [{ code: "profile", tabs: ["organization_info"] }],
+            },
+            { code: "app_management", sub_modules: [{ code: "application", tabs: [] }] },
+            {
+              code: "user_management",
+              sub_modules: [
+                { code: "user", tabs: [] },
+                { code: "admins_and_roles", tabs: ["admin", "app_admin", "role"] },
+              ],
+            },
+          ],
           /*
            * A SUBSET of the 11 `admin.*` permissions the real `/me` sends an
            * owner — but every string is a real one from the catalogue.
@@ -361,7 +398,10 @@ const FAKE_ME: Me = {
           subscribed: true,
           accessible: true,
           summary: "Sales · Service across 3 dealers",
-          modules: ["sales", "service"],
+          modules: [
+            { code: "sales", sub_modules: [] },
+            { code: "service", sub_modules: [] },
+          ],
           permissions: ["dms.enquiry.create"],
         },
         { key: "crm", subscribed: false, accessible: false, summary: null, modules: [], permissions: [] },
@@ -377,7 +417,8 @@ const FAKE_ME: Me = {
           subscribed: true,
           accessible: true,
           summary: "Your dealer’s people",
-          modules: ["users"],
+          // Users only, under User Management (C79): what `/me` sends a dealer admin.
+          modules: [{ code: "user_management", sub_modules: [{ code: "user", tabs: [] }] }],
           /*
            * THE SAME SIX `admin.user.*` PERMISSIONS THE OWNER HOLDS, and
            * that is the point of C42 rather than an oversight. One permission
