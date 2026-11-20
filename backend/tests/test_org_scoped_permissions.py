@@ -96,7 +96,34 @@ class ForgotToDeclare(OrgScopedAPIView):
         return Response({"ok": True})
 
 
+class ReadsAndForgetsTheWrite(OrgScopedAPIView):
+    """Reads with a floor, then grew a `post()` nobody gave a permission."""
+
+    required_permissions: ClassVar[list[str]] = []
+
+    def get(self, request: Request, org_slug: str) -> Response:
+        handler_calls.append("read")
+        return Response({"ok": True})
+
+    def post(self, request: Request, org_slug: str) -> Response:
+        handler_calls.append("write")
+        return Response({"ok": True})
+
+
+class ReadsAndOpensTheWriteOnPurpose(ReadsAndForgetsTheWrite):
+    """The same view, saying the write is open to every reader."""
+
+    method_permissions: ClassVar[dict[str, list[str]]] = {"POST": []}
+
+
+class ReadsAndGuardsTheWrite(ReadsAndForgetsTheWrite):
+    method_permissions: ClassVar[dict[str, list[str]]] = {"POST": ["admin.dealer.create"]}
+
+
 urlpatterns = [
+    path("api/v1/orgs/<slug:org_slug>/forgot-write/", ReadsAndForgetsTheWrite.as_view()),
+    path("api/v1/orgs/<slug:org_slug>/open-write/", ReadsAndOpensTheWriteOnPurpose.as_view()),
+    path("api/v1/orgs/<slug:org_slug>/guarded-write/", ReadsAndGuardsTheWrite.as_view()),
     path("api/v1/orgs/<slug:org_slug>/needs-dealer-create/", NeedsDealerCreate.as_view()),
     path("api/v1/orgs/<slug:org_slug>/needs-two/", NeedsTwoPermissions.as_view()),
     path("api/v1/orgs/<slug:org_slug>/needs-any/", NeedsAnyOf.as_view()),
@@ -359,3 +386,40 @@ class TestTheViewLayer:
         # The body says nothing about why, because a 5xx never does (C9).
         assert "required_permissions" not in response.content.decode()
         assert handler_calls == []
+
+
+class TestAViewThatReadsAndWrites:
+    """
+    ON A VIEW THAT READS, THE FLOOR IS THE READ PERMISSION, so each write must
+    be named in `method_permissions` -- or anybody allowed to look could also
+    write. Forgetting is a 500, like an undeclared `required_permissions`.
+    """
+
+    def test_an_undeclared_write_is_a_500_even_for_a_read(self, client):
+        result = found()
+        client.force_authenticate(user=result.user)
+        url = f"/api/v1/orgs/{result.organization.slug}/forgot-write/"
+
+        assert client.get(url).status_code == 500
+        assert client.post(url).status_code == 500
+        assert handler_calls == []
+
+    def test_a_write_declared_open_is_open_to_every_reader(self, client):
+        result = found()
+        user, _ = add_plain_member(result.organization)
+        client.force_authenticate(user=user)
+
+        response = client.post(f"/api/v1/orgs/{result.organization.slug}/open-write/")
+
+        assert response.status_code == 200
+        assert handler_calls == ["write"]
+
+    def test_a_guarded_write_lets_readers_read_and_refuses_their_write(self, client):
+        result = found()
+        user, _ = add_plain_member(result.organization)
+        client.force_authenticate(user=user)
+        url = f"/api/v1/orgs/{result.organization.slug}/guarded-write/"
+
+        assert client.get(url).status_code == 200
+        assert client.post(url).status_code == 403
+        assert handler_calls == ["read"]

@@ -36,6 +36,26 @@ from core.organizations.selectors import (
 )
 from shared.exceptions import AuthorizationError, not_found
 
+WRITE_METHODS: tuple[str, ...] = ("POST", "PUT", "PATCH", "DELETE")
+
+
+def undeclared_writes(view_class: type) -> list[str]:
+    """
+    The write methods a view that also READS leaves out of `method_permissions`.
+
+    Only a view with a `get()` is asked: there `required_permissions` is the
+    read permission, so a write needs its own. A view that only writes has
+    the write permission as its floor already. Empty means nothing is missing.
+    """
+    if not hasattr(view_class, "get"):
+        return []
+    declared = getattr(view_class, "method_permissions", {})
+    return [
+        method
+        for method in WRITE_METHODS
+        if hasattr(view_class, method.lower()) and method not in declared
+    ]
+
 # Where `config.middleware.TenantMiddleware` leaves the resolved organization.
 #
 # UNDERSCORED BECAUSE IT IS NOT THE PUBLIC ROUTE. Reading it directly skips the
@@ -112,6 +132,14 @@ class OrgScopedAPIView(APIView):
     handler that refuses from inside itself has already started, and the
     refusal tests in `tests/test_org_scoped_view.py` assert the opposite --
     that a refused request never reaches a handler body at all.
+
+    A VIEW THAT READS AND WRITES MUST NAME EVERY WRITE HERE (2026-11-19). On
+    such a view the floor is the READ permission, so a write method with no
+    entry would be open to anybody allowed to look -- the day "Assign Admin"
+    adds a `post()` to the Admins view, everybody who may see the admins
+    could make one. Forgetting is a 500 on the first request, like an
+    undeclared `required_permissions` (C66). A write that is deliberately
+    open to every reader says so: `{"POST": []}`, with a comment.
     """
 
     def initial(self, request: Request, *args, **kwargs) -> None:
@@ -155,6 +183,15 @@ class OrgScopedAPIView(APIView):
             raise ImproperlyConfigured(
                 f"{type(self).__name__} must declare `required_permissions`. "
                 f"Use [] if membership alone is enough, and say why."
+            )
+
+        undeclared = undeclared_writes(type(self))
+        if undeclared:
+            # A 500 on ANY request to the view, a GET included: loud on the
+            # first use rather than on the first unprivileged write.
+            raise ImproperlyConfigured(
+                f"{type(self).__name__} reads and writes, so `method_permissions` must name "
+                f"{', '.join(undeclared)}. Use [] for a write open to every reader, and say why."
             )
 
         # `request.method` is upper-case and always present by this point;

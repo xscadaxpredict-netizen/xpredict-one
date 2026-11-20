@@ -68,6 +68,9 @@ class TimerCalculationListView(TenantAPIView):
     # inherits `TerritoryScopedModel` and lands at the caller's own dealership.
     # Removing somebody's saved work is the Manager's call, below.
     required_permissions: ClassVar[list[str]] = []
+    # Open to every reader ON PURPOSE, and said so: a view that reads and
+    # writes must name each write (`OrgScopedAPIView.method_permissions`).
+    method_permissions: ClassVar[dict[str, list[str]]] = {"POST": []}
 
     def get(self, request, org_slug: str):
         calcs = get_timer_calculations()

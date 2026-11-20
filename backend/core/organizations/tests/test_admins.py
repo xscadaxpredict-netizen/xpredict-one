@@ -324,3 +324,16 @@ class TestWhoMayAsk:
         response = client.get(URL.format(slug=result.organization.slug))
 
         assert response.status_code == 404
+
+    def test_it_only_reads(self, client):
+        """
+        No write lives here yet. "Assign Admin" will add one, and must name its
+        permission in `method_permissions` (`admin.admin.assign_admin`) or the
+        base class refuses the view.
+        """
+        result = found()
+        client.force_authenticate(user=result.user)
+        url = URL.format(slug=result.organization.slug)
+
+        for send in (client.post, client.put, client.patch, client.delete):
+            assert send(url).status_code == 405
