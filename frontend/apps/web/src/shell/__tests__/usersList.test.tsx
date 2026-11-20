@@ -291,8 +291,9 @@ describe("a person opened beside the list", () => {
   it("has the app panel's header: initials, name, email and the ⋮", async () => {
     const panel = await openPanel("nish", "Nishanth S");
 
-    expect(within(panel).getByRole("heading", { name: "Nishanth S" })).toBeInTheDocument();
-    expect(within(panel).getByText("nish@acme.test")).toBeInTheDocument();
+    const heading = within(panel).getByRole("heading", { name: "Nishanth S" });
+    // The email under the name; Basic Information repeats it below.
+    expect(heading.nextElementSibling).toHaveTextContent("nish@acme.test");
     expect(
       within(panel).getByRole("button", { name: "More actions for Nishanth S" }),
     ).toBeInTheDocument();
@@ -314,13 +315,72 @@ describe("a person opened beside the list", () => {
     expect(tabs[3]).toHaveAttribute("aria-disabled", "true");
   });
 
-  it("opens on Info: status, standing and scope", async () => {
+  /** The <dt> with this label, or null. (A <dt> takes no accessible name.) */
+  function term(info: HTMLElement, label: string) {
+    return within(info).queryByText(label, { selector: "dt" });
+  }
+
+  /** The value beside a label in Basic Information: the <dd> after its <dt>. */
+  function fact(info: HTMLElement, label: string) {
+    const found = term(info, label);
+    if (!found) throw new Error(`No "${label}" in Basic Information`);
+    return found.nextElementSibling?.textContent;
+  }
+
+  it("opens on Info: Basic Information, with status, role, names and email", async () => {
     const panel = await openPanel("nish", "Nishanth S");
 
     const info = within(panel).getByRole("tabpanel");
-    expect(within(info).getByText("Status")).toBeInTheDocument();
-    expect(within(info).getByText("Standing")).toBeInTheDocument();
-    expect(within(info).getByText("Scope")).toBeInTheDocument();
+    expect(within(info).getByRole("button", { name: "Basic Information" })).toHaveAttribute(
+      "aria-expanded",
+      "true",
+    );
+    expect(fact(info, "Status")).toBe("Active");
+    expect(fact(info, "Role")).toBe("User");
+    expect(fact(info, "First name")).toBe("Nishanth");
+    expect(fact(info, "Last name")).toBe("S");
+    expect(fact(info, "Email")).toBe("nish@acme.test");
+    // Not confined to a dealer, so no Dealer row.
+    expect(term(info, "Dealer")).toBeNull();
+  });
+
+  it("names the owner's role as the Admins and Roles tabs do", async () => {
+    const panel = await openPanel("owner", "Asha Rao");
+
+    expect(fact(within(panel).getByRole("tabpanel"), "Role")).toBe("Organization Owner");
+  });
+
+  it("shows a dash for a missing last name, and the dealer for a dealer admin", async () => {
+    mockFetchUsers.mockResolvedValue([
+      user({
+        id: "kochi",
+        first_name: "Kiran",
+        last_name: "",
+        role: "admin",
+        administers: "dealer",
+        unit_id: "u1",
+        unit_name: "Acme Kochi",
+      }),
+    ]);
+    const panel = await openPanel("kochi", "Kiran");
+
+    const info = within(panel).getByRole("tabpanel");
+    expect(fact(info, "Last name")).toBe("—");
+    expect(fact(info, "Role")).toBe("Dealer admin");
+    expect(fact(info, "Dealer")).toContain("Acme Kochi");
+  });
+
+  it("folds Basic Information away and back", async () => {
+    const panel = await openPanel("nish", "Nishanth S");
+    const toggle = within(panel).getByRole("button", { name: "Basic Information" });
+
+    fireEvent.click(toggle);
+    expect(toggle).toHaveAttribute("aria-expanded", "false");
+    expect(term(panel, "Email")).toBeNull();
+
+    fireEvent.click(toggle);
+    expect(toggle).toHaveAttribute("aria-expanded", "true");
+    expect(term(panel, "Email")).toBeInTheDocument();
   });
 
   it("switches to Applications: each app with its role", async () => {
@@ -335,7 +395,7 @@ describe("a person opened beside the list", () => {
     const apps = within(panel).getByRole("list", { name: "Nishanth S's applications" });
     expect(within(apps).getByText("DMS")).toBeInTheDocument();
     expect(within(apps).getByText("Manager")).toBeInTheDocument();
-    expect(within(panel).queryByText("Standing")).not.toBeInTheDocument();
+    expect(within(panel).queryByText("Basic Information")).not.toBeInTheDocument();
   });
 
   it("draws a live + and a tile per app, the tile actions greyed out", async () => {

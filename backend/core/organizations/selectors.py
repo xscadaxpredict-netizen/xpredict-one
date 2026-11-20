@@ -1368,7 +1368,7 @@ def admin_panel_roles(organization: Organization) -> list[PanelRoleData]:
         PanelRoleData(
             code="owner",
             name="Organization Owner",
-            summary="Every permission, by rule -- including the ones no role can give.",
+            summary="Every permission, by rule — including the ones no role can give.",
             built_in=True,
             users=owners,
             modified_by=None,

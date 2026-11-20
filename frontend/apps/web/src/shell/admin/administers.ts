@@ -27,7 +27,18 @@ import type { OrgUser } from "./api/users";
  * and callers must render nothing rather than an empty badge.
  */
 export function administersLabel(administers: OrgUser["administers"]): string | null {
-  if (administers === "organisation") return "Organisation admin";
+  // The Admin panel role's own name, as the Admins and Roles tabs show it.
+  if (administers === "organisation") return "Organization Admin";
   if (administers === "dealer") return "Dealer admin";
   return null;
+}
+
+/**
+ * Their role in the Admin panel, as the Admins and Roles tabs name it, or null
+ * if they administer nothing. The owner administers the organisation too, but
+ * by rule, so they are named as the owner rather than as one more admin.
+ */
+export function adminRoleLabel(user: Pick<OrgUser, "role" | "administers">): string | null {
+  if (user.role === "owner") return "Organization Owner";
+  return administersLabel(user.administers);
 }

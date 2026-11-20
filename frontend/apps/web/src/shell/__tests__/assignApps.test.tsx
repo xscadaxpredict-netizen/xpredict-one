@@ -242,6 +242,27 @@ describe("assigning", () => {
   });
 });
 
+describe("the Admin panel tile", () => {
+  // Named as the Admins and Roles tabs name them: the owner administers the
+  // organisation too, and read "Organisation admin" here before.
+  it("calls the owner the Organization Owner", async () => {
+    mockFetchUsers.mockResolvedValue([{ ...OWNER, administers: "organisation" }]);
+    const panel = await openApplications("owner", "Anita Rao");
+
+    const tiles = within(panel).getByRole("list", { name: "Anita Rao's applications" });
+    expect(within(tiles).getByText("Organization Owner")).toBeInTheDocument();
+    expect(within(tiles).queryByText("Organization Admin")).toBeNull();
+  });
+
+  it("calls an organisation admin the Organization Admin", async () => {
+    mockFetchUsers.mockResolvedValue([{ ...ASHA, role: "admin", administers: "organisation" }]);
+    const panel = await openApplications("asha", "Asha Pillai");
+
+    const tiles = within(panel).getByRole("list", { name: "Asha Pillai's applications" });
+    expect(within(tiles).getByText("Organization Admin")).toBeInTheDocument();
+  });
+});
+
 describe("who sees the +", () => {
   it("is not on the owner's panel: they hold every app by rule", async () => {
     const panel = await openApplications("owner", "Anita Rao");

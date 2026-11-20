@@ -15,13 +15,21 @@
  * here.
  */
 
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { DetailPanel } from "@xpredict/ui";
+import {
+  ChevronDownIcon,
+  CircleCheckIcon,
+  MailIcon,
+  MapPinIcon,
+  ShieldIcon,
+  UserRoundIcon,
+} from "lucide-react";
 
 import type { Membership } from "../../api/auth";
 import { useAccess } from "../../access";
 import { APP_CATALOG } from "../../navigation";
-import { administersLabel } from "../administers";
+import { adminRoleLabel } from "../administers";
 import type { OrgUser } from "../api/users";
 import { useResendInvitation } from "../hooks/useUsers";
 import { AssignAppsDialog } from "./AssignAppsDialog";
@@ -130,49 +138,103 @@ function TabButton({ id, label, current, onSelect }: TabButtonProps) {
   );
 }
 
+/**
+ * Info, Zoho's way: a "Basic Information" section that folds away, one row
+ * per fact -- an icon, a small label, the value. The same look as the
+ * Organization Profile's facts, so the Admin panel reads as one thing.
+ */
 function InfoTab({ user }: { user: OrgUser }) {
+  const [open, setOpen] = useState(true);
+
   return (
     <>
-      <dl className={styles.facts}>
-        <dt>Status</dt>
-        <dd>
-          <span className={styles.status} data-status={user.status}>
-            {user.status === "active"
-              ? "Active"
-              : user.status === "invited"
-                ? "Invitation sent"
-                : "Inactive"}
-          </span>
-        </dd>
+      <section className={styles.section}>
+        <h3 className={styles.sectionHeading}>
+          <button
+            type="button"
+            className={styles.sectionToggle}
+            aria-expanded={open}
+            aria-controls="user-basic-info"
+            onClick={() => setOpen((shown) => !shown)}
+          >
+            <ChevronDownIcon size={16} aria-hidden="true" className={styles.chevron} />
+            Basic Information
+          </button>
+        </h3>
 
-        <dt>Standing</dt>
-        <dd>
-          <span className={styles.role}>
-            {user.role === "owner" ? "Owner" : user.role === "admin" ? "Admin" : "Member"}
-          </span>
-        </dd>
+        {open && (
+          <dl id="user-basic-info" className={styles.facts}>
+            <Fact icon={<CircleCheckIcon size={18} />} label="Status">
+              <span className={styles.status} data-status={user.status}>
+                {user.status === "active"
+                  ? "Active"
+                  : user.status === "invited"
+                    ? "Invitation sent"
+                    : "Inactive"}
+              </span>
+            </Fact>
 
-        <dt>Scope</dt>
-        <dd>
-          {user.unit_name ? (
-            <>
-              <span className={styles.unit}>{user.unit_name}</span>
-              {/* Says which app the scope applies to. A dealer name on its own
-                  reads as though it limits everything they can do. */}
-              <span className={styles.note}>Their DMS records are limited to this dealer.</span>
-            </>
-          ) : (
-            <>
-              <span className={styles.orgScope}>Organisation</span>
-              <span className={styles.note}>Not limited to any one dealer.</span>
-            </>
-          )}
-        </dd>
-      </dl>
+            {/* Their Admin panel role; an app's own roles are on Applications. */}
+            <Fact icon={<ShieldIcon size={18} />} label="Role">
+              <span className={styles.role}>{adminRoleLabel(user) ?? "User"}</span>
+            </Fact>
+
+            <Fact icon={<UserRoundIcon size={18} />} label="First name">
+              <Value text={user.first_name} />
+            </Fact>
+
+            <Fact icon={<UserRoundIcon size={18} />} label="Last name">
+              <Value text={user.last_name} />
+            </Fact>
+
+            <Fact icon={<MailIcon size={18} />} label="Email">
+              <Value text={user.email} />
+            </Fact>
+
+            {/* Only for somebody confined to one dealer: everybody else sees the
+                whole organisation, and a row saying so for everyone is noise. */}
+            {user.unit_name && (
+              <Fact icon={<MapPinIcon size={18} />} label="Dealer">
+                <Value text={user.unit_name} />
+                <span className={styles.note}>Their DMS records are limited to this dealer.</span>
+              </Fact>
+            )}
+          </dl>
+        )}
+      </section>
 
       {user.status === "invited" && <Invitation user={user} />}
     </>
   );
+}
+
+interface FactProps {
+  icon: ReactNode;
+  label: string;
+  children: ReactNode;
+}
+
+/**
+ * One row: the icon, then the label over the value. The icon sits INSIDE the
+ * <dt> and is placed by CSS, because a <dl> row may hold only <dt> and <dd>.
+ */
+function Fact({ icon, label, children }: FactProps) {
+  return (
+    <div className={styles.fact}>
+      <dt className={styles.factLabel}>
+        <span className={styles.factIcon} aria-hidden="true">
+          {icon}
+        </span>
+        {label}
+      </dt>
+      <dd className={styles.factValue}>{children}</dd>
+    </div>
+  );
+}
+
+/** A value, or a dash when there is none (a last name is optional). */
+function Value({ text }: { text: string | null | undefined }) {
+  return text ? <span>{text}</span> : <span className={styles.unset}>—</span>;
 }
 
 /**
@@ -283,7 +345,7 @@ function ApplicationsTab({ user }: { user: OrgUser }) {
             key: "admin",
             name: "Admin panel",
             initials: appInitials("admin"),
-            role: administersLabel(user.administers),
+            role: adminRoleLabel(user),
           },
         ]
       : []),
