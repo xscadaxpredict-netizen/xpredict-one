@@ -464,3 +464,26 @@ class InvitationWrongAccountError(ConflictError):
 
     code = "invitation_wrong_account"
     message = "This invitation is for a different email address. Sign out to accept it."
+
+
+class AppAlreadyHeldError(ConflictError):
+    """
+    Assign app named an app the person already has (C83, Assign app).
+
+    Assigning ADDS an app; it never replaces one. Changing the role somebody
+    holds in an app is that app tile's Edit, a separate act -- doing it here
+    would let "give them CRM" quietly demote them in DMS.
+    """
+
+    code = "app_already_held"
+    message = "This person already has that app. Change their role from its tile instead."
+
+
+class OwnerHoldsEveryAppError(ConflictError):
+    """
+    Assign app named the owner, who holds every app by rule (C72 step 2c) --
+    a grant would be a second copy of what they already hold.
+    """
+
+    code = "owner_holds_every_app"
+    message = "The owner already holds every app."

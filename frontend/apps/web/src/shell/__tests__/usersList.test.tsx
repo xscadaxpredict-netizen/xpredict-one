@@ -338,13 +338,14 @@ describe("a person opened beside the list", () => {
     expect(within(panel).queryByText("Standing")).not.toBeInTheDocument();
   });
 
-  it("draws a + and a tile per app, every action greyed out", async () => {
+  it("draws a live + and a tile per app, the tile actions greyed out", async () => {
     const panel = await openPanel("nish", "Nishanth S");
     fireEvent.click(within(panel).getByRole("tab", { name: "Applications" }));
 
+    // Assign applications (C83) is live; the tiles' Edit | Disable | Unassign are not yet.
     expect(
-      within(panel).getByRole("button", { name: "Give Nishanth S another application" }),
-    ).toHaveAttribute("aria-disabled", "true");
+      within(panel).getByRole("button", { name: "Assign applications to Nishanth S" }),
+    ).not.toHaveAttribute("aria-disabled");
 
     const tiles = within(
       within(panel).getByRole("list", { name: "Nishanth S's applications" }),

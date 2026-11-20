@@ -27,6 +27,7 @@ from core.organizations.api.views import (
     TerritoriesView,
     TerritoryDetailView,
     TerritoryMoveView,
+    UserAppsView,
     UserDetailView,
     UserStatusView,
     UsersView,
@@ -73,6 +74,9 @@ urlpatterns = [
         ResendInvitationView.as_view(),
         name="user-resend-invitation",
     ),
+    # Assign applications (C83). BEFORE the <str:action> route, for the reason
+    # above: "apps" would otherwise reach the status view as a status.
+    path("admin/users/<str:user_id>/apps/", UserAppsView.as_view(), name="user-apps"),
     # BEFORE the <str:action> route too, and for the same reason: a generic
     # trailing segment placed first swallows every sibling.
     path(

@@ -24,6 +24,7 @@ from core.organizations.api.serializers import (
     AdminSerializer,
     ApplicationMemberSerializer,
     ApplicationSerializer,
+    AssignAppsSerializer,
     DealerCreateSerializer,
     DealerDetailsSerializer,
     DealerSerializer,
@@ -50,6 +51,7 @@ from core.organizations.selectors import (
     territories_for,
 )
 from core.organizations.services import (
+    assign_apps,
     close_dealer,
     create_dealer,
     create_territory,
@@ -430,6 +432,33 @@ class UserDetailView(OrgScopedAPIView):
         people = org_users(self.organization, self.membership)
         person = next(p for p in people if str(p.id) == str(person_id))
         return OrgUserSerializer(person).data
+
+
+class UserAppsView(OrgScopedAPIView):
+    """
+    Assign applications to a person (C83): `POST {"apps": [{"app", "role"}]}`.
+    All or nothing; answers with the person's row as the Users list shows it.
+
+    A write-only view: its floor is the page's view plus the act (C81).
+    """
+
+    # The page's view, then the act (C79 rule 5, C81).
+    required_permissions: ClassVar[list[str]] = ["admin.user.view", "admin.user.assign_app"]
+
+    def post(self, request: Request, org_slug: str, user_id: str) -> Response:
+        payload = AssignAppsSerializer(data=request.data)
+        payload.is_valid(raise_exception=True)
+
+        assign_apps(
+            actor=self.membership,
+            organization=self.organization,
+            person_id=user_id,
+            apps=payload.validated_data["apps"],
+        )
+
+        people = org_users(self.organization, self.membership)
+        person = next(p for p in people if str(p.id) == str(user_id))
+        return Response(OrgUserSerializer(person).data)
 
 
 class UserStatusView(OrgScopedAPIView):

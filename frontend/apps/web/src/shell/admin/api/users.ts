@@ -189,6 +189,21 @@ export async function resendInvitation(orgSlug: string, userId: string): Promise
   });
 }
 
+/**
+ * Assign applications to a person (C83): one or more apps, each with its role.
+ * All or nothing; adds, never replaces. Answers with the person's row.
+ */
+export async function assignApps(
+  orgSlug: string,
+  userId: string,
+  apps: AppGrant[],
+): Promise<OrgUser> {
+  return request<OrgUser>(`/api/v1/orgs/${orgSlug}/admin/users/${userId}/apps/`, {
+    method: "POST",
+    body: JSON.stringify({ apps }),
+  });
+}
+
 export async function inviteUser(orgSlug: string, body: NewInvitation): Promise<OrgUser> {
   return request<OrgUser>(`/api/v1/orgs/${orgSlug}/admin/invitations/`, {
     method: "POST",

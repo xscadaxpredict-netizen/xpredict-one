@@ -37,6 +37,7 @@ from core.organizations.exceptions import (
     ActivationCodeInvalidError,
     ActivationCodeSpentError,
     AdministrationNotGrantableError,
+    AppAlreadyHeldError,
     AppNotSubscribedError,
     DealerAlreadyClosedError,
     DealerAlreadyOpenError,
@@ -51,6 +52,7 @@ from core.organizations.exceptions import (
     InvitationWrongAccountError,
     NotAnInvitationError,
     OrganizationNameUnusableError,
+    OwnerHoldsEveryAppError,
     OwnerProtectedError,
     PersonEmailTakenError,
     RoleNotInAppError,
@@ -1253,6 +1255,76 @@ def _update_invitation(
     invitation.app_grants.all().delete()
     for app, granted_role in grants:
         InvitationAppGrant.objects.create(invitation=invitation, app_id=app, role=granted_role)
+
+
+@transaction.atomic
+def assign_apps(
+    *,
+    actor: Membership,
+    organization: Organization,
+    person_id: uuid.UUID,
+    apps: list[dict],
+) -> Membership | Invitation:
+    """
+    Give a person one or more apps, each with its role (the owner, 2026-11-20:
+    Admin panel -> Users -> a person -> Applications -> Assign applications).
+
+    ADDS, NEVER REPLACES. An app the person already has is refused
+    (`AppAlreadyHeldError`): changing a role is that app's own Edit.
+
+    ALL OR NOTHING: one transaction, every rule checked before anything is
+    written, so one bad app assigns none of them.
+
+    PLACED AT THE ORGANISATION'S ROOT -- organisation-wide, so only an
+    organisation-level role is legal -- until each app has its own territories
+    (C82). A person already at a dealership (through DMS) keeps C27: no
+    organisation-wide app beside it -- `grant_app_access()` refuses it.
+
+    A PENDING PERSON gets the apps on their invitation (`InvitationAppGrant`);
+    accepting turns them into grants, as an app's own invite will.
+
+    Not the owner (`OwnerHoldsEveryAppError`), never Administration
+    (`_resolve_grants`), and only somebody the actor may manage -- else 404.
+    """
+    person = find_person(organization, person_id)
+    _assert_can_manage_person(actor, person)
+
+    is_member = isinstance(person, Membership)
+    if is_member and person.is_owner:
+        raise OwnerHoldsEveryAppError
+
+    grants = _resolve_grants(apps)
+    requested = [app for app, _role in grants]
+    if len(set(requested)) != len(requested):
+        raise InvalidInputError(
+            field_errors=[
+                FieldError(field="apps", code="duplicate", detail="Name each app once.")
+            ]
+        )
+
+    held = set(
+        (person.grants if is_member else person.app_grants).values_list("app_id", flat=True)
+    )
+    if held & set(requested):
+        raise AppAlreadyHeldError
+
+    # C27 (somebody at a dealership holds no organisation-wide app) is
+    # `grant_app_access()`'s own rule, enforced where every grant is written --
+    # not repeated here, where a copy could drift.
+    _assert_grants_are_legal(organization, None, grants)
+
+    for app, role in grants:
+        if is_member:
+            grant_app_access(
+                membership=person,
+                app=app,
+                role=role,
+                territories=_placement(organization, None),
+                actor_id=actor.user_id,
+            )
+        else:
+            InvitationAppGrant.objects.create(invitation=person, app_id=app, role=role)
+    return person
 
 
 @transaction.atomic

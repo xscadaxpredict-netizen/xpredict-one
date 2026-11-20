@@ -260,6 +260,16 @@ class AppGrantInputSerializer(serializers.Serializer):
     role = serializers.CharField(max_length=60)
 
 
+class AssignAppsSerializer(serializers.Serializer):
+    """
+    Assign applications (C83): one or more apps, each with what that app needs
+    to be assigned -- today its role. An app that later needs more (a
+    department, an approver) adds its fields to `AppGrantInputSerializer`.
+    """
+
+    apps = AppGrantInputSerializer(many=True, allow_empty=False)
+
+
 class PersonDetailsSerializer(serializers.Serializer):
     """
     The writable fields of somebody's membership. Invite and edit take the same

@@ -15,6 +15,7 @@
 import { useOrgMutation, useOrgQuery } from "@xpredict/api-client";
 
 import {
+  assignApps,
   fetchInviteLink,
   fetchUsers,
   inviteUser,
@@ -22,10 +23,12 @@ import {
   resendInvitation,
   setUserStatus,
   updateUser,
+  type AppGrant,
   type NewInvitation,
   type UserDetails,
   type UserStatus,
 } from "../api/users";
+import { applicationKeys } from "./useApplications";
 import { roleKeys } from "./useRoles";
 
 /**
@@ -116,6 +119,18 @@ export function useUpdateUser() {
     mutationFn: (orgSlug, variables: { userId: string; body: UserDetails }) =>
       updateUser(orgSlug, variables.userId, variables.body),
     invalidates: PEOPLE_CHANGED,
+  });
+}
+
+/**
+ * Assign applications (C83). Besides a person, it changes who can open each
+ * app, so the Applications page's counts and members reload too.
+ */
+export function useAssignApps() {
+  return useOrgMutation({
+    mutationFn: (orgSlug, variables: { userId: string; apps: AppGrant[] }) =>
+      assignApps(orgSlug, variables.userId, variables.apps),
+    invalidates: [...PEOPLE_CHANGED, applicationKeys.all()],
   });
 }
 

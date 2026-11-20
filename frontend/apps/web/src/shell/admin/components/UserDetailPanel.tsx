@@ -19,10 +19,12 @@ import { useState } from "react";
 import { DetailPanel } from "@xpredict/ui";
 
 import type { Membership } from "../../api/auth";
+import { useAccess } from "../../access";
 import { APP_CATALOG } from "../../navigation";
 import { administersLabel } from "../administers";
 import type { OrgUser } from "../api/users";
 import { useResendInvitation } from "../hooks/useUsers";
+import { AssignAppsDialog } from "./AssignAppsDialog";
 import { InviteLinkPanel } from "./InviteLinkPanel";
 import panel from "./RecordPanel.module.css";
 import { UserActions, displayName } from "./UserActions";
@@ -251,11 +253,18 @@ function Invitation({ user }: { user: OrgUser }) {
  * rule, then a tile per app — its badge, name, their role in it, and
  * Edit | Disable | Unassign underneath.
  *
- * DRAWN ONLY (the owner, 2026-11-18): the "+" and the three actions are
- * greyed out with no behaviour yet, like the same three on an app's members.
+ * THE "+" ASSIGNS APPLICATIONS (C83): it opens the two-step dialog, for
+ * whoever holds `admin.user.assign_app`. Not on the owner's panel -- they hold
+ * every app by rule -- and not shown without the permission.
+ *
+ * Edit | Disable | Unassign stay DRAWN ONLY, greyed with no behaviour yet:
+ * separate pieces.
  */
 function ApplicationsTab({ user }: { user: OrgUser }) {
   const name = displayName(user);
+  const access = useAccess();
+  const canAssign = user.role !== "owner" && access.can("admin.user.assign_app");
+  const [assigning, setAssigning] = useState(false);
   const tiles = [
     ...user.apps.map((entry) => ({
       key: entry.app,
@@ -282,15 +291,20 @@ function ApplicationsTab({ user }: { user: OrgUser }) {
 
   return (
     <div className={styles.apps}>
-      <button
-        type="button"
-        className={styles.addApp}
-        aria-disabled="true"
-        aria-label={`Give ${name} another application`}
-        title="Coming later"
-      >
-        <PlusIcon />
-      </button>
+      {canAssign && (
+        <>
+          <button
+            type="button"
+            className={styles.addApp}
+            aria-label={`Assign applications to ${name}`}
+            title="Assign applications"
+            onClick={() => setAssigning(true)}
+          >
+            <PlusIcon />
+          </button>
+          <AssignAppsDialog user={user} open={assigning} onOpenChange={setAssigning} />
+        </>
+      )}
       <span className={styles.rule} aria-hidden="true" />
 
       {tiles.length === 0 ? (

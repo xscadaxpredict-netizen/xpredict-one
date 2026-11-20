@@ -128,7 +128,9 @@ export function ownerMembership(): Membership {
           "admin.user.create",
           "admin.dealer.create",
           "admin.role.view",
-          // The Applications panel's two tabs (C79): the owner holds them by rule.
+          // Assign applications (C83), and the Applications panel's two tabs
+          // (C79): the owner holds them by rule.
+          "admin.user.assign_app",
           "admin.application.view_users",
           "admin.application.view_conditional_assignment",
         ],
