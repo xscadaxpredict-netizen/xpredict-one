@@ -68,7 +68,7 @@ no territories yet; their users belong to the organization directly.
 renamed from `BusinessUnit`. **DMS records carry `territory_id`** (C72 piece 3 step 1,
 was `unit_id`), scoped by `TerritoryScopedModel` / `allowed_territories` /
 `resolve_allowed_territories()` / `territory_scope()`. Where "unit" survives —
-`Invitation.unit` (piece 5), `App.unit_aware`, `UnitStatus`, and the API's `unit_*` fields
+`App.unit_aware`, `UnitStatus`, and the API's `unit_*` fields
 and `X-Unit-Id` header (piece 7) — it means territory. (`Membership.unit` is gone: 2d-3.)
 **Renaming the tenant column was a TENANT migration**: production needs
 `migrate_all_tenants` run by hand (C69) before or with that deploy.
@@ -107,14 +107,21 @@ services (`_assert_organisation_wide`), not the database constraint it used to b
 **The frontend ships Administration; the backend runs on MySQL and signs people in.**
 Keep this section current — it is the first thing a new developer reads.
 
-**ON `feat/admin-panel` (2026-11-18, NOT YET COMMITTED): ADMINISTRATION IS NOW THE
-ADMIN PANEL (C78)** -- reached from the shield in the topbar, not the launcher; an
+**ON `feat/admin-panel` (committed through `5e041e5`, 2026-11-20, NOT PUSHED):
+ADMINISTRATION IS NOW THE ADMIN PANEL (C78)** -- reached from the shield in the topbar, not the launcher; an
 accordion of the owner's modules (Organization, App Management, User Management); every
 list page shares `ListPage.module.css` / `ListFilter` / `RowMenu` and every side panel
 `RecordPanel.module.css`. **Its permissions hang off a section tree (C79):**
 `AppSection` (module / sub-module / tab), `Action` (basic or special), codes
-`<app>.<leaf>.<action>`; the people permissions are `admin.user.*`. Read C78/C79
-before touching any of it.
+`<app>.<leaf>.<action>`; the people permissions are `admin.user.*`. **`/me` sends each
+app's TREE** (`modules`: module -> sub-module -> tab, C80) and screens gate on it
+(`Gate` / `allows()` in `shell/access.ts`). **A view that reads and writes must name
+every write in `method_permissions`, and a write-only view needs the page's `view`
+beside the action (C81).** **Add User invites a PERSON -- first name, last name, email,
+nothing else -- and a person may hold no app (C83, C73 retired); apps come from Assign
+applications (`POST /admin/users/<id>/apps/`).** `Invitation.role` and `Invitation.unit`
+are GONE (`organizations/0022`). **Territories will be per app (C82) -- decided in
+principle, NOT designed: build on neither model.** Read C78-C83 before touching any of it.
 
 **Frontend — built, merged, and running on Django.** Sign-in, the app launcher, the
 shell and Administration (Users, Dealers, Roles) all work in a browser against the
@@ -402,8 +409,8 @@ user row on every request and refuses an inactive one, so **disabling somebody t
 effect on their next request**, not after a token expires. The 15-minute access
 lifetime is how long a STOLEN token survives a logout.
 
-**Gates:** `npm run test -w web` (314), `npm run typecheck -w web`, and in `backend/`:
-`pytest` (814), `ruff check .`, `manage.py makemigrations --check`, and
+**Gates:** `npm run test -w web` (351), `npm run typecheck -w web`, and in `backend/`:
+`pytest` (895), `ruff check .`, `manage.py makemigrations --check`, and
 `.venv/Scripts/lint-imports.exe` — **not** `python -m importlinter.cli`, which exits 0
 without running. Run them before pushing. **`npm run lint` is NOT green and never has
 been on this code:** 139 errors in `apps/web`, inherited with the DMS modules and
