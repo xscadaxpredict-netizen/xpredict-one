@@ -6,13 +6,20 @@
  * cache key by the hook, so a key without it is not something you can write.
  */
 
-import { useOrgQuery } from "@xpredict/api-client";
+import { useOrgMutation, useOrgQuery } from "@xpredict/api-client";
 
-import { fetchPanelRoles, fetchRoles } from "../api/roles";
+import {
+  createPanelRole,
+  fetchPanelRoles,
+  fetchRoleBuilder,
+  fetchRoles,
+  type NewPanelRole,
+} from "../api/roles";
 
 export const roleKeys = {
   all: () => ["admin", "roles"] as const,
   panel: () => ["admin", "panel-roles"] as const,
+  builder: () => ["admin", "role-builder"] as const,
 };
 
 interface UseRolesOptions {
@@ -48,5 +55,24 @@ export function usePanelRoles() {
   return useOrgQuery({
     key: roleKeys.panel(),
     queryFn: (orgSlug) => fetchPanelRoles(orgSlug),
+  });
+}
+
+/** New Role's grid: the section tree and the roles to copy from. */
+export function useRoleBuilder() {
+  return useOrgQuery({
+    key: roleKeys.builder(),
+    queryFn: (orgSlug) => fetchRoleBuilder(orgSlug),
+  });
+}
+
+/**
+ * Save a new role. The Roles tab and the copy-from list both change, and so
+ * may the pickers' catalogue once app roles can be built.
+ */
+export function useCreatePanelRole() {
+  return useOrgMutation({
+    mutationFn: (orgSlug, body: NewPanelRole) => createPanelRole(orgSlug, body),
+    invalidates: [roleKeys.panel(), roleKeys.builder(), roleKeys.all()],
   });
 }

@@ -37,6 +37,12 @@ export interface UserAppRole {
   role_code: string;
   /** The role's display name, decided by the backend (C19). Never parsed. */
   role_name: string;
+  /**
+   * "disabled" after the app tile's Disable: the grant keeps its role and
+   * place but opens nothing until Enable. A pending person's apps are always
+   * "active" -- there is nothing to disable before they join.
+   */
+  status: "active" | "disabled";
 }
 
 /**
@@ -98,31 +104,18 @@ export interface OrgUser {
 }
 
 /**
- * The writable fields of a person's membership.
+ * Edit user (the owner, 2026-11-20): basic information only, as Zoho's.
+ * Apps, dealer and admin standing each have their own action, and the server
+ * REFUSES any other field rather than ignoring it.
  *
- * NOT THEIR ACCOUNT. `first_name` and `last_name` belong to the person and
- * change everywhere; the scope, the apps and the organisation role belong to
- * this organisation's relationship with them (C1 — identity lives in the
- * control database, the Membership is what ties it to one organisation).
- *
- * `email` is here but only accepted while an invitation is outstanding. Once
- * somebody has accepted, their address is how they sign in, and changing it
- * silently is an account takeover with extra steps — that needs its own flow
- * with confirmation sent to the new address.
- *
- * `role` deliberately excludes "owner". There is exactly one owner per
- * organisation (C14, a conditional unique constraint), so appointing a new
- * one is a transfer rather than an edit, and doing it through this form would
- * quietly leave the organisation with two or none.
+ * `email` is accepted only while an invitation is pending. Once somebody has
+ * joined it is how they sign in, and changing it from an admin screen is an
+ * account takeover with extra steps (C25).
  */
 export interface UserDetails {
   first_name: string;
   last_name: string;
   email: string;
-  unit_id: string | null;
-  /** Products and the role in each. Never "admin" — that follows from `role`. */
-  apps: AppGrant[];
-  role: "admin" | "member";
 }
 
 /**
@@ -202,6 +195,40 @@ export async function assignApps(
     method: "POST",
     body: JSON.stringify({ apps }),
   });
+}
+
+/* --------------- the app tile: Edit | Disable | Unassign ---------------- */
+
+function appUrl(orgSlug: string, userId: string, app: string): string {
+  return `/api/v1/orgs/${orgSlug}/admin/users/${userId}/apps/${app}/`;
+}
+
+/** The app tile's Edit: the role they hold in that one app. Answers with their row. */
+export async function changeAppRole(
+  orgSlug: string,
+  userId: string,
+  app: string,
+  role: string,
+): Promise<OrgUser> {
+  return request<OrgUser>(appUrl(orgSlug, userId, app), {
+    method: "PUT",
+    body: JSON.stringify({ role }),
+  });
+}
+
+/** The app tile's Disable, or Enable to undo it. Answers with their row. */
+export async function setAppStatus(
+  orgSlug: string,
+  userId: string,
+  app: string,
+  action: "disable" | "enable",
+): Promise<OrgUser> {
+  return request<OrgUser>(`${appUrl(orgSlug, userId, app)}${action}/`, { method: "POST" });
+}
+
+/** The app tile's Unassign: the app, its role and its places go. Answers with their row. */
+export async function unassignApp(orgSlug: string, userId: string, app: string): Promise<OrgUser> {
+  return request<OrgUser>(appUrl(orgSlug, userId, app), { method: "DELETE" });
 }
 
 export async function inviteUser(orgSlug: string, body: NewInvitation): Promise<OrgUser> {

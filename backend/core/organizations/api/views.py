@@ -24,22 +24,26 @@ from core.organizations.api.serializers import (
     AdminSerializer,
     ApplicationMemberSerializer,
     ApplicationSerializer,
+    AppRoleSerializer,
     AssignAppsSerializer,
+    AssignUsersSerializer,
     DealerCreateSerializer,
     DealerDetailsSerializer,
     DealerSerializer,
     InviteLinkSerializer,
     InviteSerializer,
+    NewPanelRoleSerializer,
     OrganizationProfileSerializer,
     OrgUserSerializer,
     PanelRoleSerializer,
     PersonDetailsSerializer,
+    RoleBuilderSerializer,
     TerritoryCreateSerializer,
     TerritoryMoveSerializer,
     TerritoryRenameSerializer,
     TerritorySerializer,
 )
-from core.organizations.models import MembershipStatus, Territory, TerritoryKind
+from core.organizations.models import GrantStatus, MembershipStatus, Territory, TerritoryKind
 from core.organizations.selectors import (
     admin_panel_roles,
     admins_for,
@@ -48,11 +52,15 @@ from core.organizations.selectors import (
     dealers_for,
     org_users,
     organization_profile,
+    role_builder,
     territories_for,
 )
 from core.organizations.services import (
     assign_apps,
+    assign_users_to_app,
+    change_app_role,
     close_dealer,
+    create_admin_role,
     create_dealer,
     create_territory,
     invitation_for_link,
@@ -63,9 +71,11 @@ from core.organizations.services import (
     rename_territory,
     reopen_dealer,
     resend_invitation,
+    set_app_status,
     set_person_status,
+    unassign_app,
     update_dealer,
-    update_person,
+    update_person_details,
 )
 from shared.exceptions import not_found
 
@@ -408,10 +418,12 @@ class UserDetailView(OrgScopedAPIView):
     }
 
     def put(self, request: Request, org_slug: str, user_id: str) -> Response:
+        # BASIC INFORMATION ONLY (the owner, 2026-11-20): first name, last
+        # name, email. Anything else in the body is refused, not ignored.
         payload = PersonDetailsSerializer(data=request.data)
         payload.is_valid(raise_exception=True)
 
-        update_person(
+        update_person_details(
             actor=self.membership,
             organization=self.organization,
             person_id=user_id,
@@ -459,6 +471,85 @@ class UserAppsView(OrgScopedAPIView):
         people = org_users(self.organization, self.membership)
         person = next(p for p in people if str(p.id) == str(user_id))
         return Response(OrgUserSerializer(person).data)
+
+
+class UserAppView(OrgScopedAPIView):
+    """
+    One app of one person -- the app tile (the owner, 2026-11-20):
+    `PUT {"role"}` is Edit, `DELETE` is Unassign. Disable and Enable are
+    `UserAppStatusView`. Each answers with the person's row as the Users list
+    shows it (Unassign included, so the screen can drop the tile).
+
+    A write-only view: its floor is the page's view; each method adds its act
+    (C81).
+    """
+
+    required_permissions: ClassVar[list[str]] = ["admin.user.view"]
+    method_permissions: ClassVar[dict[str, list[str]]] = {
+        # The role in one app: its own permission, not Edit user's `update`.
+        "PUT": ["admin.user.edit_app"],
+        "DELETE": ["admin.user.unassign_app"],
+    }
+
+    def put(self, request: Request, org_slug: str, user_id: str, app: str) -> Response:
+        payload = AppRoleSerializer(data=request.data)
+        payload.is_valid(raise_exception=True)
+
+        change_app_role(
+            actor=self.membership,
+            organization=self.organization,
+            person_id=user_id,
+            app=app,
+            role=payload.validated_data["role"],
+        )
+        return Response(_person_row(self.organization, self.membership, user_id))
+
+    def delete(self, request: Request, org_slug: str, user_id: str, app: str) -> Response:
+        unassign_app(
+            actor=self.membership,
+            organization=self.organization,
+            person_id=user_id,
+            app=app,
+        )
+        return Response(_person_row(self.organization, self.membership, user_id))
+
+
+class UserAppStatusView(OrgScopedAPIView):
+    """
+    The app tile's Disable, and Enable to undo it: `POST .../apps/<app>/disable/`
+    or `.../enable/`. One endpoint per transition, as `UserStatusView`.
+    """
+
+    # The page's view, then the act (C79 rule 5, C81).
+    required_permissions: ClassVar[list[str]] = ["admin.user.view", "admin.user.disable_app"]
+
+    # The whole vocabulary. Anything else is a URL that does not exist.
+    _STATUSES: ClassVar[dict[str, str]] = {
+        "enable": GrantStatus.ACTIVE,
+        "disable": GrantStatus.DISABLED,
+    }
+
+    def post(
+        self, request: Request, org_slug: str, user_id: str, app: str, action: str
+    ) -> Response:
+        if action not in self._STATUSES:
+            raise not_found("App")
+
+        set_app_status(
+            actor=self.membership,
+            organization=self.organization,
+            person_id=user_id,
+            app=app,
+            status=self._STATUSES[action],
+        )
+        return Response(_person_row(self.organization, self.membership, user_id))
+
+
+def _person_row(organization, viewer, person_id: str) -> dict:
+    """The person as the Users list shows them, after a change."""
+    people = org_users(organization, viewer)
+    person = next(p for p in people if str(p.id) == str(person_id))
+    return OrgUserSerializer(person).data
 
 
 class UserStatusView(OrgScopedAPIView):
@@ -621,9 +712,9 @@ class AdminsView(OrgScopedAPIView):
 
 class PanelRolesView(OrgScopedAPIView):
     """
-    The Admin panel's roles -- Organization Owner and Organization Admin --
-    with how many people hold each (C78, Admins and Roles -> Roles).
-    Read-only.
+    The Admin panel's roles -- Organization Owner, Organization Admin and the
+    organisation's own -- with how many people hold each (C78, Admins and
+    Roles -> Roles). POST is New Role (the role builder, C72 piece 5).
 
     `admin.role.view`, the Roles tab's own permission (C79): the server checks
     what the screen does. A dealer admin does not hold it and gets 403 -- the
@@ -633,10 +724,42 @@ class PanelRolesView(OrgScopedAPIView):
     """
 
     required_permissions: ClassVar[list[str]] = ["admin.role.view"]
+    # A VIEW THAT READS AND WRITES NAMES EVERY WRITE (C81).
+    method_permissions: ClassVar[dict[str, list[str]]] = {"POST": ["admin.role.create"]}
 
     def get(self, request: Request, org_slug: str) -> Response:
         rows = admin_panel_roles(self.organization)
         return Response(PanelRoleSerializer(rows, many=True).data)
+
+    def post(self, request: Request, org_slug: str) -> Response:
+        """New Role: `{"name", "description", "permissions": [codes]}`."""
+        payload = NewPanelRoleSerializer(data=request.data)
+        payload.is_valid(raise_exception=True)
+
+        role = create_admin_role(
+            actor=self.membership,
+            organization=self.organization,
+            **payload.validated_data,
+        )
+
+        # The new row as the Roles tab shows it.
+        row = next(r for r in admin_panel_roles(self.organization) if r.code == role.code)
+        return Response(PanelRoleSerializer(row).data, status=status.HTTP_201_CREATED)
+
+
+class RoleBuilderView(OrgScopedAPIView):
+    """
+    What the New Role grid draws: the Admin panel's section tree with each
+    page's actions, and the roles "Copy permissions from" offers (C72 piece 5).
+
+    The Roles tab's view, and the right to build or change a role.
+    """
+
+    required_permissions: ClassVar[list[str]] = ["admin.role.view"]
+    required_any_permission: ClassVar[list[str]] = ["admin.role.create", "admin.role.update"]
+
+    def get(self, request: Request, org_slug: str) -> Response:
+        return Response(RoleBuilderSerializer(role_builder(self.organization)).data)
 
 
 class ApplicationMembersView(OrgScopedAPIView):
@@ -650,11 +773,30 @@ class ApplicationMembersView(OrgScopedAPIView):
     without its section's view.
     """
 
-    required_permissions: ClassVar[list[str]] = [
-        "admin.application.view",
-        "admin.application.view_users",
-    ]
+    required_permissions: ClassVar[list[str]] = ["admin.application.view"]
+    # A VIEW THAT READS AND WRITES NAMES EVERY WRITE (C81). Reading the
+    # members is the Members tab's own permission; assigning people is the
+    # same act as Assign applications, so it is the same permission -- and
+    # the Users list's view, since the dialog picks from it.
+    method_permissions: ClassVar[dict[str, list[str]]] = {
+        "GET": ["admin.application.view_users"],
+        "POST": ["admin.user.view", "admin.user.assign_app"],
+    }
 
     def get(self, request: Request, org_slug: str, app_code: str) -> Response:
         people = application_members(self.organization, app_code)
         return Response(ApplicationMemberSerializer(people, many=True).data)
+
+    def post(self, request: Request, org_slug: str, app_code: str) -> Response:
+        """Assign users: `{"users": [ids], "role": code}`, all or nothing."""
+        payload = AssignUsersSerializer(data=request.data)
+        payload.is_valid(raise_exception=True)
+
+        assign_users_to_app(
+            actor=self.membership,
+            organization=self.organization,
+            app=app_code,
+            person_ids=payload.validated_data["users"],
+            role=payload.validated_data["role"],
+        )
+        return Response(status=status.HTTP_204_NO_CONTENT)

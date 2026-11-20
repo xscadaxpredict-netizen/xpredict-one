@@ -373,6 +373,18 @@ class AdministrationNotGrantableError(ConflictError):
     message = "Administration is not an app that can be granted."
 
 
+class AppNotYetInUseError(ConflictError):
+    """
+    Disable or Enable was aimed at an app of somebody who has not joined.
+
+    Their apps wait on the invitation and open nothing until they accept, so
+    there is nothing to switch off -- Edit or Unassign it instead.
+    """
+
+    code = "app_not_yet_in_use"
+    message = "They have not joined yet, so their apps cannot be disabled. Unassign it instead."
+
+
 class AppNotSubscribedError(ConflictError):
     """
     An app was granted that this organization does not pay for.
@@ -487,3 +499,25 @@ class OwnerHoldsEveryAppError(ConflictError):
 
     code = "owner_holds_every_app"
     message = "The owner already holds every app."
+
+
+class RoleNameTakenError(ConflictError):
+    """
+    New Role (the role builder, C72 piece 5): this organisation already has a
+    role by that name in the Admin panel -- its own, or a built-in one. Two
+    roles people cannot tell apart in a picker are a mistake waiting to happen.
+    """
+
+    code = "role_name_taken"
+    message = "A role with that name already exists."
+
+
+class RoleBeyondOwnAccessError(AuthorizationError):
+    """
+    New Role: the role would grant something its builder does not hold
+    (C72 piece 5's safety rule). Nobody builds a role more powerful than
+    themselves -- or they could make one and have it given to them.
+    """
+
+    code = "role_beyond_own_access"
+    message = "You cannot build a role with permissions you do not hold yourself."

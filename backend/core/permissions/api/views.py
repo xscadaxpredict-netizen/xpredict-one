@@ -3,11 +3,9 @@ The role catalogue endpoint, under /api/v1/orgs/<slug>/admin/roles.
 
 Permission -> deserialize -> call a selector -> serialize. No business rules.
 
-ORGANIZATION-SCOPED BUT NOT ORGANIZATION-SPECIFIC. It inherits
-`OrgScopedAPIView` like everything under `/orgs/<slug>/` (C49), so the caller
-must be a member to ask -- but roles are platform-wide reference data (C28) and
-the answer is the same for every customer. The scoping here buys authorization,
-not isolation, and there is nothing a cross-tenant request could learn.
+ORGANIZATION-SCOPED, AND SINCE THE ROLE BUILDER ORGANIZATION-SPECIFIC. Built-in
+roles are the same for every customer; an organisation's own roles (C72 piece
+5) are returned to that organisation only (`roles_for_organization`).
 """
 
 from __future__ import annotations
@@ -50,10 +48,15 @@ class RolesView(OrgScopedAPIView):
     endpoint. Recorded as Q35.
     """
 
+    # Assign applications and the app tile's Edit are role pickers too (C83,
+    # 2026-11-20): without them here, somebody holding only `assign_app` or
+    # `edit_app` would open a dialog with an empty role list.
     required_any_permission: ClassVar[list[str]] = [
         "admin.role.view",
         "admin.user.create",
         "admin.user.update",
+        "admin.user.assign_app",
+        "admin.user.edit_app",
     ]
 
     # Nothing on top of the "any of" above. Spelled out rather than left to
@@ -62,4 +65,4 @@ class RolesView(OrgScopedAPIView):
     required_permissions: ClassVar[list[str]] = []
 
     def get(self, request: Request, org_slug: str) -> Response:
-        return Response(RoleSerializer(role_catalogue(), many=True).data)
+        return Response(RoleSerializer(role_catalogue(self.organization.id), many=True).data)

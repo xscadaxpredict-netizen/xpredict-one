@@ -104,8 +104,9 @@ class TestTheRole:
             Permission.objects.filter(app=AppCode.ADMIN).values_list("code", flat=True)
         )
         # 14 when the role was made (0010); 0012 and 0013 made 16; the owner's
-        # final list (0018, C79) added thirteen.
-        assert role.permissions.count() == 29
+        # final list (0018, C79) added thirteen; the app tile's Edit (0019,
+        # `admin.user.edit_app`) one more.
+        assert role.permissions.count() == 30
 
 
 class TestEveryWriterKeepsItInStep:

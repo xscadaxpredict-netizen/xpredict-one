@@ -125,6 +125,8 @@ export function ownerMembership(): Membership {
       appAccess("admin", {
         modules: ADMIN_PANEL_TREE,
         permissions: [
+          // Seeing the Users list: Assign users picks from it (C81).
+          "admin.user.view",
           "admin.user.create",
           "admin.dealer.create",
           "admin.role.view",

@@ -39,6 +39,7 @@ from core.organizations.exceptions import (
     AdministrationNotGrantableError,
     AppAlreadyHeldError,
     AppNotSubscribedError,
+    AppNotYetInUseError,
     DealerAlreadyClosedError,
     DealerAlreadyOpenError,
     DealerCodeTakenError,
@@ -55,6 +56,8 @@ from core.organizations.exceptions import (
     OwnerHoldsEveryAppError,
     OwnerProtectedError,
     PersonEmailTakenError,
+    RoleBeyondOwnAccessError,
+    RoleNameTakenError,
     RoleNotInAppError,
     RoleScopeMismatchError,
     SignInAddressLockedError,
@@ -84,10 +87,20 @@ from core.organizations.selectors import (
     ORGANISATION_ADMIN_ROLE,
     can_manage,
     can_manage_person,
+    permissions_for,
     reach,
 )
 from core.organizations.tasks import schedule_provisioning
-from core.permissions.models import App, AppCode, Role, RoleLevel
+from core.permissions.models import (
+    VIEW_ACTION,
+    App,
+    AppCode,
+    Permission,
+    Role,
+    RoleLevel,
+    RolePermission,
+    roles_for_organization,
+)
 from shared.exceptions import AuthorizationError, FieldError, InvalidInputError, not_found
 
 # WHAT A NEW ORGANIZATION IS SUBSCRIBED TO. DMS only, because DMS is the
@@ -1018,7 +1031,7 @@ def _resolve_unit(organization: Organization, unit_id: uuid.UUID | None) -> Terr
         raise not_found("Dealer") from None
 
 
-def _resolve_grants(apps: list[dict]) -> list[tuple[str, Role]]:
+def _resolve_grants(organization: Organization, apps: list[dict]) -> list[tuple[str, Role]]:
     """
     Turn `[{"app": "dms", "role": "dms.manager"}]` into rows.
 
@@ -1034,7 +1047,11 @@ def _resolve_grants(apps: list[dict]) -> list[tuple[str, Role]]:
         if app == AppCode.ADMIN:
             raise AdministrationNotGrantableError
         try:
-            grants.append((app, Role.objects.get(code=entry["role"], app=app)))
+            # BUILT-IN OR THIS ORGANISATION'S OWN, never another's (the role
+            # builder): a custom role's code is not a secret, so a request
+            # naming another organisation's must find nothing.
+            role = roles_for_organization(organization.id).get(code=entry["role"], app=app)
+            grants.append((app, role))
         except Role.DoesNotExist:
             raise RoleScopeMismatchError from None
     return grants
@@ -1115,6 +1132,50 @@ def invite_person(
 
 
 @transaction.atomic
+def update_person_details(
+    *,
+    actor: Membership,
+    organization: Organization,
+    person_id: uuid.UUID,
+    first_name: str,
+    last_name: str,
+    email: str,
+) -> Membership | Invitation:
+    """
+    Edit in the Admin panel (the owner, 2026-11-20): somebody's BASIC
+    INFORMATION -- first name, last name, email -- and nothing else, as Zoho's.
+
+    NOTHING ELSE IS TOUCHED. Their apps, place and standing are not in the
+    request, so a save cannot wipe them; each has its own action (Assign
+    applications, and the app tile's Edit | Unassign and Assign Admin to come).
+    That also closes Q36: an admin can no longer remove their own admin role
+    by editing themselves.
+
+    The address follows C25: a member's is how they sign in and is refused if
+    changed; a pending person's may still be corrected.
+    """
+    person = find_person(organization, person_id)
+    _assert_can_manage_person(actor, person)
+
+    if isinstance(person, Invitation):
+        if email.lower() != person.email.lower():
+            _assert_email_free(organization, email, excluding_invitation=person.pk)
+            person.email = email
+        person.first_name = first_name
+        person.last_name = last_name
+        person.save(update_fields=["email", "first_name", "last_name", "updated_at"])
+        return person
+
+    if email.lower() != person.user.email.lower():
+        raise SignInAddressLockedError
+
+    person.user.first_name = first_name
+    person.user.last_name = last_name
+    person.user.save(update_fields=["first_name", "last_name"])
+    return person
+
+
+@transaction.atomic
 def update_person(
     *,
     actor: Membership,
@@ -1129,6 +1190,11 @@ def update_person(
 ) -> Membership | Invitation:
     """
     Change somebody's membership --- not their account.
+
+    NO ENDPOINT CALLS THIS SINCE EDIT BECAME BASIC INFORMATION ONLY
+    (`update_person_details`, 2026-11-20). It stays, with its tests, for the
+    rules it enforces until Assign Admin and the app tile's Edit | Unassign
+    replace it; then it goes.
 
     `first_name` and `last_name` belong to the PERSON and change everywhere;
     the scope, the apps and the standing belong to this organization's
@@ -1155,7 +1221,7 @@ def update_person(
     unit = _resolve_unit(organization, unit_id)
     is_the_owner = isinstance(person, Membership) and person.is_owner
     _assert_organisation_wide(MembershipRole.OWNER if is_the_owner else role, unit_id)
-    grants = _resolve_grants(apps)
+    grants = _resolve_grants(organization, apps)
     # NO "AT LEAST ONE APP" (C73 retired, the owner 2026-11-20): taking every
     # app away leaves a person who can open nothing, which is allowed.
     _assert_grants_are_legal(organization, unit_id, grants)
@@ -1293,7 +1359,7 @@ def assign_apps(
     if is_member and person.is_owner:
         raise OwnerHoldsEveryAppError
 
-    grants = _resolve_grants(apps)
+    grants = _resolve_grants(organization, apps)
     requested = [app for app, _role in grants]
     if len(set(requested)) != len(requested):
         raise InvalidInputError(
@@ -1324,6 +1390,173 @@ def assign_apps(
             )
         else:
             InvitationAppGrant.objects.create(invitation=person, app_id=app, role=role)
+    return person
+
+
+@transaction.atomic
+def assign_users_to_app(
+    *,
+    actor: Membership,
+    organization: Organization,
+    app: str,
+    person_ids: list[uuid.UUID],
+    role: str,
+) -> None:
+    """
+    Applications -> an app -> Assign users (the owner, 2026-11-20): give one app
+    to several people, all with the same role.
+
+    THE SAME ACT AS ASSIGN APPLICATIONS, seen from the app's side, so it is
+    `assign_apps()` once per person -- every rule there holds here: bought,
+    organisation-level role, C27, not the owner, not an app they already hold,
+    and only people the actor may manage (else 404).
+
+    ALL OR NOTHING: one transaction around them all, so one person who cannot
+    be given the app means nobody is.
+    """
+    if len(set(person_ids)) != len(person_ids):
+        raise InvalidInputError(
+            field_errors=[
+                FieldError(field="users", code="duplicate", detail="Name each person once.")
+            ]
+        )
+    for person_id in person_ids:
+        assign_apps(
+            actor=actor,
+            organization=organization,
+            person_id=person_id,
+            apps=[{"app": app, "role": role}],
+        )
+
+
+# ---------------------------------------------------------------------------
+# ONE APP OF ONE PERSON: the app tile's Edit | Disable | Unassign (the owner,
+# 2026-11-20, as Zoho's). Each is its own action with its own permission.
+#
+# THE SAME THREE REFUSALS OPEN EACH ONE: somebody the actor may not manage is
+# 404; the owner holds every app by rule, so there is nothing of theirs to
+# change (409); Administration is not an app, and making or unmaking an admin
+# is Assign Admin's job (409).
+# ---------------------------------------------------------------------------
+
+
+def _person_for_app_action(
+    actor: Membership, organization: Organization, person_id: uuid.UUID, app: str
+) -> Membership | Invitation:
+    person = find_person(organization, person_id)
+    _assert_can_manage_person(actor, person)
+    if isinstance(person, Membership) and person.is_owner:
+        raise OwnerHoldsEveryAppError
+    if app == AppCode.ADMIN:
+        raise AdministrationNotGrantableError
+    return person
+
+
+def _held_grant(membership: Membership, app: str) -> MembershipAppAccess:
+    """Their grant for `app`, disabled or not -- 404 if they hold none."""
+    try:
+        return MembershipAppAccess.objects.get(membership=membership, app_id=app)
+    except MembershipAppAccess.DoesNotExist:
+        raise not_found("App") from None
+
+
+@transaction.atomic
+def change_app_role(
+    *,
+    actor: Membership,
+    organization: Organization,
+    person_id: uuid.UUID,
+    app: str,
+    role: str,
+) -> Membership | Invitation:
+    """
+    The app tile's Edit: change the role somebody holds in one app.
+
+    ONLY THE ROLE. Their places in the app stay as they are, and the new role
+    must fit them (C27): an organisation-level role for somebody placed at the
+    organisation, a dealership role for somebody at a dealership. A disabled
+    grant stays disabled.
+    """
+    person = _person_for_app_action(actor, organization, person_id, app)
+    [(_, new_role)] = _resolve_grants(organization, [{"app": app, "role": role}])
+
+    if isinstance(person, Invitation):
+        # Pending people's apps are organisation-wide until they join (C83).
+        try:
+            pending = person.app_grants.get(app_id=app)
+        except InvitationAppGrant.DoesNotExist:
+            raise not_found("App") from None
+        _assert_grants_are_legal(organization, None, [(app, new_role)])
+        pending.role = new_role
+        pending.save(update_fields=["role", "updated_at"])
+        return person
+
+    grant = _held_grant(person, app)
+    places = [p.territory for p in grant.territories.select_related("territory")]
+    at_the_root = any(territory.is_root for territory in places)
+    _assert_grants_are_legal(
+        organization, None if at_the_root else places[0].id, [(app, new_role)]
+    )
+    grant_app_access(
+        membership=person, app=app, role=new_role, territories=places, actor_id=actor.user_id
+    )
+    return person
+
+
+@transaction.atomic
+def set_app_status(
+    *,
+    actor: Membership,
+    organization: Organization,
+    person_id: uuid.UUID,
+    app: str,
+    status: str,
+) -> Membership:
+    """
+    The app tile's Disable, or Enable to undo it.
+
+    A DISABLED GRANT KEEPS EVERYTHING -- role and places -- so Enable gives back
+    exactly what was there. While disabled it opens nothing and permits nothing
+    (`selectors._membership_data`), and the person still belongs where they
+    are placed, so the same admins still manage them.
+
+    Members only: a pending person's apps open nothing yet (`AppNotYetInUseError`).
+    """
+    person = _person_for_app_action(actor, organization, person_id, app)
+    if isinstance(person, Invitation):
+        raise AppNotYetInUseError
+
+    grant = _held_grant(person, app)
+    if grant.status != status:
+        grant.status = status
+        grant.updated_by_user_id = actor.user_id
+        grant.save(update_fields=["status", "updated_by_user_id", "updated_at"])
+    return person
+
+
+@transaction.atomic
+def unassign_app(
+    *,
+    actor: Membership,
+    organization: Organization,
+    person_id: uuid.UUID,
+    app: str,
+) -> Membership | Invitation:
+    """
+    The app tile's Unassign: take one app away. Its role and places go with it
+    (`revoke_app_access`). A person may be left with no app at all (C73
+    retired). For a pending person, the app comes off their invitation.
+    """
+    person = _person_for_app_action(actor, organization, person_id, app)
+
+    if isinstance(person, Invitation):
+        deleted, _ = person.app_grants.filter(app_id=app).delete()
+        if not deleted:
+            raise not_found("App")
+        return person
+
+    _held_grant(person, app)
+    revoke_app_access(membership=person, app=app)
     return person
 
 
@@ -1644,3 +1877,116 @@ def accept_invitation(
         membership=membership,
         account_created=account_created,
     )
+
+
+# ---------------------------------------------------------------------------
+# THE ROLE BUILDER (C72 piece 5; the owner, 2026-11-20, as Zoho's New Role):
+# Admins and Roles -> Roles -> Add Role.
+# ---------------------------------------------------------------------------
+
+# Names people already see on the Roles tab for the built-in rows, in both
+# spellings: a custom role must not look like one of them in a picker.
+_BUILT_IN_PANEL_ROLE_NAMES = {
+    "organization owner",
+    "organisation owner",
+    "organization admin",
+    "organisation admin",
+}
+
+
+@transaction.atomic
+def create_admin_role(
+    *,
+    actor: Membership,
+    organization: Organization,
+    name: str,
+    description: str,
+    permissions: list[str],
+) -> Role:
+    """
+    Make one of this organisation's own Admin panel roles.
+
+    EVERY RULE THE GRID SHOWS IS CHECKED AGAIN HERE, because a request does
+    not have to come from the grid:
+
+    - only the Admin panel's permissions that are on the section tree (C79);
+    - at least one;
+    - RULE 5: anything on a page needs that page's View;
+    - NEVER BEYOND THE BUILDER'S OWN ACCESS: a role cannot grant what its
+      builder does not hold (the owner holds everything by rule);
+    - a name not already used by this organisation's roles, or the built-ins'.
+
+    The role belongs to this organisation only (`organization_id`); its code is
+    generated, so it can never collide with a built-in one.
+    """
+    name = name.strip()
+    if not name:
+        raise InvalidInputError(
+            field_errors=[FieldError(field="name", code="required", detail="Enter a role name.")]
+        )
+
+    codes = list(dict.fromkeys(permissions))
+    if not codes:
+        raise InvalidInputError(
+            field_errors=[
+                FieldError(
+                    field="permissions", code="required", detail="Tick at least one permission."
+                )
+            ]
+        )
+
+    chosen = list(
+        Permission.objects.filter(code__in=codes, app_id=AppCode.ADMIN, section__isnull=False)
+    )
+    if len(chosen) != len(codes):
+        raise InvalidInputError(
+            field_errors=[
+                FieldError(
+                    field="permissions",
+                    code="invalid",
+                    detail="Only the Admin panel's own permissions can be given.",
+                )
+            ]
+        )
+
+    viewed = {p.section_id for p in chosen if p.action_id == VIEW_ACTION}
+    if any(p.section_id not in viewed for p in chosen):
+        raise InvalidInputError(
+            field_errors=[
+                FieldError(
+                    field="permissions",
+                    code="needs_view",
+                    detail="Anything on a page needs that page's View too.",
+                )
+            ]
+        )
+
+    if not actor.is_owner and not set(codes) <= permissions_for(actor):
+        raise RoleBeyondOwnAccessError
+
+    taken = name.lower() in _BUILT_IN_PANEL_ROLE_NAMES or (
+        roles_for_organization(organization.id)
+        .filter(app_id=AppCode.ADMIN, name__iexact=name)
+        .exists()
+    )
+    if taken:
+        raise RoleNameTakenError
+
+    role = Role.objects.create(
+        code=f"admin.custom_{uuid.uuid4().hex[:12]}",
+        name=name,
+        app_id=AppCode.ADMIN,
+        level=RoleLevel.ORG,
+        summary=description.strip(),
+        organization_id=organization.id,
+        display_order=100,
+        created_by_user_id=actor.user_id,
+        updated_by_user_id=actor.user_id,
+    )
+    RolePermission.objects.bulk_create(
+        [
+            RolePermission(role=role, permission=permission, created_by_user_id=actor.user_id)
+            for permission in chosen
+        ]
+    )
+    return role

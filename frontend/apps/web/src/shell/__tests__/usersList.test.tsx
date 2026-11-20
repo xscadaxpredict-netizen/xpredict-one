@@ -66,8 +66,8 @@ const PEOPLE: usersApi.OrgUser[] = [
     first_name: "Nishanth",
     last_name: "S",
     apps: [
-      { app: "dms", role_code: "dms.manager", role_name: "Manager" },
-      { app: "crm", role_code: "crm.member", role_name: "Member" },
+      { app: "dms", role_code: "dms.manager", role_name: "Manager", status: "active" },
+      { app: "crm", role_code: "crm.member", role_name: "Member", status: "active" },
     ],
   }),
   user({ id: "gone", first_name: "Ravi", last_name: "Kumar", status: "disabled" }),

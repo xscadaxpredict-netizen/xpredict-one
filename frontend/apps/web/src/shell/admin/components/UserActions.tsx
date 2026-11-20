@@ -81,7 +81,6 @@ export function UserActions({ user, membership, onRemoved, onStatusError }: User
       {opened === "edit" && (
         <EditUserDialog
           user={user}
-          membership={membership}
           open
           onOpenChange={(open) => !open && setOpened(null)}
         />

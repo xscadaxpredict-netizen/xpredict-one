@@ -24,10 +24,13 @@ from core.organizations.api.views import (
     PanelRolesView,
     ProvisioningView,
     ResendInvitationView,
+    RoleBuilderView,
     TerritoriesView,
     TerritoryDetailView,
     TerritoryMoveView,
+    UserAppStatusView,
     UserAppsView,
+    UserAppView,
     UserDetailView,
     UserStatusView,
     UsersView,
@@ -61,6 +64,8 @@ urlpatterns = [
     # The Roles tab (C78). Not `admin/roles/`: that is the role catalogue the
     # invite and edit forms' pickers read, owned by `core.permissions`.
     path("admin/panel-roles/", PanelRolesView.as_view(), name="panel-roles"),
+    # New Role's grid: the section tree and the roles to copy from (C72 piece 5).
+    path("admin/role-builder/", RoleBuilderView.as_view(), name="role-builder"),
     # The Admins tab (C78), on its own permission (C79).
     path("admin/admins/", AdminsView.as_view(), name="admins"),
     path("admin/users/", UsersView.as_view(), name="users"),
@@ -77,6 +82,18 @@ urlpatterns = [
     # Assign applications (C83). BEFORE the <str:action> route, for the reason
     # above: "apps" would otherwise reach the status view as a status.
     path("admin/users/<str:user_id>/apps/", UserAppsView.as_view(), name="user-apps"),
+    # The app tile (the owner, 2026-11-20): Edit (PUT) and Unassign (DELETE)
+    # on one app, and Disable / Enable as their own actions.
+    path(
+        "admin/users/<str:user_id>/apps/<str:app>/",
+        UserAppView.as_view(),
+        name="user-app",
+    ),
+    path(
+        "admin/users/<str:user_id>/apps/<str:app>/<str:action>/",
+        UserAppStatusView.as_view(),
+        name="user-app-status",
+    ),
     # BEFORE the <str:action> route too, and for the same reason: a generic
     # trailing segment placed first swallows every sibling.
     path(

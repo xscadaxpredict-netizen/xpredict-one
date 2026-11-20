@@ -33,6 +33,8 @@ FINAL = {
     "admin.user.assign_app": ("user", "assign_app"),
     "admin.user.unassign_app": ("user", "unassign_app"),
     "admin.user.disable_app": ("user", "disable_app"),
+    # The app tile's Edit (the owner, 2026-11-20, `permissions/0019`).
+    "admin.user.edit_app": ("user", "edit_app"),
     "admin.admin.view": ("admin", "view"),
     "admin.admin.assign_admin": ("admin", "assign_admin"),
     "admin.admin.unassign_admin": ("admin", "unassign_admin"),
@@ -60,7 +62,7 @@ def tree(app: str) -> list[tuple[str, str, str, str | None]]:
 
 
 class TestTheActions:
-    def test_the_four_basic_then_the_nine_special(self):
+    def test_the_four_basic_then_the_ten_special(self):
         assert list(Action.objects.values_list("code", "kind")) == [
             ("view", ActionKind.BASIC),
             ("create", ActionKind.BASIC),
@@ -75,6 +77,7 @@ class TestTheActions:
             ("disable_app", ActionKind.SPECIAL),
             ("assign_admin", ActionKind.SPECIAL),
             ("unassign_admin", ActionKind.SPECIAL),
+            ("edit_app", ActionKind.SPECIAL),
         ]
 
 
@@ -150,6 +153,17 @@ class TestWhoHoldsThem:
         )
 
         assert set(FINAL) <= held
+
+    def test_a_dealer_admin_cannot_change_somebodys_app_role(self):
+        """
+        `edit_app` is NOT the dealer admin's: holding `admin.user.update` (fix
+        a name) used to be enough to change somebody's role in an app.
+        """
+        assert not (
+            Role.objects.get(code="dms.system_admin")
+            .permissions.filter(code="admin.user.edit_app")
+            .exists()
+        )
 
     def test_a_dealer_admin_keeps_exactly_the_users_permissions_it_had(self):
         held = set(

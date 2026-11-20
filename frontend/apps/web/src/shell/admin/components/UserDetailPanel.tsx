@@ -16,6 +16,7 @@
  */
 
 import { useState, type ReactNode } from "react";
+import { asProblem } from "@xpredict/api-client";
 import { DetailPanel } from "@xpredict/ui";
 import {
   ChevronDownIcon,
@@ -30,9 +31,11 @@ import type { Membership } from "../../api/auth";
 import { useAccess } from "../../access";
 import { APP_CATALOG } from "../../navigation";
 import { adminRoleLabel } from "../administers";
-import type { OrgUser } from "../api/users";
-import { useResendInvitation } from "../hooks/useUsers";
+import type { OrgUser, UserAppRole } from "../api/users";
+import { useResendInvitation, useSetAppStatus, useUnassignApp } from "../hooks/useUsers";
 import { AssignAppsDialog } from "./AssignAppsDialog";
+import { ConfirmAppDialog } from "./ConfirmAppDialog";
+import { EditAppDialog } from "./EditAppDialog";
 import { InviteLinkPanel } from "./InviteLinkPanel";
 import panel from "./RecordPanel.module.css";
 import { UserActions, displayName } from "./UserActions";
@@ -319,92 +322,258 @@ function Invitation({ user }: { user: OrgUser }) {
  * whoever holds `admin.user.assign_app`. Not on the owner's panel -- they hold
  * every app by rule -- and not shown without the permission.
  *
- * Edit | Disable | Unassign stay DRAWN ONLY, greyed with no behaviour yet:
- * separate pieces.
+ * EACH PRODUCT TILE'S Edit | Disable | Unassign WORK (the owner, 2026-11-20):
+ * `TileActions`. The owner's tiles and the Admin panel tile keep them greyed.
  */
 function ApplicationsTab({ user }: { user: OrgUser }) {
   const name = displayName(user);
   const access = useAccess();
   const canAssign = user.role !== "owner" && access.can("admin.user.assign_app");
   const [assigning, setAssigning] = useState(false);
-  const tiles = [
-    ...user.apps.map((entry) => ({
-      key: entry.app,
-      name: appName(entry.app),
-      initials: appInitials(entry.app),
-      role: entry.role_name,
-    })),
-    /*
-      The Admin panel last, and not from `apps` — it is never granted as an
-      app (C53). An org admin with no products holds nothing in `apps` and
-      still administers, which is why the empty case below checks both.
-    */
-    ...(user.administers !== null
-      ? [
-          {
-            key: "admin",
-            name: "Admin panel",
-            initials: appInitials("admin"),
-            role: adminRoleLabel(user),
-          },
-        ]
-      : []),
-  ];
+  // A refusal from any tile's action, shown above the tiles.
+  const [problem, setProblem] = useState<string | null>(null);
+  const isOwner = user.role === "owner";
+
+  const empty = user.apps.length === 0 && user.administers === null;
 
   return (
-    <div className={styles.apps}>
-      {canAssign && (
-        <>
-          <button
-            type="button"
-            className={styles.addApp}
-            aria-label={`Assign applications to ${name}`}
-            title="Assign applications"
-            onClick={() => setAssigning(true)}
-          >
-            <PlusIcon />
-          </button>
-          <AssignAppsDialog user={user} open={assigning} onOpenChange={setAssigning} />
-        </>
+    <>
+      {problem && (
+        <p className={styles.error} role="alert">
+          {problem}
+        </p>
       )}
-      <span className={styles.rule} aria-hidden="true" />
+      <div className={styles.apps}>
+        {canAssign && (
+          <>
+            <button
+              type="button"
+              className={styles.addApp}
+              aria-label={`Assign applications to ${name}`}
+              title="Assign applications"
+              onClick={() => setAssigning(true)}
+            >
+              <PlusIcon />
+            </button>
+            <AssignAppsDialog user={user} open={assigning} onOpenChange={setAssigning} />
+          </>
+        )}
+        <span className={styles.rule} aria-hidden="true" />
 
-      {tiles.length === 0 ? (
-        <p className={styles.note}>No apps yet. They cannot open anything.</p>
-      ) : (
-        <ul className={styles.appList} aria-label={`${name}'s applications`}>
-          {tiles.map((tile) => (
-            <li key={tile.key} className={styles.appTile}>
-              <span className={styles.appBadge} aria-hidden="true">
-                {tile.initials}
-              </span>
-              <div className={styles.appText}>
-                <span className={styles.appName}>{tile.name}</span>
-                {tile.role && (
-                  <span className={styles.appRole} title={tile.role}>
-                    {tile.role}
-                  </span>
+        {empty ? (
+          <p className={styles.note}>No apps yet. They cannot open anything.</p>
+        ) : (
+          <ul className={styles.appList} aria-label={`${name}'s applications`}>
+            {user.apps.map((grant) => (
+              <AppTile
+                key={grant.app}
+                name={appName(grant.app)}
+                initials={appInitials(grant.app)}
+                role={grant.role_name}
+                disabled={grant.status === "disabled"}
+              >
+                {/*
+                  THE OWNER HOLDS EVERY APP BY RULE: there is nothing of theirs
+                  to edit, disable or take away, so their tiles stay greyed.
+                */}
+                {isOwner ? (
+                  <LaterActions appName={appName(grant.app)} personName={name} />
+                ) : (
+                  <TileActions user={user} grant={grant} onProblem={setProblem} />
                 )}
-                <div className={panel.memberActions}>
-                  {(["Edit", "Disable", "Unassign"] as const).map((action) => (
-                    <button
-                      key={action}
-                      type="button"
-                      className={panel.memberAction}
-                      aria-disabled="true"
-                      aria-label={`${action} ${tile.name} for ${name}`}
-                      title="Coming later"
-                    >
-                      {action}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            </li>
-          ))}
-        </ul>
+              </AppTile>
+            ))}
+            {/*
+              The Admin panel last, and not from `apps` -- it is never granted
+              as an app (C53). Its actions stay greyed: making or unmaking an
+              admin is Assign Admin's job, not this tile's.
+            */}
+            {user.administers !== null && (
+              <AppTile
+                name="Admin panel"
+                initials={appInitials("admin")}
+                role={adminRoleLabel(user)}
+                disabled={false}
+              >
+                <LaterActions appName="Admin panel" personName={name} />
+              </AppTile>
+            )}
+          </ul>
+        )}
+      </div>
+    </>
+  );
+}
+
+interface AppTileProps {
+  name: string;
+  initials: string;
+  role: string | null;
+  disabled: boolean;
+  children: ReactNode;
+}
+
+/** One app: its badge, name (and Disabled, if so), their role, and the actions. */
+function AppTile({ name, initials, role, disabled, children }: AppTileProps) {
+  return (
+    <li className={styles.appTile} data-disabled={disabled ? "" : undefined}>
+      <span className={styles.appBadge} aria-hidden="true">
+        {initials}
+      </span>
+      <div className={styles.appText}>
+        <span className={styles.appNameRow}>
+          <span className={styles.appName}>{name}</span>
+          {disabled && <span className={styles.disabledTag}>Disabled</span>}
+        </span>
+        {role && (
+          <span className={styles.appRole} title={role}>
+            {role}
+          </span>
+        )}
+        <div className={panel.memberActions}>{children}</div>
+      </div>
+    </li>
+  );
+}
+
+/** Edit | Disable | Unassign drawn only, greyed: the owner's tiles and the Admin panel's. */
+function LaterActions({ appName, personName }: { appName: string; personName: string }) {
+  return (
+    <>
+      {(["Edit", "Disable", "Unassign"] as const).map((action) => (
+        <button
+          key={action}
+          type="button"
+          className={panel.memberAction}
+          aria-disabled="true"
+          aria-label={`${action} ${appName} for ${personName}`}
+          title="Not available here"
+        >
+          {action}
+        </button>
+      ))}
+    </>
+  );
+}
+
+interface TileActionsProps {
+  user: OrgUser;
+  grant: UserAppRole;
+  onProblem: (message: string | null) => void;
+}
+
+/**
+ * The app tile's Edit | Disable | Unassign (the owner, 2026-11-20, as Zoho's).
+ *
+ * EACH ON ITS OWN PERMISSION -- `admin.user.edit_app`, `.disable_app`,
+ * `.unassign_app` -- and greyed without it. Disable and Unassign ask first
+ * (`ConfirmAppDialog`, which shows its own refusals); Disable becomes Enable
+ * on a disabled app, which needs no question -- a refusal from Enable shows
+ * above the tiles. A pending person's apps open nothing yet, so there is
+ * nothing to disable: that button stays greyed.
+ */
+function TileActions({ user, grant, onProblem }: TileActionsProps) {
+  const access = useAccess();
+  const name = displayName(user);
+  const label = appName(grant.app);
+  const isPending = user.status === "invited";
+  const isDisabled = grant.status === "disabled";
+
+  const [editing, setEditing] = useState(false);
+  const [confirming, setConfirming] = useState<"disable" | "unassign" | null>(null);
+  const { mutateAsync: setStatus } = useSetAppStatus();
+  const { mutateAsync: unassign } = useUnassignApp();
+
+  // The role in this app -- not `admin.user.update`, which is Edit user.
+  const canEdit = access.can("admin.user.edit_app");
+  const canToggle = access.can("admin.user.disable_app") && !isPending;
+  const canUnassign = access.can("admin.user.unassign_app");
+
+  async function run(action: () => Promise<unknown>) {
+    onProblem(null);
+    try {
+      await action();
+    } catch (failure) {
+      onProblem(asProblem(failure).detail);
+    }
+  }
+
+  return (
+    <>
+      <TileButton
+        label="Edit"
+        target={`${label} for ${name}`}
+        allowed={canEdit}
+        onPress={() => setEditing(true)}
+      />
+      <TileButton
+        label={isDisabled ? "Enable" : "Disable"}
+        target={`${label} for ${name}`}
+        allowed={canToggle}
+        why={isPending ? "Not until they join" : undefined}
+        onPress={() =>
+          isDisabled
+            ? // Enabling gives back what they had: nothing to confirm.
+              void run(() => setStatus({ userId: user.id, app: grant.app, action: "enable" }))
+            : setConfirming("disable")
+        }
+      />
+      <TileButton
+        label="Unassign"
+        target={`${label} for ${name}`}
+        allowed={canUnassign}
+        onPress={() => setConfirming("unassign")}
+      />
+
+      {canEdit && (
+        <EditAppDialog user={user} grant={grant} open={editing} onOpenChange={setEditing} />
       )}
-    </div>
+      <ConfirmAppDialog
+        open={confirming === "disable"}
+        onOpenChange={(open) => !open && setConfirming(null)}
+        title={`Disable ${label} for ${name}`}
+        question="Are you sure you want to disable the application for this user?"
+        verb="Disable"
+        onConfirm={() => setStatus({ userId: user.id, app: grant.app, action: "disable" })}
+      />
+      <ConfirmAppDialog
+        open={confirming === "unassign"}
+        onOpenChange={(open) => !open && setConfirming(null)}
+        title={`Unassign ${label} for ${name}`}
+        question="Are you sure you want to unassign the application?"
+        verb="Unassign"
+        onConfirm={() => unassign({ userId: user.id, app: grant.app })}
+      />
+    </>
+  );
+}
+
+interface TileButtonProps {
+  label: string;
+  /** "DMS for Ravi S" -- so a screen reader hears which app and whose. */
+  target: string;
+  allowed: boolean;
+  /** Why it is greyed, when the reason is not a missing permission. */
+  why?: string;
+  onPress: () => void;
+}
+
+/**
+ * Live, or greyed with `aria-disabled` -- not `disabled` -- so a keyboard still
+ * reaches it and its reason can be read.
+ */
+function TileButton({ label, target, allowed, why, onPress }: TileButtonProps) {
+  return (
+    <button
+      type="button"
+      className={`${panel.memberAction} ${allowed ? styles.liveAction : ""}`}
+      aria-disabled={allowed ? undefined : "true"}
+      aria-label={`${label} ${target}`}
+      title={allowed ? undefined : (why ?? "You do not have permission")}
+      onClick={allowed ? onPress : undefined}
+    >
+      {label}
+    </button>
   );
 }
 

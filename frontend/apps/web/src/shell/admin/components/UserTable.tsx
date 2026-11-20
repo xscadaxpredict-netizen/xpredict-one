@@ -103,7 +103,9 @@ export function UserTable({
 
                 <td className={styles.number}>{user.apps.length}</td>
 
-                <td className={styles.actions}>
+                {/* Stops clicks from the ⋮ menu and its dialogs (portals, which
+                    React still bubbles) reaching the row and selecting it. */}
+                <td className={styles.actions} onClick={(event) => event.stopPropagation()}>
                   <UserActions
                     user={user}
                     membership={membership}

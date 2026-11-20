@@ -23,6 +23,7 @@ import { ModuleRoutes, type ModuleRoute } from "../routing";
 import { AdminsAndRolesScreen } from "./screens/AdminsAndRolesScreen";
 import { ApplicationsScreen } from "./screens/ApplicationsScreen";
 import { DealersScreen } from "./screens/DealersScreen";
+import { NewRoleScreen } from "./screens/NewRoleScreen";
 import { ProfileScreen } from "./screens/ProfileScreen";
 import { UsersScreen } from "./screens/UsersScreen";
 
@@ -49,6 +50,8 @@ const routes: ModuleRoute[] = [
   { path: "users", section: "user", element: <UsersScreen /> },
   { path: "users/:userId", section: "user", element: <UsersScreen /> },
   { path: "admins-and-roles", section: "admins_and_roles", element: <AdminsAndRolesScreen /> },
+  // New Role (C72 piece 5): its own page, on the right to build roles.
+  { path: "admins-and-roles/roles/new", permission: "admin.role.create", element: <NewRoleScreen /> },
   {
     path: "admins-and-roles/:tab",
     section: "admins_and_roles",

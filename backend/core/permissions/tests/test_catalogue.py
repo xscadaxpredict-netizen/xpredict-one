@@ -22,18 +22,20 @@ pytestmark = pytest.mark.django_db
 
 
 class TestPermissions:
-    def test_there_are_73(self):
+    def test_there_are_74(self):
         """
         C42 settled on 48, C67 added seven, and C72 piece 1 added three
         (`admin.territory.view/create/update`, `permissions/0009`), and C78 one
         (`admin.organization_info.view`, `permissions/0012`) and one more
-        (`admin.application.view`, `permissions/0013`). A number
+        (`admin.application.view`, `permissions/0013`), C79's final list
+        thirteen (`0018`), and the app tile's Edit one more
+        (`admin.user.edit_app`, `0019`, 2026-11-20). A number
         that drifts is a decision nobody made -- which is exactly what this
         assertion is for, and it did its job: the seven codes were added with a
         comment saying the catalogue had grown and this test was not updated
         with them.
         """
-        assert Permission.objects.count() == 73
+        assert Permission.objects.count() == 74
 
     def test_split_by_app_as_decided(self):
         """
@@ -41,10 +43,11 @@ class TestPermissions:
         (manuals, videos), three for tools (marketing material, the calculator
         constants, deleting a saved calculation) and two for store orders.
         Administration went 11 -> 14 with C72's territory three, and to 16 with
-        C78's `admin.organization_info.view` and `admin.application.view`. Each app is
-        asserted separately so a change to one cannot quietly reach another.
+        C78's `admin.organization_info.view` and `admin.application.view`, to
+        29 with C79's final list and to 30 with `admin.user.edit_app`. Each app
+        is asserted separately so a change to one cannot quietly reach another.
         """
-        assert Permission.objects.filter(app_id=AppCode.ADMIN).count() == 29
+        assert Permission.objects.filter(app_id=AppCode.ADMIN).count() == 30
         assert Permission.objects.filter(app_id=AppCode.DMS).count() == 43
         assert Permission.objects.filter(app_id=AppCode.CRM).count() == 1
 

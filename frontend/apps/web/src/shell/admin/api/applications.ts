@@ -43,6 +43,23 @@ export interface ApplicationMember {
   places: string[];
 }
 
+/**
+ * Assign users (the owner, 2026-11-20): several people, one role, all or
+ * nothing. `users` are ids as the Users list gives them -- a pending person's
+ * is their invitation's.
+ */
+export async function assignUsersToApp(
+  orgSlug: string,
+  appCode: string,
+  users: string[],
+  role: string,
+): Promise<void> {
+  await request<void>(`/api/v1/orgs/${orgSlug}/admin/applications/${appCode}/members/`, {
+    method: "POST",
+    body: JSON.stringify({ users, role }),
+  });
+}
+
 export async function fetchApplicationMembers(
   orgSlug: string,
   appCode: string,

@@ -16,18 +16,22 @@ import { useOrgMutation, useOrgQuery } from "@xpredict/api-client";
 
 import {
   assignApps,
+  changeAppRole,
   fetchInviteLink,
   fetchUsers,
   inviteUser,
   removeUser,
   resendInvitation,
+  setAppStatus,
   setUserStatus,
+  unassignApp,
   updateUser,
   type AppGrant,
   type NewInvitation,
   type UserDetails,
   type UserStatus,
 } from "../api/users";
+import { assignUsersToApp } from "../api/applications";
 import { applicationKeys } from "./useApplications";
 import { roleKeys } from "./useRoles";
 
@@ -131,6 +135,51 @@ export function useAssignApps() {
     mutationFn: (orgSlug, variables: { userId: string; apps: AppGrant[] }) =>
       assignApps(orgSlug, variables.userId, variables.apps),
     invalidates: [...PEOPLE_CHANGED, applicationKeys.all()],
+  });
+}
+
+/*
+ * THE APP TILE'S THREE ACTIONS (the owner, 2026-11-20). Each changes who can
+ * open an app, like Assign applications, so the Applications page reloads too.
+ */
+const APP_CHANGED = [...PEOPLE_CHANGED, applicationKeys.all()];
+
+export function useChangeAppRole() {
+  return useOrgMutation({
+    mutationFn: (orgSlug, variables: { userId: string; app: string; role: string }) =>
+      changeAppRole(orgSlug, variables.userId, variables.app, variables.role),
+    invalidates: APP_CHANGED,
+  });
+}
+
+export function useSetAppStatus() {
+  return useOrgMutation({
+    mutationFn: (
+      orgSlug,
+      variables: { userId: string; app: string; action: "disable" | "enable" },
+    ) => setAppStatus(orgSlug, variables.userId, variables.app, variables.action),
+    invalidates: APP_CHANGED,
+  });
+}
+
+export function useUnassignApp() {
+  return useOrgMutation({
+    mutationFn: (orgSlug, variables: { userId: string; app: string }) =>
+      unassignApp(orgSlug, variables.userId, variables.app),
+    invalidates: APP_CHANGED,
+  });
+}
+
+/**
+ * Applications -> an app -> Assign users. Here rather than in
+ * `useApplications` because it changes people too, and `PEOPLE_CHANGED` lives
+ * here (`useApplications` importing it back would be a cycle).
+ */
+export function useAssignUsersToApp() {
+  return useOrgMutation({
+    mutationFn: (orgSlug, variables: { app: string; users: string[]; role: string }) =>
+      assignUsersToApp(orgSlug, variables.app, variables.users, variables.role),
+    invalidates: APP_CHANGED,
   });
 }
 

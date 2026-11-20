@@ -419,6 +419,8 @@ button.tab {
   font-size: var(--text-sm);
   font-weight: 600;
   white-space: nowrap;
+  /* It may be a link (Add Role opens a page). */
+  text-decoration: none;
   cursor: pointer;
 }
 

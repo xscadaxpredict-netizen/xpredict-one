@@ -49,7 +49,7 @@ function user(overrides: Partial<usersApi.OrgUser> & { id: string }): usersApi.O
     unit_id: null,
     role: "member",
     status: "active",
-    apps: [{ app: "dms", role_code: "dms.sales_representative", role_name: "Sales representative" }],
+    apps: [{ app: "dms", role_code: "dms.sales_representative", role_name: "Sales representative", status: "active" }],
     administers: null,
     ...overrides,
   };
@@ -206,18 +206,17 @@ describe("editing somebody", () => {
     expect(within(dialog).getByLabelText(/Email/)).not.toHaveAttribute("readonly");
   });
 
-  it("never offers Owner as a role", async () => {
+  it("offers no role at all: Edit is basic information only", async () => {
     renderRoute({ path: "/acme-motors/admin/users/anita", children: routes });
 
     await screen.findByRole("complementary", { name: "Anita Fernandes" });
     await openEdit();
 
     const dialog = await screen.findByRole("dialog");
-    const roleSelect = within(dialog).getByLabelText("Organisation role");
 
-    // Exactly one owner per organisation (C14): appointing one is a transfer,
-    // not an edit, and this form would leave two or none.
-    expect(within(roleSelect).queryByRole("option", { name: "Owner" })).not.toBeInTheDocument();
+    // Standing, and so ownership (C14), is not Edit's to change any more.
+    expect(within(dialog).queryByLabelText("Organisation role")).not.toBeInTheDocument();
+    expect(within(dialog).queryByRole("combobox")).not.toBeInTheDocument();
   });
 
   /*

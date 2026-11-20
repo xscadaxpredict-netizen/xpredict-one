@@ -98,7 +98,12 @@ class TestAssigning:
 
         assert response.status_code == 200
         assert response.json()["apps"] == [
-            {"app": "dms", "role_code": "dms.group_operations", "role_name": "Group operations"}
+            {
+                "app": "dms",
+                "role_code": "dms.group_operations",
+                "role_name": "Group operations",
+                "status": "active",
+            }
         ]
         assert reach(Membership.objects.get(pk=asha.pk)) is None
 

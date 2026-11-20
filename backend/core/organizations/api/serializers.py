@@ -13,6 +13,8 @@ only thing that will tell you is a column going blank.
 
 from __future__ import annotations
 
+from typing import ClassVar
+
 from rest_framework import serializers
 
 from core.accounts.api.serializers import validate_password_strength
@@ -217,6 +219,8 @@ class AppGrantSerializer(serializers.Serializer):
     app = serializers.CharField(read_only=True)
     role_code = serializers.CharField(read_only=True)
     role_name = serializers.CharField(read_only=True)
+    # "active" or "disabled": the tile's Disabled badge and its Enable button.
+    status = serializers.CharField(read_only=True)
 
 
 class OrgUserSerializer(serializers.Serializer):
@@ -260,6 +264,22 @@ class AppGrantInputSerializer(serializers.Serializer):
     role = serializers.CharField(max_length=60)
 
 
+class AssignUsersSerializer(serializers.Serializer):
+    """
+    Applications -> an app -> Assign users: the people (membership or
+    invitation ids, as the Users list gives them) and the one role they all get.
+    """
+
+    users = serializers.ListField(child=serializers.UUIDField(), allow_empty=False)
+    role = serializers.CharField(max_length=60)
+
+
+class AppRoleSerializer(serializers.Serializer):
+    """The app tile's Edit: the new role code for that one app."""
+
+    role = serializers.CharField(max_length=60)
+
+
 class AssignAppsSerializer(serializers.Serializer):
     """
     Assign applications (C83): one or more apps, each with what that app needs
@@ -270,55 +290,50 @@ class AssignAppsSerializer(serializers.Serializer):
     apps = AppGrantInputSerializer(many=True, allow_empty=False)
 
 
-class PersonDetailsSerializer(serializers.Serializer):
+class _PersonOnlySerializer(serializers.Serializer):
     """
-    The writable fields of somebody's membership. Invite and edit take the same
-    set, so one shape serves both.
+    A person -- first name, last name, email -- and nothing else (C83).
 
-    `role` EXCLUDES "owner" DELIBERATELY. There is exactly one owner per
-    organization (C14), so appointing a new one is a transfer rather than an
-    edit, and offering it here would quietly leave the organization with two or
-    none. Transfer is Q23 and does not exist yet.
-
-    `apps` NEVER CARRIES "admin". Administration follows from standing or from
-    a role that grants `admin.*` (C40); the service refuses a payload that asks
-    for it rather than dropping it, so a caller cannot believe it was granted.
+    REFUSED, NOT IGNORED. A stale screen still sending `role`, `unit_id` or
+    `apps` must not believe it set them -- the same rule as asking for
+    Administration in `apps` (C40).
     """
 
-    first_name = serializers.CharField(max_length=150, allow_blank=True)
-    last_name = serializers.CharField(max_length=150, allow_blank=True)
-    email = serializers.EmailField()
-
-    # `allow_null` is the organization-wide case, not a missing value: null
-    # means "not limited to any one dealer", which is every owner, every org
-    # admin and anybody holding an org-level role.
-    unit_id = serializers.UUIDField(required=False, allow_null=True, default=None)
-
-    role = serializers.ChoiceField(choices=["admin", "member"])
-    apps = AppGrantInputSerializer(many=True)
-
-
-class InviteSerializer(serializers.Serializer):
-    """
-    Add User in the Admin panel (C83, the owner 2026-11-20): a person -- first
-    name, last name, email -- and nothing else. No role, no place, no apps:
-    those are assigned afterwards, or by an app's own invite.
-    """
+    #: Ends the refusal: "<what> takes first name, last name and email only."
+    action_name: ClassVar[str]
 
     first_name = serializers.CharField(max_length=150, allow_blank=True)
     last_name = serializers.CharField(max_length=150, allow_blank=True)
     email = serializers.EmailField()
 
     def validate(self, attrs: dict) -> dict:
-        # REFUSED, NOT IGNORED. A stale screen still sending `role`, `unit_id`
-        # or `apps` must not believe it set them -- the same rule as asking for
-        # Administration in `apps` (C40).
         unexpected = sorted(set(self.initial_data) - set(self.fields))
         if unexpected:
             raise serializers.ValidationError(
-                dict.fromkeys(unexpected, "Add User takes first name, last name and email only.")
+                dict.fromkeys(
+                    unexpected, f"{self.action_name} takes first name, last name and email only."
+                )
             )
         return attrs
+
+
+class PersonDetailsSerializer(_PersonOnlySerializer):
+    """
+    Edit in the Admin panel (the owner, 2026-11-20): basic information only.
+    Apps, place and standing each have their own action.
+    """
+
+    action_name = "Edit"
+
+
+class InviteSerializer(_PersonOnlySerializer):
+    """
+    Add User in the Admin panel (C83, the owner 2026-11-20): a person -- first
+    name, last name, email -- and nothing else. No role, no place, no apps:
+    those are assigned afterwards, or by an app's own invite.
+    """
+
+    action_name = "Add User"
 
 
 # ---------------------------------------------------------------------------
@@ -467,6 +482,52 @@ class PanelRoleSerializer(serializers.Serializer):
     built_in = serializers.BooleanField(read_only=True)
     users = serializers.IntegerField(read_only=True)
     modified_by = serializers.CharField(read_only=True, allow_null=True)
+
+
+class NewPanelRoleSerializer(serializers.Serializer):
+    """New Role (the role builder, C72 piece 5): what the form sends."""
+
+    name = serializers.CharField(max_length=100)
+    description = serializers.CharField(
+        max_length=500, allow_blank=True, required=False, default=""
+    )
+    permissions = serializers.ListField(child=serializers.CharField(max_length=80))
+
+
+class _BuilderActionSerializer(serializers.Serializer):
+    code = serializers.CharField(read_only=True)
+    name = serializers.CharField(read_only=True)
+    # "basic" (the fixed View / Create / Edit / Delete columns) or "special"
+    # (More Permissions).
+    kind = serializers.CharField(read_only=True)
+    permission = serializers.CharField(read_only=True)
+
+
+class _BuilderRowSerializer(serializers.Serializer):
+    code = serializers.CharField(read_only=True)
+    name = serializers.CharField(read_only=True)
+    actions = _BuilderActionSerializer(many=True, read_only=True)
+
+
+class _BuilderModuleSerializer(serializers.Serializer):
+    code = serializers.CharField(read_only=True)
+    name = serializers.CharField(read_only=True)
+    rows = _BuilderRowSerializer(many=True, read_only=True)
+
+
+class _BuilderTemplateSerializer(serializers.Serializer):
+    code = serializers.CharField(read_only=True)
+    name = serializers.CharField(read_only=True)
+    permissions = serializers.ListField(child=serializers.CharField(), read_only=True)
+
+
+class RoleBuilderSerializer(serializers.Serializer):
+    """
+    The New Role grid. Mirrors `RoleBuilder` in `shell/admin/api/roles.ts`.
+    """
+
+    modules = _BuilderModuleSerializer(many=True, read_only=True)
+    templates = _BuilderTemplateSerializer(many=True, read_only=True)
 
 
 class ManagedAppSerializer(serializers.Serializer):

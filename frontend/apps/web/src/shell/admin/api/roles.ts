@@ -116,7 +116,7 @@ export interface PanelRole {
   code: string;
   name: string;
   summary: string;
-  /** Always true until organisations can build roles (C72 piece 5). */
+  /** False for one the organisation made in New Role (C72 piece 5). */
   built_in: boolean;
   /** Everyone holding it: active, deactivated and pending. */
   users: number;
@@ -126,4 +126,66 @@ export interface PanelRole {
 
 export async function fetchPanelRoles(orgSlug: string): Promise<PanelRole[]> {
   return request<PanelRole[]>(`/api/v1/orgs/${orgSlug}/admin/panel-roles/`);
+}
+
+/* ------------------- the role builder (C72 piece 5) ---------------------- */
+
+/** One thing a page lets you do. Mirrors `_BuilderActionSerializer`. */
+export interface BuilderAction {
+  /** "view", "create", "update", "delete", or a special one: "assign_app". */
+  code: string;
+  /** What the grid shows: "View", "Edit", "Assign app". */
+  name: string;
+  /** "basic": the fixed View / Create / Edit / Delete columns. "special": More Permissions. */
+  kind: "basic" | "special";
+  /** The permission it grants: "admin.user.view". */
+  permission: string;
+}
+
+/** One row of the grid: a page or a tab. */
+export interface BuilderRow {
+  code: string;
+  name: string;
+  actions: BuilderAction[];
+}
+
+/** One card: a module of the Admin panel. */
+export interface BuilderModule {
+  code: string;
+  name: string;
+  rows: BuilderRow[];
+}
+
+/** A role "Copy permissions from" offers. */
+export interface BuilderTemplate {
+  code: string;
+  name: string;
+  permissions: string[];
+}
+
+/**
+ * What the New Role grid draws: the Admin panel's section tree, READ FROM THE
+ * SERVER rather than typed here, so a new page or action appears by itself.
+ */
+export interface RoleBuilder {
+  modules: BuilderModule[];
+  templates: BuilderTemplate[];
+}
+
+export async function fetchRoleBuilder(orgSlug: string): Promise<RoleBuilder> {
+  return request<RoleBuilder>(`/api/v1/orgs/${orgSlug}/admin/role-builder/`);
+}
+
+/** New Role's form. `permissions` are permission codes. */
+export interface NewPanelRole {
+  name: string;
+  description: string;
+  permissions: string[];
+}
+
+export async function createPanelRole(orgSlug: string, body: NewPanelRole): Promise<PanelRole> {
+  return request<PanelRole>(`/api/v1/orgs/${orgSlug}/admin/panel-roles/`, {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
 }

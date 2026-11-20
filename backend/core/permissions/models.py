@@ -418,9 +418,15 @@ class Role(BaseModel):
     """
     A named bundle of permissions inside one app.
 
-    SEEDED BY DATA MIGRATION, never written through the API. Organizations do
-    not author roles (C28), which is why there is no `organization` column here
-    --- the same nine rows serve every tenant.
+    TWO KINDS (C72 piece 5, the role builder, 2026-11-20):
+
+    - BUILT-IN: seeded by data migration, `organization_id` NULL, the same rows
+      serving every tenant.
+    - AN ORGANISATION'S OWN: made in Admins and Roles -> Roles -> Add Role,
+      `organization_id` set. ONLY THAT ORGANISATION may see or grant it --
+      every lookup by code goes through `roles_for_organization()`, never a
+      bare `Role.objects.get(code=...)`, or another organisation could grant
+      it by guessing the code.
 
     THERE IS NO `administers` COLUMN, and there used to be. C40 removed it:
     whether a role confers administration is "does it grant any `admin.*`
@@ -440,7 +446,13 @@ class Role(BaseModel):
         related_name="roles",
     )
     level = models.CharField(max_length=10, choices=RoleLevel.choices)
-    summary = models.CharField(max_length=300)
+    # The builder's Description (max 500, as Zoho's). Built-ins' are shorter.
+    summary = models.CharField(max_length=500)
+
+    # NULL for a built-in role; the owning organisation for a custom one. A
+    # plain UUID, not a foreign key: `organizations` already depends on this
+    # app, and a key back would tie the two apps' migrations in a loop.
+    organization_id = models.UUIDField(null=True, blank=True, db_index=True)
 
     display_order = models.PositiveSmallIntegerField(
         default=0,
@@ -481,6 +493,12 @@ class Role(BaseModel):
     class Meta:
         constraints = [
             models.UniqueConstraint(fields=["app", "code"], name="role_unique_app_code"),
+            # One name per organisation per app. Built-ins have NULL here, and
+            # MySQL treats NULLs as distinct, so this binds custom roles only;
+            # a custom role reusing a built-in's name is refused by the service.
+            models.UniqueConstraint(
+                fields=["organization_id", "app", "name"], name="role_unique_org_app_name"
+            ),
         ]
         # `name` stays as the tie-breaker, so two roles sharing a
         # `display_order` are still returned in a stable order rather than
@@ -489,6 +507,10 @@ class Role(BaseModel):
 
     def __str__(self) -> str:
         return f"{self.name} ({self.app_id})"
+
+    @property
+    def is_built_in(self) -> bool:
+        return self.organization_id is None
 
     @property
     def administers(self) -> bool:
@@ -504,6 +526,17 @@ class Role(BaseModel):
         a query each.
         """
         return any(permission.app_id == AppCode.ADMIN for permission in self.permissions.all())
+
+
+def roles_for_organization(organization_id) -> models.QuerySet[Role]:
+    """
+    The roles one organisation may see and grant: every built-in role, and its
+    own -- never another organisation's. EVERY lookup of a role by code that
+    could come from a request goes through this.
+    """
+    return Role.objects.filter(
+        models.Q(organization_id__isnull=True) | models.Q(organization_id=organization_id)
+    )
 
 
 class RolePermission(BaseModel):

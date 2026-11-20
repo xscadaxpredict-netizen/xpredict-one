@@ -210,7 +210,13 @@ function ApplicationRow({ app, href, isOpen, onOpen }: ApplicationRowProps) {
         )}
       </td>
       <td className={styles.number}>{app.members}</td>
-      <td className={styles.actions}>
+      {/*
+        STOPS CLICKS HERE. The ⋮ menu and the dialog it opens are portals,
+        and React still bubbles their clicks up the component tree -- so
+        without this, choosing "Assign users" or ticking a person in its
+        dialog also "clicked" the row and opened the app's panel.
+      */}
+      <td className={styles.actions} onClick={(event) => event.stopPropagation()}>
         <ApplicationActions app={app} />
       </td>
     </tr>

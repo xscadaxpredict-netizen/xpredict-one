@@ -105,6 +105,15 @@ PERMISSIONS: list[tuple[str, str, str, str, str]] = [
     ("admin.user.assign_app", "admin", "users", "People", "Give somebody an app"),
     ("admin.user.unassign_app", "admin", "users", "People", "Take an app away from somebody"),
     ("admin.user.disable_app", "admin", "users", "People", "Disable somebody's app"),
+    # The app tile's Edit -- the role held in one app. Its own permission, not
+    # `admin.user.update` (Edit user: name and email), since `permissions/0019`.
+    (
+        "admin.user.edit_app",
+        "admin",
+        "users",
+        "People",
+        "Change somebody's role in an app",
+    ),
     ("admin.admin.view", "admin", "roles", "Admins", "See the organisation's admins"),
     ("admin.admin.assign_admin", "admin", "roles", "Admins", "Make somebody an admin"),
     ("admin.admin.unassign_admin", "admin", "roles", "Admins", "Remove somebody's admin role"),

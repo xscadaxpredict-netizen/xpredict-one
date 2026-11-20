@@ -29,6 +29,12 @@ from rest_framework.test import APIClient
 from conftest import TEST_TENANT_ALIAS
 from core.accounts.models import User
 from core.billing.models import AppSubscription, SubscriptionStatus
+from core.organizations.exceptions import (
+    AdministrationNotGrantableError,
+    AppNotSubscribedError,
+    DealerScopedAppError,
+    RoleScopeMismatchError,
+)
 from core.organizations.models import (
     ActivationCode,
     Invitation,
@@ -38,8 +44,14 @@ from core.organizations.models import (
     Territory,
 )
 from core.organizations.selectors import org_users, reach, standing
-from core.organizations.services import INVITATION_LIFETIME, grant_app_access, sign_up
+from core.organizations.services import (
+    INVITATION_LIFETIME,
+    grant_app_access,
+    sign_up,
+    update_person,
+)
 from core.permissions.models import AppCode, Role
+from shared.exceptions import NotFoundError
 
 pytestmark = [
     pytest.mark.django_db(databases=["default", TEST_TENANT_ALIAS]),
@@ -116,8 +128,18 @@ def invite_payload(**overrides) -> dict:
 
 
 def payload(**overrides) -> dict:
-    """Edit user: the person, and their standing, place and apps."""
-    return {
+    """Edit user: basic information only (2026-11-20)."""
+    return {"first_name": "New", "last_name": "Person", "email": "new@acme.test", **overrides}
+
+
+def update_whole_person(actor, person, **overrides):
+    """
+    The old whole-person edit -- name, place, standing and apps in one -- which
+    no endpoint calls since Edit became basic information. Its rules are pinned
+    here, at the service, until Assign Admin and the app tile's Edit | Unassign
+    replace it.
+    """
+    fields = {
         "first_name": "New",
         "last_name": "Person",
         "email": "new@acme.test",
@@ -126,6 +148,9 @@ def payload(**overrides) -> dict:
         "apps": [{"app": "dms", "role": "dms.group_operations"}],
         **overrides,
     }
+    return update_person(
+        actor=actor, organization=person.organization, person_id=person.id, **fields
+    )
 
 
 class TestTheList:
@@ -180,7 +205,13 @@ class TestTheList:
         owner = next(p for p in response.json() if p["role"] == "owner")
 
         assert owner["apps"] == [
-            {"app": "dms", "role_code": "dms.group_operations", "role_name": "Group operations"}
+            {
+                "app": "dms",
+                "role_code": "dms.group_operations",
+                "role_name": "Group operations",
+                # The app tile's Disabled badge reads this (2026-11-20).
+                "status": "active",
+            }
         ]
 
     def test_a_dealership_is_named_and_not_only_referenced(self, client):
@@ -332,8 +363,7 @@ class TestDealerIsolation:
 
         response = client.put(
             DETAIL_URL.format(slug=result.organization.slug, id=other.id),
-            payload(email="theirs@acme.test", unit_id=str(theirs.id),
-                    apps=[{"app": "dms", "role": "dms.manager"}]),
+            payload(email="theirs@acme.test"),
             format="json",
         )
 
@@ -341,9 +371,26 @@ class TestDealerIsolation:
         assert response.status_code == 404
         assert response.json()["code"] == "not_found"
 
-    def test_a_dealer_admin_cannot_move_their_person_to_another_dealership(
-        self, client, two_dealers
-    ):
+    def test_a_dealer_admin_can_rename_their_own_dealerships_person(self, client, two_dealers):
+        result, mine, _theirs, admin = two_dealers
+        person = add_person(result.organization, unit=mine, email="ours@acme.test")
+        client.force_authenticate(user=admin.user)
+
+        response = client.put(
+            DETAIL_URL.format(slug=result.organization.slug, id=person.id),
+            payload(first_name="Renamed", email="ours@acme.test"),
+            format="json",
+        )
+
+        assert response.status_code == 200
+        assert response.json()["first_name"] == "Renamed"
+        # Their place is untouched: Edit no longer carries one.
+        assert reach(Membership.objects.get(pk=person.pk)) == frozenset({mine.id})
+
+    # MOVING SOMEBODY is no longer an Edit (2026-11-20), so these two call the
+    # whole-person service, which still enforces it until it is replaced.
+
+    def test_a_dealer_admin_cannot_move_their_person_to_another_dealership(self, two_dealers):
         """
         CHECKED AT BOTH ENDS. The person is theirs to manage, so a check on the
         source alone passes -- and they would have handed somebody to a
@@ -351,39 +398,30 @@ class TestDealerIsolation:
         """
         result, mine, theirs, admin = two_dealers
         person = add_person(result.organization, unit=mine, email="ours@acme.test")
-        client.force_authenticate(user=admin.user)
 
-        response = client.put(
-            DETAIL_URL.format(slug=result.organization.slug, id=person.id),
-            payload(email="ours@acme.test", unit_id=str(theirs.id),
-                    apps=[{"app": "dms", "role": "dms.manager"}]),
-            format="json",
-        )
+        with pytest.raises(NotFoundError):
+            update_whole_person(
+                admin, person, email="ours@acme.test", unit_id=theirs.id,
+                apps=[{"app": "dms", "role": "dms.manager"}],
+            )
 
-        assert response.status_code == 404
         # Still at their own dealership -- by their GRANT, the only record
-        # since step 2d-2. `Membership.unit` is no longer written, so reading
-        # it here would pass whatever the service did.
+        # since step 2d-2.
         assert reach(Membership.objects.get(pk=person.pk)) == frozenset({mine.id})
 
-    def test_a_dealer_admin_cannot_pull_somebody_in_from_another_dealership(
-        self, client, two_dealers
-    ):
+    def test_a_dealer_admin_cannot_pull_somebody_in_from_another_dealership(self, two_dealers):
         """
         The mirror image, which a check on the TARGET alone would permit.
         """
         result, mine, theirs, admin = two_dealers
         person = add_person(result.organization, unit=theirs, email="theirs@acme.test")
-        client.force_authenticate(user=admin.user)
 
-        response = client.put(
-            DETAIL_URL.format(slug=result.organization.slug, id=person.id),
-            payload(email="theirs@acme.test", unit_id=str(mine.id),
-                    apps=[{"app": "dms", "role": "dms.manager"}]),
-            format="json",
-        )
+        with pytest.raises(NotFoundError):
+            update_whole_person(
+                admin, person, email="theirs@acme.test", unit_id=mine.id,
+                apps=[{"app": "dms", "role": "dms.manager"}],
+            )
 
-        assert response.status_code == 404
         assert reach(Membership.objects.get(pk=person.pk)) == frozenset({theirs.id})
 
     def test_a_dealer_admin_cannot_invite_anybody_for_now(self, client, two_dealers):
@@ -571,18 +609,19 @@ class TestInviting:
         assert not Invitation.objects.filter(email="new@acme.test").exists()
 
 
-def edit(client, result, **overrides):
+def owner_of(result) -> Membership:
+    return Membership.objects.get(user=result.user, organization=result.organization)
+
+
+def edit(result, **overrides):
     """
-    Edit somebody with no app yet -- where apps are given since C83, so where
-    the grant rules (C16, C27, C40) are checked.
+    The whole-person service on somebody with no app yet, where the grant
+    rules (C16, C27, C40) are checked. Through the API these rules are now
+    reached by Assign applications (`test_assign_apps.py`); here they are
+    pinned on the service that still carries them.
     """
     person = add_person(result.organization, email="person@acme.test", role_code=None)
-    client.force_authenticate(user=result.user)
-    return client.put(
-        DETAIL_URL.format(slug=result.organization.slug, id=person.id),
-        payload(email="person@acme.test", **overrides),
-        format="json",
-    )
+    return update_whole_person(owner_of(result), person, email="person@acme.test", **overrides)
 
 
 class TestSubscriptionIsRequired:
@@ -597,17 +636,14 @@ class TestSubscriptionIsRequired:
     that never became clickable.
     """
 
-    def test_an_app_the_organisation_never_bought_is_refused(self, client):
+    def test_an_app_the_organisation_never_bought_is_refused(self):
         result = found()
-        client.force_authenticate(user=result.user)
 
         # A new organisation subscribes to DMS only (DEFAULT_SUBSCRIBED_APPS).
-        response = edit(client, result, apps=[{"app": "crm", "role": "crm.member"}])
+        with pytest.raises(AppNotSubscribedError):
+            edit(result, apps=[{"app": "crm", "role": "crm.member"}])
 
-        assert response.status_code == 409
-        assert response.json()["code"] == "app_not_subscribed"
-
-    def test_a_cancelled_subscription_refuses_new_grants(self, client):
+    def test_a_cancelled_subscription_refuses_new_grants(self):
         """
         The grant is not revoked when billing lapses — C16 is explicit that a
         stale grant must simply open nothing — but no NEW one may be made.
@@ -616,57 +652,30 @@ class TestSubscriptionIsRequired:
         AppSubscription.objects.filter(organization=result.organization, app_id=AppCode.DMS).update(
             status=SubscriptionStatus.CANCELLED
         )
-        client.force_authenticate(user=result.user)
 
-        response = edit(client, result)
+        with pytest.raises(AppNotSubscribedError):
+            edit(result)
 
-        assert response.status_code == 409
-        assert response.json()["code"] == "app_not_subscribed"
-
-    def test_editing_somebody_is_held_to_the_same_rule(self, client):
-        """
-        Invite and edit go through one check, so this cannot drift — which is
-        how the C27 rule came to exist in one dialog and not the other.
-        """
-        result = found()
-        person = add_person(result.organization, email="person@acme.test", role_code=None)
-        client.force_authenticate(user=result.user)
-
-        response = client.put(
-            DETAIL_URL.format(slug=result.organization.slug, id=person.id),
-            payload(email="person@acme.test", apps=[{"app": "crm", "role": "crm.member"}]),
-            format="json",
-        )
-
-        assert response.status_code == 409
-        assert response.json()["code"] == "app_not_subscribed"
-
-    def test_re_granting_a_subscribed_app_is_allowed(self, client):
+    def test_re_granting_a_subscribed_app_is_allowed(self):
         """
         THE OWNER'S CASE, from the backend side. C41 lets them drop an app they
         never open; nothing about that may stop them taking it back, and the
         subscription is what says so.
         """
         result = found()
-        owner = Membership.objects.get(user=result.user, organization=result.organization)
+        owner = owner_of(result)
         owner.grants.all().delete()
-        client.force_authenticate(user=result.user)
 
-        response = client.put(
-            DETAIL_URL.format(slug=result.organization.slug, id=owner.id),
-            payload(
-                email="owner@acme.test",
-                apps=[{"app": "dms", "role": "dms.group_operations"}],
-            ),
-            format="json",
+        update_whole_person(
+            owner, owner, email="owner@acme.test",
+            apps=[{"app": "dms", "role": "dms.group_operations"}],
         )
 
-        assert response.status_code == 200
         assert [g.app_id for g in owner.grants.all()] == ["dms"]
 
 
 class TestC27DealerScopedGrants:
-    def test_a_dealer_scoped_person_cannot_be_given_crm(self, client):
+    def test_a_dealer_scoped_person_cannot_be_given_crm(self):
         """
         C27. CRM does no unit filtering and has no column to filter on, so this
         person would see every dealership's customers.
@@ -684,69 +693,56 @@ class TestC27DealerScopedGrants:
             status=SubscriptionStatus.ACTIVE,
         )
         unit = Territory.objects.create(organization=result.organization, name="Whitefield")
-        client.force_authenticate(user=result.user)
+        with pytest.raises(DealerScopedAppError):
+            edit(
+                result,
+                unit_id=unit.id,
+                apps=[
+                    {"app": "dms", "role": "dms.manager"},
+                    {"app": "crm", "role": "crm.member"},
+                ],
+            )
 
-        response = edit(
-            client,
-            result,
-            unit_id=str(unit.id),
-            apps=[
-                {"app": "dms", "role": "dms.manager"},
-                {"app": "crm", "role": "crm.member"},
-            ],
-        )
-
-        assert response.status_code == 409
-        assert response.json()["code"] == "dealer_scoped_app"
-
-    def test_a_dealer_scoped_person_cannot_hold_an_org_level_role(self, client):
+    def test_a_dealer_scoped_person_cannot_hold_an_org_level_role(self):
         result = found()
         unit = Territory.objects.create(organization=result.organization, name="Whitefield")
-        client.force_authenticate(user=result.user)
 
-        response = edit(
-            client,
-            result,
-            unit_id=str(unit.id),
-            apps=[{"app": "dms", "role": "dms.group_operations"}],
-        )
+        with pytest.raises(RoleScopeMismatchError):
+            edit(result, unit_id=unit.id, apps=[{"app": "dms", "role": "dms.group_operations"}])
 
-        assert response.status_code == 409
-        assert response.json()["code"] == "role_scope_mismatch"
-
-    def test_an_organisation_wide_person_cannot_hold_a_dealership_role(self, client):
+    def test_an_organisation_wide_person_cannot_hold_a_dealership_role(self):
         result = found()
-        client.force_authenticate(user=result.user)
 
-        response = edit(client, result, apps=[{"app": "dms", "role": "dms.manager"}])
+        with pytest.raises(RoleScopeMismatchError):
+            edit(result, apps=[{"app": "dms", "role": "dms.manager"}])
 
-        assert response.status_code == 409
-        assert response.json()["code"] == "role_scope_mismatch"
-
-    def test_administration_cannot_be_granted_as_an_app(self, client):
+    def test_administration_cannot_be_granted_as_an_app(self):
         """
         C40, C44. It is never an `AppAccess` row and comes from standing or
         from a role granting `admin.*`. Refused rather than dropped, so a
         caller cannot believe it was granted.
         """
         result = found()
-        client.force_authenticate(user=result.user)
 
-        response = edit(client, result, apps=[{"app": "admin", "role": "whatever"}])
-
-        assert response.status_code == 409
-        assert response.json()["code"] == "administration_not_grantable"
+        with pytest.raises(AdministrationNotGrantableError):
+            edit(result, apps=[{"app": "admin", "role": "whatever"}])
 
 
 class TestEditing:
-    def test_an_owner_can_change_somebodys_name_and_role(self, client):
+    """
+    Edit is BASIC INFORMATION ONLY (the owner, 2026-11-20): first name, last
+    name, email. Apps, place and standing each have their own action, so a
+    save here can never change them.
+    """
+
+    def test_renaming_somebody_changes_their_name_and_nothing_else(self, client):
         result = found()
-        person = add_person(result.organization, email="person@acme.test", role_code=None)
+        person = add_person(result.organization, email="person@acme.test")
         client.force_authenticate(user=result.user)
 
         response = client.put(
             DETAIL_URL.format(slug=result.organization.slug, id=person.id),
-            payload(first_name="Renamed", email="person@acme.test"),
+            payload(first_name="Renamed", last_name="Person", email="person@acme.test"),
             format="json",
         )
 
@@ -754,7 +750,60 @@ class TestEditing:
         assert response.json()["first_name"] == "Renamed"
         person.refresh_from_db()
         assert person.user.first_name == "Renamed"
+        assert person.user.last_name == "Person"
+        # Their DMS grant is exactly what it was: Edit carries no apps.
+        assert [(a["app"], a["role_code"]) for a in response.json()["apps"]] == [
+            ("dms", "dms.sales_representative")
+        ]
         assert person.grants.count() == 1
+
+    @pytest.mark.parametrize(
+        "extra",
+        [
+            {"role": "admin"},
+            {"unit_id": None},
+            {"apps": []},
+        ],
+    )
+    def test_anything_but_basic_information_is_refused(self, client, extra):
+        """
+        REFUSED, NOT IGNORED: a stale screen still sending its old fields must
+        not believe it set them. `apps: []` is the case that matters -- under
+        the old Edit it removed every app.
+        """
+        result = found()
+        person = add_person(result.organization, email="person@acme.test")
+        client.force_authenticate(user=result.user)
+
+        response = client.put(
+            DETAIL_URL.format(slug=result.organization.slug, id=person.id),
+            payload(email="person@acme.test", **extra),
+            format="json",
+        )
+
+        assert response.status_code == 422
+        assert person.grants.count() == 1
+
+    def test_an_admin_editing_themselves_stays_an_admin(self, client):
+        """
+        Q36 CLOSED BY CONSTRUCTION: the old Edit carried standing, so an admin
+        could demote themselves and lose the Admin panel. Edit has no standing
+        to send now.
+        """
+        result = found()
+        admin = add_person(result.organization, email="admin@acme.test", role_code=None)
+        update_whole_person(owner_of(result), admin, email="admin@acme.test", role="admin", apps=[])
+        assert standing(admin) == MembershipRole.ADMIN
+        client.force_authenticate(user=admin.user)
+
+        response = client.put(
+            DETAIL_URL.format(slug=result.organization.slug, id=admin.id),
+            payload(first_name="Me", email="admin@acme.test"),
+            format="json",
+        )
+
+        assert response.status_code == 200
+        assert standing(Membership.objects.get(pk=admin.pk)) == MembershipRole.ADMIN
 
     def test_a_members_sign_in_address_cannot_be_changed(self, client):
         """
@@ -782,60 +831,65 @@ class TestEditing:
         than about the field: nobody signs in with it yet.
         """
         result = found()
-        invitation = add_invitation(
-            result.organization, email="typo@acme.test", role_code=None
-        )
+        # Holding DMS: correcting the address must not touch the apps waiting
+        # on the invitation.
+        invitation = add_invitation(result.organization, email="typo@acme.test")
         client.force_authenticate(user=result.user)
 
         response = client.put(
             DETAIL_URL.format(slug=result.organization.slug, id=invitation.id),
-            payload(email="correct@acme.test"),
+            payload(first_name="Fixed", email="correct@acme.test"),
             format="json",
         )
 
         assert response.status_code == 200
         invitation.refresh_from_db()
         assert invitation.email == "correct@acme.test"
+        assert invitation.first_name == "Fixed"
+        assert [g.app_id for g in invitation.app_grants.all()] == ["dms"]
 
-    def test_an_owners_standing_survives_whatever_is_sent(self, client):
-        """
-        The form never offers "owner", so a payload saying `member` is a stale
-        screen rather than an instruction. Ownership is `is_owner`, which no
-        form writes.
-        """
+    def test_a_pending_persons_address_cannot_take_one_already_in_use(self, client):
         result = found()
-        owner = Membership.objects.get(user=result.user, organization=result.organization)
+        invitation = add_invitation(result.organization, email="typo@acme.test")
+        client.force_authenticate(user=result.user)
+
+        response = client.put(
+            DETAIL_URL.format(slug=result.organization.slug, id=invitation.id),
+            payload(email="owner@acme.test"),
+            format="json",
+        )
+
+        assert response.status_code == 409
+        invitation.refresh_from_db()
+        assert invitation.email == "typo@acme.test"
+
+    def test_the_owner_can_rename_themselves_and_stays_the_owner(self, client):
+        result = found()
+        owner = owner_of(result)
         client.force_authenticate(user=result.user)
 
         response = client.put(
             DETAIL_URL.format(slug=result.organization.slug, id=owner.id),
-            payload(email="owner@acme.test", role="member"),
+            payload(first_name="Founder", email="owner@acme.test"),
             format="json",
         )
 
         assert response.status_code == 200
         owner.refresh_from_db()
+        assert owner.user.first_name == "Founder"
         assert owner.is_owner is True
         assert standing(owner) == MembershipRole.OWNER
 
-    def test_removing_their_last_app_is_allowed(self, client):
+    def test_removing_their_last_app_is_allowed(self):
         """
-        C73 RETIRED (the owner, 2026-11-20): a person may hold no app. This
-        pinned the refusal for a week; it is back to asserting that saving with
-        no apps leaves them with none -- and they can open nothing.
+        C73 RETIRED (the owner, 2026-11-20): a person may hold no app. Pinned
+        on the whole-person service until Unassign replaces it.
         """
         result = found()
         person = add_person(result.organization, email="person@acme.test")
-        client.force_authenticate(user=result.user)
 
-        response = client.put(
-            DETAIL_URL.format(slug=result.organization.slug, id=person.id),
-            payload(email="person@acme.test", apps=[]),
-            format="json",
-        )
+        update_whole_person(owner_of(result), person, email="person@acme.test", apps=[])
 
-        assert response.status_code == 200
-        assert response.json()["apps"] == []
         assert person.grants.count() == 0
 
 

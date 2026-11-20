@@ -165,8 +165,8 @@ describe("the columns are name and email, and how many apps", () => {
         email: "vikram@acme.test",
         role: "member",
         apps: [
-          { app: "dms", role_code: "dms.system_admin", role_name: "System administrator" },
-          { app: "crm", role_code: "crm.member", role_name: "Member" },
+          { app: "dms", role_code: "dms.system_admin", role_name: "System administrator", status: "active" },
+          { app: "crm", role_code: "crm.member", role_name: "Member", status: "active" },
         ],
         administers: "dealer",
       }),

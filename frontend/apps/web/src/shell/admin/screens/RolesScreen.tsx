@@ -8,10 +8,9 @@
  * here: they belong to each app's own settings (C78), which are not built yet.
  * The invite and edit forms still offer them, from `useRoles()`.
  *
- *   Filter     All roles (default), Built-in roles, Custom roles. Every role is
- *              built-in until organisations can build their own (C72 piece 5),
- *              so Custom roles is empty and says so.
- *   Add Role   drawn only, greyed out — the role builder is C72 piece 5.
+ *   Filter     All roles (default), Built-in roles, Custom roles -- the
+ *              organisation's own, made in New Role (C72 piece 5).
+ *   Add Role   opens New Role, for whoever holds `admin.role.create`.
  *   Table      Role Name (with its summary under it), Users (everyone holding
  *              it: active, deactivated and pending) and Modified By ("—" for a
  *              built-in role, which nobody modifies).
@@ -22,7 +21,10 @@
 import { asProblem } from "@xpredict/api-client";
 import { ErrorState, TableSkeleton } from "@xpredict/ui";
 import { useState } from "react";
+import { Link } from "react-router-dom";
 
+import { useAccess } from "../../access";
+import { useShellContext } from "../../context";
 import { usePageSearch } from "../../../stores/pageSearchStore";
 import type { PanelRole } from "../api/roles";
 import { ListFilter } from "../components/ListFilter";
@@ -54,7 +56,23 @@ export function roleInitials(name: string): string {
     .toUpperCase();
 }
 
+function PlusIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true" focusable="false">
+      <path
+        d="M7 2.5v9M2.5 7h9"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinecap="round"
+      />
+    </svg>
+  );
+}
+
 export function RolesTab() {
+  const access = useAccess();
+  const { membership } = useShellContext();
   const { data: roles, isPending, isError, error, refetch } = usePanelRoles();
   const query = usePageSearch((state) => state.query);
   const [filter, setFilter] = useState<RoleFilter>("all");
@@ -75,27 +93,29 @@ export function RolesTab() {
         )}
         <span className={styles.spacer} />
         {/*
-          DRAWN ONLY: greyed out until the role builder (C72 piece 5).
-          `aria-disabled` rather than `disabled`, so a keyboard still reaches it
-          and "Coming later" can be read — the same as Assign Admin.
+          New Role (C72 piece 5), for whoever may build roles. Without the
+          permission it stays greyed: `aria-disabled` rather than `disabled`,
+          so a keyboard still reaches it and the reason can be read.
         */}
-        <button
-          type="button"
-          className={styles.primaryButton}
-          aria-disabled="true"
-          title="Coming later"
-        >
-          <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true" focusable="false">
-            <path
-              d="M7 2.5v9M2.5 7h9"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="1.8"
-              strokeLinecap="round"
-            />
-          </svg>
-          Add Role
-        </button>
+        {access.can("admin.role.create") ? (
+          <Link
+            to={`/${membership.org_slug}/admin/admins-and-roles/roles/new`}
+            className={styles.primaryButton}
+          >
+            <PlusIcon />
+            Add Role
+          </Link>
+        ) : (
+          <button
+            type="button"
+            className={styles.primaryButton}
+            aria-disabled="true"
+            title="You do not have permission to build roles"
+          >
+            <PlusIcon />
+            Add Role
+          </button>
+        )}
       </div>
 
       <div className={styles.split} role="tabpanel" aria-label="Roles">

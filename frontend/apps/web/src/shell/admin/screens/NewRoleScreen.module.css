@@ -1,0 +1,282 @@
+/*
+ * New Role (C72 piece 5), as designed on the canvas: a header, a scrolling
+ * body of cards, and Save / Cancel fixed at the bottom.
+ */
+
+.page {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+}
+
+.header {
+  flex: none;
+  padding-bottom: var(--space-4);
+}
+
+.title {
+  margin: 0;
+  font-size: var(--text-2xl);
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+/* THE ONLY PART THAT SCROLLS: header and footer stay put. */
+.body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+  padding-bottom: var(--space-6);
+}
+
+/* NEVER SHRINK THE CARDS: in a scrolling flex column they would otherwise
+   squeeze to fit the visible height, and `.moduleCard`'s overflow would clip
+   their rows away. Their own height; the body scrolls instead. */
+.body > * {
+  flex: none;
+}
+
+.card,
+.moduleCard {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface);
+}
+
+.card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+  padding: var(--space-6);
+}
+
+.pair {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: var(--space-5);
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.label {
+  font-size: var(--text-sm);
+  font-weight: 500;
+  color: var(--color-text);
+}
+
+.required {
+  color: var(--color-danger);
+}
+
+.input,
+.textarea {
+  padding: 0 var(--space-3);
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  color: var(--color-text);
+  font: inherit;
+  font-size: var(--text-sm);
+}
+
+.input {
+  height: var(--control-height);
+}
+
+.textarea {
+  padding: var(--space-3);
+  resize: vertical;
+}
+
+.input:focus,
+.textarea:focus {
+  border-color: var(--color-primary);
+  outline: 2px solid var(--color-primary);
+  outline-offset: -1px;
+}
+
+.fieldError {
+  margin: 0;
+  font-size: var(--text-xs);
+  color: var(--color-danger-700);
+}
+
+.permissionsHeading {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+}
+
+.subtitle {
+  margin: 0;
+  font-size: var(--text-md);
+  font-weight: 600;
+}
+
+.count,
+.note {
+  margin: 0;
+  font-size: var(--text-sm);
+  color: var(--color-text-2);
+}
+
+.moduleCard {
+  overflow: hidden;
+}
+
+.moduleTitle {
+  margin: 0;
+  padding: var(--space-3) var(--space-5);
+  border-bottom: 1px solid var(--color-border);
+  background: var(--color-surface-alt);
+  font-size: var(--text-md);
+  font-weight: 600;
+}
+
+/* Wide grids scroll sideways inside their card on a phone. `relative` so
+   the screen-reader-only "Not available" labels (absolutely positioned) are
+   held inside this box -- without it they hang off the page and give the
+   whole window a sideways scrollbar. */
+.tableScroll {
+  position: relative;
+  overflow-x: auto;
+}
+
+.grid {
+  width: 100%;
+  min-width: 760px;
+  border-collapse: collapse;
+  font-size: var(--text-sm);
+}
+
+.grid th,
+.grid td {
+  padding: var(--space-2) var(--space-3);
+  text-align: left;
+}
+
+.grid thead th {
+  border-bottom: 1px solid var(--color-border);
+  color: var(--color-text-2);
+  font-weight: 600;
+}
+
+.rowGroup {
+  border-bottom: 1px solid var(--color-border);
+}
+
+.rowGroup:last-child {
+  border-bottom: none;
+}
+
+.grid .particulars {
+  width: 30%;
+  padding-left: var(--space-5);
+  font-weight: 500;
+  color: var(--color-text);
+}
+
+.grid .tick {
+  width: 76px;
+  text-align: center;
+}
+
+.tick input,
+.special input {
+  width: 18px;
+  height: 18px;
+  margin: 0;
+  accent-color: var(--color-primary);
+  cursor: pointer;
+}
+
+.none {
+  color: var(--color-text-3);
+}
+
+.more {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  min-height: 36px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--color-primary);
+  font: inherit;
+  cursor: pointer;
+}
+
+.more:hover {
+  text-decoration: underline;
+}
+
+.more:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+}
+
+.chevron {
+  transition: transform 150ms ease;
+}
+
+.chevron[data-open] {
+  transform: rotate(180deg);
+}
+
+.specialsCell {
+  padding-top: 0;
+}
+
+.specials {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: var(--space-1) var(--space-6);
+  padding: 0 var(--space-5) var(--space-3) calc(30% + var(--space-3));
+}
+
+.special {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: 40px;
+  cursor: pointer;
+}
+
+.notice {
+  margin: 0;
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-md);
+  background: var(--color-primary-050);
+  color: var(--color-primary-800);
+  font-size: var(--text-sm);
+  line-height: 1.5;
+}
+
+.footer {
+  flex: none;
+  display: flex;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+  padding-top: var(--space-4);
+  border-top: 1px solid var(--color-border);
+}
+
+.visuallyHidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}

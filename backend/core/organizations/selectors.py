@@ -27,6 +27,7 @@ from django.utils import timezone
 from core.accounts.models import User
 from core.billing.models import AppSubscription, SubscriptionStatus
 from core.organizations.models import (
+    GrantStatus,
     Invitation,
     Membership,
     MembershipAppAccess,
@@ -39,7 +40,15 @@ from core.organizations.models import (
     TerritoryKind,
     UnitStatus,
 )
-from core.permissions.models import VIEW_ACTION, App, AppCode, AppSection, Permission, Role
+from core.permissions.models import (
+    VIEW_ACTION,
+    App,
+    AppCode,
+    AppSection,
+    Permission,
+    Role,
+    roles_for_organization,
+)
 from core.permissions.registry import is_unit_aware
 from shared.exceptions import not_found
 
@@ -93,7 +102,8 @@ def resolve_allowed_territories(membership: Membership, app: str) -> frozenset[u
         # app says -- or whether they hold one at all. The permission layer
         # still stops them at an app the organisation has not bought (C55).
         return None
-    grant = next((g for g in membership.grants.all() if g.app_id == app), None)
+    # A DISABLED GRANT SEES NOTHING: restricted to nothing, like no grant.
+    grant = next((g for g in membership.grants.all() if g.app_id == app and g.is_active), None)
     if grant is None:
         return frozenset()
     placed = [placement.territory for placement in grant.territories.all()]
@@ -427,6 +437,10 @@ def _membership_data(
     # FROM THE PER-APP GRANTS (C72 step 2b), not `AppAccess`. Callers prefetch
     # `GRANTS_PREFETCH`, so this walks memory rather than the database.
     for grant in membership.grants.all():
+        if not grant.is_active:
+            # DISABLED (the app tile's Disable): it opens nothing and permits
+            # nothing, while keeping its role and places for Enable.
+            continue
         granted_apps.add(grant.app_id)
         for held_role in grant.roles.all():
             for permission in held_role.role.permissions.all():
@@ -847,6 +861,9 @@ class AppGrantData:
     app: str
     role_code: str
     role_name: str
+    # "active" or "disabled" (the app tile's Disable). A pending person's
+    # apps are always "active": there is nothing to disable before they join.
+    status: str = "active"
 
 
 @dataclass(frozen=True)
@@ -945,7 +962,7 @@ def _membership_row(membership: Membership) -> OrgUserData:
     # FROM THE PER-APP GRANTS (C72 step 2b): each grant's app and its role, as
     # `(app_id, role)` pairs -- the same shape `AppAccess` rows gave.
     grants = [
-        SimpleNamespace(app_id=grant.app_id, role=held_role.role)
+        SimpleNamespace(app_id=grant.app_id, role=held_role.role, status=grant.status)
         for grant in membership.grants.all()
         for held_role in grant.roles.all()
     ]
@@ -966,10 +983,16 @@ def _membership_row(membership: Membership) -> OrgUserData:
         # sends this list back as `apps`, and `_resolve_grants` refuses
         # Administration there -- it arrives through `role: "admin"` instead.
         # Listing it would make every save of an organisation admin a 4xx.
-        apps=[_grant(g.app_id, g.role) for g in grants if g.app_id != AppCode.ADMIN],
+        apps=[
+            _grant(g.app_id, g.role, g.status) for g in grants if g.app_id != AppCode.ADMIN
+        ],
         created_at=membership.created_at,
+        # From ACTIVE grants: a dealer admin whose DMS is disabled administers
+        # nothing, since the grant permits nothing.
         administers=_administers(
-            standing(membership), reach(membership) is not None, [g.role for g in grants]
+            standing(membership),
+            reach(membership) is not None,
+            [g.role for g in grants if g.status == GrantStatus.ACTIVE],
         ),
     )
 
@@ -994,14 +1017,14 @@ def _invitation_row(invitation: Invitation) -> OrgUserData:
     )
 
 
-def _grant(app: str, role) -> AppGrantData:
+def _grant(app: str, role, status: str = GrantStatus.ACTIVE) -> AppGrantData:
     """
     BOTH THE CODE AND THE NAME. The list displays the name and the edit form
     matches on the code; sending only the name made that form compare display
     strings, which it complained about in a comment and which breaks silently
     the first time a role is renamed.
     """
-    return AppGrantData(app=app, role_code=role.code, role_name=role.name)
+    return AppGrantData(app=app, role_code=role.code, role_name=role.name, status=str(status))
 
 
 def _administers(standing: str, at_a_dealership: bool, roles: list) -> str | None:
@@ -1381,7 +1404,153 @@ def admin_panel_roles(organization: Organization) -> list[PanelRoleData]:
             users=admin_members,
             modified_by=None,
         ),
+        *_custom_panel_roles(organization),
     ]
+
+
+def _custom_panel_roles(organization: Organization) -> list[PanelRoleData]:
+    """
+    The organisation's OWN Admin panel roles (the role builder, C72 piece 5),
+    after the built-ins, oldest first. Users counts the members holding one;
+    Modified By is whoever last saved it.
+    """
+    roles = list(
+        Role.objects.filter(organization_id=organization.id, app_id=AppCode.ADMIN).order_by(
+            "created_at", "name"
+        )
+    )
+    if not roles:
+        return []
+
+    holders = dict(
+        MembershipAppRole.objects.filter(role__in=roles)
+        .values("role_id")
+        .annotate(n=Count("app_access__membership", distinct=True))
+        .values_list("role_id", "n")
+    )
+    editor_ids = {r.updated_by_user_id or r.created_by_user_id for r in roles} - {None}
+    editors = {user.id: _owner_data(user).name for user in User.objects.filter(id__in=editor_ids)}
+
+    return [
+        PanelRoleData(
+            code=role.code,
+            name=role.name,
+            summary=role.summary,
+            built_in=False,
+            users=holders.get(role.id, 0),
+            modified_by=editors.get(role.updated_by_user_id or role.created_by_user_id),
+        )
+        for role in roles
+    ]
+
+
+# --- The role builder (C72 piece 5): Admins and Roles -> Roles -> Add Role ----
+
+
+@dataclass(frozen=True)
+class BuilderActionData:
+    code: str
+    name: str
+    kind: str
+    permission: str
+
+
+@dataclass(frozen=True)
+class BuilderRowData:
+    code: str
+    name: str
+    actions: list[BuilderActionData]
+
+
+@dataclass(frozen=True)
+class BuilderModuleData:
+    code: str
+    name: str
+    rows: list[BuilderRowData]
+
+
+@dataclass(frozen=True)
+class BuilderTemplateData:
+    code: str
+    name: str
+    permissions: list[str]
+
+
+@dataclass(frozen=True)
+class RoleBuilderData:
+    modules: list[BuilderModuleData]
+    templates: list[BuilderTemplateData]
+
+
+def role_builder(organization: Organization) -> RoleBuilderData:
+    """
+    What the New Role grid draws (the owner, 2026-11-20, as Zoho's): the Admin
+    panel's section tree, READ FROM THE TABLES (C79) -- each module a card,
+    each leaf a row, each of the leaf's permissions an action (basic ones
+    become the fixed columns, special ones "More Permissions"). A new page or
+    action appears here with its migration; nothing is typed in twice.
+
+    `templates` are what "Copy permissions from" offers: the built-in
+    Organization Admin and the organisation's own Admin panel roles -- never
+    another organisation's.
+
+    Three queries.
+    """
+    sections = list(
+        AppSection.objects.filter(app_id=AppCode.ADMIN).order_by("display_order", "name")
+    )
+    by_id = {section.id: section for section in sections}
+    linked = (
+        Permission.objects.filter(app_id=AppCode.ADMIN, section__isnull=False)
+        .select_related("action")
+        .order_by("action__display_order", "code")
+    )
+    actions_of: dict[uuid.UUID, list[BuilderActionData]] = {}
+    for permission in linked:
+        actions_of.setdefault(permission.section_id, []).append(
+            BuilderActionData(
+                code=permission.action_id,
+                name=permission.action.name,
+                kind=permission.action.kind,
+                permission=permission.code,
+            )
+        )
+
+    def top_of(section):
+        while section.parent_id is not None:
+            section = by_id[section.parent_id]
+        return section
+
+    def walk(parent_id):
+        """Leaves under `parent_id`, in menu order, depth first."""
+        for section in [s for s in sections if s.parent_id == parent_id]:
+            if section.id in actions_of:
+                yield section
+            yield from walk(section.id)
+
+    modules: dict[uuid.UUID, BuilderModuleData] = {}
+    for leaf in walk(None):
+        top = top_of(leaf)
+        module = modules.setdefault(
+            top.id, BuilderModuleData(code=top.code, name=top.name, rows=[])
+        )
+        module.rows.append(
+            BuilderRowData(code=leaf.code, name=leaf.name, actions=actions_of[leaf.id])
+        )
+
+    on_tree = {permission.code for permission in linked}
+    templates = [
+        BuilderTemplateData(
+            code=role.code,
+            name="Organization Admin" if role.code == ORGANISATION_ADMIN_ROLE else role.name,
+            permissions=sorted(p.code for p in role.permissions.all() if p.code in on_tree),
+        )
+        for role in roles_for_organization(organization.id)
+        .filter(app_id=AppCode.ADMIN)
+        .prefetch_related("permissions")
+        .order_by("organization_id", "created_at")
+    ]
+    return RoleBuilderData(modules=list(modules.values()), templates=templates)
 
 
 # --- The Admin panel's admins (C78, Admins and Roles -> Admins) -------------

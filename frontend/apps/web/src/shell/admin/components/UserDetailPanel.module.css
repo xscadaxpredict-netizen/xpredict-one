@@ -204,6 +204,42 @@
   min-width: 0;
 }
 
+/* A disabled app's badge fades: it opens nothing until Enable. */
+.appTile[data-disabled] .appBadge {
+  opacity: 0.5;
+}
+
+.appNameRow {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+/* Zoho's red "Disabled" beside the app's name. */
+.disabledTag {
+  flex: none;
+  padding: 0 var(--space-2);
+  border: 1px solid var(--color-danger-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-danger-100);
+  color: var(--color-danger-700);
+  font-size: var(--text-xs);
+  font-weight: 500;
+  line-height: 1.5;
+}
+
+/* A tile action that works: the link colour, and a pointer. The greyed look
+   is RecordPanel's `.memberAction` on its own. */
+.liveAction {
+  color: var(--color-primary);
+  cursor: pointer;
+}
+
+.liveAction:hover {
+  text-decoration: underline;
+}
+
 .appBadge {
   flex: none;
   display: flex;

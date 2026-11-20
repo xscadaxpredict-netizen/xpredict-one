@@ -635,6 +635,17 @@ class InvitationAppGrant(BaseModel):
 # ---------------------------------------------------------------------------
 
 
+class GrantStatus(models.TextChoices):
+    """
+    Whether a grant is switched on (the owner, 2026-11-20: the app tile's
+    Disable). A disabled grant keeps its role and its places, so Enable gives
+    back exactly what was there -- but it OPENS NOTHING AND PERMITS NOTHING.
+    """
+
+    ACTIVE = "active", "Active"
+    DISABLED = "disabled", "Disabled"
+
+
 class MembershipAppAccess(BaseModel):
     """
     "This membership may use this app." One row per person per app.
@@ -643,6 +654,13 @@ class MembershipAppAccess(BaseModel):
     removing somebody's access to an app can never leave a role or a placement
     behind. Subscription stays a separate fact (C16, C55): a grant on an app
     the organisation no longer pays for opens nothing.
+
+    DISABLED IS NOT GONE. A disabled grant still places the person -- they
+    still belong to their dealership, and the same admins still manage them --
+    but `selectors._membership_data()` and `resolve_allowed_territories()`
+    skip it, so it adds no permission and opens no app. Those two are where a
+    grant turns into capability; anything new that does must check `is_active`
+    too.
     """
 
     membership = models.ForeignKey(Membership, on_delete=models.CASCADE, related_name="grants")
@@ -653,6 +671,13 @@ class MembershipAppAccess(BaseModel):
         on_delete=models.PROTECT,
         related_name="+",
     )
+    status = models.CharField(
+        max_length=10, choices=GrantStatus.choices, default=GrantStatus.ACTIVE
+    )
+
+    @property
+    def is_active(self) -> bool:
+        return self.status == GrantStatus.ACTIVE
 
     class Meta:
         constraints = [

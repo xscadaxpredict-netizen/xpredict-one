@@ -1,19 +1,20 @@
 """
 Read logic for the role catalogue.
 
-REFERENCE DATA, NOT TENANT DATA. Organizations do not author roles (C28), so
-the same nine rows answer for every customer and there is no `organization`
-filter to forget here. The endpoint that serves this is still organization-
-scoped, because the screen lives inside an organization and the caller has to
-be a member to ask -- but the answer does not vary by who asks.
+BUILT-IN ROLES ARE REFERENCE DATA; AN ORGANISATION'S OWN ARE NOT. Since the
+role builder (C72 piece 5, 2026-11-20) an organisation may make roles and only
+it may see them, so the catalogue is asked FOR an organisation, through
+`roles_for_organization()`.
 """
 
 from __future__ import annotations
 
-from core.permissions.models import AppCode, Role
+import uuid
+
+from core.permissions.models import AppCode, Role, roles_for_organization
 
 
-def role_catalogue() -> list[Role]:
+def role_catalogue(organization_id: uuid.UUID | None = None) -> list[Role]:
     """
     Every built-in role, in the order the frontend should read them.
 
@@ -36,4 +37,10 @@ def role_catalogue() -> list[Role]:
     # admins in its own words (C53). Listing it would put a second
     # "Organisation admin" on that page as if it were an app role. Piece 7's
     # role builder is where it appears.
-    return list(Role.objects.prefetch_related("permissions").exclude(app_id=AppCode.ADMIN))
+    #
+    # Built-in roles and THIS organisation's own -- never another's.
+    return list(
+        roles_for_organization(organization_id)
+        .prefetch_related("permissions")
+        .exclude(app_id=AppCode.ADMIN)
+    )

@@ -61,7 +61,7 @@ const RAVI = user({
   id: "ravi",
   first_name: "Ravi",
   last_name: "Kumar",
-  apps: [{ app: "dms", role_code: "dms.fleet_viewer", role_name: "Fleet viewer" }],
+  apps: [{ app: "dms", role_code: "dms.fleet_viewer", role_name: "Fleet viewer", status: "active" }],
 });
 /** Holds everything the organisation subscribes to (DMS and CRM). */
 const MEERA = user({
@@ -69,8 +69,8 @@ const MEERA = user({
   first_name: "Meera",
   last_name: "Nair",
   apps: [
-    { app: "dms", role_code: "dms.fleet_viewer", role_name: "Fleet viewer" },
-    { app: "crm", role_code: "crm.member", role_name: "CRM user" },
+    { app: "dms", role_code: "dms.fleet_viewer", role_name: "Fleet viewer", status: "active" },
+    { app: "crm", role_code: "crm.member", role_name: "CRM user", status: "active" },
   ],
 });
 const KIRAN = user({ id: "kiran", first_name: "Kiran", last_name: "Bose", status: "invited" });

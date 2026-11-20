@@ -166,7 +166,7 @@ class TestTheOwner:
         assert membership.unit_id is None
         assert membership.unit_name is None
 
-    def test_administration_comes_from_standing_with_all_twenty_nine_permissions(self):
+    def test_administration_comes_from_standing_with_all_thirty_permissions(self):
         """
         Owners and org admins hold every `admin.*` permission and NOT through a
         Role row (C42) -- which is also why they get the dealers and roles
@@ -177,7 +177,8 @@ class TestTheOwner:
         `admin.application.view`, in modules of their own -- `organization`
         and `applications`, the Admin panel's Profile and Applications pages; the
         owner's final list (C79, `permissions/0018`) made it twenty-nine, in the
-        same modules.
+        same modules, and the app tile's Edit (`admin.user.edit_app`, `0019`)
+        thirty.
 
         `modules` IS THE ADMIN PANEL'S TREE since C79 (the owner, 2026-11-19):
         module -> sub-module -> tab, in menu order. Dealers and Territories
@@ -189,7 +190,7 @@ class TestTheOwner:
 
         assert admin.subscribed is True
         assert admin.accessible is True
-        assert len(admin.permissions) == 29
+        assert len(admin.permissions) == 30
         # The Admin panel's whole tree (C79): the old `dealers` word is gone
         # with the rest of the flat list -- Dealers is not in the tree (Q64).
         assert tree(admin.modules) == WHOLE_ADMIN_PANEL
