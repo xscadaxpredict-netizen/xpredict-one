@@ -91,10 +91,14 @@ def add_person(
     return membership
 
 
-def add_invitation(organization, *, unit=None, email, role_code="dms.sales_representative"):
+def add_invitation(organization, *, email, role_code="dms.group_operations"):
+    """
+    A pending person (C83: no role, no place), holding DMS with `role_code`
+    unless it is None. An invitation's apps are organisation-wide, so the role
+    is an organisation-level one.
+    """
     invitation = Invitation.objects.create(
         organization=organization,
-        unit=unit,
         email=email,
         first_name="Pending",
         last_name="Person",
@@ -106,7 +110,13 @@ def add_invitation(organization, *, unit=None, email, role_code="dms.sales_repre
     return invitation
 
 
+def invite_payload(**overrides) -> dict:
+    """Add User: a person, and nothing else (C83)."""
+    return {"first_name": "New", "last_name": "Person", "email": "new@acme.test", **overrides}
+
+
 def payload(**overrides) -> dict:
+    """Edit user: the person, and their standing, place and apps."""
     return {
         "first_name": "New",
         "last_name": "Person",
@@ -300,22 +310,20 @@ class TestDealerIsolation:
         # The owner is organization-wide and therefore not theirs to see.
         assert "owner@acme.test" not in emails
 
-    def test_pending_people_at_another_dealership_are_hidden_too(self, client, two_dealers):
+    def test_a_dealer_admin_sees_no_pending_people(self, client, two_dealers):
         """
-        THE EASY HALF TO FORGET. Filtering the memberships and leaving the
-        invitations unscoped is the same leak one table over, and it only shows
-        up when somebody has an outstanding invitation.
+        THE EASY HALF TO FORGET, and simpler now: an invitation sits nowhere
+        (C83), so it is no dealership's, and only organisation-wide admins see
+        it. Leaving the invitations unscoped would be the same leak one table
+        over.
         """
-        result, mine, theirs, admin = two_dealers
-        add_invitation(result.organization, unit=mine, email="ourpending@acme.test")
-        add_invitation(result.organization, unit=theirs, email="theirpending@acme.test")
+        result, _mine, _theirs, admin = two_dealers
+        add_invitation(result.organization, email="pending@acme.test")
         client.force_authenticate(user=admin.user)
 
         response = client.get(LIST_URL.format(slug=result.organization.slug))
 
-        emails = {p["email"] for p in response.json()}
-        assert "ourpending@acme.test" in emails
-        assert "theirpending@acme.test" not in emails
+        assert "pending@acme.test" not in {p["email"] for p in response.json()}
 
     def test_editing_somebody_at_another_dealership_is_404(self, client, two_dealers):
         result, _mine, theirs, admin = two_dealers
@@ -378,18 +386,18 @@ class TestDealerIsolation:
         assert response.status_code == 404
         assert reach(Membership.objects.get(pk=person.pk)) == frozenset({theirs.id})
 
-    def test_a_dealer_admin_cannot_appoint_an_organisation_admin(self, client, two_dealers):
+    def test_a_dealer_admin_cannot_invite_anybody_for_now(self, client, two_dealers):
         """
-        The ladder. `admin` standing is organization-wide by definition -- the
-        check constraint refuses it with a unit -- so a dealer admin issuing
-        one would be promoting a stranger above themselves.
+        An invited person sits nowhere (C83), so only somebody who administers
+        everywhere can manage them. A 403 -- a capability answer that discloses
+        nothing -- until territories are redesigned per app (C82).
         """
         result, _mine, _theirs, admin = two_dealers
         client.force_authenticate(user=admin.user)
 
         response = client.post(
             INVITE_URL.format(slug=result.organization.slug),
-            payload(role="admin", unit_id=None),
+            invite_payload(),
             format="json",
         )
 
@@ -453,7 +461,7 @@ class TestInviting:
         client.force_authenticate(user=result.user)
 
         response = client.post(
-            INVITE_URL.format(slug=result.organization.slug), payload(), format="json"
+            INVITE_URL.format(slug=result.organization.slug), invite_payload(), format="json"
         )
 
         assert response.status_code == 201
@@ -471,7 +479,9 @@ class TestInviting:
         result = found()
         client.force_authenticate(user=result.user)
 
-        client.post(INVITE_URL.format(slug=result.organization.slug), payload(), format="json")
+        client.post(
+            INVITE_URL.format(slug=result.organization.slug), invite_payload(), format="json"
+        )
 
         assert Membership.objects.filter(organization=result.organization).count() == 1
         assert not User.objects.filter(email="new@acme.test").exists()
@@ -480,9 +490,9 @@ class TestInviting:
         result = found()
         client.force_authenticate(user=result.user)
         url = INVITE_URL.format(slug=result.organization.slug)
-        client.post(url, payload(), format="json")
+        client.post(url, invite_payload(), format="json")
 
-        response = client.post(url, payload(first_name="Again"), format="json")
+        response = client.post(url, invite_payload(first_name="Again"), format="json")
 
         assert response.status_code == 409
         assert response.json()["code"] == "email_taken"
@@ -493,7 +503,7 @@ class TestInviting:
 
         response = client.post(
             INVITE_URL.format(slug=result.organization.slug),
-            payload(email="owner@acme.test"),
+            invite_payload(email="owner@acme.test"),
             format="json",
         )
 
@@ -513,25 +523,66 @@ class TestInviting:
 
         response = client.post(
             INVITE_URL.format(slug=mine.organization.slug),
-            payload(email="shared@example.test"),
+            invite_payload(email="shared@example.test"),
             format="json",
         )
 
         assert response.status_code == 201
 
-    def test_nobody_can_be_invited_as_owner(self, client):
+    def test_an_invite_is_a_person_and_nothing_else(self, client):
+        """C83: the invited person holds no app, no standing and no place."""
+        result = found()
+        client.force_authenticate(user=result.user)
+
+        response = client.post(
+            INVITE_URL.format(slug=result.organization.slug), invite_payload(), format="json"
+        )
+
+        assert response.status_code == 201
+        assert response.json()["apps"] == []
+        assert response.json()["role"] == "member"
+        assert response.json()["unit_id"] is None
+        assert not Invitation.objects.get(email="new@acme.test").app_grants.exists()
+
+    @pytest.mark.parametrize(
+        "extra",
+        [
+            {"role": "owner"},
+            {"role": "admin"},
+            {"unit_id": None},
+            {"apps": [{"app": "dms", "role": "dms.group_operations"}]},
+        ],
+    )
+    def test_a_role_a_place_or_apps_are_refused_not_ignored(self, client, extra):
+        """
+        A stale screen still sending them must not believe they were applied --
+        refused (422, like every validation failure here), and nobody is invited.
+        """
         result = found()
         client.force_authenticate(user=result.user)
 
         response = client.post(
             INVITE_URL.format(slug=result.organization.slug),
-            payload(role="owner"),
+            invite_payload(**extra),
             format="json",
         )
 
-        # The serializer refuses it before the service does -- "owner" is not
-        # one of the choices. Either way it never reaches the database.
-        assert response.status_code in (400, 422)
+        assert response.status_code == 422
+        assert not Invitation.objects.filter(email="new@acme.test").exists()
+
+
+def edit(client, result, **overrides):
+    """
+    Edit somebody with no app yet -- where apps are given since C83, so where
+    the grant rules (C16, C27, C40) are checked.
+    """
+    person = add_person(result.organization, email="person@acme.test", role_code=None)
+    client.force_authenticate(user=result.user)
+    return client.put(
+        DETAIL_URL.format(slug=result.organization.slug, id=person.id),
+        payload(email="person@acme.test", **overrides),
+        format="json",
+    )
 
 
 class TestSubscriptionIsRequired:
@@ -551,15 +602,10 @@ class TestSubscriptionIsRequired:
         client.force_authenticate(user=result.user)
 
         # A new organisation subscribes to DMS only (DEFAULT_SUBSCRIBED_APPS).
-        response = client.post(
-            INVITE_URL.format(slug=result.organization.slug),
-            payload(apps=[{"app": "crm", "role": "crm.member"}]),
-            format="json",
-        )
+        response = edit(client, result, apps=[{"app": "crm", "role": "crm.member"}])
 
         assert response.status_code == 409
         assert response.json()["code"] == "app_not_subscribed"
-        assert Invitation.objects.filter(email="new@acme.test").count() == 0
 
     def test_a_cancelled_subscription_refuses_new_grants(self, client):
         """
@@ -572,9 +618,7 @@ class TestSubscriptionIsRequired:
         )
         client.force_authenticate(user=result.user)
 
-        response = client.post(
-            INVITE_URL.format(slug=result.organization.slug), payload(), format="json"
-        )
+        response = edit(client, result)
 
         assert response.status_code == 409
         assert response.json()["code"] == "app_not_subscribed"
@@ -642,34 +686,29 @@ class TestC27DealerScopedGrants:
         unit = Territory.objects.create(organization=result.organization, name="Whitefield")
         client.force_authenticate(user=result.user)
 
-        response = client.post(
-            INVITE_URL.format(slug=result.organization.slug),
-            payload(
-                unit_id=str(unit.id),
-                apps=[
-                    {"app": "dms", "role": "dms.manager"},
-                    {"app": "crm", "role": "crm.member"},
-                ],
-            ),
-            format="json",
+        response = edit(
+            client,
+            result,
+            unit_id=str(unit.id),
+            apps=[
+                {"app": "dms", "role": "dms.manager"},
+                {"app": "crm", "role": "crm.member"},
+            ],
         )
 
         assert response.status_code == 409
         assert response.json()["code"] == "dealer_scoped_app"
-        assert Invitation.objects.filter(email="new@acme.test").count() == 0
 
     def test_a_dealer_scoped_person_cannot_hold_an_org_level_role(self, client):
         result = found()
         unit = Territory.objects.create(organization=result.organization, name="Whitefield")
         client.force_authenticate(user=result.user)
 
-        response = client.post(
-            INVITE_URL.format(slug=result.organization.slug),
-            payload(
-                unit_id=str(unit.id),
-                apps=[{"app": "dms", "role": "dms.group_operations"}],
-            ),
-            format="json",
+        response = edit(
+            client,
+            result,
+            unit_id=str(unit.id),
+            apps=[{"app": "dms", "role": "dms.group_operations"}],
         )
 
         assert response.status_code == 409
@@ -679,11 +718,7 @@ class TestC27DealerScopedGrants:
         result = found()
         client.force_authenticate(user=result.user)
 
-        response = client.post(
-            INVITE_URL.format(slug=result.organization.slug),
-            payload(apps=[{"app": "dms", "role": "dms.manager"}]),
-            format="json",
-        )
+        response = edit(client, result, apps=[{"app": "dms", "role": "dms.manager"}])
 
         assert response.status_code == 409
         assert response.json()["code"] == "role_scope_mismatch"
@@ -697,11 +732,7 @@ class TestC27DealerScopedGrants:
         result = found()
         client.force_authenticate(user=result.user)
 
-        response = client.post(
-            INVITE_URL.format(slug=result.organization.slug),
-            payload(apps=[{"app": "admin", "role": "whatever"}]),
-            format="json",
-        )
+        response = edit(client, result, apps=[{"app": "admin", "role": "whatever"}])
 
         assert response.status_code == 409
         assert response.json()["code"] == "administration_not_grantable"
@@ -787,12 +818,11 @@ class TestEditing:
         assert owner.is_owner is True
         assert standing(owner) == MembershipRole.OWNER
 
-    def test_removing_their_last_app_is_refused(self, client):
+    def test_removing_their_last_app_is_allowed(self, client):
         """
-        C73 (2026-11-11, "for now"): everybody holds at least one app, because
-        a person's place comes from their grants. This used to assert the
-        opposite -- that saving with no apps left them with none. The reason
-        is a field error on `apps`, so the form can show it there.
+        C73 RETIRED (the owner, 2026-11-20): a person may hold no app. This
+        pinned the refusal for a week; it is back to asserting that saving with
+        no apps leaves them with none -- and they can open nothing.
         """
         result = found()
         person = add_person(result.organization, email="person@acme.test")
@@ -804,10 +834,9 @@ class TestEditing:
             format="json",
         )
 
-        assert response.status_code == 422
-        assert response.json()["code"] == "person_needs_an_app"
-        assert [e["field"] for e in response.json()["errors"]] == ["apps"]
-        assert person.grants.count() == 1
+        assert response.status_code == 200
+        assert response.json()["apps"] == []
+        assert person.grants.count() == 0
 
 
 class TestRemoving:
@@ -976,7 +1005,9 @@ class TestTheInvitationWindow:
         result = found()
         client.force_authenticate(user=result.user)
 
-        client.post(INVITE_URL.format(slug=result.organization.slug), payload(), format="json")
+        client.post(
+            INVITE_URL.format(slug=result.organization.slug), invite_payload(), format="json"
+        )
 
         invitation = Invitation.objects.get(email="new@acme.test")
         expected = timezone.now() + timezone.timedelta(days=7)
@@ -1026,7 +1057,7 @@ class TestCapabilityRefusals:
         client.force_authenticate(user=person.user)
 
         response = client.post(
-            INVITE_URL.format(slug=result.organization.slug), payload(), format="json"
+            INVITE_URL.format(slug=result.organization.slug), invite_payload(), format="json"
         )
 
         assert response.status_code == 403

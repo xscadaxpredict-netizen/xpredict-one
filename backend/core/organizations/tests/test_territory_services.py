@@ -29,6 +29,7 @@ from core.organizations.exceptions import (
 from core.organizations.models import ActivationCode, Territory, TerritoryKind
 from core.organizations.selectors import _summary, dealers_for
 from core.organizations.services import (
+    accept_invitation,
     assert_placement_allowed,
     create_dealer,
     create_territory,
@@ -36,6 +37,7 @@ from core.organizations.services import (
     move_territory,
     rename_territory,
     sign_up,
+    update_person,
 )
 from core.permissions.models import AppCode
 from shared.exceptions import NotFoundError
@@ -310,13 +312,23 @@ class TestARegionIsNeverTakenForADealership:
         result = found()
         north = create_territory(organization=result.organization, kind=REGION, name="North")
 
+        invitation = invite_person(
+            actor=result.membership,
+            organization=result.organization,
+            email="ravi@apex.test",
+            first_name="Ravi",
+            last_name="Kumar",
+        )
+        member = accept_invitation(token=invitation.token, password="correct horse battery staple")
+
         with pytest.raises(NotFoundError):
-            invite_person(
+            update_person(
                 actor=result.membership,
                 organization=result.organization,
-                email="ravi@apex.test",
+                person_id=member.membership.pk,
                 first_name="Ravi",
                 last_name="Kumar",
+                email="ravi@apex.test",
                 unit_id=north.pk,
                 role="member",
                 apps=[{"app": "dms", "role": "dms.manager"}],

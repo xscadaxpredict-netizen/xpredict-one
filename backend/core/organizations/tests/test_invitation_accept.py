@@ -92,23 +92,20 @@ def invite(
     organization,
     *,
     email="pending@acme.test",
-    unit=None,
-    role=MembershipRole.MEMBER,
-    role_code="",
+    role_code=ORG_ROLE,
     token=TOKEN,
     expires_in_days=14,
     invited_by=None,
 ):
-    """`role_code=""` means "whichever role fits the scope"; None means no app."""
-    if role_code == "":
-        role_code = UNIT_ROLE if unit is not None else ORG_ROLE
+    """
+    A pending PERSON (C83: no role, no place), holding DMS with `role_code`
+    unless it is None -- the shape an app's own invite will make.
+    """
     invitation = Invitation.objects.create(
         organization=organization,
-        unit=unit,
         email=email,
         first_name="Pending",
         last_name="Person",
-        role=role,
         token=token,
         expires_at=timezone.now() + timezone.timedelta(days=expires_in_days),
         invited_by=invited_by,
@@ -168,15 +165,13 @@ class TestThePreview:
         of them are somebody's staffing arrangement.
         """
         result = found()
-        unit = Territory.objects.create(organization=result.organization, name="Chennai North")
-        invite(result.organization, unit=unit)
+        invite(result.organization)
 
         body = client.get(PREVIEW_URL.format(token=TOKEN)).json()
 
         assert "unit_name" not in body
         assert "role" not in body
         assert "apps" not in body
-        assert "Chennai North" not in str(body)
 
     def test_an_unknown_token_is_404(self, client):
         found()
@@ -274,15 +269,27 @@ class TestAcceptingAsSomebodyNew:
         assert "xp_access" in response.cookies
         assert response.cookies["xp_access"]["httponly"] is True
 
-    def test_the_dealership_comes_across(self, client):
+    def test_the_apps_come_across_organisation_wide(self, client):
+        """An invitation has no place (C83), so its apps are placed at the root."""
         result = found()
-        unit = Territory.objects.create(organization=result.organization, name="Chennai North")
-        invite(result.organization, unit=unit)
+        invite(result.organization)
 
         client.post(ACCEPT_URL.format(token=TOKEN), {"password": PASSWORD}, format="json")
 
         membership = Membership.objects.get(user__email="pending@acme.test")
-        assert reach(membership) == frozenset({unit.id})
+        assert membership.grants.get().app_id == AppCode.DMS
+        assert reach(membership) is None
+
+    def test_an_invitation_with_no_app_joins_with_none(self, client):
+        """C73 retired: a person may hold no app, and can open nothing yet."""
+        result = found()
+        invite(result.organization, role_code=None)
+
+        url = ACCEPT_URL.format(token=TOKEN)
+        response = client.post(url, {"password": PASSWORD}, format="json")
+
+        assert response.status_code == 201
+        assert not Membership.objects.get(user__email="pending@acme.test").grants.exists()
 
     def test_the_new_member_is_not_an_owner(self, client):
         """
@@ -291,12 +298,13 @@ class TestAcceptingAsSomebodyNew:
         constraint is the thing that notices.
         """
         result = found()
-        invite(result.organization, role=MembershipRole.ADMIN)
+        invite(result.organization)
 
         client.post(ACCEPT_URL.format(token=TOKEN), {"password": PASSWORD}, format="json")
 
         membership = Membership.objects.get(user__email="pending@acme.test")
-        assert standing(membership) == MembershipRole.ADMIN
+        # Never an admin from an invitation either (C83).
+        assert standing(membership) == MembershipRole.MEMBER
         assert membership.is_owner is None
         assert (
             Membership.objects.filter(
@@ -606,15 +614,14 @@ class TestTheLinkAnAdminCopies:
         assert response.status_code == 409
         assert response.json()["code"] == "not_an_invitation"
 
-    def test_another_dealerships_invitation_is_404_not_403(self, client):
+    def test_a_dealer_admin_gets_404_for_any_invitation(self, client):
         """
-        THE SAME LEAK AS EVERYWHERE ELSE IN ADMINISTRATION, one table over. A
-        dealer admin who gets 403 here learns the invitation exists; they must
-        get the answer they would get for an id that was never minted.
+        An invitation sits nowhere (C83), so only organisation-wide admins
+        reach it. A dealer admin gets the answer they would get for an id that
+        was never minted -- 404, never 403, which would confirm it exists.
         """
         result = found()
         mine = Territory.objects.create(organization=result.organization, name="Mine")
-        theirs = Territory.objects.create(organization=result.organization, name="Theirs")
 
         admin_user = User.objects.create_user(email="dealeradmin@acme.test", password=PASSWORD)
         admin_membership = Membership.objects.create(
@@ -627,7 +634,7 @@ class TestTheLinkAnAdminCopies:
             territories=[mine],
         )
 
-        other = invite(result.organization, unit=theirs, email="theirs@acme.test")
+        other = invite(result.organization, email="theirs@acme.test")
         client.force_authenticate(user=admin_user)
 
         response = client.get(LINK_URL.format(slug=result.organization.slug, id=other.id))

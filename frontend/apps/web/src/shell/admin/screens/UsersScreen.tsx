@@ -24,12 +24,13 @@
  * are the ones that ship as a blank white page.
  */
 
-import { useEffect, useState } from "react";
-import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
+import { useState } from "react";
+import { Link, useNavigate, useParams } from "react-router-dom";
 import { asProblem } from "@xpredict/api-client";
 import { EmptyState, ErrorState, InfoHint, TableSkeleton } from "@xpredict/ui";
 
 import { usePageSearch } from "../../../stores/pageSearchStore";
+import { useAccess } from "../../access";
 import { useShellContext } from "../../context";
 import type { OrgUser } from "../api/users";
 import { InviteUserDialog } from "../components/InviteUserDialog";
@@ -80,26 +81,6 @@ export function UsersScreen() {
 
   const { userId } = useParams<{ userId: string }>();
 
-  /*
-   * `?invite=<dealerId>` arrives from a dealership that has nobody in it, and
-   * opens the invite dialog already scoped to it.
-   *
-   * CAPTURED ONCE, THEN SCRUBBED — the same handling as `?code=` on signup, for
-   * a different reason: not secrecy, but that a parameter left in the address
-   * bar reopens the dialog on every refresh and every Back, long after the
-   * person dealt with it.
-   */
-  const [searchParams, setSearchParams] = useSearchParams();
-  const [inviteForUnitId] = useState(() => searchParams.get("invite"));
-
-  useEffect(() => {
-    if (!searchParams.has("invite")) return;
-
-    const next = new URLSearchParams(searchParams);
-    next.delete("invite");
-    setSearchParams(next, { replace: true });
-  }, [searchParams, setSearchParams]);
-
   const navigate = useNavigate();
   const basePath = `/${membership.org_slug}/admin/users`;
 
@@ -127,6 +108,14 @@ export function UsersScreen() {
    */
   const callerIsOrgWide = membership.unit_id === null;
 
+  /*
+   * ADD USER IS THE ORGANISATION-WIDE ADMINS' (C83): an invited person sits
+   * nowhere, so the server refuses anybody narrower -- a dealer admin -- with
+   * a 403. Not offering the button is the screen agreeing with it.
+   */
+  const access = useAccess();
+  const canAddUsers = membership.role !== "member" && access.can("admin.user.create");
+
   const showsOtherDealersPeople =
     callerIsOrgWide && (users?.some((user) => user.unit_name !== null) ?? false);
 
@@ -148,8 +137,8 @@ export function UsersScreen() {
             </>
           ) : (
             <>
-              People at {membership.unit_name}. You can invite someone to this dealer and give
-              them DMS; the rest of {membership.org_name} is managed by an organisation admin.
+              People at {membership.unit_name}. New people are added by an organisation admin;
+              you can then manage their DMS here.
             </>
           )}
         </InfoHint>
@@ -176,7 +165,7 @@ export function UsersScreen() {
           </span>
         )}
         <span className={styles.spacer} />
-        <InviteUserDialog membership={membership} openForUnitId={inviteForUnitId} />
+        {canAddUsers && <InviteUserDialog membership={membership} />}
       </div>
 
       <div className={styles.split} data-detail={selected ? "" : undefined}>

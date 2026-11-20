@@ -6,8 +6,8 @@ The two Admin panel roles, Organization Owner and Organization Admin, each with
 how many people hold it. App roles are NOT listed (the owner, 2026-11-18: DMS's
 roles belong to DMS's own settings). Gated on `admin.role.view`.
 
-USERS COUNTS EVERYONE HOLDING THE ROLE: active, deactivated and pending -- the
-same people the Users page's "All users" filter shows with it.
+USERS COUNTS EVERYONE HOLDING THE ROLE: active and deactivated. Nobody is
+invited as an admin since C83, so a pending person never counts.
 """
 
 from __future__ import annotations
@@ -24,7 +24,6 @@ from core.organizations.models import (
     ActivationCode,
     Invitation,
     Membership,
-    MembershipRole,
     MembershipStatus,
     Territory,
     TerritoryKind,
@@ -74,11 +73,11 @@ def admin(result, *, email, status=MembershipStatus.ACTIVE):
     )
 
 
-def invite(result, *, email, role):
+def invite(result, *, email):
+    """A pending person (C83): no role -- nobody is invited AS an admin."""
     return Invitation.objects.create(
         organization=result.organization,
         email=email,
-        role=role,
         token=f"token-{email}",
         expires_at=timezone.now() + timezone.timedelta(days=7),
     )
@@ -123,13 +122,19 @@ class TestUsers:
     def test_the_owner_is_one_and_a_new_organisation_has_no_admins(self, client):
         assert users_of(client, found()) == {"Organization Owner": 1, "Organization Admin": 0}
 
-    def test_admins_count_active_deactivated_and_pending(self, client):
+    def test_admins_count_active_and_deactivated(self, client):
         result = found()
         admin(result, email="active@acme.test")
         admin(result, email="off@acme.test", status=MembershipStatus.DISABLED)
-        invite(result, email="pending@acme.test", role=MembershipRole.ADMIN)
 
-        assert users_of(client, result)["Organization Admin"] == 3
+        assert users_of(client, result)["Organization Admin"] == 2
+
+    def test_a_pending_person_is_never_counted(self, client):
+        """Nobody is invited as an admin any more (C83); an admin is made once joined."""
+        result = found()
+        invite(result, email="pending@acme.test")
+
+        assert users_of(client, result) == {"Organization Owner": 1, "Organization Admin": 0}
 
     def test_members_and_dealer_admins_are_not_organisation_admins(self, client):
         """
@@ -145,18 +150,8 @@ class TestUsers:
             result, app=AppCode.DMS, role_code="dms.system_admin", place=delhi, email="da@acme.test"
         )
         person(result, app=AppCode.DMS, role_code="dms.manager", place=delhi, email="m@acme.test")
-        invite(result, email="pending@acme.test", role=MembershipRole.MEMBER)
 
         assert users_of(client, result)["Organization Admin"] == 0
-
-    def test_an_accepted_invitation_is_not_counted_twice(self, client):
-        result = found()
-        accepted = invite(result, email="joined@acme.test", role=MembershipRole.ADMIN)
-        accepted.accepted_at = timezone.now()
-        accepted.save()
-        admin(result, email="joined@acme.test")
-
-        assert users_of(client, result)["Organization Admin"] == 1
 
     def test_the_owner_is_never_counted_as_an_admin(self, client):
         """`standing()` says owner first, whatever grants they hold -- so here."""
@@ -174,7 +169,6 @@ class TestUsers:
     def test_another_organisations_admins_are_not_counted(self, client):
         other = found(name="Other Co", email="owner@other.test", code="CODE-OTHER")
         admin(other, email="their-admin@other.test")
-        invite(other, email="their-invite@other.test", role=MembershipRole.ADMIN)
 
         # Both numbers: the other organisation's OWNER must not count either.
         assert users_of(client, found()) == {"Organization Owner": 1, "Organization Admin": 0}
@@ -194,7 +188,6 @@ class TestUsers:
         with_one = queries()
         for index in range(1, 6):
             admin(result, email=f"admin{index}@acme.test")
-            invite(result, email=f"invite{index}@acme.test", role=MembershipRole.ADMIN)
 
         assert queries() == with_one
 

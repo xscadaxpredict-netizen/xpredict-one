@@ -172,16 +172,9 @@ export function DealerDetailPanel({ dealer, usersPath, onClose }: DealerDetailPa
               </span>
 
               {/*
-                NOT OFFERED WHILE IT IS CLOSED, which running this caught: a
-                closed dealership is not in the invite form's picker, so the
-                link led to a form that could not be submitted and an error
-                asking for an answer the form refused to offer.
+                NO INVITE LINK SINCE C83: an invitation names no dealership any
+                more. Somebody is added in Users, then given DMS here by Edit.
               */}
-              {!isClosed && (
-                <Link className={styles.link} to={`${usersPath}?invite=${dealer.id}`}>
-                  Invite this dealership&rsquo;s admin
-                </Link>
-              )}
             </>
           ) : (
             <>

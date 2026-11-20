@@ -53,7 +53,6 @@ from core.organizations.exceptions import (
     OrganizationNameUnusableError,
     OwnerProtectedError,
     PersonEmailTakenError,
-    PersonNeedsAnAppError,
     RoleNotInAppError,
     RoleScopeMismatchError,
     SignInAddressLockedError,
@@ -935,25 +934,6 @@ def _assert_can_manage_person(actor: Membership, person: Membership | Invitation
         raise not_found("User")
 
 
-def _assert_has_an_app(role: str, grants: list[tuple[str, Role]]) -> None:
-    """
-    C73 (the owner, 2026-11-11, "for now"): everybody holds at least one app,
-    because under C72 a person's place in the tree comes from their grants.
-    Somebody made an admin has one -- Administration. The owner never reaches
-    this: their access is not taken from the form.
-    """
-    if not grants and role != MembershipRole.ADMIN:
-        raise PersonNeedsAnAppError(
-            field_errors=[
-                FieldError(
-                    field="apps",
-                    code="required",
-                    detail="Give this person at least one app.",
-                )
-            ]
-        )
-
-
 def _assert_grants_are_legal(
     organization: Organization, unit_id: uuid.UUID | None, grants: list[tuple[str, Role]]
 ) -> None:
@@ -1082,7 +1062,7 @@ def find_person(organization: Organization, person_id: uuid.UUID) -> Membership 
         pass
 
     try:
-        return Invitation.objects.select_related("unit").get(
+        return Invitation.objects.get(
             id=person_id, organization=organization, accepted_at__isnull=True
         )
     except (Invitation.DoesNotExist, DjangoValidationError, ValueError):
@@ -1097,75 +1077,39 @@ def invite_person(
     email: str,
     first_name: str,
     last_name: str,
-    unit_id: uuid.UUID | None,
-    role: str,
-    apps: list[dict],
 ) -> Invitation:
     """
-    Invite somebody into this organization.
+    Invite somebody into this organisation: a PERSON -- first name, last name,
+    email -- and nothing else (the owner, 2026-11-20, as Zoho's admin panel).
+
+    NO APP, NO ROLE, NO PLACE. The Admin panel invites a person; apps are
+    assigned afterwards (Assign app, or Edit), and an APP's own invite -- built
+    with that app's Users screen -- will carry that app's role (C72 piece 5).
+    Accepting with no apps makes a member who can open nothing yet, and the
+    launcher tells them so. `Invitation.role` and `.unit` are gone (C83).
 
     CREATES AN INVITATION, NOT A MEMBERSHIP (C51). There is no account yet and
-    there may never be one; accepting creates the membership, in its own
-    transaction.
+    there may never be one; accepting creates the membership.
 
-    A DEALER ADMIN CANNOT APPOINT AN ORGANIZATION ADMIN. `_assert_can_manage`
-    covers the dealership; the standing check covers the ladder. An `admin`
-    invitation is organization-wide by definition --- the check constraint
-    refuses `admin` with a unit attached --- so a dealer admin issuing one
-    would be promoting a stranger above themselves.
+    ORGANISATION-WIDE ADMINS ONLY, for now. An invited person sits nowhere, so
+    only somebody who administers everywhere can manage them; a dealer admin,
+    placed narrower (`reach()`), is refused -- a capability answer, 403, which
+    discloses nothing. Territories are being redesigned per app (C82).
     """
-    if role == MembershipRole.OWNER:
-        # Not a permission failure. An owner is founded with the organization
-        # and never invited into it (C41), so there is no standing that allows
-        # this at all.
-        raise OwnerProtectedError
-
-    # THESE TWO COME BEFORE THE SCOPE CHECK, and the order is the difference
-    # between a 403 and a 404.
-    #
-    # A create has no existing record to hide, so "you may not appoint
-    # administrators" and "organization-wide people are not yours to create"
-    # are capability answers -- 403 -- and they disclose nothing: `admin` and
-    # `None` are not ids that might or might not exist.
-    #
-    # A SPECIFIC `unit_id` IS DIFFERENT and stays a 404 below. Answering 403
-    # for a real dealership the caller may not use, while `_resolve_unit()`
-    # answers 404 for one that does not exist, would let a dealer admin
-    # enumerate the organization's dealerships by watching which status comes
-    # back. Both have to be the same refusal.
-    # "Placed somewhere narrower than the whole organisation", from the
-    # actor's grants (C72 step 2c) -- a dealer admin.
     if reach(actor) is not None:
-        if role == MembershipRole.ADMIN:
-            raise AuthorizationError
-        if unit_id is None:
-            raise AuthorizationError
+        raise AuthorizationError
 
-    _assert_can_manage(actor, unit_id)
-
-    unit = _resolve_unit(organization, unit_id)
-    _assert_organisation_wide(role, unit_id)
-    grants = _resolve_grants(apps)
-    _assert_has_an_app(role, grants)
-    _assert_grants_are_legal(organization, unit_id, grants)
     _assert_email_free(organization, email)
 
-    invitation = Invitation.objects.create(
+    return Invitation.objects.create(
         organization=organization,
-        unit=unit,
         email=email,
         first_name=first_name,
         last_name=last_name,
-        role=role,
         token=secrets.token_urlsafe(INVITATION_TOKEN_BYTES),
         expires_at=timezone.now() + INVITATION_LIFETIME,
         invited_by=actor.user,
     )
-
-    for app, granted_role in grants:
-        InvitationAppGrant.objects.create(invitation=invitation, app_id=app, role=granted_role)
-
-    return invitation
 
 
 @transaction.atomic
@@ -1200,16 +1144,22 @@ def update_person(
     if role == MembershipRole.ADMIN and reach(actor) is not None:
         raise AuthorizationError
 
+    if isinstance(person, Invitation):
+        # A PENDING PERSON IS JUST A PERSON (C83): no standing and no place
+        # until they join. Being made an admin waits until they have; their
+        # apps -- organisation-level roles only -- wait on the invitation.
+        _assert_pending_person_is_unplaced(role, unit_id)
+
     unit = _resolve_unit(organization, unit_id)
     is_the_owner = isinstance(person, Membership) and person.is_owner
     _assert_organisation_wide(MembershipRole.OWNER if is_the_owner else role, unit_id)
     grants = _resolve_grants(apps)
-    if not is_the_owner:
-        _assert_has_an_app(role, grants)
+    # NO "AT LEAST ONE APP" (C73 retired, the owner 2026-11-20): taking every
+    # app away leaves a person who can open nothing, which is allowed.
     _assert_grants_are_legal(organization, unit_id, grants)
 
     if isinstance(person, Invitation):
-        _update_invitation(person, organization, first_name, last_name, email, unit, role, grants)
+        _update_invitation(person, organization, first_name, last_name, email, grants)
     else:
         _update_membership(person, first_name, last_name, email, unit, role, grants)
 
@@ -1254,14 +1204,39 @@ def _update_membership(
     _grant_administration_if_admin(membership, role)
 
 
+def _assert_pending_person_is_unplaced(role: str, unit_id: uuid.UUID | None) -> None:
+    """
+    An invitation has no standing and no place any more (C83). Asking for
+    either is refused by name rather than dropped, so the form cannot believe
+    somebody was made an admin -- or put at a dealership -- before joining.
+    """
+    errors = []
+    if role == MembershipRole.ADMIN:
+        errors.append(
+            FieldError(
+                field="role",
+                code="pending",
+                detail="Make this person an admin once they have joined.",
+            )
+        )
+    if unit_id is not None:
+        errors.append(
+            FieldError(
+                field="unit_id",
+                code="pending",
+                detail="A person who has not joined yet is not placed anywhere.",
+            )
+        )
+    if errors:
+        raise InvalidInputError(field_errors=errors)
+
+
 def _update_invitation(
     invitation: Invitation,
     organization: Organization,
     first_name: str,
     last_name: str,
     email: str,
-    unit: Territory | None,
-    role: str,
     grants: list[tuple[str, Role]],
 ) -> None:
     # THE ONE CASE WHERE AN ADDRESS MAY CHANGE (C25). Nobody signs in with it
@@ -1273,8 +1248,6 @@ def _update_invitation(
 
     invitation.first_name = first_name
     invitation.last_name = last_name
-    invitation.unit = unit
-    invitation.role = role
     invitation.save()
 
     invitation.app_grants.all().delete()
@@ -1497,7 +1470,7 @@ def accept_invitation(
     try:
         invitation = (
             Invitation.objects.select_for_update()
-            .select_related("organization", "unit")
+            .select_related("organization")
             .get(token=token)
         )
 
@@ -1525,11 +1498,9 @@ def accept_invitation(
         (grant.app_id, grant.role)
         for grant in invitation.app_grants.select_related("role").all()
     ]
-    # Re-checked like the rest: an `admin` invitation naming a dealership could
-    # be issued before this rule moved out of the database (step 2d-2), and the
-    # constraint that used to refuse it -- as a 500 -- no longer sees a unit.
-    _assert_organisation_wide(invitation.role, invitation.unit_id)
-    _assert_grants_are_legal(organization, invitation.unit_id, grants)
+    # Re-checked like the rest. An invitation has no place (C83), so its apps
+    # are organisation-wide: an organisation-level role each.
+    _assert_grants_are_legal(organization, None, grants)
 
     existing = User.objects.filter(email__iexact=email).first()
 
@@ -1586,13 +1557,11 @@ def accept_invitation(
             membership=membership,
             app=app,
             role=role,
-            territories=_placement(organization, invitation.unit),
+            territories=_placement(organization, None),
             actor_id=invitation.invited_by_id,
         )
-    # An `admin` invitation becomes an Organisation admin grant.
-    _grant_administration_if_admin(
-        membership, invitation.role, actor_id=invitation.invited_by_id
-    )
+    # NO ADMINISTRATION FROM AN INVITATION (C83): an invitation is a person,
+    # and being made an admin is done once they have joined.
 
     invitation.accepted_at = timezone.now()
     invitation.save(update_fields=["accepted_at", "updated_at"])

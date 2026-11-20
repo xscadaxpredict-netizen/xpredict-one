@@ -168,12 +168,14 @@ class TestListing:
 
 class TestUserCount:
     """
-    `user_count` is annotated, and the annotation is the kind that inflates
-    silently when it is wrong -- so it is tested with both sources present at
-    once, which is the case a single-relation annotation gets wrong.
+    `user_count` is annotated: the people a grant places at the dealership.
     """
 
-    def test_it_counts_memberships_and_outstanding_invitations_together(self, client):
+    def test_it_counts_the_people_placed_here_and_never_an_invitation(self, client):
+        """
+        Since C83 an invitation is a person with no place, so none is at a
+        dealership until they have joined and been given an app there.
+        """
         result = found()
         unit = Territory.objects.create(organization=result.organization, name="Whitefield")
 
@@ -184,7 +186,6 @@ class TestUserCount:
         for index in range(3):
             Invitation.objects.create(
                 organization=result.organization,
-                unit=unit,
                 email=f"invited{index}@acme.test",
                 token=f"token-{index}",
                 expires_at=timezone.now() + timezone.timedelta(days=7),
@@ -193,33 +194,7 @@ class TestUserCount:
         client.force_authenticate(user=result.user)
         response = client.get(LIST_URL.format(slug=result.organization.slug))
 
-        # 2 + 3, NOT 6. Annotating two reverse relations in one queryset
-        # multiplies them, and the wrong answer here is a plausible-looking
-        # larger number rather than an error.
-        assert response.json()[0]["user_count"] == 5
-
-    def test_an_accepted_invitation_is_not_counted_twice(self, client):
-        """
-        Accepting turns an invitation into a membership (C51). If the count
-        still included accepted invitations, every person who joined would be
-        counted once as a membership and once as the invitation they came from.
-        """
-        result = found()
-        unit = Territory.objects.create(organization=result.organization, name="Whitefield")
-        add_person(result.organization, unit=unit, email="joined@acme.test")
-        Invitation.objects.create(
-            organization=result.organization,
-            unit=unit,
-            email="joined@acme.test",
-            token="token-accepted",
-            expires_at=timezone.now() + timezone.timedelta(days=7),
-            accepted_at=timezone.now(),
-        )
-
-        client.force_authenticate(user=result.user)
-        response = client.get(LIST_URL.format(slug=result.organization.slug))
-
-        assert response.json()[0]["user_count"] == 1
+        assert response.json()[0]["user_count"] == 2
 
     def test_a_disabled_membership_still_counts(self, client):
         """

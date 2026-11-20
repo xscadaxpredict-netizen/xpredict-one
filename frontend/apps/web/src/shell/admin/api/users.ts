@@ -125,34 +125,16 @@ export interface UserDetails {
   role: "admin" | "member";
 }
 
+/**
+ * Add User (C83, the owner 2026-11-20): a PERSON -- first name, last name,
+ * email -- and nothing else, as Zoho's admin panel. No role, no dealership, no
+ * apps: those are assigned afterwards, or come from an app's own invite. The
+ * server REFUSES any other field rather than ignoring it.
+ */
 export interface NewInvitation {
   first_name: string;
   last_name: string;
   email: string;
-  /** Dealer id, or null for organisation-wide. */
-  unit_id: string | null;
-  /**
-   * The PRODUCTS this person may open and the role in each — dms, crm,
-   * ecommerce. Never "admin": Administration is not a product and is not
-   * granted here, it follows from `role` below (C17, C31).
-   */
-  apps: AppGrant[];
-  /**
-   * Standing in the organisation. Never "owner": there is exactly one per
-   * organisation (C14), so appointing one is a transfer, not an invitation.
-   *
-   * IT IS STANDING AND NOTHING MORE (C40). `admin` always means the whole
-   * organisation and is only valid with `unit_id` null — the database refuses
-   * anything else. `member` administers nothing BY STANDING, which is not the
-   * same as administering nothing: a dealer admin is `member` with a
-   * dealership, and what makes them an admin is the DMS System administrator
-   * role in `apps` above.
-   *
-   * This said `admin` with a unit administers that dealership, which was C31.
-   * C40 removed the write-back from app role into standing, so the two never
-   * touch and neither is derived from the other.
-   */
-  role: "admin" | "member";
 }
 
 /* ---------------------------- real shape -------------------------------- */

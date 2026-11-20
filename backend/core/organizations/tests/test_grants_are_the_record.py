@@ -16,17 +16,12 @@ in the services now, at invite, edit and accept.
 
 from __future__ import annotations
 
-import secrets
-from datetime import timedelta
-
 import pytest
-from django.utils import timezone
 
 from conftest import TEST_TENANT_ALIAS
 from core.organizations.exceptions import RoleScopeMismatchError
 from core.organizations.models import (
     ActivationCode,
-    Invitation,
     InvitationAppGrant,
     Membership,
     MembershipAppAccess,
@@ -42,6 +37,7 @@ from core.organizations.services import (
     update_person,
 )
 from core.permissions.models import AppCode, Role
+from shared.exceptions import InvalidInputError
 
 pytestmark = [pytest.mark.django_db(databases=["default", TEST_TENANT_ALIAS])]
 
@@ -58,24 +54,26 @@ def found():
     )
 
 
-def invite(result, *, unit=None, role=MembershipRole.MEMBER, apps=None, email="ravi@apex.test"):
-    if apps is None:
-        apps = [{"app": "dms", "role": "dms.manager" if unit else "dms.fleet_viewer"}]
+def invite(result, *, email="ravi@apex.test"):
+    """A person, and nothing else (C83)."""
     return invite_person(
         actor=result.membership,
         organization=result.organization,
         email=email,
         first_name="Ravi",
         last_name="Kumar",
-        unit_id=unit.pk if unit else None,
-        role=role,
-        apps=apps,
     )
 
 
-def join(result, **kwargs) -> Membership:
-    invitation = invite(result, **kwargs)
-    return accept_invitation(token=invitation.token, password=PASSWORD).membership
+def join(result, *, unit=None, role=MembershipRole.MEMBER, apps=None) -> Membership:
+    """
+    Invited, joined, then given a place, a standing and apps by Edit -- the way
+    somebody gets them since C83. Defaults: DMS, organisation-wide.
+    """
+    invitation = invite(result)
+    member = accept_invitation(token=invitation.token, password=PASSWORD).membership
+    edit(result, member, unit=unit, role=role, apps=apps)
+    return Membership.objects.get(pk=member.pk)
 
 
 def edit(result, person, *, unit=None, role=MembershipRole.MEMBER, apps=None, email=None):
@@ -156,14 +154,26 @@ class TestTheOwnerIsNeverAnAdminByForm:
 class TestOwnersAndAdminsAreOrganisationWide:
     """The rule the `Membership` check constraint used to hold, as a 409."""
 
-    def test_inviting_an_admin_at_a_dealership_is_refused(self):
+    def test_a_pending_person_is_neither_made_an_admin_nor_placed(self):
+        """C83: an invitation is a person -- standing and place wait until they join."""
         result = found()
         delhi = create_dealer(organization=result.organization, name="Delhi Motors")
+        invitation = invite(result)
 
-        with pytest.raises(RoleScopeMismatchError):
-            invite(result, unit=delhi, role=MembershipRole.ADMIN)
-
-        assert not Invitation.objects.filter(email="ravi@apex.test").exists()
+        for unit, role, field in ((None, MembershipRole.ADMIN, "role"), (delhi, None, "unit_id")):
+            with pytest.raises(InvalidInputError) as refused:
+                update_person(
+                    actor=result.membership,
+                    organization=result.organization,
+                    person_id=invitation.pk,
+                    first_name="Ravi",
+                    last_name="Kumar",
+                    email="ravi@apex.test",
+                    unit_id=unit.pk if unit else None,
+                    role=role or MembershipRole.MEMBER,
+                    apps=[],
+                )
+            assert [error.field for error in refused.value.field_errors] == [field]
 
     def test_editing_somebody_into_an_admin_at_a_dealership_is_refused(self):
         result = found()
@@ -180,25 +190,14 @@ class TestOwnersAndAdminsAreOrganisationWide:
         with pytest.raises(RoleScopeMismatchError):
             edit(result, result.membership, unit=delhi)
 
-    def test_an_older_admin_invitation_at_a_dealership_is_refused_at_accept(self):
+    def test_an_invitation_holding_a_dealership_role_is_refused_at_accept(self):
         """
-        Issued before the rule moved here, so nothing refused it then. It used
-        to fail as a 500 from the check constraint; now it is a 409 and the
-        invitation stays unspent for an admin to correct.
+        An invitation's apps are placed at the root (C83), where a dealership
+        role is not legal. Refused as a 409 and left unspent -- `0022` refuses
+        to run while any such invitation is pending.
         """
         result = found()
-        delhi = create_dealer(organization=result.organization, name="Delhi Motors")
-        invitation = Invitation.objects.create(
-            organization=result.organization,
-            unit=delhi,
-            email="old@apex.test",
-            first_name="Old",
-            last_name="Invite",
-            role=MembershipRole.ADMIN,
-            token=secrets.token_urlsafe(32),
-            expires_at=timezone.now() + timedelta(days=7),
-            invited_by=result.user,
-        )
+        invitation = invite(result, email="old@apex.test")
         InvitationAppGrant.objects.create(
             invitation=invitation, app_id=AppCode.DMS, role=Role.objects.get(code="dms.manager")
         )

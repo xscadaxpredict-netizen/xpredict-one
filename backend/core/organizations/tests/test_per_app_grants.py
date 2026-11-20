@@ -84,17 +84,27 @@ def join(result, *, email: str, unit=None, apps=None, role_name="member") -> Mem
     if apps is None:
         default_role = "dms.manager" if unit else "dms.fleet_viewer"
         apps = [{"app": "dms", "role": default_role}]
+    # Invited as a person (C83), joined, then placed and given apps by Edit.
     invitation = invite_person(
         actor=result.membership,
         organization=result.organization,
         email=email,
         first_name="Test",
         last_name="Person",
+    )
+    member = accept_invitation(token=invitation.token, password=PASSWORD).membership
+    update_person(
+        actor=result.membership,
+        organization=result.organization,
+        person_id=member.pk,
+        first_name="Test",
+        last_name="Person",
+        email=email,
         unit_id=unit.pk if unit else None,
         role=role_name,
         apps=apps,
     )
-    return accept_invitation(token=invitation.token, password=PASSWORD).membership
+    return Membership.objects.get(pk=member.pk)
 
 
 class TestTheRules:

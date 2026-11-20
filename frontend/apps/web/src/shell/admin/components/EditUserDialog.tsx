@@ -270,6 +270,8 @@ function EditUserForm({ user, membership, onDone }: EditUserFormProps) {
              * rather than an edit — and that flow does not exist yet (Q23).
              */
             lockOrgRole={isOwner}
+            // Not joined yet: no place and no standing to set (C83).
+            pending={isInvited}
             scopeHint={`Where ${user.first_name || "this person"} works, which decides what they can be given.`}
           />
         </div>

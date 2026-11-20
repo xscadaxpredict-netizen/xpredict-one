@@ -786,3 +786,23 @@ class TestTheMeEndpoint:
         }
         assert apps["admin"]["modules"] == WHOLE_ADMIN_PANEL
         assert apps["dms"]["modules"][0] == {"code": "ecommerce", "sub_modules": []}
+
+
+class TestSomebodyWithNoApp:
+    """
+    C73 RETIRED (the owner, 2026-11-20): a person may hold no app. They belong
+    to the organisation and can open nothing in it -- not even the Admin panel
+    -- and the launcher tells them so.
+    """
+
+    def test_they_belong_and_can_open_nothing(self):
+        result = found()
+        user = User.objects.create_user(email="nobody@acme.test", password="x")
+        Membership.objects.create(user=user, organization=result.organization)
+
+        payload = me(user)
+
+        assert [m.org_slug for m in payload.memberships] == [result.organization.slug]
+        apps = payload.memberships[0].apps
+        assert [app.key for app in apps if app.accessible] == []
+        assert all(app.modules == [] and app.permissions == [] for app in apps)

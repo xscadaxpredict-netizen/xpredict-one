@@ -174,7 +174,11 @@ class TestWhoseAdministratorTheyAre:
         # the ROWS by their grants too. Not Jaipur's, not the owner.
         assert seen == {at_delhi.id, da.id}
 
-    def test_they_may_not_appoint_an_organisation_admin(self):
+    def test_they_may_not_invite_anybody_for_now(self):
+        """
+        An invited person sits nowhere (C83); only somebody who administers
+        everywhere manages them. Refused until territories are per app (C82).
+        """
         result = found()
         delhi = create_dealer(organization=result.organization, name="Delhi Motors")
         da = person(result, "da@apex.test")
@@ -184,12 +188,9 @@ class TestWhoseAdministratorTheyAre:
             invite_person(
                 actor=fresh(da),
                 organization=result.organization,
-                email="boss@apex.test",
-                first_name="B",
-                last_name="Oss",
-                unit_id=None,
-                role=MembershipRole.ADMIN,
-                apps=[],
+                email="new@apex.test",
+                first_name="New",
+                last_name="Person",
             )
 
     def test_placed_at_the_root_they_reach_every_dealership(self):

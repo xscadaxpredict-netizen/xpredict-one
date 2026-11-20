@@ -31,6 +31,7 @@ from core.organizations.services import (
     create_dealer,
     invite_person,
     sign_up,
+    update_person,
 )
 
 pytestmark = [pytest.mark.django_db(databases=["default", TEST_TENANT_ALIAS])]
@@ -50,17 +51,27 @@ def found(code="CODE-APEX", name="Apex Motors", email="owner@apex.test"):
 
 
 def join(result, email, unit=None) -> Membership:
+    """Invited as a person (C83), joined, then given DMS by Edit."""
     invitation = invite_person(
         actor=result.membership,
         organization=result.organization,
         email=email,
         first_name="A",
         last_name="B",
+    )
+    member = accept_invitation(token=invitation.token, password=PASSWORD).membership
+    update_person(
+        actor=result.membership,
+        organization=result.organization,
+        person_id=member.pk,
+        first_name="A",
+        last_name="B",
+        email=email,
         unit_id=unit.pk if unit else None,
         role="member",
         apps=[{"app": "dms", "role": "dms.manager" if unit else "dms.fleet_viewer"}],
     )
-    return accept_invitation(token=invitation.token, password=PASSWORD).membership
+    return Membership.objects.get(pk=member.pk)
 
 
 def run() -> None:

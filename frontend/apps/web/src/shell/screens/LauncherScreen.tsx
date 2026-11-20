@@ -94,14 +94,18 @@ export function LauncherScreen() {
           takes a few seconds. If it has been longer than that, contact support and quote{" "}
           <strong>{membership.org_slug}</strong>.
         </p>
-      ) : apps.length === 0 ? (
+      ) : !apps.some((app) => app.enabled) ? (
         /*
-         * Reachable: a member of an organisation that has bought nothing, or
-         * whose access was revoked app by app rather than by removing the
-         * membership. Rare, and a blank page here looks like a broken build.
+         * NOTHING THEY CAN OPEN (C83, the owner 2026-11-20). The usual case
+         * now: the Admin panel invites a person with no apps, and they join
+         * before anybody has assigned one.
+         *
+         * NO TILES AT ALL, not the greyed tiles of apps the organisation has
+         * not bought -- for somebody with nothing, a row of disabled tiles
+         * invites clicking and explains nothing.
          */
-        <p className={styles.empty}>
-          No apps have been enabled for you yet. Ask an administrator of{" "}
+        <p className={styles.empty} aria-live="polite">
+          No apps have been assigned to you yet. Ask an administrator of{" "}
           {membership.org_name} for access.
         </p>
       ) : (

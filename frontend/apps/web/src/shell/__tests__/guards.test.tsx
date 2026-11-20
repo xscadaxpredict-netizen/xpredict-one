@@ -158,6 +158,35 @@ describe("app entitlement", () => {
     expect(screen.getByRole("button", { name: /E-commerce/ })).toBeDisabled();
   });
 
+  /*
+   * C83 (the owner, 2026-11-20): the Admin panel invites a person with no app,
+   * and they may join before anybody assigns one. They see a sentence saying
+   * so -- not a row of greyed tiles for apps the organisation never bought.
+   */
+  it("tells somebody with no app that none is assigned yet, with no tiles", async () => {
+    mockFetchMe.mockResolvedValue(
+      me({
+        memberships: [
+          membership({
+            apps: [
+              appAccess("dms", { accessible: false }),
+              appAccess("crm", { subscribed: false, accessible: false }),
+              appAccess("ecommerce", { subscribed: false, accessible: false }),
+              appAccess("admin", { accessible: false }),
+            ],
+          }),
+        ],
+      }),
+    );
+
+    renderRoute({ path: "/acme-motors", children: withDms });
+
+    expect(
+      await screen.findByText(/No apps have been assigned to you yet\. Ask an administrator of Acme Motors/),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /E-commerce/ })).not.toBeInTheDocument();
+  });
+
   it("sends someone typing the URL of an app they cannot open back to the launcher", async () => {
     mockFetchMe.mockResolvedValue(me({ memberships: [salespersonMembership()] }));
 

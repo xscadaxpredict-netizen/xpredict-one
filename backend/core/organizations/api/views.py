@@ -28,6 +28,7 @@ from core.organizations.api.serializers import (
     DealerDetailsSerializer,
     DealerSerializer,
     InviteLinkSerializer,
+    InviteSerializer,
     OrganizationProfileSerializer,
     OrgUserSerializer,
     PanelRoleSerializer,
@@ -367,7 +368,8 @@ class UsersView(OrgScopedAPIView):
         return Response(OrgUserSerializer(people, many=True).data)
 
     def post(self, request: Request, org_slug: str) -> Response:
-        payload = PersonDetailsSerializer(data=request.data)
+        # A PERSON ONLY (C83): first name, last name, email.
+        payload = InviteSerializer(data=request.data)
         payload.is_valid(raise_exception=True)
 
         invite_person(

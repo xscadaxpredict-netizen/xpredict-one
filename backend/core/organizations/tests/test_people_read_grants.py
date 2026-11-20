@@ -1,6 +1,6 @@
 """
 C72 step 2d, commit 1: the PERSON BEING MANAGED is judged by their grants too,
-and everybody holds at least one app (C73, "for now").
+and -- since C73 was retired (2026-11-20) -- a person may hold no app at all.
 
 Step 2c switched the ACTOR side -- where the admin sits. This switches the
 TARGET side: where the person on the other end of "edit", "remove" or the users
@@ -14,7 +14,6 @@ import pytest
 
 from conftest import TEST_TENANT_ALIAS
 from core.accounts.models import User
-from core.organizations.exceptions import PersonNeedsAnAppError
 from core.organizations.models import (
     ActivationCode,
     Membership,
@@ -69,51 +68,63 @@ def dealer_admin(result, dealership) -> Membership:
     return dms_at(person(result, email), [dealership], "dms.system_admin")
 
 
-def invite(result, *, role=MembershipRole.MEMBER, apps=None):
+def invite(result):
+    """Add User in the Admin panel: a person, and nothing else (C83)."""
     return invite_person(
         actor=result.membership,
         organization=result.organization,
         email="new@apex.test",
         first_name="New",
         last_name="Person",
-        unit_id=None,
-        role=role,
-        apps=apps if apps is not None else [],
     )
 
 
-class TestEverybodyHoldsAnApp:
-    def test_inviting_somebody_with_no_app_is_refused(self):
+def edit(result, person_id, apps):
+    return update_person(
+        actor=result.membership,
+        organization=result.organization,
+        person_id=person_id,
+        first_name="New",
+        last_name="Person",
+        email="new@apex.test",
+        unit_id=None,
+        role=MembershipRole.MEMBER,
+        apps=apps,
+    )
+
+
+class TestAPersonMayHoldNoApp:
+    """
+    C73 RETIRED (the owner, 2026-11-20): a person may hold no app at all. The
+    Admin panel invites a person; apps come afterwards. Such a person sits
+    nowhere, so only organisation-wide admins manage them.
+    """
+
+    def test_an_invited_person_joins_with_no_app(self):
         result = found()
+        invitation = invite(result)
 
-        with pytest.raises(PersonNeedsAnAppError) as refused:
-            invite(result)
-
-        assert refused.value.field_errors[0].field == "apps"
-
-    def test_an_admin_with_no_other_app_is_fine(self):
-        """Administration is their app."""
-        result = found()
-
-        invite(result, role=MembershipRole.ADMIN)
-
-    def test_taking_away_somebodys_last_app_is_refused(self):
-        result = found()
-        invitation = invite(result, apps=[{"app": "dms", "role": "dms.fleet_viewer"}])
         member = accept_invitation(token=invitation.token, password=PASSWORD).membership
 
-        with pytest.raises(PersonNeedsAnAppError):
-            update_person(
-                actor=result.membership,
-                organization=result.organization,
-                person_id=member.pk,
-                first_name="New",
-                last_name="Person",
-                email="new@apex.test",
-                unit_id=None,
-                role=MembershipRole.MEMBER,
-                apps=[],
-            )
+        assert not member.grants.exists()
+
+    def test_taking_away_somebodys_last_app_is_allowed(self):
+        result = found()
+        invitation = invite(result)
+        edit(result, invitation.pk, [{"app": "dms", "role": "dms.fleet_viewer"}])
+        member = accept_invitation(token=invitation.token, password=PASSWORD).membership
+
+        edit(result, member.pk, [])
+
+        assert not member.grants.exists()
+
+    def test_only_an_organisation_wide_admin_manages_somebody_with_no_app(self):
+        result = found()
+        member = accept_invitation(token=invite(result).token, password=PASSWORD).membership
+        delhi = create_dealer(organization=result.organization, name="Delhi")
+
+        assert can_manage_person(result.membership, member)
+        assert not can_manage_person(dealer_admin(result, delhi), member)
 
     def test_the_owner_is_never_refused(self):
         result = found()

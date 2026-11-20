@@ -2,9 +2,10 @@
 `GET /api/v1/orgs/<slug>/admin/admins/` -- the Admin panel's Admins tab
 (C78, Admins and Roles -> Admins), on its own permission (C79).
 
-The organisation's owner and its organisation admins -- active, deactivated
-and pending -- with the apps they manage. Gated on `admin.admin.view`, NOT the
-Users list's `admin.user.view`: the server checks what the screen does.
+The organisation's owner and its organisation admins -- active or deactivated
+(nobody is invited AS an admin since C83) -- with the apps they manage. Gated
+on `admin.admin.view`, NOT the Users list's `admin.user.view`: the server
+checks what the screen does.
 """
 
 from __future__ import annotations
@@ -22,7 +23,6 @@ from core.organizations.models import (
     ActivationCode,
     Invitation,
     Membership,
-    MembershipRole,
     MembershipStatus,
     Territory,
     TerritoryKind,
@@ -86,12 +86,11 @@ def dealer(result, name="Delhi"):
     )
 
 
-def invite(result, *, email, role, first=""):
+def invite(result, *, email):
+    """A pending person (C83): nobody is invited AS an admin."""
     return Invitation.objects.create(
         organization=result.organization,
         email=email,
-        first_name=first,
-        role=role,
         token=f"token-{email}",
         expires_at=timezone.now() + timezone.timedelta(days=7),
     )
@@ -120,16 +119,14 @@ class TestWhoIsListed:
             "second@acme.test",
         ]
 
-    def test_deactivated_and_pending_admins_are_listed_with_their_status(self, client):
+    def test_deactivated_admins_are_listed_with_their_status(self, client):
         result = found()
         admin(result, email="off@acme.test", status=MembershipStatus.DISABLED)
-        invite(result, email="pending@acme.test", role=MembershipRole.ADMIN)
 
         by_email = {row["email"]: row for row in rows(client, result)}
 
         assert by_email["owner@acme.test"]["status"] == "active"
         assert by_email["off@acme.test"]["status"] == "disabled"
-        assert by_email["pending@acme.test"]["status"] == "invited"
         assert {row["role"] for row in by_email.values()} == {"owner", "admin"}
         assert by_email["owner@acme.test"]["role"] == "owner"
 
@@ -155,25 +152,16 @@ class TestWhoIsListed:
             place=delhi,
             email="m@acme.test",
         )
-        invite(result, email="pending-member@acme.test", role=MembershipRole.MEMBER)
+        # A pending person neither: nobody is invited as an admin (C83).
+        invite(result, email="pending@acme.test")
 
         assert emails(client, result) == ["owner@acme.test"]
 
     def test_never_another_organisations_people(self, client):
         other = found(name="Other Co", email="owner@other.test", code="CODE-OTHER")
         admin(other, email="their-admin@other.test")
-        invite(other, email="their-invite@other.test", role=MembershipRole.ADMIN)
 
         assert emails(client, found()) == ["owner@acme.test"]
-
-    def test_an_accepted_invitation_is_not_listed_twice(self, client):
-        result = found()
-        accepted = invite(result, email="joined@acme.test", role=MembershipRole.ADMIN)
-        accepted.accepted_at = timezone.now()
-        accepted.save()
-        admin(result, email="joined@acme.test")
-
-        assert emails(client, result) == ["owner@acme.test", "joined@acme.test"]
 
     def test_the_owner_is_listed_once_as_owner_whatever_grants_they_hold(self, client):
         result = found()
@@ -204,16 +192,14 @@ class TestTheFields:
         }
         assert set(listed[0]["apps_managed"][0]) == {"code", "name"}
 
-    def test_a_pending_admin_is_named_from_the_invitation(self, client):
+    def test_a_row_is_identified_by_the_membership(self, client):
         result = found()
-        invitation = invite(
-            result, email="pending@acme.test", role=MembershipRole.ADMIN, first="Priya"
-        )
+        them = admin(result, email="admin@acme.test", first="Priya")
 
-        pending = rows(client, result)[-1]
+        row = rows(client, result)[-1]
 
-        assert pending["id"] == str(invitation.id)
-        assert pending["first_name"] == "Priya"
+        assert row["id"] == str(them.id)
+        assert row["first_name"] == "Priya"
 
     def test_apps_managed_are_the_active_apps_in_order_for_every_row(self, client):
         result = found()
@@ -239,7 +225,7 @@ class TestAgreesWithTheRolesTab:
         result = found()
         admin(result, email="a@acme.test")
         admin(result, email="b@acme.test", status=MembershipStatus.DISABLED)
-        invite(result, email="c@acme.test", role=MembershipRole.ADMIN)
+        invite(result, email="c@acme.test")
 
         listed = rows(client, result)
         counts = {
@@ -248,7 +234,7 @@ class TestAgreesWithTheRolesTab:
         }
 
         assert sum(row["role"] == "owner" for row in listed) == counts["Organization Owner"]
-        assert sum(row["role"] == "admin" for row in listed) == counts["Organization Admin"] == 3
+        assert sum(row["role"] == "admin" for row in listed) == counts["Organization Admin"] == 2
 
 
 class TestTheCost:
@@ -266,7 +252,6 @@ class TestTheCost:
         with_one = queries()
         for index in range(1, 6):
             admin(result, email=f"admin{index}@acme.test")
-            invite(result, email=f"invite{index}@acme.test", role=MembershipRole.ADMIN)
 
         assert queries() == with_one
 

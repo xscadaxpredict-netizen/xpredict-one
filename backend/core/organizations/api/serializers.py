@@ -288,6 +288,29 @@ class PersonDetailsSerializer(serializers.Serializer):
     apps = AppGrantInputSerializer(many=True)
 
 
+class InviteSerializer(serializers.Serializer):
+    """
+    Add User in the Admin panel (C83, the owner 2026-11-20): a person -- first
+    name, last name, email -- and nothing else. No role, no place, no apps:
+    those are assigned afterwards, or by an app's own invite.
+    """
+
+    first_name = serializers.CharField(max_length=150, allow_blank=True)
+    last_name = serializers.CharField(max_length=150, allow_blank=True)
+    email = serializers.EmailField()
+
+    def validate(self, attrs: dict) -> dict:
+        # REFUSED, NOT IGNORED. A stale screen still sending `role`, `unit_id`
+        # or `apps` must not believe it set them -- the same rule as asking for
+        # Administration in `apps` (C40).
+        unexpected = sorted(set(self.initial_data) - set(self.fields))
+        if unexpected:
+            raise serializers.ValidationError(
+                dict.fromkeys(unexpected, "Add User takes first name, last name and email only.")
+            )
+        return attrs
+
+
 # ---------------------------------------------------------------------------
 # Invitations: the link, and redeeming it (C56).
 # ---------------------------------------------------------------------------

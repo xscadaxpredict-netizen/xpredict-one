@@ -553,33 +553,21 @@ class Invitation(BaseModel):
     single transaction, under `select_for_update` so a token clicked twice
     cannot produce two memberships.
 
-    NO OWNER HERE. An owner is founded with the organization, never invited into
-    it (C41), so the role choices stop at admin.
+    NO OWNER, NO ADMIN, NO PLACE (C41, C83): an owner is founded with the
+    organisation, and an admin is made once somebody has joined.
     """
 
     organization = models.ForeignKey(
         Organization, on_delete=models.CASCADE, related_name="invitations"
     )
-    unit = models.ForeignKey(
-        Territory,
-        on_delete=models.CASCADE,
-        null=True,
-        blank=True,
-        related_name="invitations",
-    )
 
+    # A PERSON, AND NOTHING ELSE (C83, the owner 2026-11-20). `role` and `unit`
+    # went in `organizations/0022`: the Admin panel invites a person -- no
+    # standing, no place -- and apps come afterwards, or from an app's own
+    # invite (`InvitationAppGrant`, kept for that).
     email = models.EmailField()
     first_name = models.CharField(max_length=150, blank=True)
     last_name = models.CharField(max_length=150, blank=True)
-
-    role = models.CharField(
-        max_length=20,
-        choices=[
-            (MembershipRole.ADMIN, MembershipRole.ADMIN.label),
-            (MembershipRole.MEMBER, MembershipRole.MEMBER.label),
-        ],
-        default=MembershipRole.MEMBER,
-    )
 
     token = models.CharField(max_length=64, unique=True)
     expires_at = models.DateTimeField()

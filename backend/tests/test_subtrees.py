@@ -360,26 +360,26 @@ class TestAdministeringASubtree:
 
         assert not can_manage_person(admin, person(result.organization, "n@apex.test", [t.north]))
 
-    def test_the_users_list_shows_the_region_and_its_invitations(self):
+    def test_the_users_list_shows_the_region_and_no_invitation(self):
+        """
+        The region's people, not Chennai's. And no invitation at all: since C83
+        an invitation sits nowhere, so only organisation-wide admins see it.
+        """
         result = found()
         t = build_tree(result.organization)
         admin = self.admin_at(result, t.north)
         at_jaipur = person(result.organization, "j@apex.test", [t.jaipur])
         at_chennai = person(result.organization, "c@apex.test", [t.chennai])
-        invited = {}
-        for place, email in ((t.jaipur, "inv-j@apex.test"), (t.chennai, "inv-c@apex.test")):
-            invited[place] = invite_person(
-                actor=result.membership,
-                organization=result.organization,
-                email=email,
-                first_name="I",
-                last_name="N",
-                unit_id=place.pk,
-                role="member",
-                apps=[{"app": "dms", "role": "dms.manager"}],
-            )
+        invited = invite_person(
+            actor=result.membership,
+            organization=result.organization,
+            email="inv@apex.test",
+            first_name="I",
+            last_name="N",
+        )
 
         seen = {row.id for row in org_users(result.organization, admin)}
 
-        assert at_jaipur.id in seen and invited[t.jaipur].id in seen
-        assert at_chennai.id not in seen and invited[t.chennai].id not in seen
+        assert at_jaipur.id in seen
+        assert at_chennai.id not in seen
+        assert invited.id not in seen

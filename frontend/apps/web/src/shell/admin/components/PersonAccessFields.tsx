@@ -307,6 +307,13 @@ export interface PersonAccessFieldsProps {
   lockOrgRole?: boolean;
   /** Shown above the scope question. */
   scopeHint?: string;
+  /**
+   * Somebody who has not joined yet (C83). An invitation is a person: it has
+   * no place and no standing, so the scope and organisation-role questions are
+   * not asked -- the server refuses both -- and their apps are
+   * organisation-wide.
+   */
+  pending?: boolean;
 }
 
 export function PersonAccessFields({
@@ -315,6 +322,7 @@ export function PersonAccessFields({
   keepUnitId = null,
   lockOrgRole = false,
   scopeHint,
+  pending = false,
 }: PersonAccessFieldsProps) {
   /*
    * WHAT THIS ORGANISATION BOUGHT, not what the person filling in the form can
@@ -379,6 +387,12 @@ export function PersonAccessFields({
 
   return (
     <>
+      {pending ? (
+        <p className={styles.note}>
+          They have not joined yet, so they are not placed at a dealership and cannot be made
+          an admin until they do. Any apps you give them now apply across {membership.org_name}.
+        </p>
+      ) : (
       <fieldset className={styles.fieldset}>
         <legend className={styles.legend}>Scope</legend>
         <p className={styles.hint}>
@@ -430,6 +444,7 @@ export function PersonAccessFields({
           </>
         )}
       </fieldset>
+      )}
 
       <fieldset className={styles.fieldset}>
         <legend className={styles.legend}>App access</legend>
@@ -526,7 +541,7 @@ export function PersonAccessFields({
         the owner's standing is locked, and the label inside is already the
         heading. Two headings for one select is clutter.
       */}
-      {!scopedToDealer && (
+      {!scopedToDealer && !pending && (
         <fieldset className={styles.fieldset} disabled={lockOrgRole}>
           <label className={styles.label} htmlFor="person-org-role">
             Organisation role

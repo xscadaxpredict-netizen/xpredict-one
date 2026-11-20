@@ -11,19 +11,16 @@
  * already talk to the person. The dialog therefore does not close on success
  * -- closing it would throw away the only thing the action produced.
  *
- * SCOPE IS THE INTERESTING FIELD, and it constrains the apps as much as they
- * constrain it. A person belongs to the organisation; the only product that can
- * narrow that is DMS, because it is the only unit-aware one (C5). So the picker
- * is off unless DMS is selected, and says why — rather than silently accepting a
- * dealer that would mean nothing in CRM.
+ * A PERSON AND NOTHING ELSE (C83, the owner 2026-11-20, as Zoho's admin
+ * panel): first name, last name, email. No role, no dealership, no apps -- the
+ * Admin panel invites a person, and apps are assigned afterwards (Assign app,
+ * or Edit). An APP's own invite, built with that app's Users screen, will ask
+ * for that app's role. A person with no app joins able to open nothing yet,
+ * and the launcher tells them so.
  *
- * And the other direction, which is C27: a dealer-scoped person cannot hold an
- * organisation-wide product at all, so choosing a dealer locks those apps. Both
- * halves of that rule live in `../dealerScope.ts`, shared with the edit form.
- *
- * ROLES ARE NOT SET HERE. Q11 and Q12 are open, so a role dropdown would be
- * the frontend inventing a vocabulary the backend has not agreed. Access is
- * granted per app now; roles land when those questions are answered.
+ * ORGANISATION-WIDE ADMINS ONLY, for now: an invited person sits nowhere, so
+ * the server refuses a dealer admin (C82 redesigns places per app), and the
+ * Users screen does not offer them this button.
  */
 
 import { useState } from "react";
@@ -40,7 +37,6 @@ import { Button } from "../../components/Button";
 import { FormBanner } from "../../components/FormBanner";
 import { TextField } from "../../components/TextField";
 import { InviteLinkPanel } from "./InviteLinkPanel";
-import { PersonAccessFields, usePersonAccess } from "./PersonAccessFields";
 import { useInviteUser } from "../hooks/useUsers";
 import styles from "./InviteUserDialog.module.css";
 
@@ -54,22 +50,10 @@ type InviteFields = z.infer<typeof inviteSchema>;
 
 interface InviteUserDialogProps {
   membership: Membership;
-  /**
-   * Open straight away, scoped to this dealership.
-   *
-   * Arrives from `?invite=<id>`, which a dealership with nobody in it links to.
-   * Creating a dealership and then hunting for the way to staff it was a dead
-   * end — the Dealers screen knew what was missing and could not say so.
-   *
-   * It opens the SAME dialog rather than a second invite form. C23's warning
-   * was about two screens creating the same kind of record and then disagreeing
-   * about the rules; a prefilled shortcut into this one is not that.
-   */
-  openForUnitId?: string | null;
 }
 
-export function InviteUserDialog({ membership, openForUnitId }: InviteUserDialogProps) {
-  const [open, setOpen] = useState(openForUnitId != null);
+export function InviteUserDialog({ membership }: InviteUserDialogProps) {
+  const [open, setOpen] = useState(false);
 
   return (
     <Dialog.Root open={open} onOpenChange={setOpen}>
@@ -97,12 +81,7 @@ export function InviteUserDialog({ membership, openForUnitId }: InviteUserDialog
             it was closed, and reopening looks like a half-finished action you
             do not remember starting.
           */}
-          <InviteForm
-            key={String(open)}
-            membership={membership}
-            initialUnitId={openForUnitId}
-            onDone={() => setOpen(false)}
-          />
+          <InviteForm key={String(open)} membership={membership} onDone={() => setOpen(false)} />
         </Dialog.Content>
       </Dialog.Portal>
     </Dialog.Root>
@@ -111,28 +90,10 @@ export function InviteUserDialog({ membership, openForUnitId }: InviteUserDialog
 
 interface InviteFormProps {
   membership: Membership;
-  /** Seeds the scope when the form was opened from a specific dealership. */
-  initialUnitId?: string | null;
   onDone: () => void;
 }
 
-function InviteForm({ membership, initialUnitId, onDone }: InviteFormProps) {
-  /*
-   * SCOPE, APPS AND ROLES ALL LIVE IN `usePersonAccess` — the same hook the
-   * edit dialog uses, so the two forms cannot drift apart again. C30 set this
-   * shape and recorded that the edit form "keeps the older layout"; it does
-   * not any more.
-   *
-   * What stays here is what is genuinely an invitation: the name and address
-   * of somebody who does not exist yet, and sending it.
-   */
-  const access = usePersonAccess({
-    membership,
-    // Seeded when the form was opened from a dealership with nobody in it
-    // (C30's `?invite=<dealerId>`). Everything else starts blank.
-    initial: initialUnitId ? { unitId: initialUnitId, apps: [], orgRole: "member" } : undefined,
-  });
-
+function InviteForm({ membership, onDone }: InviteFormProps) {
   const [formError, setFormError] = useState<{ message: string; traceId?: string } | null>(
     null,
   );
@@ -159,24 +120,12 @@ function InviteForm({ membership, initialUnitId, onDone }: InviteFormProps) {
   async function onSubmit(values: InviteFields) {
     setFormError(null);
 
-    /*
-     * ONE VALIDATION CALL, and the hook owns what it means. It covers a
-     * dealership branch chosen and not answered, and an app granted with no
-     * role — a grant with no role is access to an app with no permissions
-     * inside it, which reads as a bug rather than a decision.
-     */
-    const problem = access.problem();
-    if (problem) {
-      setFormError({ message: problem });
-      return;
-    }
-
     try {
       /*
        * The 201 carries the new row as the list would show it, so its `id` is
        * the invitation's -- which is what the link endpoint needs.
        */
-      const created = await invite({ ...values, ...access.payload() });
+      const created = await invite(values);
       setInvited({ id: created.id, email: created.email });
     } catch (error) {
       const asproblem = asProblem(error);
@@ -234,11 +183,9 @@ function InviteForm({ membership, initialUnitId, onDone }: InviteFormProps) {
             needs -- its content is 719px in a 515px box (C54).
           */}
           <InfoHint label="About inviting somebody">
-            They join{" "}
-            {access.callerIsUnitScoped ? membership.unit_name : membership.org_name} and choose
-            their own password. Nothing is emailed: you get a link to send them yourself, and it
-            stops working once they accept. Their apps, role and dealership can all be changed
-            afterwards.
+            They join {membership.org_name} and choose their own password. Nothing is emailed:
+            you get a link to send them yourself, and it stops working once they accept. They
+            start with no apps — assign apps from their record.
           </InfoHint>
         </div>
       </div>
@@ -260,12 +207,6 @@ function InviteForm({ membership, initialUnitId, onDone }: InviteFormProps) {
           placeholder="name@company.com"
           error={errors.email?.message}
           {...register("email")}
-        />
-
-        <PersonAccessFields
-          access={access}
-          membership={membership}
-          scopeHint={`Whether this person works across ${membership.org_name} or for a single dealer.`}
         />
 
         </div>

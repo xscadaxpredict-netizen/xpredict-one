@@ -743,11 +743,11 @@ def can_manage_person(actor: Membership, person: Membership | Invitation) -> boo
     placed, unexpanded -- "everywhere they sit is inside my subtree" needs
     only the actor's side expanded.
 
-    AN INVITATION KEEPS ITS OWN `unit` until piece 5, so it is still judged by
-    `can_manage(actor, invitation.unit_id)`.
+    AN INVITATION SITS NOWHERE (C83: no `unit` any more) -- like a member with
+    no grants, only organisation-wide admins reach it.
     """
     if isinstance(person, Invitation):
-        return can_manage(actor, person.unit_id)
+        return can_manage(actor, None)
     return _person_inside(administers_within(actor), person)
 
 
@@ -755,24 +755,17 @@ def dealers_for(organization: Organization) -> list[Territory]:
     """
     Every dealership in this organization, with `user_count` annotated.
 
-    `user_count` IS "how many people would the Users screen show for this
-    dealership", which is memberships plus outstanding invitations -- not
-    memberships alone. Somebody invited yesterday and still deciding is a
-    person this dealership has, and the Users list shows them; a count that
-    disagreed with the list it sits beside would read as a bug in whichever
-    screen the reader happened to trust less.
+    `user_count` IS THE PEOPLE PLACED HERE by a grant. Pending invitations do
+    not count: since C83 an invitation is a person with no place, so none is
+    at a dealership until they have joined and been given an app there.
 
     DISABLED MEMBERSHIPS COUNT. They are switched off, not gone -- C24 is
     explicit that removing somebody deletes the membership -- so a dealership
     with three disabled people has three people, and reopening them changes no
     count.
 
-    TWO SUBQUERIES RATHER THAN TWO JOINS. Annotating a count across two
-    separate reverse relations multiplies the rows: Django would join
-    memberships and invitations together and report `memberships x
-    invitations` for each. That is the classic annotate-twice bug, and it
-    inflates rather than failing, so nothing looks wrong until somebody counts
-    by hand.
+    A SUBQUERY RATHER THAN A JOIN, so adding a second count later cannot
+    multiply the rows (the annotate-twice bug this used to guard against).
     """
     # PEOPLE PLACED HERE BY A GRANT (C72 step 2d), counted once each however
     # many of their apps place them here -- not `Membership.unit`.
@@ -781,13 +774,6 @@ def dealers_for(organization: Organization) -> list[Territory]:
         .order_by()
         .values("territory")
         .annotate(total=Count("app_access__membership", distinct=True))
-        .values("total")
-    )
-    pending = (
-        Invitation.objects.filter(unit=OuterRef("pk"), accepted_at__isnull=True)
-        .order_by()
-        .values("unit")
-        .annotate(total=Count("*"))
         .values("total")
     )
 
@@ -799,7 +785,6 @@ def dealers_for(organization: Organization) -> list[Territory]:
         Territory.objects.filter(organization=organization, kind=TerritoryKind.DEALER)
         .annotate(
             user_count=Coalesce(Subquery(memberships, output_field=IntegerField()), Value(0))
-            + Coalesce(Subquery(pending, output_field=IntegerField()), Value(0))
         )
         .order_by("name")
     )
@@ -915,10 +900,9 @@ def org_users(organization: Organization, viewer: Membership) -> list[OrgUserDat
     slug because it had no token to read, and said so -- doing that for real
     would be the frontend deciding who may see whom.
 
-    PENDING PEOPLE ARE SCOPED THE SAME WAY. It would be easy to filter the
-    memberships and forget the invitations, and the result is a dealer admin
-    reading another dealership's invited staff -- the same leak, one table
-    over, and invisible until somebody has an outstanding invitation.
+    PENDING PEOPLE ARE SCOPED TOO. An invitation sits nowhere (C83), so only
+    an organisation-wide viewer sees any; a dealer admin sees none. Forgetting
+    the invitations here would be the same leak one table over.
     """
     memberships = (
         Membership.objects.filter(organization=organization)
@@ -927,17 +911,15 @@ def org_users(organization: Organization, viewer: Membership) -> list[OrgUserDat
     )
     invitations = (
         Invitation.objects.filter(organization=organization, accepted_at__isnull=True)
-        .select_related("unit")
         .prefetch_related("app_grants__role__permissions")
     )
 
     # BOTH SIDES FROM THE GRANTS (C72 step 2d): the same rule as managing a
-    # person, so the list never shows somebody the actions would refuse.
-    # Invitations keep their own `unit` until piece 5. The viewer's scope,
-    # subtrees included, is worked out ONCE -- not once per row.
+    # person, so the list never shows somebody the actions would refuse. The
+    # viewer's scope, subtrees included, is worked out ONCE -- not once per row.
     scope = administers_within(viewer)
     if scope is not None:
-        invitations = invitations.filter(unit_id__in=scope)
+        invitations = invitations.none()
     members = [m for m in memberships if _person_inside(scope, m)]
 
     people = [_membership_row(m) for m in members] + [_invitation_row(i) for i in invitations]
@@ -1000,15 +982,15 @@ def _invitation_row(invitation: Invitation) -> OrgUserData:
         first_name=invitation.first_name,
         last_name=invitation.last_name,
         email=invitation.email,
-        unit_id=invitation.unit_id,
-        unit_name=invitation.unit.name if invitation.unit_id else None,
-        role=invitation.role,
+        # A PERSON, NOT YET PLACED OR APPOINTED (C83): no dealership, no
+        # standing. The API's `role` word is "member" for them.
+        unit_id=None,
+        unit_name=None,
+        role=MembershipRole.MEMBER,
         status="invited",
         apps=[_grant(g.app_id, g.role) for g in grants],
         created_at=invitation.created_at,
-        administers=_administers(
-            invitation.role, invitation.unit_id is not None, [g.role for g in grants]
-        ),
+        administers=None,
     )
 
 
@@ -1031,8 +1013,8 @@ def _administers(standing: str, at_a_dealership: bool, roles: list) -> str | Non
     Organisation admin's grant sits at the root, so the second branch could
     never fire for them anyway.
 
-    For a membership, `standing` and `at_a_dealership` come from the grants
-    (C72 step 2c); for an invitation, from its own fields until piece 5.
+    `standing` and `at_a_dealership` come from the grants (C72 step 2c). An
+    invitation administers nothing (C83) and does not ask.
 
     `role.administers` is derived from the permissions the role grants (C44),
     so this cannot drift from what the role actually confers. Prefetch
@@ -1340,13 +1322,6 @@ def _admin_members(organization: Organization):
     )
 
 
-def _admin_invitations(organization: Organization):
-    """Invitations still waiting to make somebody an admin (`role` until piece 5)."""
-    return Invitation.objects.filter(
-        organization=organization, accepted_at__isnull=True, role=MembershipRole.ADMIN
-    )
-
-
 @dataclass(frozen=True)
 class PanelRoleData:
     code: str
@@ -1376,18 +1351,17 @@ def admin_panel_roles(organization: Organization) -> list[PanelRoleData]:
     USERS COUNTS EVERYONE HOLDING IT (the owner, 2026-11-18): active,
     deactivated and pending -- exactly the people the Users page's "All users"
     filter and the Admins tab show with that role. An admin is a membership
-    holding an Administration grant (the rule `standing()` reads) or an
-    invitation whose `role` is admin (invitations keep `role` until piece 5).
+    holding an Administration grant (the rule `standing()` reads). Nobody is
+    invited AS an admin any more (C83), so pending invitations never count.
 
     THE SAME PEOPLE THE ADMINS TAB LISTS (`admins_for()`): both count from
-    `_owners()`, `_admin_members()` and `_admin_invitations()`, so the number
-    here and the rows there cannot disagree.
+    `_owners()` and `_admin_members()`, so the number here and the rows there
+    cannot disagree.
 
-    Four queries, however many people.
+    Three queries, however many people.
     """
     owners = _owners(organization).count()
     admin_members = _admin_members(organization).count()
-    admin_invitations = _admin_invitations(organization).count()
     org_admin = Role.objects.get(app_id=AppCode.ADMIN, code=ORGANISATION_ADMIN_ROLE)
 
     return [
@@ -1404,7 +1378,7 @@ def admin_panel_roles(organization: Organization) -> list[PanelRoleData]:
             name="Organization Admin",
             summary=org_admin.summary,
             built_in=True,
-            users=admin_members + admin_invitations,
+            users=admin_members,
             modified_by=None,
         ),
     ]
@@ -1433,20 +1407,20 @@ class AdminData:
 def admins_for(organization: Organization) -> list[AdminData]:
     """
     The organisation's admins, as the Admins tab lists them (C78): its owner
-    and its organisation admins -- active, deactivated and pending. Never a
-    member, never a dealer admin (they administer one dealership through a DMS
+    and its organisation admins -- active or deactivated. Nobody is invited as
+    an admin any more (C83), so there are no pending ones. Never a member,
+    never a dealer admin (they administer one dealership through a DMS
     role, not the organisation).
 
     ITS OWN ENDPOINT, NOT THE USERS LIST (C79: the server checks what the
     screen does). It needs `admin.admin.view`, not `admin.user.view`, and it
     sends only these people and only what the tab and its panel show.
 
-    THE SAME PEOPLE THE ROLES TAB COUNTS: built from `_owners()`,
-    `_admin_members()` and `_admin_invitations()`, like `admin_panel_roles()`.
+    THE SAME PEOPLE THE ROLES TAB COUNTS: built from `_owners()` and
+    `_admin_members()`, like `admin_panel_roles()`.
 
-    `id` is the membership's, or the invitation's while pending -- the same id
-    the Users page uses for that person. `status` is `active`, `disabled`, or
-    `invited`.
+    `id` is the membership's -- the same id the Users page uses for that
+    person. `status` is `active` or `disabled`.
 
     APPS MANAGED is every app the organisation subscribes to, for every row:
     the owner holds every app by rule and an organisation admin administers the
@@ -1454,7 +1428,7 @@ def admins_for(organization: Organization) -> list[AdminData]:
     panel needs no second endpoint -- and no second permission.
 
     THE OWNER FIRST, then in the order people were added, like the Users page.
-    Five queries, however many admins.
+    Four queries, however many admins.
     """
     active = set(
         AppSubscription.objects.filter(
@@ -1485,21 +1459,6 @@ def admins_for(organization: Organization) -> list[AdminData]:
     admins = [
         (m.created_at, str(m.id), member_row(m, MembershipRole.ADMIN))
         for m in _admin_members(organization).select_related("user")
-    ] + [
-        (
-            invitation.created_at,
-            str(invitation.id),
-            AdminData(
-                id=invitation.id,
-                first_name=invitation.first_name,
-                last_name=invitation.last_name,
-                email=invitation.email,
-                role=MembershipRole.ADMIN,
-                status="invited",
-                apps_managed=apps,
-            ),
-        )
-        for invitation in _admin_invitations(organization)
     ]
     return owners + [row for _, _, row in sorted(admins, key=lambda entry: entry[:2])]
 

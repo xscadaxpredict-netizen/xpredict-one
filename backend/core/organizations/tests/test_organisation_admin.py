@@ -51,17 +51,20 @@ def found():
 
 
 def join(result, *, email="ravi@apex.test", role_name="member") -> Membership:
+    """
+    Invited as a person, joined, then given DMS -- and made an admin if asked --
+    by Edit: nobody is invited AS an admin since C83.
+    """
     invitation = invite_person(
         actor=result.membership,
         organization=result.organization,
         email=email,
         first_name="Ravi",
         last_name="Kumar",
-        unit_id=None,
-        role=role_name,
-        apps=[{"app": "dms", "role": "dms.fleet_viewer"}],
     )
-    return accept_invitation(token=invitation.token, password=PASSWORD).membership
+    membership = accept_invitation(token=invitation.token, password=PASSWORD).membership
+    edit(result, membership, role_name=role_name)
+    return Membership.objects.get(pk=membership.pk)
 
 
 def edit(result, membership, *, role_name, apps=None) -> None:
