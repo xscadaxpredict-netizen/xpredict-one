@@ -1,0 +1,82 @@
+/* One role's side panel: what is not already RecordPanel's. */
+
+/* "Add Description" under a custom role's name, drawn only. */
+.addDescription {
+  margin-top: var(--space-1);
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--color-text-disabled);
+  font: inherit;
+  font-size: var(--text-sm);
+  cursor: not-allowed;
+}
+
+.category {
+  padding: var(--space-3) 0;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.category:last-child {
+  border-bottom: none;
+}
+
+.categoryTitle {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin: 0 0 var(--space-2);
+  font-size: var(--text-md);
+  font-weight: 600;
+}
+
+.categoryCount {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 var(--space-1);
+  border: 1px solid var(--color-primary);
+  border-radius: var(--radius-pill);
+  color: var(--color-primary);
+  font-size: var(--text-xs);
+  font-weight: 600;
+}
+
+.page {
+  padding: var(--space-2) 0;
+}
+
+.pageTitle {
+  margin: 0 0 var(--space-2);
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: var(--color-text-2);
+}
+
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+/* Not held: outlined. Held: filled -- Zoho's look. */
+.chip {
+  padding: var(--space-1) var(--space-3);
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  color: var(--color-text-2);
+  font-size: var(--text-sm);
+}
+
+.chip[data-held] {
+  border-color: var(--color-primary-100);
+  background: var(--color-primary-050);
+  color: var(--color-primary-800);
+  font-weight: 500;
+}

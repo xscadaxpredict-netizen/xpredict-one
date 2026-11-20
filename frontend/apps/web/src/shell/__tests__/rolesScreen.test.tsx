@@ -84,6 +84,8 @@ describe("the Roles tab", () => {
       "Role Name",
       "Users",
       "Modified By",
+      // The ⋮ column, named for screen readers only.
+      "Actions",
     ]);
     expect(names()).toEqual(["Organization Owner", "Organization Admin"]);
 

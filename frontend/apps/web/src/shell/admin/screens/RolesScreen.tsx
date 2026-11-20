@@ -21,13 +21,14 @@
 import { asProblem } from "@xpredict/api-client";
 import { ErrorState, TableSkeleton } from "@xpredict/ui";
 import { useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 
 import { useAccess } from "../../access";
 import { useShellContext } from "../../context";
 import { usePageSearch } from "../../../stores/pageSearchStore";
 import type { PanelRole } from "../api/roles";
 import { ListFilter } from "../components/ListFilter";
+import { RoleDetailPanel, RoleRowActions } from "../components/RoleDetailPanel";
 import { usePanelRoles } from "../hooks/useRoles";
 import styles from "./ListPage.module.css";
 
@@ -70,10 +71,13 @@ function PlusIcon() {
   );
 }
 
-export function RolesTab() {
+export function RolesTab({ roleCode }: { roleCode?: string }) {
   const access = useAccess();
   const { membership } = useShellContext();
+  const navigate = useNavigate();
+  const basePath = `/${membership.org_slug}/admin/admins-and-roles/roles`;
   const { data: roles, isPending, isError, error, refetch } = usePanelRoles();
+  const selected = roleCode ? roles?.find((role) => role.code === roleCode) : undefined;
   const query = usePageSearch((state) => state.query);
   const [filter, setFilter] = useState<RoleFilter>("all");
 
@@ -118,7 +122,12 @@ export function RolesTab() {
         )}
       </div>
 
-      <div className={styles.split} role="tabpanel" aria-label="Roles">
+      <div
+        className={styles.split}
+        role="tabpanel"
+        aria-label="Roles"
+        data-detail={selected ? "" : undefined}
+      >
         <div className={styles.listArea}>
           {isPending && <TableSkeleton label="roles" columns={[360, 120, 160]} rows={2} />}
 
@@ -141,11 +150,20 @@ export function RolesTab() {
                       Users
                     </th>
                     <th scope="col">Modified By</th>
+                    <th scope="col" className={styles.actions}>
+                      <span className={styles.visuallyHidden}>Actions</span>
+                    </th>
                   </tr>
                 </thead>
                 <tbody>
                   {shown.map((role) => (
-                    <RoleRow key={role.code} role={role} />
+                    <RoleRow
+                      key={role.code}
+                      role={role}
+                      href={`${basePath}/${role.code}`}
+                      isOpen={role.code === selected?.code}
+                      onOpen={() => void navigate(`${basePath}/${role.code}`)}
+                    />
                   ))}
                 </tbody>
               </table>
@@ -161,28 +179,71 @@ export function RolesTab() {
               )}
             </div>
           )}
+
+          {/* A link to a role that is not there: a stale link, or another organisation's. */}
+          {roleCode && roles && !selected && (
+            <p className={styles.missing} role="status">
+              That role is not in {membership.org_name}.{" "}
+              <Link to={basePath} className={styles.linkButton}>
+                Back to all roles
+              </Link>
+            </p>
+          )}
         </div>
+
+        {selected && (
+          <div className={styles.panelSlot}>
+            {/* `key`: a new panel per role, so one role's tab does not carry over. */}
+            <RoleDetailPanel
+              key={selected.code}
+              role={selected}
+              onClose={() => void navigate(basePath)}
+            />
+          </div>
+        )}
       </div>
     </>
   );
 }
 
-function RoleRow({ role }: { role: PanelRole }) {
+interface RoleRowProps {
+  role: PanelRole;
+  href: string;
+  isOpen: boolean;
+  onOpen: () => void;
+}
+
+/**
+ * One role. The whole row opens it beside the list; the name is also a real
+ * link, so a keyboard reaches it. A custom role has a ⋮ (drawn only).
+ */
+function RoleRow({ role, href, isOpen, onOpen }: RoleRowProps) {
   return (
-    <tr>
+    <tr className={styles.row} data-open={isOpen || undefined} onClick={onOpen}>
       <th scope="row">
         <div className={styles.entity}>
           <span className={styles.badge} aria-hidden="true">
             {roleInitials(role.name)}
           </span>
           <div className={styles.stack}>
-            <span className={styles.primary}>{role.name}</span>
+            <Link
+              to={href}
+              className={styles.primary}
+              aria-current={isOpen ? "page" : undefined}
+              onClick={(event) => event.stopPropagation()}
+            >
+              {role.name}
+            </Link>
             <span className={styles.sub}>{role.summary}</span>
           </div>
         </div>
       </th>
       <td className={styles.number}>{role.users}</td>
       <td>{role.modified_by ?? <span className={styles.none}>—</span>}</td>
+      {/* Stops clicks from the ⋮ menu (a portal) reaching the row. */}
+      <td className={styles.actions} onClick={(event) => event.stopPropagation()}>
+        <RoleRowActions role={role} />
+      </td>
     </tr>
   );
 }

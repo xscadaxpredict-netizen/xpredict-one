@@ -52,7 +52,12 @@ export function AdminsAndRolesScreen() {
   const { membership } = useShellContext();
   const access = useAccess();
   // `…/admin/<id>` is the Admins tab with somebody open: no `tab` segment.
-  const { tab = "", personId } = useParams<{ tab: string; personId: string }>();
+  // `…/roles/<code>` is the Roles tab with a role open.
+  const { tab = "", personId, roleCode } = useParams<{
+    tab: string;
+    personId: string;
+    roleCode: string;
+  }>();
   const basePath = `/${membership.org_slug}/admin/admins-and-roles`;
   const pathOf = (tabPath: string) => (tabPath ? `${basePath}/${tabPath}` : basePath);
 
@@ -112,7 +117,7 @@ export function AdminsAndRolesScreen() {
 
       {!first && <p className={styles.empty}>Nothing here is ready for you yet.</p>}
       {first && tab === "" && <AdminsTab basePath={basePath} personId={personId} />}
-      {first && tab === "roles" && <RolesTab />}
+      {first && tab === "roles" && <RolesTab roleCode={roleCode} />}
     </div>
   );
 }

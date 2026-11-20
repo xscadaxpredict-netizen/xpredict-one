@@ -52,6 +52,9 @@ const routes: ModuleRoute[] = [
   { path: "admins-and-roles", section: "admins_and_roles", element: <AdminsAndRolesScreen /> },
   // New Role (C72 piece 5): its own page, on the right to build roles.
   { path: "admins-and-roles/roles/new", permission: "admin.role.create", element: <NewRoleScreen /> },
+  // A role opened beside the Roles tab's list. "new" above is matched first:
+  // React Router prefers a fixed segment to a parameter.
+  { path: "admins-and-roles/:tab/:roleCode", section: "role", element: <AdminsAndRolesScreen /> },
   {
     path: "admins-and-roles/:tab",
     section: "admins_and_roles",
