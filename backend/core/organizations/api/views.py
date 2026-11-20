@@ -150,7 +150,8 @@ class DealerDetailView(OrgScopedAPIView):
     through any endpoint -- the frontend keeps its fake for those two buttons.
     """
 
-    required_permissions: ClassVar[list[str]] = ["admin.dealer.update"]
+    # The page's view, then the act: you cannot act on a page you cannot see (C79 rule 5).
+    required_permissions: ClassVar[list[str]] = ["admin.dealer.view", "admin.dealer.update"]
 
     def put(self, request: Request, org_slug: str, dealer_id: str) -> Response:
         dealer = self._get_dealer(dealer_id)
@@ -213,7 +214,8 @@ class DealerStatusView(OrgScopedAPIView):
     therefore unchanged, deliberately.
     """
 
-    required_permissions: ClassVar[list[str]] = ["admin.dealer.set_status"]
+    # The page's view, then the act (C79 rule 5).
+    required_permissions: ClassVar[list[str]] = ["admin.dealer.view", "admin.dealer.set_status"]
 
     # The whole vocabulary this route accepts, in the shape `UserStatusView`
     # established: a bare `else` would turn a typo in a URL into "close", and
@@ -300,7 +302,11 @@ class TerritoriesView(_TerritoryLookup, OrgScopedAPIView):
 class TerritoryDetailView(_TerritoryLookup, OrgScopedAPIView):
     """Rename a territory -- any kind, dealerships included."""
 
-    required_permissions: ClassVar[list[str]] = ["admin.territory.update"]
+    # The page's view, then the act (C79 rule 5).
+    required_permissions: ClassVar[list[str]] = [
+        "admin.territory.view",
+        "admin.territory.update",
+    ]
 
     def patch(self, request: Request, org_slug: str, territory_id: str) -> Response:
         territory = self._get_territory(territory_id)
@@ -321,7 +327,11 @@ class TerritoryMoveView(_TerritoryLookup, OrgScopedAPIView):
     and one request is one user action (CLAUDE.md).
     """
 
-    required_permissions: ClassVar[list[str]] = ["admin.territory.update"]
+    # The page's view, then the act (C79 rule 5).
+    required_permissions: ClassVar[list[str]] = [
+        "admin.territory.view",
+        "admin.territory.update",
+    ]
 
     def post(self, request: Request, org_slug: str, territory_id: str) -> Response:
         territory = self._get_territory(territory_id)
@@ -435,7 +445,8 @@ class UserStatusView(OrgScopedAPIView):
     dealership has since closed, say -- they split.
     """
 
-    required_permissions: ClassVar[list[str]] = ["admin.user.deactivate"]
+    # The page's view, then the act (C79 rule 5).
+    required_permissions: ClassVar[list[str]] = ["admin.user.view", "admin.user.deactivate"]
 
     # The whole vocabulary this route accepts. A bare `else` would turn every
     # unrecognised verb into "deactivate", so a typo in a URL would switch
@@ -473,7 +484,11 @@ class ResendInvitationView(OrgScopedAPIView):
     and Phase 2 still owes it.
     """
 
-    required_permissions: ClassVar[list[str]] = ["admin.user.resend_invitation"]
+    # The page's view, then the act (C79 rule 5).
+    required_permissions: ClassVar[list[str]] = [
+        "admin.user.view",
+        "admin.user.resend_invitation",
+    ]
 
     def post(self, request: Request, org_slug: str, user_id: str) -> Response:
         resend_invitation(
@@ -506,7 +521,8 @@ class InviteLinkView(OrgScopedAPIView):
     404, like everywhere else.
     """
 
-    required_permissions: ClassVar[list[str]] = ["admin.user.create"]
+    # The page's view, then the act (C79 rule 5).
+    required_permissions: ClassVar[list[str]] = ["admin.user.view", "admin.user.create"]
 
     def get(self, request: Request, org_slug: str, user_id: str) -> Response:
         invitation = invitation_for_link(
