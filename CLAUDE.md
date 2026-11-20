@@ -107,7 +107,7 @@ services (`_assert_organisation_wide`), not the database constraint it used to b
 **The frontend ships Administration; the backend runs on MySQL and signs people in.**
 Keep this section current — it is the first thing a new developer reads.
 
-**ON `feat/admin-panel` (committed through `5e041e5`, 2026-11-20, NOT PUSHED):
+**ON `feat/admin-panel` (committed through `fa4fb04`, 2026-11-21, NOT PUSHED):
 ADMINISTRATION IS NOW THE ADMIN PANEL (C78)** -- reached from the shield in the topbar, not the launcher; an
 accordion of the owner's modules (Organization, App Management, User Management); every
 list page shares `ListPage.module.css` / `ListFilter` / `RowMenu` and every side panel
@@ -121,7 +121,22 @@ beside the action (C81).** **Add User invites a PERSON -- first name, last name,
 nothing else -- and a person may hold no app (C83, C73 retired); apps come from Assign
 applications (`POST /admin/users/<id>/apps/`).** `Invitation.role` and `Invitation.unit`
 are GONE (`organizations/0022`). **Territories will be per app (C82) -- decided in
-principle, NOT designed: build on neither model.** Read C78-C83 before touching any of it.
+principle, NOT designed: build on neither model.** Read C78-C88 before touching any of it.
+
+**Session 26 added (C84-C88):** Edit user is BASIC INFORMATION ONLY -- other fields refused
+(422), so a save cannot touch apps or standing; `update_person()` has no endpoint until
+Assign Admin replaces it. The app tile's **Edit | Disable | Unassign** work; a grant has a
+`status` and **a disabled grant opens and permits nothing** (skipped in
+`_membership_data()` and `resolve_allowed_territories()` -- anything new that turns a
+grant into capability must check `is_active` too). The tile's Edit is
+**`admin.user.edit_app`**, not `admin.user.update`. **Assign users** on Applications.
+**New Role** builds an organisation's own Admin panel roles from the section tree.
+**ROLES ARE ORGANISATION-SCOPED: `Role.organization_id` NULL = built-in; set = one
+organisation's. EVERY role lookup from a request goes through `roles_for_organization()`
+-- never a bare `Role.objects.get(code=...)`, or another organisation can grant a custom
+role by guessing its code.** A role opens in a side panel; its Edit / Delete / Clone /
+Assign Users are drawn only. Production needs a plain `migrate` for `organizations/0023`
+and `permissions/0019`-`0020`.
 
 **Frontend — built, merged, and running on Django.** Sign-in, the app launcher, the
 shell and Administration (Users, Dealers, Roles) all work in a browser against the
@@ -409,8 +424,8 @@ user row on every request and refuses an inactive one, so **disabling somebody t
 effect on their next request**, not after a token expires. The 15-minute access
 lifetime is how long a STOLEN token survives a logout.
 
-**Gates:** `npm run test -w web` (351), `npm run typecheck -w web`, and in `backend/`:
-`pytest` (895), `ruff check .`, `manage.py makemigrations --check`, and
+**Gates:** `npm run test -w web` (385), `npm run typecheck -w web`, and in `backend/`:
+`pytest` (966), `ruff check .`, `manage.py makemigrations --check`, and
 `.venv/Scripts/lint-imports.exe` — **not** `python -m importlinter.cli`, which exits 0
 without running. Run them before pushing. **`npm run lint` is NOT green and never has
 been on this code:** 139 errors in `apps/web`, inherited with the DMS modules and
