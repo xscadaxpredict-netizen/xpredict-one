@@ -7,6 +7,8 @@
 
 import { useEffect, useRef, useState } from "react";
 import type { Enquiry, NewEnquiry } from "../api/types";
+import { useCustomers } from "../hooks/useEnquiries";
+import { CustomerPicker } from "./CustomerPicker";
 import styles from "./NewEnquiryDialog.module.css";
 
 interface NewEnquiryDialogProps {
@@ -18,6 +20,7 @@ interface NewEnquiryDialogProps {
 }
 
 const EMPTY: NewEnquiry = {
+  customer_id: null,
   customer_name: "",
   contact_person: "",
   address: "",
@@ -39,10 +42,12 @@ export function NewEnquiryDialog({
 }: NewEnquiryDialogProps) {
   const dialogRef = useRef<HTMLDialogElement>(null);
   const [form, setForm] = useState<NewEnquiry>(EMPTY);
+  const { data: customers } = useCustomers();
 
   useEffect(() => {
     if (initialData) {
       setForm({
+        customer_id: initialData.customer_id || null,
         customer_name: initialData.customer_name,
         contact_person: initialData.contact_person,
         address: initialData.address,
@@ -76,6 +81,29 @@ export function NewEnquiryDialog({
     setForm((prev) => ({ ...prev, [field]: value }));
   };
 
+  const handleCustomerNameChange = (val: string) => {
+    const match = customers?.find(
+      (c) => c.name.trim().toLowerCase() === val.trim().toLowerCase()
+    );
+    if (match) {
+      setForm((prev) => ({
+        ...prev,
+        customer_id: match.id,
+        customer_name: match.name,
+        contact_person: match.contact_person || prev.contact_person,
+        address: match.address || prev.address,
+        pincode: match.pincode || prev.pincode,
+        phone: match.phone || prev.phone,
+      }));
+    } else {
+      setForm((prev) => ({
+        ...prev,
+        customer_id: null,
+        customer_name: val,
+      }));
+    }
+  };
+
   return (
     <dialog
       ref={dialogRef}
@@ -94,17 +122,15 @@ export function NewEnquiryDialog({
           <div className={styles.row}>
             <div className={styles.field}>
               <label className={styles.label} htmlFor="enq-customer">
-                              Customer Name
-                                             <span style={{ color: "red" }}>*</span>
-                          </label>
-              <input
-                id="enq-customer"
-                required
-                type="text"
-                className={styles.input}
-                placeholder="Enter customer / company name"
+                Customer Name
+                <span style={{ color: "red" }}>*</span>
+              </label>
+              <CustomerPicker
+                customers={customers}
                 value={form.customer_name}
-                onChange={(e) => update("customer_name", e.target.value)}
+                selectedId={form.customer_id ?? null}
+                onType={handleCustomerNameChange}
+                onPick={(c) => handleCustomerNameChange(c.name)}
               />
             </div>
             <div className={styles.field}>

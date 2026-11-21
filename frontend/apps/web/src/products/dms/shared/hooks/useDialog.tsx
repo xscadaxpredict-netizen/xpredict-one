@@ -90,7 +90,7 @@ export function useDialog() {
             <h3 style={{ margin: 0, fontSize: '1.1rem', color: '#0f172a' }}>{dialogState.title}</h3>
           </div>
           
-          <div style={{ color: '#475569', fontSize: '0.95rem', lineHeight: 1.5 }}>
+          <div style={{ color: '#475569', fontSize: '0.95rem', lineHeight: 1.5, whiteSpace: 'pre-line' }}>
             {dialogState.message}
           </div>
 

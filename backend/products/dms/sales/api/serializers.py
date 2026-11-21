@@ -12,6 +12,7 @@ from rest_framework import serializers
 
 from ..models import (
     BankAccount,
+    Customer,
     Enquiry,
     Followup,
     ProductCatalog,
@@ -21,6 +22,25 @@ from ..models import (
 )
 
 # ---- Read Serializers (Outgoing) --------------------------------------------
+
+class CustomerSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Customer
+        fields = [
+            "id",
+            "name",
+            "contact_person",
+            "phone",
+            "email",
+            "address",
+            "pincode",
+            "city",
+            "state",
+            "gst",
+            "pan",
+            "created_at",
+        ]
+        read_only_fields = ["id", "created_at"]
 
 class FollowupReadSerializer(serializers.ModelSerializer):
     entered_date = serializers.DateTimeField(source="created_at", read_only=True)
@@ -165,6 +185,7 @@ class EnquiryReadSerializer(serializers.ModelSerializer):
         model = Enquiry
         fields = [
             "id",
+            "customer_id",
             "customer_name",
             "contact_person",
             "address",
@@ -282,6 +303,7 @@ class ProductCatalogWriteSerializer(serializers.Serializer):
 
 
 class EnquiryCreateSerializer(serializers.Serializer):
+    customer_id = serializers.UUIDField(required=False, allow_null=True, default=None)
     customer_name = serializers.CharField(max_length=255)
     contact_person = serializers.CharField(
         max_length=255,
@@ -306,6 +328,7 @@ class EnquiryCreateSerializer(serializers.Serializer):
 
 
 class EnquiryUpdateSerializer(serializers.Serializer):
+    customer_id = serializers.UUIDField(required=False, allow_null=True)
     customer_name = serializers.CharField(max_length=255, required=False)
     contact_person = serializers.CharField(max_length=255, required=False, allow_blank=True)
     address = serializers.CharField(required=False, allow_blank=True)

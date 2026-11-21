@@ -1,5 +1,7 @@
 import { useRef } from "react";
 import { XIcon, Camera, X, FileText } from "lucide-react";
+import { useSitePeople } from "../hooks/useSiteServices";
+import { useDmsPermissions } from "../../shared/hooks/useDmsPermissions";
 import styles from "./ComplaintModal.module.css";
 
 interface Props {
@@ -22,8 +24,15 @@ interface AttachedFileItem {
 export function ComplaintModal({ isOpen, isEditing, form, confirmedSites, onFormChange, onSubmit, onClose }: Props) {
   const cameraInputRef = useRef<HTMLInputElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  // Whoever assigns complaints picks from the site's own unit's people; the
+  // server refuses anybody else, and refuses the choice from anybody else.
+  const { canManageComplaints } = useDmsPermissions();
+  const { data: people, isLoading: peopleLoading } = useSitePeople(
+    isOpen && canManageComplaints ? form.siteId : undefined,
+  );
 
   if (!isOpen) return null;
+  const knownAssignee = !form.assignedUserId || (people ?? []).some((p) => p.user_id === form.assignedUserId);
 
   // Retrieve current attachments list
   const currentAttachments: AttachedFileItem[] = form.attachedItems || (
@@ -78,18 +87,8 @@ export function ComplaintModal({ isOpen, isEditing, form, confirmedSites, onForm
         <form onSubmit={onSubmit} className={styles.formContainer}>
           <div className={styles.modalBody}>
             
-            {/* Zone Filter & Site Selection */}
+            {/* Site Selection */}
             <div className={styles.formRow}>
-              <div style={{ flex: 1 }}>
-                <label className={styles.label}>Zone (Pincode Filter)</label>
-                <input 
-                  type="text"
-                  placeholder="Enter pincode..."
-                  className={styles.input}
-                  value={form.zonePincode || ""}
-                  onChange={e => onFormChange({ zonePincode: e.target.value, siteId: "" })}
-                />
-              </div>
               <div style={{ flex: 2 }}>
                 <label className={styles.label}>
                   Select Site <span className={styles.required}>*</span>
@@ -98,12 +97,11 @@ export function ComplaintModal({ isOpen, isEditing, form, confirmedSites, onForm
                   required 
                   className={styles.input}
                   value={form.siteId || ""}
-                  onChange={e => onFormChange({ siteId: e.target.value })}
+                  disabled={isEditing}
+                  onChange={e => onFormChange({ siteId: e.target.value, assignedUserId: "" })}
                 >
                   <option value="">-- Choose Deployed Customer Site --</option>
-                  {confirmedSites
-                    ?.filter(s => !form.zonePincode || s.pincode === form.zonePincode || (s.address && s.address.includes(form.zonePincode)))
-                    .map(s => (
+                  {confirmedSites?.map(s => (
                       <option key={s.id} value={s.id}>{s.customer_name} ({s.oc_number || 'No OC'})</option>
                   ))}
                 </select>
@@ -113,13 +111,33 @@ export function ComplaintModal({ isOpen, isEditing, form, confirmedSites, onForm
             <div className={styles.formRow}>
               <div style={{ flex: 1 }}>
                 <label className={styles.label}>Assigned Service Person (Optional)</label>
-                <input 
-                  type="text"
-                  placeholder="Service Person / Assignee name..."
-                  className={styles.input}
-                  value={form.servicePersonName || ""}
-                  onChange={e => onFormChange({ servicePersonName: e.target.value })}
-                />
+                {canManageComplaints ? (
+                  <>
+                    <select
+                      className={styles.input}
+                      value={form.assignedUserId || ""}
+                      disabled={!form.siteId || peopleLoading}
+                      onChange={e => onFormChange({ assignedUserId: e.target.value })}
+                    >
+                      <option value="">
+                        {!form.siteId ? "Choose a site first" : peopleLoading ? "Loading people..." : "— Unassigned —"}
+                      </option>
+                      {!knownAssignee && (
+                        <option value={form.assignedUserId}>{form.servicePersonName || "Current assignee"} (no longer available)</option>
+                      )}
+                      {(people ?? []).map((p) => (
+                        <option key={p.user_id} value={p.user_id}>{p.name} · {p.email}</option>
+                      ))}
+                    </select>
+                    {form.legacyAssignee && !form.assignedUserId && (
+                      <div style={{ fontSize: "0.75rem", color: "var(--color-text-3)", marginTop: "4px" }}>
+                        Previously typed as “{form.legacyAssignee}”. Pick the person to assign it properly.
+                      </div>
+                    )}
+                  </>
+                ) : (
+                  <input className={styles.input} value={form.servicePersonName || "Assigned by a manager"} readOnly disabled />
+                )}
               </div>
               <div style={{ flex: 1 }}>
                 <label className={styles.label}>Priority</label>

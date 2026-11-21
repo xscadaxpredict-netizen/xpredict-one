@@ -16,7 +16,11 @@ function isCanvasBlank(canvas: HTMLCanvasElement | null) {
   return true;
 }
 
-export function SignaturePad({ label, value, onChange, isRequired = true, error, placeholder = "Draw signature here" }: any) {
+/**
+ * `locked`: the signature is final -- no Clear button and no drawing over it.
+ * The service report locks both pads once BOTH signatures are in.
+ */
+export function SignaturePad({ label, value, onChange, isRequired = true, error, placeholder = "Draw signature here", locked = false }: any) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [isDrawing, setIsDrawing] = useState(false);
   const [hasStroke, setHasStroke] = useState(Boolean(value));
@@ -60,6 +64,7 @@ export function SignaturePad({ label, value, onChange, isRequired = true, error,
 
   const startDraw = (e: any) => {
     e.preventDefault();
+    if (locked) return;
     const canvas = canvasRef.current;
     if (!canvas) return;
     const ctx = canvas.getContext('2d');
@@ -112,7 +117,7 @@ export function SignaturePad({ label, value, onChange, isRequired = true, error,
         <label style={{ fontWeight: 600, marginBottom: 0, fontSize: '0.85rem' }}>
           {label} {isRequired && <span style={{ color: '#EF4444' }}>*</span>}
         </label>
-        {hasStroke && (
+        {hasStroke && !locked && (
           <button
             type="button"
             onClick={handleClear}
@@ -152,7 +157,7 @@ export function SignaturePad({ label, value, onChange, isRequired = true, error,
             width: '100%',
             height: '120px',
             display: 'block',
-            cursor: 'crosshair',
+            cursor: locked ? 'default' : 'crosshair',
             touchAction: 'none'
           }}
           onMouseDown={startDraw}

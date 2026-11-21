@@ -318,7 +318,9 @@ def _summary(app: str, membership: Membership) -> str | None:
         return membership.unit.name
 
     count = BusinessUnit.objects.filter(
-        organization_id=membership.organization_id, status=UnitStatus.ACTIVE
+        organization_id=membership.organization_id,
+        status=UnitStatus.ACTIVE,
+        is_head_office__isnull=True,
     ).count()
     return f"{count} dealership" if count == 1 else f"{count} dealerships"
 
@@ -448,7 +450,9 @@ def dealers_for(organization: Organization) -> list[BusinessUnit]:
     )
 
     return list(
-        BusinessUnit.objects.filter(organization=organization).annotate(
+        BusinessUnit.objects.filter(
+            organization=organization, is_head_office__isnull=True
+        ).annotate(
             user_count=Coalesce(Subquery(memberships, output_field=IntegerField()), Value(0))
             + Coalesce(Subquery(pending, output_field=IntegerField()), Value(0))
         )
@@ -708,3 +712,59 @@ def invitation_preview(token: str) -> InvitationPreview:
         requires_sign_in=User.objects.filter(email__iexact=invitation.email).exists(),
         invited_by=invited_by,
     )
+
+
+# ---------------------------------------------------------------------------
+# People who can be given work in one unit (C-local-4).
+# ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class UnitPerson:
+    user_id: uuid.UUID
+    name: str
+    email: str
+
+
+def dms_people_for_unit(
+    *, organization: Organization, unit_id: uuid.UUID | None
+) -> list[UnitPerson]:
+    """
+    Who can be assigned work on a record that belongs to `unit_id`.
+
+    A DEALER'S RECORD -> that dealership's own people. THE HEAD OFFICE'S ->
+    the organisation's own people, who are the memberships with no unit
+    (C40: owners and org admins are always unit-less). Never both: a dealer's
+    visit is not handed to head-office staff, nor the other way round.
+
+    Active membership, active account, and DMS access -- somebody who cannot
+    open DMS cannot see the work they would be given. Which ROLE they hold is
+    deliberately not a filter; roles are set up in Administration.
+    """
+    if unit_id is None:
+        return []
+    unit = BusinessUnit.objects.filter(id=unit_id, organization=organization).first()
+    if unit is None:
+        return []
+
+    memberships = Membership.objects.filter(
+        organization=organization,
+        status=MembershipStatus.ACTIVE,
+        user__is_active=True,
+        app_access__app=AppCode.DMS,
+    ).select_related("user")
+    memberships = (
+        memberships.filter(unit__isnull=True)
+        if unit.is_head_office
+        else memberships.filter(unit_id=unit.id)
+    )
+
+    people = {
+        m.user_id: UnitPerson(
+            user_id=m.user_id,
+            name=(f"{m.user.first_name} {m.user.last_name}".strip() or m.user.email),
+            email=m.user.email,
+        )
+        for m in memberships
+    }
+    return sorted(people.values(), key=lambda p: p.name.lower())

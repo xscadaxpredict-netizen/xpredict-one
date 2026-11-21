@@ -10,6 +10,7 @@ import type { Enquiry } from "../api/types";
 import { StatusBadge } from "./StatusBadge";
 import { useDmsPermissions } from "../../shared/hooks/useDmsPermissions";
 import styles from "./EnquiryTable.module.css";
+import { formatDate, formatDateTime } from "../../shared/format/date";
 
 interface EnquiryTableProps {
   enquiries: Enquiry[];
@@ -164,7 +165,7 @@ function EnquiryRow({
           {latestFollowup ? (
             <div>
               <span className={styles.dateBadge}>
-                {latestFollowup.next_followup_date}
+                {formatDate(latestFollowup.next_followup_date)}
               </span>
               <div className={styles.followupText}>
                 {latestFollowup.remarks}
@@ -379,11 +380,11 @@ function EnquiryRow({
                       <div className={styles.latestFollowup}>
                         <div className={styles.followupHeader}>
                           <span className={styles.followupDate}>
-                            {enquiry.followups[0]!.next_followup_date ? `Due: ${enquiry.followups[0]!.next_followup_date}` : "No date set"}
+                            {enquiry.followups[0]!.next_followup_date ? `Due: ${formatDate(enquiry.followups[0]!.next_followup_date)}` : "No date set"}
                           </span>
                           <div className={styles.followupActions}>
                             <span className={styles.followupAdded}>
-                              Added {enquiry.followups[0]!.entered_date}
+                              Added {formatDateTime(enquiry.followups[0]!.entered_date)}
                             </span>
                             {onEditFollowup && canEditEnquiry && (
                               <button
@@ -445,11 +446,11 @@ function EnquiryRow({
                                 <div key={f.id} className={styles.pastItem}>
                                   <div className={styles.followupHeader}>
                                     <span className={styles.pastDate}>
-                                      {f.next_followup_date ? `Due: ${f.next_followup_date}` : "No date set"}
+                                      {f.next_followup_date ? `Due: ${formatDate(f.next_followup_date)}` : "No date set"}
                                     </span>
                                     <div className={styles.followupActions}>
                                       <span className={styles.followupAdded}>
-                                        Added {f.entered_date}
+                                        Added {formatDateTime(f.entered_date)}
                                       </span>
                                       {onEditFollowup && canEditEnquiry && (
                                         <button
@@ -517,7 +518,7 @@ function EnquiryRow({
                         </div>
                         <div className={styles.quoteCardMeta}>
                           <span>#{quote.quote_no}</span>
-                          <span>{quote.date}</span>
+                          <span>{formatDate(quote.date)}</span>
                         </div>
                         <div className={styles.quoteCardFooter}>
                           <span className={styles.quoteCardAmount}>

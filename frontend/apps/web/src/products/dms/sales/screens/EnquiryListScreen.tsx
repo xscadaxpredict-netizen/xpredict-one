@@ -5,7 +5,7 @@
  * CONTRIBUTING.md section 9. This is the main entry point for the Sales module.
  */
 
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { asProblem } from "@xpredict/api-client";
 import { EmptyState, ErrorState, TableSkeleton, ConfirmDialog } from "@xpredict/ui";
 
@@ -14,6 +14,7 @@ import {
   useConfirmOrder,
   useCreateEnquiry,
   useDeleteQuotation,
+  useQuotationDependencies,
   useEnquiries,
   useDeleteEnquiry,
   useUpdateEnquiry,
@@ -28,6 +29,8 @@ import { QuoteBuilderDialog } from "../components/QuoteBuilderDialog";
 import { QuotationPreviewDialog } from "../components/QuotationPreviewDialog";
 import type { NewEnquiry, NewFollowup, Enquiry, Quotation, Followup } from "../api/types";
 import styles from "./EnquiryListScreen.module.css";
+import { planQuotationDelete } from "../../shared/deleteChecks";
+import { apiErrorMessage } from "../../shared/api/errorMessage";
 
 export function EnquiryListScreen() {
   const { data: enquiries, isPending, isError, error, refetch } = useEnquiries();
@@ -49,9 +52,10 @@ export function EnquiryListScreen() {
   const deleteFollowup = useDeleteFollowup();
   const confirmOrder = useConfirmOrder();
   const deleteQuotation = useDeleteQuotation();
+  const quotationDependencies = useQuotationDependencies();
   const deleteEnquiry = useDeleteEnquiry();
   const updateEnquiry = useUpdateEnquiry();
-  const { canCreateEnquiry } = useDmsPermissions();
+  const { canCreateEnquiry, canEditQuote } = useDmsPermissions();
 
   const [editingQuote, setEditingQuote] = useState<{
     enquiryId: string;
@@ -65,11 +69,22 @@ export function EnquiryListScreen() {
 
   const [confirmState, setConfirmState] = useState<{
     title: string;
-    message: string;
+    message: string | ReactNode;
     intent: "primary" | "danger";
     confirmLabel: string;
     onConfirm: () => void;
   } | null>(null);
+
+  /** A failed action, with the backend's actual reason (not the generic title). */
+  const showError = (title: string, err: unknown, fallback: string) => {
+    setConfirmState({
+      title,
+      message: <span style={{ whiteSpace: "pre-line" }}>{apiErrorMessage(err, fallback)}</span>,
+      intent: "primary",
+      confirmLabel: "OK",
+      onConfirm: () => undefined,
+    });
+  };
 
   // ---- Filtering -----------------------------------------------------------
   const filtered = enquiries?.filter((enq) =>
@@ -82,6 +97,7 @@ export function EnquiryListScreen() {
       onSuccess: () => {
         setIsNewEnquiryOpen(false);
       },
+      onError: (err) => showError("Enquiry not saved", err, "Failed to create enquiry."),
     });
   };
 
@@ -93,6 +109,7 @@ export function EnquiryListScreen() {
         onSuccess: () => {
           setEditingOrder(null);
         },
+        onError: (err) => showError("Enquiry not updated", err, "Failed to update enquiry."),
       },
     );
   };
@@ -103,7 +120,10 @@ export function EnquiryListScreen() {
       message: "Are you sure you want to permanently delete this order?",
       intent: "danger",
       confirmLabel: "Delete",
-      onConfirm: () => deleteEnquiry.mutate(enquiryId)
+      onConfirm: () =>
+        deleteEnquiry.mutate(enquiryId, {
+          onError: (err) => showError("Enquiry not deleted", err, "Failed to delete enquiry."),
+        })
     });
   };
 
@@ -147,17 +167,53 @@ export function EnquiryListScreen() {
       message: "Are you sure you want to confirm this order? This will mark the enquiry as WON.",
       intent: "primary",
       confirmLabel: "Confirm Order",
-      onConfirm: () => confirmOrder.mutate({ enquiryId, quoteId })
+      onConfirm: () =>
+        confirmOrder.mutate(
+          { enquiryId, quoteId },
+          { onError: (err) => showError("Order not confirmed", err, "Failed to confirm order.") },
+        )
     });
   };
 
-  const handleDeleteQuote = (enquiryId: string, quoteId: string) => {
+  const handleDeleteQuote = async (enquiryId: string, quoteId: string) => {
+    // Ask the backend what depends on this quote and say so in the dialog.
+    let plan;
+    try {
+      plan = planQuotationDelete(await quotationDependencies.mutateAsync({ enquiryId, quoteId }));
+    } catch {
+      plan = null;
+    }
+    if (!plan) {
+      setConfirmState({
+        title: "Cannot check quote",
+        message: "Could not check what depends on this quote. Please try again.",
+        intent: "primary",
+        confirmLabel: "OK",
+        onConfirm: () => undefined,
+      });
+      return;
+    }
+    if (plan.blocked) {
+      setConfirmState({
+        title: "Cannot delete quote",
+        message: plan.blocked,
+        intent: "primary",
+        confirmLabel: "OK",
+        onConfirm: () => undefined,
+      });
+      return;
+    }
+    const confirm = plan.confirm;
     setConfirmState({
       title: "Delete Quote",
-      message: "Are you sure you want to delete this quote?",
+      message: <span style={{ whiteSpace: "pre-line" }}>{plan.message}</span>,
       intent: "danger",
       confirmLabel: "Delete",
-      onConfirm: () => deleteQuotation.mutate({ enquiryId, quoteId })
+      onConfirm: () =>
+        deleteQuotation.mutate(
+          { enquiryId, quoteId, confirm },
+          { onError: (err) => showError("Quote not deleted", err, "Failed to delete quote.") },
+        ),
     });
   };
 
@@ -280,7 +336,7 @@ export function EnquiryListScreen() {
           onEditQuote={handleEditQuote}
           onViewQuote={handleViewQuote}
           onConfirmOrder={handleConfirmOrder}
-          onDeleteQuote={handleDeleteQuote}
+          onDeleteQuote={(enquiryId, quoteId) => void handleDeleteQuote(enquiryId, quoteId)}
           onEditEnquiry={(id) => {
             const enq = enquiries?.find(e => e.id === id);
             if (enq) setEditingOrder(enq);
@@ -331,6 +387,7 @@ export function EnquiryListScreen() {
           onClose={() => setEditingQuote(null)}
           enquiryId={editingQuote.enquiryId}
           existingQuoteId={editingQuote.quoteId}
+          allowedTypes={["NORMAL"]}
         />
       )}
 
@@ -340,6 +397,11 @@ export function EnquiryListScreen() {
           onClose={() => setViewingQuote(null)}
           quotation={viewingQuote.quote}
           enquiry={viewingQuote.enquiry}
+          onEdit={
+            canEditQuote
+              ? () => setEditingQuote({ enquiryId: viewingQuote.enquiry.id, quoteId: viewingQuote.quote.id })
+              : undefined
+          }
         />
       )}
 

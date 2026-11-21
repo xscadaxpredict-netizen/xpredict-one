@@ -180,18 +180,23 @@ class Command(BaseCommand):
         alias = register_tenant_connection(organization)
         before = self._applied_count(alias)
 
-        for app_label in targets:
-            # Output captured rather than printed: thirty organisations times
-            # five apps of Django's own "Applying ... OK" lines buries the one
-            # line that matters. What this command prints is per organisation.
-            call_command(
-                "migrate",
-                app_label,
-                database=alias,
-                interactive=False,
-                verbosity=0,
-                stdout=io.StringIO(),
-            )
+        from config.routers import current_tenant_db
+        token = current_tenant_db.set(alias)
+        try:
+            for app_label in targets:
+                # Output captured rather than printed: thirty organisations times
+                # five apps of Django's own "Applying ... OK" lines buries the one
+                # line that matters. What this command prints is per organisation.
+                call_command(
+                    "migrate",
+                    app_label,
+                    database=alias,
+                    interactive=False,
+                    verbosity=0,
+                    stdout=io.StringIO(),
+                )
+        finally:
+            current_tenant_db.reset(token)
 
         return self._applied_count(alias) > before
 

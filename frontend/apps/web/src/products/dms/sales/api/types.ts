@@ -11,8 +11,24 @@
 
 export type EnquiryStatus = "PENDING" | "CONFIRMED" | "LOST";
 
+export interface Customer {
+  id: string;
+  name: string;
+  contact_person: string;
+  phone: string;
+  email: string;
+  address: string;
+  pincode: string;
+  city: string;
+  state: string;
+  gst: string;
+  pan: string;
+  created_at: string;
+}
+
 export interface Enquiry {
   id: string;
+  customer_id?: string | null;
   customer_name: string;
   contact_person: string;
   address: string;
@@ -77,6 +93,7 @@ export interface Complaint {
 
 
 export interface NewEnquiry {
+  customer_id?: string | null;
   customer_name: string;
   contact_person: string;
   address: string;
@@ -254,3 +271,18 @@ export interface ProductPreset {
 }
 
 export type NewProductPreset = Omit<ProductPreset, "id">;
+
+/** What deleting a quotation would affect (GET .../quotations/<id>/dependencies/). */
+export interface QuotationDependencies {
+  quote_type: QuoteType;
+  is_confirmed: boolean;
+  /** Visits booked under this AMC that have not happened yet --- cancelled on delete. */
+  upcoming_visits: number;
+  /** Visits already done --- kept as history. */
+  past_visits: number;
+  techno_commercial_documents: number;
+  commission_payouts: number;
+  /** Set when the quote cannot be deleted at all; the reason is shown as-is. */
+  blocked_reason: string | null;
+  has_dependents: boolean;
+}

@@ -1,7 +1,9 @@
-import { useState } from "react";
-import { useParams } from "react-router-dom";
+import { useEffect, useState } from "react";
+import { useParams, useSearchParams } from "react-router-dom";
 import { PlusIcon, RefreshCwIcon } from "lucide-react";
-import { useSites, useServiceReports, useCreateServiceReport, useUpdateServiceReport, useDeleteServiceReport } from "../hooks/useSiteServices";
+import { useSites, useSchedules, useServiceReports, useCreateServiceReport, useUpdateServiceReport, useDeleteServiceReport } from "../hooks/useSiteServices";
+import { apiErrorMessage } from "../../shared/api/errorMessage";
+import { formatDate } from "../../shared/format/date";
 import { ServiceReportTable } from "../components/ServiceReportTable";
 import { ServiceReportModal } from "../components/ServiceReportModal";
 import { ReportViewModal } from "../components/ReportViewModal";
@@ -12,7 +14,7 @@ import { TableSkeleton } from "@xpredict/ui";
 import { useDialog } from "../../shared/hooks/useDialog";
 
 const INITIAL_FORM = {
-  zonePincode: "", siteId: "", technician: "", date: "", zone: "North Zone", customZone: "", remarks: "", servicePersonName: "", servicePersonSignature: "", clientName: "", clientSignature: "", existingAttachments: []
+  siteId: "", scheduleId: "", visitLabel: "", technician: "", date: "", remarks: "", servicePersonName: "", servicePersonSignature: "", clientName: "", clientSignature: "", existingAttachments: []
 };
 
 export function ServiceReportsScreen() {
@@ -34,6 +36,45 @@ export function ServiceReportsScreen() {
   const { showAlert, showConfirm, DialogComponent } = useDialog();
 
   const { orgSlug } = useParams<{ orgSlug: string }>();
+
+  // ARRIVING FROM A VISIT. Scheduled Services links here with ?visit=<id> to
+  // file that visit's report (the client's signature on it completes the
+  // visit), or ?report=<id> to open the one already filed.
+  const { data: schedules } = useSchedules();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const visitParam = searchParams.get("visit");
+  const reportParam = searchParams.get("report");
+  useEffect(() => {
+    if (visitParam && schedules) {
+      const visit = schedules.find((v) => v.id === visitParam);
+      if (visit) {
+        const today = new Date();
+        const iso = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
+        setEditingReport(null);
+        setForm({
+          ...INITIAL_FORM,
+          siteId: visit.site_id,
+          scheduleId: visit.id,
+          visitLabel: `${formatDate(visit.scheduled_date)} · ${visit.service_type || "Service visit"}`,
+          date: iso,
+          technician: visit.technician_display_name || "",
+          servicePersonName: visit.technician_display_name || "",
+        });
+        setIsModalOpen(true);
+      }
+      setSearchParams({}, { replace: true });
+    }
+  }, [visitParam, schedules, setSearchParams]);
+  useEffect(() => {
+    if (reportParam && reports) {
+      const report = reports.find((r) => r.id === reportParam);
+      if (report) {
+        const site = (sites || []).find((s) => s.id === report.site_id);
+        setViewingReport({ ...report, siteName: site?.customer_name || "Unknown Site", ocNumber: site?.oc_number || "" });
+      }
+      setSearchParams({}, { replace: true });
+    }
+  }, [reportParam, reports, sites, setSearchParams]);
 
   if (sitesPending || reportsPending) {
     return (
@@ -75,7 +116,8 @@ export function ServiceReportsScreen() {
 
   const openNewModal = () => {
     setEditingReport(null);
-    setForm(INITIAL_FORM);
+    // The site picked in the filter above is the site you are filing for.
+    setForm({ ...INITIAL_FORM, siteId: selectedSiteId });
     setIsModalOpen(true);
   };
 
@@ -83,19 +125,12 @@ export function ServiceReportsScreen() {
     setViewingReport(null);
     setEditingReport(report);
     
-    const standardZones = ["North Zone", "South Zone", "East Zone", "West Zone", "Central Zone"];
-    const backendZone = report.zone || "North Zone";
-    const isStandardZone = standardZones.includes(backendZone);
 
-    const site = confirmedSites.find(s => s.id === (report.site_id || report.siteId));
 
     setForm({
       ...INITIAL_FORM,
       siteId: report.site_id || "",
-      zonePincode: site?.pincode || site?.address || "",
       date: report.service_date || "",
-      zone: isStandardZone ? backendZone : "Other",
-      customZone: isStandardZone ? "" : backendZone,
       technician: report.technician_display_name || "",
       remarks: report.remarks || "",
       servicePersonName: report.service_person_name || report.technician_display_name || "",
@@ -112,8 +147,10 @@ export function ServiceReportsScreen() {
     try {
       const formData = new FormData();
       formData.append("site_id", form.siteId);
+      // Filed for a visit: the server links it, and the client's signature
+      // on this report completes that visit.
+      if (!editingReport && form.scheduleId) formData.append("schedule_id", form.scheduleId);
       formData.append("service_date", form.date);
-      formData.append("zone", form.zone === "Other" ? form.customZone : form.zone);
       formData.append("technician_display_name", form.technician);
       formData.append("remarks", form.remarks);
       formData.append("service_person_name", form.servicePersonName || form.technician);
@@ -153,8 +190,8 @@ export function ServiceReportsScreen() {
         await createReportMutation.mutateAsync(formData);
       }
       setIsModalOpen(false);
-    } catch (e: any) {
-      showAlert("Error", `Failed to save report: ${e.message}`);
+    } catch (err) {
+      showAlert("Report not saved", apiErrorMessage(err, "The service report could not be saved."));
     }
   };
 

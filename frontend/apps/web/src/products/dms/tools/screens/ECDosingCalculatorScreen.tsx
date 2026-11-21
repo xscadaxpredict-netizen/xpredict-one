@@ -178,7 +178,6 @@ export function ECDosingCalculatorScreen() {
 
     // Daily consumption assuming nominal machine capacity
     const nominalKld = activeMachine?.capacity_kld || (activeVolumeM3 * 24);
-    const dailyMetalKg = Number(((doseToUse * nominalKld) / 1000).toFixed(3));
 
     return {
       computedTimeMinutes,
@@ -186,7 +185,6 @@ export function ECDosingCalculatorScreen() {
       computedDoseMgL,
       computedCurrentAmps,
       dissolvedGramsPerBatch,
-      dailyMetalKg,
       feasibility,
       nominalKld,
     };
@@ -573,7 +571,7 @@ export function ECDosingCalculatorScreen() {
               <RotateCcwIcon size={16} /> Reset
             </button>
             <button type="button" className={styles.btnPrimary} onClick={handleOpenSaveModal}>
-              <SaveIcon size={16} /> {siteName ? `Save Calculation for ${siteName}` : "Save Calculation"}
+              <SaveIcon size={16} /> Calculate
             </button>
           </div>
         </div>
@@ -624,12 +622,6 @@ export function ECDosingCalculatorScreen() {
               <div className={styles.metricBoxLabel}>Metal Consumed / Batch</div>
               <div className={styles.metricBoxValue}>
                 {calculationResults.dissolvedGramsPerBatch} g ({activeMetal.name.split(" ")[0]})
-              </div>
-            </div>
-            <div className={styles.metricBox}>
-              <div className={styles.metricBoxLabel}>Estimated Daily Metal</div>
-              <div className={styles.metricBoxValue}>
-                {calculationResults.dailyMetalKg} kg / day
               </div>
             </div>
             <div className={styles.metricBox}>

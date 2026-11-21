@@ -244,9 +244,25 @@ class BusinessUnit(BaseModel):
 
     status = models.CharField(max_length=20, choices=UnitStatus.choices, default=UnitStatus.ACTIVE)
 
+    # THE ORGANISATION'S OWN WORKING UNIT (C-local-4). Every organisation has
+    # exactly one: signup creates it, migration 0008 back-filled it. Anything an
+    # organisation-level person does in DMS -- an enquiry, a quote, an AMC, a
+    # tools calculation -- is recorded here, so the organisation can work in
+    # every module itself, while each dealer works in its own unit and the
+    # organisation still sees every unit (allowed_units is None for it).
+    #
+    # True or NULL, never False, unique with the organisation: one True per
+    # organisation, the same MySQL-has-no-partial-index device as
+    # Membership.owner_marker. It is not a dealership, so the Dealers screens,
+    # the dealership count and "assign this person to a dealer" all leave it out.
+    is_head_office = models.BooleanField(null=True, blank=True, editable=False)
+
     class Meta:
         ordering = ["name"]
         constraints = [
+            models.UniqueConstraint(
+                fields=["organization", "is_head_office"], name="unit_one_head_office"
+            ),
             models.UniqueConstraint(fields=["organization", "code"], name="unit_unique_org_code"),
             # NAME IS UNIQUE TOO, and case-insensitively, which costs nothing
             # here: MySQL's `utf8mb4_0900_ai_ci` collation compares that way, so

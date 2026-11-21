@@ -1,8 +1,10 @@
 import { TableSkeleton } from "@xpredict/ui";
-import { asProblem } from "@xpredict/api-client";
 import { useState } from "react";
 import { PlusIcon, SearchIcon } from "lucide-react";
-import { useSites, useComplaints, useCreateComplaint, useUpdateComplaint, useDeleteComplaint } from "../hooks/useSiteServices";
+import { useSites, useComplaints, useCreateComplaint, useUpdateComplaint, useDeleteComplaint, useSetComplaintStatus } from "../hooks/useSiteServices";
+import { useShellContext } from "../../../../shell/context";
+import { apiErrorMessage } from "../../shared/api/errorMessage";
+import type { ComplaintMove } from "../components/ComplaintActions";
 import { ComplaintTable } from "../components/ComplaintTable";
 import { ComplaintModal } from "../components/ComplaintModal";
 import { ComplaintViewModal } from "../components/ComplaintViewModal";
@@ -11,9 +13,10 @@ import styles from "./ComplaintsScreen.module.css";
 import { useDialog } from "../../shared/hooks/useDialog";
 
 const INITIAL_FORM = {
-  zonePincode: "",
   siteId: "",
   servicePersonName: "",
+  assignedUserId: "",
+  legacyAssignee: "",
   priority: "MEDIUM",
   date: "",
   issue: "",
@@ -29,7 +32,9 @@ export function ComplaintsScreen() {
   const createComplaintMutation = useCreateComplaint();
   const updateComplaintMutation = useUpdateComplaint();
   const deleteComplaintMutation = useDeleteComplaint();
-  const { canCreateComplaint } = useDmsPermissions();
+  const { canCreateComplaint, canManageComplaints } = useDmsPermissions();
+  const setStatus = useSetComplaintStatus();
+  const { me } = useShellContext();
 
   const [selectedSiteId, setSelectedSiteId] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
@@ -38,7 +43,7 @@ export function ComplaintsScreen() {
   const [editingReport, setEditingReport] = useState<any>(null);
   const [form, setForm] = useState(INITIAL_FORM);
 
-  const { showAlert, showConfirm, DialogComponent } = useDialog();
+  const { showAlert, showConfirm, showPrompt, DialogComponent } = useDialog();
 
   if (sitesPending || reportsPending) return <TableSkeleton label="complaints" columns={[150, 150, 120, "grow"]} rows={4} />;
   if (sitesError) return <div style={{ padding: "var(--space-4)" }}>Error loading sites: {(sitesErrorObj as Error).message}</div>;
@@ -68,14 +73,14 @@ export function ComplaintsScreen() {
 
   const openNewModal = () => {
     setEditingReport(null);
-    setForm({ ...INITIAL_FORM, date: new Date().toISOString().split("T")[0] || "" });
+    // The site picked in the filter above is the site you are filing for.
+    setForm({ ...INITIAL_FORM, siteId: selectedSiteId, date: new Date().toISOString().split("T")[0] || "" });
     setIsModalOpen(true);
   };
 
   const openEditModal = (report: any) => {
     setViewingReport(null);
     setEditingReport(report);
-    const site = confirmedSites.find(s => s.id === (report.site_id || report.siteId));
 
     let existingItems: any[] = [];
     if (report.attachments && Array.isArray(report.attachments) && report.attachments.length > 0) {
@@ -108,8 +113,10 @@ export function ComplaintsScreen() {
       ...INITIAL_FORM,
       ...report,
       siteId: report.site_id || report.siteId || "",
-      zonePincode: site?.pincode || site?.address || "",
-      servicePersonName: report.assigned_service_person_name || report.servicePersonName || report.personName || "",
+      servicePersonName: report.assigned_service_person_name || "",
+      assignedUserId: report.assigned_service_person_user_id || "",
+      // A name typed before assignees were people: shown as a hint only.
+      legacyAssignee: report.assigned_service_person_user_id ? "" : report.assigned_service_person_name || "",
       priority: report.priority || "MEDIUM",
       issue: report.description || report.issue || "",
       attachedItems: existingItems,
@@ -119,15 +126,31 @@ export function ComplaintsScreen() {
     setIsModalOpen(true);
   };
 
-  const handleToggleStatus = async (report: any) => {
-    const newStatus = report.status === "RESOLVED" ? "OPEN" : "RESOLVED";
+  const MOVE_TITLES: Record<ComplaintMove, string> = {
+    IN_PROGRESS: "Work started",
+    RESOLVED: "Complaint resolved",
+    CLOSED: "Complaint closed",
+    OPEN: "Complaint reopened",
+  };
+
+  const handleMove = async (report: any, status: ComplaintMove) => {
+    let notes = "";
+    if (status === "RESOLVED") {
+      const written = await showPrompt("Resolve complaint", "What was done to resolve it? This is kept with the complaint.");
+      if (written === null) return;
+      notes = written;
+    } else if (status === "CLOSED" || status === "OPEN") {
+      const ok = await showConfirm(
+        status === "CLOSED" ? "Close complaint" : "Reopen complaint",
+        status === "CLOSED" ? "Close it as checked and done?" : "Reopen it? It goes back to Open for work.",
+      );
+      if (!ok) return;
+    }
     try {
-      const formData = new FormData();
-      formData.append("status", newStatus);
-      await updateComplaintMutation.mutateAsync({ complaintId: report.id, payload: formData });
-      showAlert("Success", `Complaint status changed to ${newStatus}`);
-    } catch (e: any) {
-      showAlert("Error", `Failed to update status: ${e.message}`);
+      await setStatus.mutateAsync({ complaintId: report.id, status, notes });
+      showAlert("Done", MOVE_TITLES[status]);
+    } catch (err) {
+      showAlert("Not changed", apiErrorMessage(err, "The complaint status could not be changed."));
     }
   };
 
@@ -154,7 +177,8 @@ export function ComplaintsScreen() {
       formData.append("site_id", form.siteId);
       formData.append("description", form.issue);
       formData.append("priority", form.priority || "MEDIUM");
-      if (form.servicePersonName) formData.append("assigned_service_person_name", form.servicePersonName);
+      // The assignee is a person's id, and only sent by someone who assigns.
+      if (canManageComplaints) formData.append("assigned_user_id", form.assignedUserId || "");
 
       const attachedFiles = (form.attachedItems || [])
         .map((item: any) => item.file)
@@ -193,9 +217,8 @@ export function ComplaintsScreen() {
         await createComplaintMutation.mutateAsync(formData);
       }
       setIsModalOpen(false);
-    } catch (e: any) {
-      const prob = asProblem(e);
-      showAlert("Error", `Failed to save complaint: ${prob.detail || e.message}`);
+    } catch (err) {
+      showAlert("Complaint not saved", apiErrorMessage(err, "The complaint could not be saved."));
     }
   };
 
@@ -237,7 +260,8 @@ export function ComplaintsScreen() {
         reports={allReports}
         onView={setViewingReport}
         onEdit={openEditModal}
-        onToggleStatus={handleToggleStatus}
+        onMove={handleMove}
+        currentUserId={me.id}
         onDelete={handleDelete}
       />
 

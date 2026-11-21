@@ -21,6 +21,7 @@ export const salesKeys = {
     [...salesKeys.enquiries(), "list", filters] as const,
 
   banks: () => [...salesKeys.all(), "banks"] as const,
+  customers: (search?: string) => [...salesKeys.all(), "customers", search] as const,
   dealerProfile: () => [...salesKeys.all(), "dealer-profile"] as const,
   products: () => [...salesKeys.all(), "products"] as const,
   commissions: () => [...salesKeys.all(), "commissions"] as const,

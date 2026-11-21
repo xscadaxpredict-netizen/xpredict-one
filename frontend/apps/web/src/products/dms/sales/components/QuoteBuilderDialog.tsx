@@ -16,13 +16,29 @@ import {
 import { useDialog } from "../../shared/hooks/useDialog";
 import { useShellContext } from "../../../../shell/context";
 import styles from "./QuoteBuilderDialog.module.css";
+import { fieldLabel, serverFieldErrors, validateQuote, type FieldErrors } from "./quoteValidation";
+import { apiErrorMessage } from "../../shared/api/errorMessage";
 
 interface QuoteBuilderDialogProps {
   open: boolean;
   onClose: () => void;
   enquiryId?: string; // Optional: If missing, show enquiry selector
   existingQuoteId?: string; // If provided, we are editing.
+  /**
+   * The quote types this screen may create; the first is preselected. The AMC
+   * page passes ["AMC"] and Sales pages pass ["NORMAL"], so the type is fixed there;
+   * only the Quotations page offers all three. Editing keeps the saved type.
+   */
+  allowedTypes?: readonly QuoteType[];
 }
+
+const ALL_QUOTE_TYPES: readonly QuoteType[] = ["NORMAL", "AMC", "SPARES"];
+
+const QUOTE_TYPE_LABELS: Record<QuoteType, string> = {
+  NORMAL: "Machine Quote",
+  AMC: "AMC Quote",
+  SPARES: "Spares Quote",
+};
 
 const EMPTY_ITEM: QuotationItem = {
   id: "",
@@ -40,14 +56,15 @@ export function QuoteBuilderDialog({
   onClose,
   enquiryId,
   existingQuoteId,
+  allowedTypes = ALL_QUOTE_TYPES,
 }: QuoteBuilderDialogProps) {
   const dialogRef = useRef<HTMLDialogElement>(null);
   const { data: enquiries } = useEnquiries();
-  const { data: banks } = useBanks();
+  const { data: banks, isLoading: banksLoading } = useBanks();
   const { data: products } = useProductPresets();
-  const { data: dealerProfile } = useDealerProfile();
+  const { data: dealerProfile, isLoading: profileLoading } = useDealerProfile();
   const saveQuote = useSaveQuotation();
-  const { showAlert, DialogComponent } = useDialog();
+  const { DialogComponent } = useDialog();
   const { membership } = useShellContext();
 
   const [selectedEnquiryId, setSelectedEnquiryId] = useState(enquiryId || "");
@@ -55,7 +72,18 @@ export function QuoteBuilderDialog({
   const existingQuote = currentEnquiry?.quotes.find((q) => q.id === existingQuoteId);
 
   // ---- Form State ----
-  const [quoteType, setQuoteType] = useState<QuoteType>("NORMAL");
+  // A string, not the array: callers may pass a fresh array literal each render,
+  // and the form-reset effect below must not re-run (and wipe input) because of it.
+  const defaultType: QuoteType = allowedTypes[0] ?? "NORMAL";
+  const [quoteType, setQuoteType] = useState<QuoteType>(defaultType);
+  // Agent / channel-partner commission is for machine quotes only --- never AMC
+  // or spares. The backend enforces the same rule on save.
+  const commissionApplies = quoteType === "NORMAL";
+  // An old quote being edited keeps its type even if this screen would not offer it.
+  const typeOptions: readonly QuoteType[] =
+    existingQuote && !allowedTypes.includes(existingQuote.type)
+      ? [existingQuote.type, ...allowedTypes]
+      : allowedTypes;
   const [amcType, setAmcType] = useState<AmcType>("COMPREHENSIVE");
   const [serviceInterval, setServiceInterval] = useState("3 Months");
   
@@ -97,94 +125,119 @@ export function QuoteBuilderDialog({
   const [, setSubmitStatus] = useState<"DRAFT" | "QUOTE_SENT">("QUOTE_SENT");
   const submitStatusRef = useRef<"DRAFT" | "QUOTE_SENT">("QUOTE_SENT");
 
-  // Initialize form
+  // ---- Initialise the form ONCE per opening -------------------------------
+  // It used to re-run whenever the bank list, the profile or the enquiries
+  // reloaded, overwriting what had been typed; and a second effect refilled
+  // the company name the moment it was cleared. Now: wait until the data is
+  // there, fill the form once, and leave it to the person after that.
+  const initialisedRef = useRef(false);
+
+  /**
+   * Details for a NEW quote on this enquiry. Whatever was entered on its most
+   * recent quote is reused -- the machine quote's details carry into the AMC
+   * quote and the next revision -- so nobody types them twice. The customer
+   * name always comes from the enquiry itself.
+   */
+  const fillNewQuoteDetails = (enquiry: typeof currentEnquiry) => {
+    const latest = [...(enquiry?.quotes ?? [])].sort((a, b) => (a.date < b.date ? 1 : -1))[0];
+    const from = latest?.from_details;
+    const to = latest?.to_details;
+
+    setTitle("Quotation for " + (enquiry?.customer_name || ""));
+    setFromName(from?.company_name || dealerProfile?.company_name || membership?.unit_name || membership?.org_name || "");
+    setFromAddress(from?.address || dealerProfile?.address || "");
+    setFromPhone(from?.phone || dealerProfile?.phone || "");
+    setFromEmail(from?.email || dealerProfile?.email || "");
+    setFromGst(from?.gst || dealerProfile?.gstin || "");
+    setFromPan(from?.pan || dealerProfile?.pan || "");
+    setFromState(from?.state || dealerProfile?.state || "");
+
+    setToName(enquiry?.customer_name || "");
+    setToAddress(to?.address || enquiry?.address || "");
+    setToContactPerson(to?.contact_person || enquiry?.contact_person || "");
+    setToPhone(to?.phone || enquiry?.phone || "");
+    setToEmail(to?.email || "");
+    setToGst(to?.gst || "");
+    setToPan(to?.pan || "");
+    setToState(to?.state || "");
+
+    setHasAgentCommission(Boolean(enquiry?.agent_name));
+    setAgentName(enquiry?.agent_name || "");
+  };
+
   useEffect(() => {
-    if (open) {
-      if (existingQuote) {
+    if (!open) {
+      initialisedRef.current = false;
+      return;
+    }
+    if (initialisedRef.current) return;
+
+    if (existingQuoteId) {
+      if (!existingQuote) return; // still loading
         setQuoteType(existingQuote.type);
-        if (existingQuote.amc_type) setAmcType(existingQuote.amc_type);
-        if (existingQuote.service_interval) setServiceInterval(existingQuote.service_interval);
-        
-        setTitle(existingQuote.title);
-        setQuoteNo(existingQuote.quote_no);
-        setFromName(existingQuote.from_details?.company_name || "");
-        setFromAddress(existingQuote.from_details?.address || "");
-        setFromPhone(existingQuote.from_details?.phone || "");
-        setFromEmail(existingQuote.from_details?.email || "");
-        setFromGst(existingQuote.from_details?.gst || "");
-        setFromPan(existingQuote.from_details?.pan || "");
-        setFromState(existingQuote.from_details?.state || "");
+      if (existingQuote.amc_type) setAmcType(existingQuote.amc_type);
+      if (existingQuote.service_interval) setServiceInterval(existingQuote.service_interval);
+      
+      setTitle(existingQuote.title);
+      setQuoteNo(existingQuote.quote_no);
+      setFromName(existingQuote.from_details?.company_name || "");
+      setFromAddress(existingQuote.from_details?.address || "");
+      setFromPhone(existingQuote.from_details?.phone || "");
+      setFromEmail(existingQuote.from_details?.email || "");
+      setFromGst(existingQuote.from_details?.gst || "");
+      setFromPan(existingQuote.from_details?.pan || "");
+      setFromState(existingQuote.from_details?.state || "");
 
-        setToName(existingQuote.to_details?.company_name || "");
-        setToAddress(existingQuote.to_details?.address || "");
-        setToContactPerson(existingQuote.to_details?.contact_person || "");
-        setToPhone(existingQuote.to_details?.phone || "");
-        setToEmail(existingQuote.to_details?.email || "");
-        setToGst(existingQuote.to_details?.gst || "");
-        setToPan(existingQuote.to_details?.pan || "");
-        setToState(existingQuote.to_details?.state || "");
+      setToName(existingQuote.to_details?.company_name || "");
+      setToAddress(existingQuote.to_details?.address || "");
+      setToContactPerson(existingQuote.to_details?.contact_person || "");
+      setToPhone(existingQuote.to_details?.phone || "");
+      setToEmail(existingQuote.to_details?.email || "");
+      setToGst(existingQuote.to_details?.gst || "");
+      setToPan(existingQuote.to_details?.pan || "");
+      setToState(existingQuote.to_details?.state || "");
 
-        setItems(existingQuote.items.map(i => ({ ...i })));
-        setBankId(existingQuote.selected_bank_id);
-        setTerms(existingQuote.terms);
-        setHasAgentCommission(Boolean(existingQuote.agent_name || (existingQuote.commission_amount && existingQuote.commission_amount > 0)));
-        setAgentName(existingQuote.agent_name || "");
-        setCommissionType(existingQuote.commission_type || "PERCENTAGE");
-        setCommissionRate(existingQuote.commission_rate ? Number(existingQuote.commission_rate) : 0);
-      } else {
-        // Defaults for new quote
-        setTitle("Quotation for " + (currentEnquiry?.customer_name || ""));
-        setQuoteNo(`QT-${new Date().getFullYear()}-${Math.floor(Math.random() * 10000)}`);
-        const defaultCompanyName =
-          dealerProfile?.company_name ||
-          membership?.unit_name ||
-          membership?.org_name ||
-          "";
-        setFromName(defaultCompanyName);
-        setFromAddress(dealerProfile?.address || "");
-        setFromPhone(dealerProfile?.phone || "");
-        setFromEmail(dealerProfile?.email || "");
-        setFromGst(dealerProfile?.gstin || "");
-        setFromPan(dealerProfile?.pan || "");
-        setFromState(dealerProfile?.state || "");
-
-        setToName(currentEnquiry?.customer_name || "");
-        setToAddress(currentEnquiry?.address || "");
-        setToContactPerson(currentEnquiry?.contact_person || "");
-        setToPhone(currentEnquiry?.phone || "");
-        setToEmail("");
-        setToGst("");
-        setToPan("");
-        setToState("");
-
-        setItems([{ ...EMPTY_ITEM, id: window.crypto.randomUUID() }]);
-        const defaultBank = banks?.find(b => b.is_default) || banks?.[0];
-        setBankId(defaultBank?.id || "");
-        setTerms("1. 100% Advance Payment\n2. Validity: 30 days");
-        setHasAgentCommission(Boolean(currentEnquiry?.agent_name));
-        setAgentName(currentEnquiry?.agent_name || "");
-        setCommissionType("PERCENTAGE");
-        setCommissionRate(0);
-      }
+      setItems(existingQuote.items.map(i => ({ ...i })));
+      setBankId(existingQuote.selected_bank_id);
+      setTerms(existingQuote.terms);
+      setHasAgentCommission(Boolean(existingQuote.agent_name || (existingQuote.commission_amount && existingQuote.commission_amount > 0)));
+      setAgentName(existingQuote.agent_name || "");
+      setCommissionType(existingQuote.commission_type || "PERCENTAGE");
+      // One input serves both types: a percentage, or the rupee amount itself.
+      setCommissionRate(
+        existingQuote.commission_type === "FIXED"
+          ? Number(existingQuote.commission_amount) || 0
+          : Number(existingQuote.commission_rate) || 0,
+      );
+      initialisedRef.current = true;
+      return;
     }
-  }, [open, existingQuote, currentEnquiry, banks, membership, dealerProfile]);
 
-  // If dealer profile loads after modal opens for a new quote, update company name and address
+    // A new quote: wait for the profile, the banks and the enquiry.
+    if (profileLoading || banksLoading) return;
+    if (selectedEnquiryId && !currentEnquiry) return;
+
+    setQuoteType(defaultType);
+    setQuoteNo(`QT-${new Date().getFullYear()}-${Math.floor(Math.random() * 10000)}`);
+    fillNewQuoteDetails(currentEnquiry);
+    setItems([{ ...EMPTY_ITEM, id: window.crypto.randomUUID() }]);
+    const defaultBank = banks?.find((b) => b.is_default) || banks?.[0];
+    setBankId(defaultBank?.id || "");
+    setTerms("1. 100% Advance Payment\n2. Validity: 30 days");
+    setCommissionType("PERCENTAGE");
+    setCommissionRate(0);
+    initialisedRef.current = true;
+  }, [open, existingQuoteId, existingQuote, currentEnquiry, selectedEnquiryId, banks, banksLoading, dealerProfile, profileLoading, defaultType]);
+
+  // Picking a different enquiry in the selector (Quotations page) fills in
+  // that enquiry's details -- the one deliberate refill.
+  const lastEnquiryRef = useRef(selectedEnquiryId);
   useEffect(() => {
-    if (open && !existingQuote && dealerProfile) {
-      if (!fromName || fromName === membership?.org_name) {
-        setFromName(dealerProfile.company_name || membership?.unit_name || membership?.org_name || "");
-      }
-      if (!fromAddress && dealerProfile.address) {
-        setFromAddress(dealerProfile.address);
-      }
-      if (!fromPhone && dealerProfile.phone) setFromPhone(dealerProfile.phone);
-      if (!fromEmail && dealerProfile.email) setFromEmail(dealerProfile.email);
-      if (!fromGst && dealerProfile.gstin) setFromGst(dealerProfile.gstin);
-      if (!fromPan && dealerProfile.pan) setFromPan(dealerProfile.pan);
-      if (!fromState && dealerProfile.state) setFromState(dealerProfile.state);
-    }
-  }, [open, existingQuote, dealerProfile, membership, fromName, fromAddress, fromPhone, fromEmail, fromGst, fromPan, fromState]);
+    if (!open || existingQuoteId || !initialisedRef.current) return;
+    if (lastEnquiryRef.current === selectedEnquiryId || !currentEnquiry) return;
+    lastEnquiryRef.current = selectedEnquiryId;
+    fillNewQuoteDetails(currentEnquiry);
+  }, [open, existingQuoteId, selectedEnquiryId, currentEnquiry]);
 
   useEffect(() => {
     const dialog = dialogRef.current;
@@ -203,7 +256,7 @@ export function QuoteBuilderDialog({
   const commissionAmount = commissionType === "PERCENTAGE"
     ? Math.round((taxableTotal * (commissionRate || 0)) / 100)
     : (commissionRate || 0);
-  const activeCommission = hasAgentCommission ? commissionAmount : 0;
+  const activeCommission = commissionApplies && hasAgentCommission ? commissionAmount : 0;
   
   // What we get Before Tax (Base Revenue minus Agent Cut)
   const ourNetBeforeTax = Math.max(0, taxableTotal - activeCommission);
@@ -244,13 +297,39 @@ export function QuoteBuilderDialog({
     setItems(newItems);
   };
 
+  // ---- Validation: what is missing or wrong, shown on the field itself -----
+  const [attempted, setAttempted] = useState(false);
+  const [serverErrors, setServerErrors] = useState<FieldErrors>({});
+  const errorSummaryRef = useRef<HTMLDivElement>(null);
+  const draft = () => ({
+    enquiryId: selectedEnquiryId || "",
+    title, quoteNo, isAmc: quoteType === "AMC", serviceInterval: serviceInterval || "",
+    fromName, fromAddress, fromPhone, fromEmail,
+    toName, toAddress, toPhone, toEmail,
+    bankId: bankId || "", bankCount: banks?.length ?? 0,
+    commission: commissionApplies && hasAgentCommission && agentName.trim() !== ""
+      ? { type: commissionType, value: commissionRate || 0 }
+      : null,
+    items: items.map((it) => ({ description: it.description, quantity: it.quantity, base_price: it.base_price })),
+  });
+  // Re-checked on every render once a save was tried, so a fixed field clears at once.
+  const fieldErrors: FieldErrors = attempted ? { ...serverErrors, ...validateQuote(draft()) } : serverErrors;
+  const inv = (key: string) => ({ "aria-invalid": fieldErrors[key] ? true : undefined, "data-field": key });
+  const msg = (key: string) =>
+    fieldErrors[key] ? <span className={styles.fieldError}>{fieldErrors[key]}</span> : null;
+
   const handleSave = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!selectedEnquiryId) {
-      showAlert("Error", "Please select an enquiry first.");
+    setAttempted(true);
+    setServerErrors({});
+    const problems = validateQuote(draft());
+    if (Object.keys(problems).length > 0) {
+      errorSummaryRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
       return;
     }
     
+    const sendCommission = commissionApplies && hasAgentCommission && agentName.trim() !== "";
+
     saveQuote.mutate(
       {
         enquiryId: selectedEnquiryId,
@@ -284,17 +363,25 @@ export function QuoteBuilderDialog({
           items,
           selected_bank_id: bankId,
           terms,
-          agent_name: hasAgentCommission && agentName.trim() ? agentName.trim() : undefined,
-          commission_type: hasAgentCommission && agentName.trim() ? commissionType : undefined,
-          commission_rate: hasAgentCommission && agentName.trim() ? (commissionRate || 0) : undefined,
-          commission_amount: hasAgentCommission && agentName.trim() ? commissionAmount : undefined,
+          agent_name: sendCommission ? agentName.trim() : undefined,
+          commission_type: sendCommission ? commissionType : undefined,
+          // The rate is a PERCENTAGE (at most 999.99 on the server). A fixed
+          // commission is sent as the amount only -- sending the rupees as the
+          // rate is what refused every fixed commission over ₹999.
+          commission_rate: sendCommission ? (commissionType === "PERCENTAGE" ? commissionRate || 0 : 0) : undefined,
+          commission_amount: sendCommission ? commissionAmount : undefined,
         },
       },
       {
         onSuccess: () => {
+          setAttempted(false);
+          setServerErrors({});
           onClose();
         },
-        onError: (err: any) => showAlert("Error", "Failed to save: " + JSON.stringify(err?.response?.data || err?.message || err)),
+        onError: (err: unknown) => {
+          setServerErrors(serverFieldErrors(err) ?? { form: apiErrorMessage(err, "The quote could not be saved.") });
+          errorSummaryRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+        },
       },
     );
   };
@@ -313,6 +400,18 @@ export function QuoteBuilderDialog({
 
       <form onSubmit={handleSave} className={styles.formContent} noValidate>
         <div className={styles.body}>
+          <div ref={errorSummaryRef}>
+            {Object.keys(fieldErrors).length > 0 && (
+              <div className={styles.errorSummary} role="alert">
+                <strong>Please fix {Object.keys(fieldErrors).length === 1 ? "this" : `these ${Object.keys(fieldErrors).length}`} before saving:</strong>
+                <ul>
+                  {Object.entries(fieldErrors).map(([key, text]) => (
+                    <li key={key}>{key === "form" ? text : `${fieldLabel(key)}: ${text}`}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
+          </div>
           {/* Top Section */}
           <div className={styles.grid2}>
             {/* If no enquiryId is passed via props, allow selection */}
@@ -324,6 +423,7 @@ export function QuoteBuilderDialog({
                 <select
                   required
                   className={styles.select}
+                  {...inv("enquiry")}
                   value={selectedEnquiryId}
                   onChange={(e) => setSelectedEnquiryId(e.target.value)}
                 >
@@ -334,6 +434,7 @@ export function QuoteBuilderDialog({
                     </option>
                   ))}
                 </select>
+                {msg("enquiry")}
               </div>
             )}
             
@@ -343,11 +444,11 @@ export function QuoteBuilderDialog({
                 className={styles.select}
                 value={quoteType}
                 onChange={(e) => setQuoteType(e.target.value as QuoteType)}
-                disabled={!!existingQuote}
+                disabled={!!existingQuote || typeOptions.length === 1}
               >
-                <option value="NORMAL">Machine Quote</option>
-                <option value="AMC">AMC Quote</option>
-                <option value="SPARES">Spares Quote</option>
+                {typeOptions.map((t) => (
+                  <option key={t} value={t}>{QUOTE_TYPE_LABELS[t]}</option>
+                ))}
               </select>
             </div>
             <div className={styles.field}>
@@ -357,9 +458,11 @@ export function QuoteBuilderDialog({
               <input
                 required
                 className={styles.input}
+                {...inv("quote_no")}
                 value={quoteNo}
                 onChange={(e) => setQuoteNo(e.target.value)}
               />
+              {msg("quote_no")}
             </div>
             
             {/* AMC Specific Fields */}
@@ -383,10 +486,12 @@ export function QuoteBuilderDialog({
                   <input
                     required
                     className={styles.input}
+                    {...inv("service_interval")}
                     value={serviceInterval}
                     onChange={(e) => setServiceInterval(e.target.value)}
                     placeholder="e.g. 3 Months"
                   />
+                  {msg("service_interval")}
                 </div>
               </>
             )}
@@ -398,9 +503,11 @@ export function QuoteBuilderDialog({
               <input
                 required
                 className={styles.input}
+                {...inv("title")}
                 value={title}
                 onChange={(e) => setTitle(e.target.value)}
               />
+              {msg("title")}
             </div>
           </div>
 
@@ -415,16 +522,19 @@ export function QuoteBuilderDialog({
                 <label className={styles.label}>
                   Company Name <span style={{ color: "red" }}>*</span>
                 </label>
-                <input required className={styles.input} value={fromName} onChange={(e) => setFromName(e.target.value)} />
+                <input {...inv("from_details.company_name")} required className={styles.input} value={fromName} onChange={(e) => setFromName(e.target.value)} />
+                {msg("from_details.company_name")}
               </div>
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "var(--space-3)" }}>
                 <div className={styles.field}>
                   <label className={styles.label}>Phone Number</label>
-                  <input className={styles.input} value={fromPhone} onChange={(e) => setFromPhone(e.target.value)} placeholder="e.g. 9876543210" />
+                  <input {...inv("from_details.phone")} className={styles.input} value={fromPhone} onChange={(e) => setFromPhone(e.target.value)} placeholder="e.g. 9876543210" />
+                  {msg("from_details.phone")}
                 </div>
                 <div className={styles.field}>
                   <label className={styles.label}>Email Address</label>
-                  <input type="email" className={styles.input} value={fromEmail} onChange={(e) => setFromEmail(e.target.value)} placeholder="e.g. info@company.com" />
+                  <input {...inv("from_details.email")} type="email" className={styles.input} value={fromEmail} onChange={(e) => setFromEmail(e.target.value)} placeholder="e.g. info@company.com" />
+                  {msg("from_details.email")}
                 </div>
               </div>
               <div className={styles.field}>
@@ -435,7 +545,8 @@ export function QuoteBuilderDialog({
                 <label className={styles.label}>
                   Address <span style={{ color: "red" }}>*</span>
                 </label>
-                <textarea required className={styles.textarea} value={fromAddress} onChange={(e) => setFromAddress(e.target.value)} style={{ minHeight: "50px" }} />
+                <textarea {...inv("from_details.address")} required className={styles.textarea} value={fromAddress} onChange={(e) => setFromAddress(e.target.value)} style={{ minHeight: "50px" }} />
+                {msg("from_details.address")}
               </div>
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "var(--space-3)" }}>
                 <div className={styles.field}>
@@ -453,13 +564,22 @@ export function QuoteBuilderDialog({
             <div className={styles.card}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                 <h3 className={styles.cardTitle}>To (Customer)</h3>
-                <span style={{ fontSize: "0.72rem", color: "var(--color-text-3, #64748b)" }}>B2B & Tax details editable</span>
+                <span style={{ fontSize: "0.72rem", color: "var(--color-text-3, #64748b)" }}>Name from the enquiry · other details editable</span>
               </div>
               <div className={styles.field}>
                 <label className={styles.label}>
                   Customer Name <span style={{ color: "red" }}>*</span>
                 </label>
-                <input required className={styles.input} value={toName} onChange={(e) => setToName(e.target.value)} />
+                <input
+                  {...inv("to_details.company_name")}
+                  required
+                  readOnly
+                  className={styles.input}
+                  value={toName}
+                  title="Comes from the enquiry. Change the customer on the enquiry itself."
+                  style={{ background: "var(--color-surface-alt, #f1f5f9)", cursor: "not-allowed" }}
+                />
+                {msg("to_details.company_name")}
               </div>
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "var(--space-3)" }}>
                 <div className={styles.field}>
@@ -468,13 +588,15 @@ export function QuoteBuilderDialog({
                 </div>
                 <div className={styles.field}>
                   <label className={styles.label}>Phone Number</label>
-                  <input className={styles.input} value={toPhone} onChange={(e) => setToPhone(e.target.value)} placeholder="e.g. 9876543210" />
+                  <input {...inv("to_details.phone")} className={styles.input} value={toPhone} onChange={(e) => setToPhone(e.target.value)} placeholder="e.g. 9876543210" />
+                  {msg("to_details.phone")}
                 </div>
               </div>
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "var(--space-3)" }}>
                 <div className={styles.field}>
                   <label className={styles.label}>Email Address</label>
-                  <input type="email" className={styles.input} value={toEmail} onChange={(e) => setToEmail(e.target.value)} placeholder="e.g. client@domain.com" />
+                  <input {...inv("to_details.email")} type="email" className={styles.input} value={toEmail} onChange={(e) => setToEmail(e.target.value)} placeholder="e.g. client@domain.com" />
+                  {msg("to_details.email")}
                 </div>
                 <div className={styles.field}>
                   <label className={styles.label}>State / Place of Supply</label>
@@ -485,7 +607,8 @@ export function QuoteBuilderDialog({
                 <label className={styles.label}>
                   Billing Address <span style={{ color: "red" }}>*</span>
                 </label>
-                <textarea required className={styles.textarea} value={toAddress} onChange={(e) => setToAddress(e.target.value)} style={{ minHeight: "50px" }} />
+                <textarea {...inv("to_details.address")} required className={styles.textarea} value={toAddress} onChange={(e) => setToAddress(e.target.value)} style={{ minHeight: "50px" }} />
+                {msg("to_details.address")}
               </div>
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "var(--space-3)" }}>
                 <div className={styles.field}>
@@ -550,10 +673,12 @@ export function QuoteBuilderDialog({
                           <input
                             required
                             className={styles.input}
+                            {...inv(`items.${index}.description`)}
                             value={item.description}
                             onChange={(e) => handleItemChange(item.id, "description", e.target.value)}
                             placeholder="Custom description..."
                           />
+                          {msg(`items.${index}.description`)}
                         </div>
                       </td>
                       <td>
@@ -562,10 +687,12 @@ export function QuoteBuilderDialog({
                           type="number"
                           min="1"
                           className={styles.input}
+                          {...inv(`items.${index}.quantity`)}
                           value={item.quantity === 0 ? "" : item.quantity}
                           placeholder="1"
                           onChange={(e) => handleItemChange(item.id, "quantity", e.target.value === "" ? 0 : parseInt(e.target.value) || 0)}
                         />
+                        {msg(`items.${index}.quantity`)}
                       </td>
                       <td>
                         <input
@@ -573,10 +700,12 @@ export function QuoteBuilderDialog({
                           type="number"
                           min="0"
                           className={styles.input}
+                          {...inv(`items.${index}.base_price`)}
                           value={item.base_price === 0 ? "" : item.base_price}
                           placeholder="0"
                           onChange={(e) => handleItemChange(item.id, "base_price", e.target.value === "" ? 0 : parseFloat(e.target.value) || 0)}
                         />
+                        {msg(`items.${index}.base_price`)}
                       </td>
                       <td>
                         <input
@@ -634,7 +763,7 @@ export function QuoteBuilderDialog({
                 <span>₹ {grandTotal.toLocaleString("en-IN", { minimumFractionDigits: 2 })}</span>
               </div>
 
-              {hasAgentCommission && commissionAmount > 0 && (
+              {commissionApplies && hasAgentCommission && commissionAmount > 0 && (
                 <div style={{ marginTop: "12px", paddingTop: "10px", borderTop: "2px dashed var(--color-border, #cbd5e1)", display: "flex", flexDirection: "column", gap: "6px" }}>
                   <div style={{ fontSize: "0.75rem", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em", color: "var(--color-text-3, #64748b)" }}>
                     Our Realization (Internal Breakdown)
@@ -670,6 +799,7 @@ export function QuoteBuilderDialog({
                 <select
                   required
                   className={styles.select}
+                  {...inv("selected_bank_id")}
                   value={bankId}
                   onChange={(e) => setBankId(e.target.value)}
                 >
@@ -680,6 +810,7 @@ export function QuoteBuilderDialog({
                     </option>
                   ))}
                 </select>
+                {msg("selected_bank_id")}
                 {banks && banks.length === 0 && (
                   <p style={{ fontSize: "0.8rem", color: "var(--color-warning-text, #d97706)", marginTop: "4px" }}>
                     No bank account found. Please add a bank account under Configuration &gt; Bank Accounts.
@@ -701,7 +832,8 @@ export function QuoteBuilderDialog({
             </div>
           </div>
 
-          {/* Agent Commission (Internal Only) */}
+          {/* Agent Commission (Internal Only) --- machine quotes only */}
+          {commissionApplies && (
           <div className={styles.card} style={{ marginTop: "var(--space-4)", background: "var(--color-surface-subtle, #f8fafc)", border: "1px dashed var(--color-border, #cbd5e1)" }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
               <label style={{ display: "flex", alignItems: "center", gap: "10px", cursor: "pointer", userSelect: "none" }}>
@@ -761,7 +893,9 @@ export function QuoteBuilderDialog({
                       value={commissionRate || ""}
                       placeholder="0"
                       onChange={(e) => setCommissionRate(parseFloat(e.target.value) || 0)}
+                      {...inv("commission_rate")}
                     />
+                    {msg("commission_rate")}
                   </div>
                   <div className={styles.field}>
                     <label className={styles.label}>Agent Cut (Commission)</label>
@@ -769,43 +903,30 @@ export function QuoteBuilderDialog({
                       − ₹ {commissionAmount.toLocaleString("en-IN", { minimumFractionDigits: 2 })}
                     </div>
                   </div>
-                  <div className={styles.field}>
-                    <label className={styles.label}>What We Get (Before Tax)</label>
-                    <div style={{ padding: "8px 12px", background: "#ecfdf5", border: "1px solid #a7f3d0", borderRadius: "6px", fontWeight: 700, color: "#047857", height: "38px", display: "flex", alignItems: "center" }}>
-                      ₹ {ourNetBeforeTax.toLocaleString("en-IN", { minimumFractionDigits: 2 })}
-                    </div>
-                  </div>
                 </div>
 
-                {/* Detailed Breakdown Strip */}
-                <div style={{ marginTop: "var(--space-3)", padding: "14px 16px", background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: "8px", display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: "14px" }}>
-                  <div style={{ display: "flex", flexDirection: "column", gap: "2px" }}>
-                    <span style={{ fontSize: "0.75rem", textTransform: "uppercase", color: "var(--color-text-3, #64748b)", fontWeight: 600 }}>1. Base Deal (Before Tax)</span>
-                    <strong style={{ fontSize: "1.05rem", color: "var(--color-text, #0f172a)" }}>₹ {taxableTotal.toLocaleString("en-IN", { minimumFractionDigits: 2 })}</strong>
-                    <span style={{ fontSize: "0.75rem", color: "#b45309" }}>Less Agent Cut: − ₹ {commissionAmount.toLocaleString("en-IN", { minimumFractionDigits: 2 })}</span>
+                {/* After the agent's cut: what we keep, before and after GST */}
+                <div style={{ marginTop: "var(--space-3)", display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))", gap: "14px" }}>
+                  <div style={{ padding: "14px 16px", background: "#ecfdf5", border: "1px solid #a7f3d0", borderRadius: "8px", display: "flex", flexDirection: "column", gap: "2px" }}>
+                    <span style={{ fontSize: "0.75rem", textTransform: "uppercase", color: "#047857", fontWeight: 700 }}>After Agent Cut — Before Tax</span>
+                    <strong style={{ fontSize: "1.2rem", color: "#047857" }}>₹ {ourNetBeforeTax.toLocaleString("en-IN", { minimumFractionDigits: 2 })}</strong>
+                    <span style={{ fontSize: "0.75rem", color: "#065f46" }}>
+                      ₹ {taxableTotal.toLocaleString("en-IN", { minimumFractionDigits: 2 })} − ₹ {activeCommission.toLocaleString("en-IN", { minimumFractionDigits: 2 })}
+                    </span>
                   </div>
 
-                  <div style={{ display: "flex", flexDirection: "column", gap: "2px", borderLeft: "2px solid #e2e8f0", paddingLeft: "14px" }}>
-                    <span style={{ fontSize: "0.75rem", textTransform: "uppercase", color: "#047857", fontWeight: 700 }}>2. What We Get (Before Tax)</span>
-                    <strong style={{ fontSize: "1.1rem", color: "#047857" }}>₹ {ourNetBeforeTax.toLocaleString("en-IN", { minimumFractionDigits: 2 })}</strong>
-                    <span style={{ fontSize: "0.75rem", color: "#065f46" }}>Retained Revenue ({ourNetBeforeTaxPercentage}%)</span>
-                  </div>
-
-                  <div style={{ display: "flex", flexDirection: "column", gap: "2px", borderLeft: "2px solid #e2e8f0", paddingLeft: "14px" }}>
-                    <span style={{ fontSize: "0.75rem", textTransform: "uppercase", color: "var(--color-text-3, #64748b)", fontWeight: 600 }}>3. Customer Pays (With GST)</span>
-                    <strong style={{ fontSize: "1.05rem", color: "var(--color-text, #0f172a)" }}>₹ {grandTotal.toLocaleString("en-IN", { minimumFractionDigits: 2 })}</strong>
-                    <span style={{ fontSize: "0.75rem", color: "var(--color-text-3, #64748b)" }}>Includes GST: ₹ {taxTotal.toLocaleString("en-IN", { minimumFractionDigits: 2 })}</span>
-                  </div>
-
-                  <div style={{ display: "flex", flexDirection: "column", gap: "2px", borderLeft: "2px solid #e2e8f0", paddingLeft: "14px" }}>
-                    <span style={{ fontSize: "0.75rem", textTransform: "uppercase", color: "#1e40af", fontWeight: 700 }}>4. Net Cash in Bank</span>
-                    <strong style={{ fontSize: "1.1rem", color: "#1e40af" }}>₹ {ourCashInflowAfterCommission.toLocaleString("en-IN", { minimumFractionDigits: 2 })}</strong>
-                    <span style={{ fontSize: "0.75rem", color: "var(--color-text-3, #64748b)" }}>Customer Inflow minus Agent</span>
+                  <div style={{ padding: "14px 16px", background: "#eff6ff", border: "1px solid #bfdbfe", borderRadius: "8px", display: "flex", flexDirection: "column", gap: "2px" }}>
+                    <span style={{ fontSize: "0.75rem", textTransform: "uppercase", color: "#1e40af", fontWeight: 700 }}>After Agent Cut — After Tax (incl. GST)</span>
+                    <strong style={{ fontSize: "1.2rem", color: "#1e40af" }}>₹ {ourCashInflowAfterCommission.toLocaleString("en-IN", { minimumFractionDigits: 2 })}</strong>
+                    <span style={{ fontSize: "0.75rem", color: "var(--color-text-3, #64748b)" }}>
+                      ₹ {grandTotal.toLocaleString("en-IN", { minimumFractionDigits: 2 })} − ₹ {activeCommission.toLocaleString("en-IN", { minimumFractionDigits: 2 })}
+                    </span>
                   </div>
                 </div>
               </div>
             )}
           </div>
+          )}
         </div>
 
         <div className={styles.footer}>

@@ -284,7 +284,7 @@ def get_master_template_seed_data() -> dict[str, Any]:
             "conductivity_us_cm": 2000.0,
             "proposed_model": "HIDREC EZ 1000",
             "project_title": "Waste Water Reclaimer Plant",
-            "site_name": "Spraying Systems India Pvt Ltd",
+            "site_name": "Xpredict Automation Solutions Pvt Ltd",
             "site_location": "Peenya Industrial Area, Bengaluru",
             "survey_date": "2023-06-02",
         },
@@ -293,7 +293,7 @@ def get_master_template_seed_data() -> dict[str, Any]:
                 "title": "FEASIBILITY REPORT",
                 "subtitle": "PROPOSAL FOR WASTE WATER RECLAIMER PLANT",
                 "model": "HIDREC EZ 1000",
-                "organization_name": "XpredictLabs",
+                "organization_name": "Xpredict Automation Solutions Pvt Ltd",
                 "confidentiality": (
                     "This document contains proprietary design and commercial information "
                     "intended solely for the recipient."

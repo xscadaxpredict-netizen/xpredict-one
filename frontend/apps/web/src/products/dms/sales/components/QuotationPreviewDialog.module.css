@@ -176,6 +176,21 @@
   margin-top: 5px;
 }
 
+/* Full width under the totals: the words for a 7-figure amount run long. */
+.amountInWords {
+  margin: 12px 0 0;
+  padding: 8px 0;
+  border-bottom: 1px solid #ddd;
+  font-size: 0.9rem;
+  font-weight: 600;
+  text-align: right;
+}
+
+.amountInWords span {
+  font-weight: 400;
+  color: #555;
+}
+
 .footerGrid {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -230,9 +245,13 @@
   }
   .content {
     padding: 0;
+    background: white;
   }
+  /* The global @page margin is 0, so the document carries its own. */
   .document {
-    padding: 0;
+    padding: 12mm;
+    max-width: none;
     box-shadow: none;
+    border-radius: 0;
   }
 }

@@ -35,7 +35,16 @@ body {
 }
 
 /* Global Print Rules: Hide application shell and allow full multi-page document pagination */
+/* Printed-only content (attachments appendix): never shown on screen. */
+[data-print-only] {
+  display: none;
+}
+
 @media print {
+  [data-print-document] [data-print-only] {
+    display: block !important;
+  }
+
   header,
   aside,
   nav,
@@ -76,5 +85,76 @@ body {
   @page {
     size: A4 portrait;
     margin: 0;
+  }
+
+  /*
+   * PRINTING A DOCUMENT FROM A DIALOG (quotation, purchase order, service /
+   * water / complaint report). `window.print()` prints the whole page, so
+   * without this the screen behind the dialog --- its table, the grey backdrop
+   * --- printed too, and the dialog's 90vw width with `overflow: hidden`
+   * clipped the right edge of the document.
+   *
+   * Opt in by putting `data-print-document` on the element to print, and
+   * `data-print-hide` on its own toolbar (title, Print / Close buttons). While
+   * such an element is on the page, everything that neither is it nor contains
+   * it is removed from the printout, and its containers stop being fixed,
+   * scrolling overlays so the document can run across pages.
+   */
+  body:has([data-print-document]) *:not(:has([data-print-document])):not([data-print-document]):not([data-print-document] *) {
+    display: none !important;
+  }
+
+  body:has([data-print-document]) *:has([data-print-document]) {
+    position: static !important;
+    display: block !important;
+    width: auto !important;
+    height: auto !important;
+    max-height: none !important;
+    overflow: visible !important;
+    transform: none !important;
+    background: #ffffff !important;
+    padding: 0 !important;
+    margin: 0 !important;
+  }
+
+  [data-print-document] {
+    position: static !important;
+    inset: auto !important;
+    width: 100% !important;
+    max-width: none !important;
+    height: auto !important;
+    max-height: none !important;
+    overflow: visible !important;
+    margin: 0 !important;
+    border: none !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+    background: #ffffff !important;
+  }
+
+  /* Inner scroll areas expand instead of cutting the document at one screen. */
+  [data-print-document] * {
+    max-height: none !important;
+    overflow: visible !important;
+  }
+
+  [data-print-document] [data-print-hide] {
+    display: none !important;
+  }
+
+  /* NO CONTROLS ON PAPER. Buttons inside the document itself -- Approve /
+     Reject, the attachment view and download icons, footer Close / Edit --
+     printed with the report because only the top toolbar was marked. A button
+     is never part of a printed document, so none is printed. */
+  [data-print-document] button,
+  [data-print-document] [role="button"],
+  [data-print-document] input[type="button"],
+  [data-print-document] input[type="submit"] {
+    display: none !important;
+  }
+
+  dialog::backdrop {
+    background: transparent !important;
+    backdrop-filter: none !important;
   }
 }

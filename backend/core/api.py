@@ -1,6 +1,9 @@
+from django.core.exceptions import ValidationError as DjangoValidationError
+
 from core.organizations.api.base import OrgScopedAPIView
 from core.organizations.models import BusinessUnit
 from core.organizations.selectors import permissions_for, resolve_allowed_units
+from core.organizations.services import head_office_for
 from core.permissions.models import AppCode
 from shared.base_models import allowed_units
 
@@ -72,12 +75,18 @@ class TenantAPIView(OrgScopedAPIView):
         if membership.unit_id:
             return membership.unit_id
 
-        units = BusinessUnit.objects.filter(organization=organization)
+        # ORGANISATION-LEVEL PEOPLE WORK IN THE HEAD OFFICE (C-local-4) unless
+        # they name a dealership with X-Unit-Id. This used to fall back to the
+        # OLDEST dealership, which silently filed the organisation's own work
+        # in that dealer's books -- and refused to save anything at all in an
+        # organisation that had no dealer yet.
         requested = request.headers.get("X-Unit-Id")
         if requested:
-            unit = units.filter(id=requested).first()
+            try:
+                unit = BusinessUnit.objects.filter(organization=organization, id=requested).first()
+            except (DjangoValidationError, ValueError):
+                unit = None
             if unit:
                 return unit.id
 
-        first = units.order_by("created_at").first()
-        return first.id if first else None
+        return head_office_for(organization).id

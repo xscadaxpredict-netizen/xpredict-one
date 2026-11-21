@@ -7,6 +7,8 @@ import type {
   ServiceReportEntry,
   WaterReportEntry,
   ComplaintEntry,
+  ScheduleDependencies,
+  UnitPerson,
 } from "./types";
 
 export async function listSites(orgSlug: string): Promise<ConfirmedSite[]> {
@@ -47,9 +49,42 @@ export async function updateSchedule(
   });
 }
 
-export async function deleteSchedule(orgSlug: string, scheduleId: string): Promise<void> {
-  return request<void>(`/api/v1/orgs/${orgSlug}/dms/site-services/schedules/${scheduleId}/`, {
+/** `confirm`: the user has seen `getScheduleDependencies`; required when there are any. */
+export async function deleteSchedule(orgSlug: string, scheduleId: string, confirm = false): Promise<void> {
+  const query = confirm ? "?confirm=true" : "";
+  return request<void>(`/api/v1/orgs/${orgSlug}/dms/site-services/schedules/${scheduleId}/${query}`, {
     method: "DELETE",
+  });
+}
+
+export async function getScheduleDependencies(
+  orgSlug: string,
+  scheduleId: string,
+): Promise<ScheduleDependencies> {
+  return request<ScheduleDependencies>(
+    `/api/v1/orgs/${orgSlug}/dms/site-services/schedules/${scheduleId}/dependencies/`,
+  );
+}
+
+export async function listSitePeople(orgSlug: string, siteId: string): Promise<UnitPerson[]> {
+  return request<UnitPerson[]>(`/api/v1/orgs/${orgSlug}/dms/site-services/sites/${siteId}/people/`);
+}
+
+export async function rescheduleVisit(
+  orgSlug: string,
+  scheduleId: string,
+  payload: { scheduled_date: string; technician_user_id?: string | null },
+): Promise<ScheduleEntry> {
+  return request<ScheduleEntry>(`/api/v1/orgs/${orgSlug}/dms/site-services/schedules/${scheduleId}/reschedule/`, {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function cancelVisit(orgSlug: string, scheduleId: string, reason: string): Promise<ScheduleEntry> {
+  return request<ScheduleEntry>(`/api/v1/orgs/${orgSlug}/dms/site-services/schedules/${scheduleId}/cancel/`, {
+    method: "POST",
+    body: JSON.stringify({ reason }),
   });
 }
 
@@ -129,6 +164,19 @@ export async function updateComplaint(
   return request<ComplaintEntry>(`/api/v1/orgs/${orgSlug}/dms/site-services/complaints/${complaintId}/`, {
     method: "PATCH",
     body: isFormData ? payload : JSON.stringify(payload),
+  });
+}
+
+/** Start work, resolve (notes required), close, or reopen. */
+export async function setComplaintStatus(
+  orgSlug: string,
+  complaintId: string,
+  status: "IN_PROGRESS" | "RESOLVED" | "CLOSED" | "OPEN",
+  notes = "",
+): Promise<ComplaintEntry> {
+  return request<ComplaintEntry>(`/api/v1/orgs/${orgSlug}/dms/site-services/complaints/${complaintId}/status/`, {
+    method: "POST",
+    body: JSON.stringify({ status, notes }),
   });
 }
 

@@ -1,5 +1,9 @@
 import { PrinterIcon, Edit3Icon, XIcon } from "lucide-react";
+import { useShellContext } from "../../../../shell/context";
+import { PrintAttachments, filesOf, usePrintAttachments } from "../../shared/print/PrintAttachments";
 import { FileAttachmentCell } from "./FileAttachmentCell";
+import { formatDateTime } from "../../shared/format/date";
+import { COMPLAINT_STATUS_LABEL } from "./ComplaintActions";
 import styles from "./ComplaintViewModal.module.css";
 
 interface Props {
@@ -11,6 +15,10 @@ interface Props {
 }
 
 export function ComplaintViewModal({ isOpen, report, onEdit, onToggleStatus, onClose }: Props) {
+  // Attachments print with the report: drawn when the view opens, so Print
+  // waits only for whatever is still being prepared.
+  const printFiles = usePrintAttachments(filesOf(isOpen ? report : null));
+  const { membership } = useShellContext();
   if (!isOpen || !report) return null;
 
   const displayDate = report.date || report.created_at?.split("T")[0] || "—";
@@ -18,16 +26,22 @@ export function ComplaintViewModal({ isOpen, report, onEdit, onToggleStatus, onC
 
   return (
     <div className={styles.modalOverlay} onClick={onClose}>
-      <div className={styles.modalContent} onClick={e => e.stopPropagation()}>
+      <div className={styles.modalContent} onClick={e => e.stopPropagation()} data-print-document>
         {/* Header */}
-        <div className={styles.modalHeader}>
+        <div className={styles.modalHeader} data-print-hide>
           <div>
             <h3 className={styles.modalTitle}>Complaint / Ticket #{report.id}</h3>
             <span className={styles.modalSubtitle}>Filed on: {displayDate}</span>
           </div>
           <div className={styles.headerActions}>
-            <button type="button" className={styles.btnSecondary} onClick={() => window.print()}>
-              <PrinterIcon size={13} /> Print
+            <button
+              type="button"
+              className={styles.btnSecondary}
+              onClick={() => window.print()}
+              disabled={!printFiles.ready}
+              title={printFiles.ready ? undefined : "Preparing the attachments for printing"}
+            >
+              <PrinterIcon size={13} /> {printFiles.ready ? "Print" : "Preparing print..."}
             </button>
             <button type="button" className={styles.btnPrimary} onClick={onEdit}>
               <Edit3Icon size={13} /> Edit Ticket
@@ -43,7 +57,8 @@ export function ComplaintViewModal({ isOpen, report, onEdit, onToggleStatus, onC
           {/* Company Banner */}
           <div className={styles.bannerContainer}>
             <div>
-              <div className={styles.bannerTitle}>XPREDICT AUTOMATION SOLUTIONS PVT LTD</div>
+              {/* Whose report this is: the site's dealership, or the organisation for its own site. */}
+              <div className={styles.bannerTitle}>{(report.company_name || membership.org_name || "").toUpperCase()}</div>
               <div className={styles.bannerSubtitle}>Industrial Water & Wastewater Treatment | Complaint Ticket</div>
             </div>
             <div className={styles.bannerRight}>
@@ -67,7 +82,7 @@ export function ComplaintViewModal({ isOpen, report, onEdit, onToggleStatus, onC
               <div className={styles.infoLabel}>Ticket Status</div>
               <div style={{ marginTop: '0.2rem' }}>
                 <span className={`${styles.badge} ${styles["status" + report.status]}`}>
-                  {report.status}
+                  {COMPLAINT_STATUS_LABEL[report.status as keyof typeof COMPLAINT_STATUS_LABEL] ?? report.status}
                 </span>
               </div>
             </div>
@@ -80,6 +95,15 @@ export function ComplaintViewModal({ isOpen, report, onEdit, onToggleStatus, onC
               {report.issue || report.description || 'No description provided.'}
             </div>
           </div>
+
+          {report.resolution_notes && (
+            <div>
+              <h4 className={styles.sectionTitle}>
+                Resolution{report.resolved_at ? ` · ${formatDateTime(report.resolved_at)}` : ""}
+              </h4>
+              <div className={styles.issueBox}>{report.resolution_notes}</div>
+            </div>
+          )}
 
           {/* Priority */}
           <div>
@@ -109,7 +133,9 @@ export function ComplaintViewModal({ isOpen, report, onEdit, onToggleStatus, onC
         </div>
 
         {/* Footer */}
-        <div className={styles.modalFooter}>
+        <PrintAttachments prepared={printFiles.prepared} />
+
+        <div data-print-hide className={styles.modalFooter}>
           <button type="button" className={styles.btnSecondary} onClick={onClose}>Close</button>
           <button type="button" className={styles.btnPrimary} onClick={onEdit}>
             <Edit3Icon size={14} /> Edit This Ticket

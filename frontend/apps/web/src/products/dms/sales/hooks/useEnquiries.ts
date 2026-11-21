@@ -15,6 +15,7 @@ import {
   confirmAmcQuote,
   createEnquiry,
   deleteQuotation,
+  getQuotationDependencies,
   fetchBanks,
   fetchDealerProfile,
   fetchEnquiries,
@@ -30,6 +31,7 @@ import {
   updateProductPreset,
   deleteProductPreset,
   fetchCommissions,
+  fetchCustomers,
   recordCommissionPayment,
 } from "../api/enquiries";
 import { salesKeys } from "../api/keys";
@@ -41,6 +43,13 @@ export function useEnquiries() {
   return useOrgQuery({
     key: salesKeys.enquiryList(),
     queryFn: (orgSlug) => fetchEnquiries(orgSlug),
+  });
+}
+
+export function useCustomers(search?: string) {
+  return useOrgQuery({
+    key: salesKeys.customers(search),
+    queryFn: (orgSlug) => fetchCustomers(orgSlug, search),
   });
 }
 
@@ -71,7 +80,7 @@ export function useProductPresets() {
 export function useCreateEnquiry() {
   return useOrgMutation({
     mutationFn: (orgSlug, body: NewEnquiry) => createEnquiry(orgSlug, body),
-    invalidates: [salesKeys.enquiries()],
+    invalidates: [salesKeys.enquiries(), salesKeys.customers()],
   });
 }
 
@@ -157,10 +166,18 @@ export function useDeleteQuotation() {
   return useOrgMutation({
     mutationFn: (
       orgSlug,
-      variables: { enquiryId: string; quoteId: string },
+      variables: { enquiryId: string; quoteId: string; confirm?: boolean },
     ) =>
-      deleteQuotation(orgSlug, variables.enquiryId, variables.quoteId),
+      deleteQuotation(orgSlug, variables.enquiryId, variables.quoteId, variables.confirm),
     invalidates: [salesKeys.enquiries(), ["site-services"]],
+  });
+}
+
+/** Fetches what a delete would affect, for the confirmation dialog. Reads only. */
+export function useQuotationDependencies() {
+  return useOrgMutation({
+    mutationFn: (orgSlug: string, variables: { enquiryId: string; quoteId: string }) =>
+      getQuotationDependencies(orgSlug, variables.enquiryId, variables.quoteId),
   });
 }
 
