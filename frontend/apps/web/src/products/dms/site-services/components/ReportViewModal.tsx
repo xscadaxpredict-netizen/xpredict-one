@@ -1,8 +1,11 @@
 import { PrinterIcon, Edit3Icon, XIcon, CheckCircleIcon, XCircleIcon } from "lucide-react";
+import { useShellContext } from "../../../../shell/context";
+import { PrintAttachments, filesOf, usePrintAttachments } from "../../shared/print/PrintAttachments";
 import { FileAttachmentCell } from "./FileAttachmentCell";
 import styles from "./ReportViewModal.module.css";
 
 import { useDialog } from "../../shared/hooks/useDialog";
+import { formatDate } from "../../shared/format/date";
 
 interface Props {
   isOpen: boolean;
@@ -16,6 +19,10 @@ interface Props {
 export function ReportViewModal({ isOpen, report, onEdit, onClose, onApprove, onReject }: Props) {
   const { showPrompt, showAlert, DialogComponent } = useDialog();
 
+  // Attachments print with the report: drawn when the view opens, so Print
+  // waits only for whatever is still being prepared.
+  const printFiles = usePrintAttachments(filesOf(isOpen ? report : null));
+  const { membership } = useShellContext();
   if (!isOpen || !report) return null;
 
   const handleApprove = () => {
@@ -41,16 +48,22 @@ export function ReportViewModal({ isOpen, report, onEdit, onClose, onApprove, on
 
   return (
     <div className={styles.modalOverlay} onClick={onClose}>
-      <div className={styles.modalContent} onClick={e => e.stopPropagation()}>
+      <div className={styles.modalContent} onClick={e => e.stopPropagation()} data-print-document>
         {/* Header */}
-        <div className={styles.modalHeader}>
+        <div className={styles.modalHeader} data-print-hide>
           <div>
             <h3 className={styles.modalTitle}>Service Report #{report.report_code || report.id}</h3>
             <span className={styles.modalSubtitle}>Service Date: {report.service_date || report.date || 'N/A'}</span>
           </div>
           <div className={styles.headerActions}>
-            <button type="button" className={styles.btnSecondary} onClick={() => window.print()}>
-              <PrinterIcon size={13} /> Print Report
+            <button
+              type="button"
+              className={styles.btnSecondary}
+              onClick={() => window.print()}
+              disabled={!printFiles.ready}
+              title={printFiles.ready ? undefined : "Preparing the attachments for printing"}
+            >
+              <PrinterIcon size={13} /> {printFiles.ready ? "Print Report" : "Preparing print..."}
             </button>
             <button type="button" className={styles.btnPrimary} onClick={onEdit}>
               <Edit3Icon size={13} /> Edit Report
@@ -66,12 +79,13 @@ export function ReportViewModal({ isOpen, report, onEdit, onClose, onApprove, on
           {/* Company Banner */}
           <div className={styles.bannerContainer}>
             <div>
-              <div className={styles.bannerTitle}>XPREDICT AUTOMATION SOLUTIONS PVT LTD</div>
+              {/* Whose report this is: the site's dealership, or the organisation for its own site. */}
+              <div className={styles.bannerTitle}>{(report.company_name || membership.org_name || "").toUpperCase()}</div>
               <div className={styles.bannerSubtitle}>Industrial Water & Wastewater Treatment | DMS Service Report</div>
             </div>
             <div className={styles.bannerRight}>
               <div className={styles.reportCode}>{report.report_code || `SR-${report.id}`}</div>
-              <div className={styles.reportDate}>Date: {report.service_date || report.date}</div>
+              <div className={styles.reportDate}>Date: {formatDate(report.service_date || report.date)}</div>
             </div>
           </div>
 
@@ -83,9 +97,8 @@ export function ReportViewModal({ isOpen, report, onEdit, onClose, onApprove, on
               <div className={styles.infoSubValue}>OC Number: {report.ocNumber || 'N/A'}</div>
             </div>
             <div>
-              <div className={styles.infoLabel}>Technician & Zone</div>
+              <div className={styles.infoLabel}>Technician</div>
               <div className={styles.infoValue}>{report.technician_display_name || report.technician || 'Unassigned'}</div>
-              <div className={styles.infoSubValue}>Zone: {report.zone || 'General'}</div>
             </div>
             <div>
               <div className={styles.infoLabel}>Approval Status</div>
@@ -164,7 +177,9 @@ export function ReportViewModal({ isOpen, report, onEdit, onClose, onApprove, on
         </div>
 
         {/* Footer */}
-        <div className={styles.modalFooter} style={{ justifyContent: "space-between" }}>
+        <PrintAttachments prepared={printFiles.prepared} />
+
+        <div data-print-hide className={styles.modalFooter} style={{ justifyContent: "space-between" }}>
           <div style={{ display: "flex", gap: "8px" }}>
             {onApprove && approvalStatus !== "APPROVED" && (
               <button type="button" className={styles.btnPrimary} style={{ background: "#16A34A" }} onClick={handleApprove}>

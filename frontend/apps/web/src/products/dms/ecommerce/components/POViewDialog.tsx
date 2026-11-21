@@ -1,6 +1,7 @@
 import { XIcon, PrinterIcon } from "lucide-react";
 import type { EcommerceOrder } from "../api/types";
 import styles from "./POViewDialog.module.css";
+import { formatDate } from "../../shared/format/date";
 
 interface Props {
   isOpen: boolean;
@@ -13,11 +14,11 @@ export function POViewDialog({ isOpen, order, onClose }: Props) {
 
   return (
     <div className={styles.modalOverlay} onClick={onClose}>
-      <div className={styles.modalContent} onClick={e => e.stopPropagation()}>
-        <div className={styles.modalHeader}>
+      <div className={styles.modalContent} onClick={e => e.stopPropagation()} data-print-document>
+        <div className={styles.modalHeader} data-print-hide>
           <div>
             <h3 className={styles.modalTitle}>Order Details #{order.id}</h3>
-            <span style={{ fontSize: "0.75rem", color: "var(--color-text-2)" }}>Placed on: {new Date(order.date).toLocaleDateString()}</span>
+            <span style={{ fontSize: "0.75rem", color: "var(--color-text-2)" }}>Placed on: {formatDate(order.date)}</span>
           </div>
           <div style={{ display: "flex", gap: "10px" }}>
             <button className={styles.btnSecondary} onClick={() => window.print()}><PrinterIcon size={14} /> Print</button>
@@ -34,7 +35,7 @@ export function POViewDialog({ isOpen, order, onClose }: Props) {
               <div style={{ textAlign: "right" }}>
                 <h3 style={{ margin: 0, textTransform: "uppercase" }}>Purchase Order</h3>
                 <div style={{ fontSize: "0.85rem", fontWeight: 600 }}>{order.order_number}</div>
-                <div className={styles.companyMeta}>Date: {new Date(order.date).toLocaleDateString()}</div>
+                <div className={styles.companyMeta}>Date: {formatDate(order.date)}</div>
               </div>
             </div>
 

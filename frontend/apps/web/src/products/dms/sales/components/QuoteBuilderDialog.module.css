@@ -271,3 +271,22 @@
   opacity: 0.3;
   cursor: not-allowed;
 }
+
+/* ---- Validation -------------------------------------------------------- */
+.errorSummary {
+  margin-bottom: var(--space-4);
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid #fecaca;
+  border-left: 4px solid #dc2626;
+  border-radius: var(--radius-md);
+  background: #fef2f2;
+  color: #991b1b;
+  font-size: var(--text-sm);
+}
+.errorSummary ul { margin: var(--space-2) 0 0; padding-left: var(--space-5); }
+.errorSummary li + li { margin-top: 2px; }
+.fieldError { display: block; margin-top: 4px; font-size: var(--text-xs); color: #dc2626; }
+.formContent [aria-invalid="true"] {
+  border-color: #dc2626 !important;
+  box-shadow: 0 0 0 1px #dc2626;
+}

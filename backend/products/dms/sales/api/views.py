@@ -12,6 +12,7 @@ from .. import selectors, services
 from .serializers import (
     BankAccountReadSerializer,
     BankAccountWriteSerializer,
+    CustomerSerializer,
     EnquiryCreateSerializer,
     EnquiryReadSerializer,
     EnquiryUpdateSerializer,
@@ -39,6 +40,13 @@ class EnquiryListCreateView(TenantAPIView):
         payload = EnquiryCreateSerializer(data=request.data)
         payload.is_valid(raise_exception=True)
 
+        if not request.unit_id:
+            from rest_framework.exceptions import ValidationError
+            raise ValidationError(
+                "No dealership (business unit) found for this organization. "
+                "Please create a dealership under Administration > Dealers first."
+            )
+
         enquiry = services.create_enquiry(
             unit_id=request.unit_id,  # type: ignore
             created_by_user_id=request.user.id,
@@ -47,6 +55,21 @@ class EnquiryListCreateView(TenantAPIView):
         # Re-fetch for full nested serialization
         enquiry_fetched = selectors.get_enquiry(enquiry_id=enquiry.id)
         return Response(EnquiryReadSerializer(enquiry_fetched).data, status=status.HTTP_201_CREATED)
+
+
+class CustomerListView(TenantAPIView):
+    required_permissions: ClassVar[list[str]] = ["dms.enquiry.view"]
+
+    def get(self, request: Request, org_slug: str) -> Response:
+        # Only the dealership the enquiry will be created in. An org admin can
+        # see every dealership's customers through UnitScopedModel, but picking
+        # one from another dealership would then fail on save with "Customer
+        # not found" -- create_enquiry only accepts a customer of request.unit_id.
+        if not request.unit_id:
+            return Response([])
+        search = request.query_params.get("search", "").strip()
+        qs = selectors.list_customers(search=search).filter(unit_id=request.unit_id)
+        return Response(CustomerSerializer(qs, many=True).data)
 
 
 def _get_enquiry_or_404(view: TenantAPIView, request: Request, pk: str):
@@ -169,9 +192,21 @@ class EnquiryQuotationDetailView(TenantAPIView):
             enquiry_id=pk,
             quote_id=quote_id,
             actor_user_id=request.user.id,
+            # `?confirm=true` says the user has seen what depends on this quote.
+            confirmed=request.query_params.get("confirm") == "true",
         )
         enquiry_fetched = selectors.get_enquiry(enquiry_id=enquiry.id, is_manager_or_admin=True)
         return Response(EnquiryReadSerializer(enquiry_fetched).data)
+
+
+class EnquiryQuotationDependenciesView(TenantAPIView):
+    """What deleting a quotation would affect, for the confirmation dialog."""
+
+    required_permissions: ClassVar[list[str]] = ["dms.quotation.view"]
+
+    def get(self, request: Request, org_slug: str, pk: str, quote_id: str) -> Response:
+        _get_enquiry_or_404(self, request, pk)
+        return Response(services.quotation_dependencies(enquiry_id=pk, quote_id=quote_id))
 
 
 class EnquiryConfirmView(TenantAPIView):

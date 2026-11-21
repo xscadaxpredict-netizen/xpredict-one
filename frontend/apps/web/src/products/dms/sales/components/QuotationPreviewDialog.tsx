@@ -2,6 +2,11 @@ import { useEffect, useRef } from "react";
 import type { Quotation, Enquiry } from "../api/types";
 import { useBanks } from "../hooks/useEnquiries";
 import { useShellContext } from "../../../../shell/context";
+import { amountInWords } from "../../shared/format/amountInWords";
+import { formatDate, formatDatePlusDays } from "../../shared/format/date";
+
+/** How long a quotation stays valid. The default terms say the same: "Validity: 30 days". */
+const VALIDITY_DAYS = 30;
 import styles from "./QuotationPreviewDialog.module.css";
 
 interface QuotationPreviewDialogProps {
@@ -55,9 +60,27 @@ export function QuotationPreviewDialog({
     window.print();
   };
 
+  /**
+   * DOWNLOAD = the browser's "Save as PDF", with the file already named after
+   * the quote. The PDF is the same print layout, so what is downloaded is
+   * exactly what is printed. The page title is what browsers use as the
+   * suggested file name, so it is swapped for the duration of the dialog.
+   */
+  const handleDownload = () => {
+    const previous = document.title;
+    const customer = quotation.to_details?.company_name || "";
+    document.title = [quotation.quote_no, customer].filter(Boolean).join(" - ").replace(/[\\/:*?"<>|]/g, "-");
+    const restore = () => {
+      document.title = previous;
+      window.removeEventListener("afterprint", restore);
+    };
+    window.addEventListener("afterprint", restore);
+    window.print();
+  };
+
   return (
-    <dialog ref={dialogRef} className={styles.dialog} onClose={onClose}>
-      <div className={styles.dialogHeader}>
+    <dialog ref={dialogRef} className={styles.dialog} onClose={onClose} data-print-document>
+      <div className={styles.dialogHeader} data-print-hide>
         <h2 className={styles.dialogTitle}>Quote Preview</h2>
         <div style={{ display: "flex", gap: "10px" }}>
           {onEdit && (
@@ -72,6 +95,14 @@ export function QuotationPreviewDialog({
               Edit Quote
             </button>
           )}
+          <button
+            type="button"
+            className={styles.btnSecondary}
+            onClick={handleDownload}
+            title='Choose "Save as PDF" as the printer to download the file'
+          >
+            Download PDF
+          </button>
           <button type="button" className={styles.btnPrimary} onClick={handlePrint}>
             <PrinterIcon /> Print
           </button>
@@ -123,9 +154,9 @@ export function QuotationPreviewDialog({
                 <span className={styles.metaLabel}>Quote No:</span>
                 <span>{quotation?.quote_no || quotation?.id || "-"}</span>
                 <span className={styles.metaLabel}>Date:</span>
-                <span>{quotation?.date || "-"}</span>
+                <span>{formatDate(quotation?.date, "-")}</span>
                 <span className={styles.metaLabel}>Valid Till:</span>
-                <span>30 Days</span>
+                <span>{formatDatePlusDays(quotation?.date, VALIDITY_DAYS, `${VALIDITY_DAYS} days`)}</span>
               </div>
             </div>
           </div>
@@ -230,6 +261,10 @@ export function QuotationPreviewDialog({
               <span>₹ {grandTotal.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
             </div>
           </div>
+
+          <p className={styles.amountInWords}>
+            <span>Amount in words:</span> {amountInWords(grandTotal)}
+          </p>
 
           <div className={styles.footerGrid}>
             <div className={styles.footerBlock}>

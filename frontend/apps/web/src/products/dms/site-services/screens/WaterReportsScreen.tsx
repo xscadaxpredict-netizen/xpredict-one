@@ -11,7 +11,6 @@ import styles from "./WaterReportsScreen.module.css";
 import { useDialog } from "../../shared/hooks/useDialog";
 
 const INITIAL_FORM = {
-  zonePincode: "",
   siteId: "",
   date: "",
   attachment: null as File | string | null,
@@ -62,8 +61,10 @@ export function WaterReportsScreen() {
 
   const openNewModal = () => {
     setEditingReport(null);
+    // The site picked in the filter above is the site you are filing for.
     setForm({
       ...INITIAL_FORM,
+      siteId: selectedSiteId,
       date: new Date().toISOString().split("T")[0] || "",
     });
     setIsModalOpen(true);
@@ -72,7 +73,6 @@ export function WaterReportsScreen() {
   const openEditModal = (report: any) => {
     setViewingReport(null);
     setEditingReport(report);
-    const site = confirmedSites.find(s => s.id === (report.site_id || report.siteId));
 
     let existingItems: any[] = [];
     if (report.attachments && Array.isArray(report.attachments) && report.attachments.length > 0) {
@@ -106,7 +106,6 @@ export function WaterReportsScreen() {
       ...report,
       siteId: report.site_id || report.siteId || "",
       date: report.date_tested || report.date || "",
-      zonePincode: site?.pincode || site?.address || "",
       attachedItems: existingItems,
       attachment: report.attachment || null,
       attachmentName: report.attachment ? report.attachment.split("/").pop() || "" : "",

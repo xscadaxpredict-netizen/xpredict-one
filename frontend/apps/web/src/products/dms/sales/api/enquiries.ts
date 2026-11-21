@@ -7,11 +7,13 @@
 import type {
   AgentCommissionRecord,
   BankAccount,
+  Customer,
   Enquiry,
   NewEnquiry,
   NewFollowup,
   NewQuotation,
   ProductPreset,
+  QuotationDependencies,
 } from "./types";
 
 import { request } from "../../shared/api/request";
@@ -104,14 +106,30 @@ export async function unconfirmOrder(
   });
 }
 
+/**
+ * `confirm` says the user has seen `getQuotationDependencies` and agreed. The
+ * backend refuses (409) to delete a quote with dependents without it.
+ */
 export async function deleteQuotation(
   orgSlug: string,
   enquiryId: string,
   quoteId: string,
+  confirm = false,
 ): Promise<Enquiry> {
-  return request<Enquiry>(`/api/v1/orgs/${orgSlug}/dms/sales/enquiries/${enquiryId}/quotations/${quoteId}/`, {
+  const query = confirm ? "?confirm=true" : "";
+  return request<Enquiry>(`/api/v1/orgs/${orgSlug}/dms/sales/enquiries/${enquiryId}/quotations/${quoteId}/${query}`, {
     method: "DELETE",
   });
+}
+
+export async function getQuotationDependencies(
+  orgSlug: string,
+  enquiryId: string,
+  quoteId: string,
+): Promise<QuotationDependencies> {
+  return request<QuotationDependencies>(
+    `/api/v1/orgs/${orgSlug}/dms/sales/enquiries/${enquiryId}/quotations/${quoteId}/dependencies/`,
+  );
 }
 
 export async function deleteEnquiry(orgSlug: string, enquiryId: string): Promise<void> {
@@ -262,4 +280,11 @@ export async function recordCommissionPayment(
       body: isFormData ? payload : JSON.stringify(payload),
     }
   );
+}
+
+export async function fetchCustomers(orgSlug: string, search?: string): Promise<Customer[]> {
+  const url = search
+    ? `/api/v1/orgs/${orgSlug}/dms/sales/customers/?search=${encodeURIComponent(search)}`
+    : `/api/v1/orgs/${orgSlug}/dms/sales/customers/`;
+  return request<Customer[]>(url);
 }

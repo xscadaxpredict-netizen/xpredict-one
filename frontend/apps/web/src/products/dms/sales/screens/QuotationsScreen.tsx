@@ -4,11 +4,11 @@
  * Shows all quotations generated across all enquiries.
  */
 
-import { useState, Fragment } from "react";
+import { useState, Fragment, type ReactNode } from "react";
 import { asProblem } from "@xpredict/api-client";
 import { EmptyState, ErrorState, TableSkeleton, ConfirmDialog } from "@xpredict/ui";
 
-import { useEnquiries, useDeleteQuotation, useConfirmOrder } from "../hooks/useEnquiries";
+import { useEnquiries, useDeleteQuotation, useConfirmOrder, useQuotationDependencies } from "../hooks/useEnquiries";
 import { QuoteBuilderDialog } from "../components/QuoteBuilderDialog";
 import { QuotationPreviewDialog } from "../components/QuotationPreviewDialog";
 import type { Enquiry, Quotation, QuoteType } from "../api/types";
@@ -16,6 +16,9 @@ import { StatusBadge } from "../components/StatusBadge";
 import { RecordPayoutModal, type PayoutTargetRecord } from "../components/RecordPayoutModal";
 import { useDmsPermissions } from "../../shared/hooks/useDmsPermissions";
 import styles from "./QuotationsScreen.module.css";
+import { formatDate } from "../../shared/format/date";
+import { planQuotationDelete } from "../../shared/deleteChecks";
+import { apiErrorMessage } from "../../shared/api/errorMessage";
 
 interface QuoteItem {
   quote: Quotation;
@@ -48,6 +51,7 @@ export function QuotationsScreen() {
   };
 
   const deleteQuote = useDeleteQuotation();
+  const quotationDependencies = useQuotationDependencies();
   const confirmOrder = useConfirmOrder();
   const { canCreateQuote, canEditQuote, canConfirmOrder, canDeleteQuote } = useDmsPermissions();
 
@@ -63,11 +67,22 @@ export function QuotationsScreen() {
 
   const [confirmState, setConfirmState] = useState<{
     title: string;
-    message: string;
+    message: string | ReactNode;
     intent: "primary" | "danger";
     confirmLabel: string;
     onConfirm: () => void;
   } | null>(null);
+
+  /** A failed action, with the backend's actual reason (not the generic title). */
+  const showError = (title: string, err: unknown, fallback: string) => {
+    setConfirmState({
+      title,
+      message: <span style={{ whiteSpace: "pre-line" }}>{apiErrorMessage(err, fallback)}</span>,
+      intent: "primary",
+      confirmLabel: "OK",
+      onConfirm: () => undefined,
+    });
+  };
 
   // Flatten all quotes
   const allQuotes: QuoteItem[] = (enquiries ?? []).flatMap((enq) =>
@@ -81,13 +96,45 @@ export function QuotationsScreen() {
     return matchesSearch && matchesType && matchesEnquiry;
   });
 
-  const handleDelete = (enquiryId: string, quoteId: string) => {
+  const handleDelete = async (enquiryId: string, quoteId: string) => {
+    // Ask the backend what depends on this quote and say so in the dialog.
+    let plan;
+    try {
+      plan = planQuotationDelete(await quotationDependencies.mutateAsync({ enquiryId, quoteId }));
+    } catch {
+      plan = null;
+    }
+    if (!plan) {
+      setConfirmState({
+        title: "Cannot check quote",
+        message: "Could not check what depends on this quote. Please try again.",
+        intent: "primary",
+        confirmLabel: "OK",
+        onConfirm: () => undefined,
+      });
+      return;
+    }
+    if (plan.blocked) {
+      setConfirmState({
+        title: "Cannot delete quote",
+        message: plan.blocked,
+        intent: "primary",
+        confirmLabel: "OK",
+        onConfirm: () => undefined,
+      });
+      return;
+    }
+    const confirm = plan.confirm;
     setConfirmState({
       title: "Delete Quote",
-      message: "Are you sure you want to delete this quote?",
+      message: <span style={{ whiteSpace: "pre-line" }}>{plan.message}</span>,
       intent: "danger",
       confirmLabel: "Delete",
-      onConfirm: () => deleteQuote.mutate({ enquiryId, quoteId })
+      onConfirm: () =>
+        deleteQuote.mutate(
+          { enquiryId, quoteId, confirm },
+          { onError: (err) => showError("Quote not deleted", err, "Failed to delete quote.") },
+        ),
     });
   };
 
@@ -97,7 +144,11 @@ export function QuotationsScreen() {
       message: "Confirm this order?",
       intent: "primary",
       confirmLabel: "Confirm",
-      onConfirm: () => confirmOrder.mutate({ enquiryId, quoteId })
+      onConfirm: () =>
+        confirmOrder.mutate(
+          { enquiryId, quoteId },
+          { onError: (err) => showError("Order not confirmed", err, "Failed to confirm order.") },
+        )
     });
   };
 
@@ -298,7 +349,7 @@ export function QuotationsScreen() {
                         )}
                       </td>
                       <td className={styles.td}>
-                        <span className={styles.date}>{quote.date}</span>
+                        <span className={styles.date}>{formatDate(quote.date)}</span>
                       </td>
                       <td className={`${styles.td} ${styles.tdRight}`}>
                         <div className={styles.actions}>
@@ -349,7 +400,7 @@ export function QuotationsScreen() {
                               type="button"
                               className={`${styles.iconBtn} ${styles.iconBtnDanger}`}
                               title="Delete Quote"
-                              onClick={(e) => { e.stopPropagation(); handleDelete(enquiry.id, quote.id); }}
+                              onClick={(e) => { e.stopPropagation(); void handleDelete(enquiry.id, quote.id); }}
                             >
                               <TrashIcon />
                             </button>
@@ -416,7 +467,7 @@ export function QuotationsScreen() {
                                   type="button"
                                   className={`${styles.iconBtn} ${styles.iconBtnDanger}`}
                                   title="Delete Quote"
-                                  onClick={(e) => { e.stopPropagation(); handleDelete(enquiry.id, quote.id); }}
+                                  onClick={(e) => { e.stopPropagation(); void handleDelete(enquiry.id, quote.id); }}
                                 >
                                   <TrashIcon />
                                 </button>
@@ -445,7 +496,7 @@ export function QuotationsScreen() {
                                   <strong>Quote Type:</strong> {quote.type === "NORMAL" ? "MACHINE" : quote.type}
                                 </div>
                                 <div className={styles.infoRow}>
-                                  <strong>Date:</strong> {quote.date}
+                                  <strong>Date:</strong> {formatDate(quote.date)}
                                 </div>
                               </div>
                               {quote.agent_name && (
@@ -510,6 +561,11 @@ export function QuotationsScreen() {
           onClose={() => setViewingQuote(null)}
           quotation={viewingQuote.quote}
           enquiry={viewingQuote.enquiry}
+          onEdit={
+            canEditQuote
+              ? () => setEditingQuote({ enquiryId: viewingQuote.enquiry.id, quoteId: viewingQuote.quote.id })
+              : undefined
+          }
         />
       )}
 

@@ -9,13 +9,16 @@ consistently.
 
 from __future__ import annotations
 
+import datetime
 import logging
-import random
 import uuid
 from decimal import Decimal
+from zoneinfo import ZoneInfo
 
-from django.db import transaction
+from django.db import IntegrityError
+from django.utils import timezone
 
+from config.transactions import tenant_atomic
 from shared.exceptions import ConflictError, not_found
 
 from .models import (
@@ -23,6 +26,7 @@ from .models import (
     AgentPayoutAttachment,
     BankAccount,
     ConfirmedSite,
+    Customer,
     Enquiry,
     EnquiryStatus,
     Followup,
@@ -37,12 +41,38 @@ from .models import (
 logger = logging.getLogger(__name__)
 
 
-@transaction.atomic
+def _get_or_create_customer(
+    *, unit_id: uuid.UUID, name: str, actor_user_id: uuid.UUID, defaults: dict
+) -> Customer:
+    """
+    The dealership's customer with this name (case-insensitive), created if new.
+
+    Two requests creating the same new name at once both miss the lookup; the
+    unique constraint (unit_id, name) lets only one insert win, and the other
+    falls back to reading the row the winner wrote.
+    """
+    existing = Customer.objects.filter(unit_id=unit_id, name__iexact=name).first()
+    if existing:
+        return existing
+    try:
+        with tenant_atomic():
+            return Customer.objects.create(
+                unit_id=unit_id, name=name, created_by_user_id=actor_user_id, **defaults
+            )
+    except IntegrityError:
+        existing = Customer.objects.filter(unit_id=unit_id, name__iexact=name).first()
+        if existing:
+            return existing
+        raise
+
+
+@tenant_atomic
 def create_enquiry(
     *,
     unit_id: uuid.UUID,
     created_by_user_id: uuid.UUID,
     customer_name: str,
+    customer_id: uuid.UUID | None = None,
     contact_person: str = "",
     address: str = "",
     pincode: str = "",
@@ -55,11 +85,44 @@ def create_enquiry(
     lead_fee: float = 0,
 ) -> Enquiry:
     """Record a new enquiry for a dealer, and its initial followup."""
+    customer: Customer | None = None
+    clean_name = customer_name.strip()
+
+    if customer_id:
+        customer = Customer.objects.filter(id=customer_id, unit_id=unit_id).first()
+        if not customer:
+            raise not_found("Customer")
+        if not clean_name:
+            clean_name = customer.name
+        if not contact_person:
+            contact_person = customer.contact_person
+        if not phone:
+            phone = customer.phone
+        if not address:
+            address = customer.address
+        if not pincode:
+            pincode = customer.pincode
+    else:
+        # One customer per name per dealership (owner's rule): the same name typed
+        # again is the same customer, so link to it instead of creating another.
+        customer = _get_or_create_customer(
+            unit_id=unit_id,
+            name=clean_name,
+            actor_user_id=created_by_user_id,
+            defaults={
+                "contact_person": contact_person,
+                "address": address,
+                "pincode": pincode,
+                "phone": phone,
+            },
+        )
+
     lead_fee_status = "DUE" if lead_fee and float(lead_fee) > 0 else "NONE"
     enquiry = Enquiry.objects.create(
         unit_id=unit_id,
         created_by_user_id=created_by_user_id,
-        customer_name=customer_name,
+        customer=customer,
+        customer_name=clean_name,
         contact_person=contact_person,
         address=address,
         pincode=pincode,
@@ -84,7 +147,7 @@ def create_enquiry(
     return enquiry
 
 
-@transaction.atomic
+@tenant_atomic
 def update_enquiry(
     *,
     enquiry_id: uuid.UUID,
@@ -104,19 +167,65 @@ def update_enquiry(
     return enquiry
 
 
-@transaction.atomic
+@tenant_atomic
 def delete_enquiry(*, enquiry_id: uuid.UUID) -> None:
-    """Delete an enquiry completely."""
+    """Delete an enquiry, enforcing dependency protections."""
     enquiry = Enquiry.objects.filter(id=enquiry_id).first()
     if not enquiry:
         raise not_found("Enquiry")
-    ConfirmedSite.objects.filter(enquiry=enquiry).delete()
+
+    if enquiry.status == EnquiryStatus.CONFIRMED:
+        raise ConflictError(
+            code="is_confirmed",
+            message=(
+                "Cannot delete a confirmed order. "
+                "Unconfirm it first if there are no service records."
+            ),
+        )
+
+    # Payment records cascade with their quote / enquiry (AgentPayout FKs are
+    # CASCADE), so deleting would silently destroy records of money paid out.
+    if (
+        AgentPayout.objects.filter(quotation__enquiry=enquiry).exists()
+        or enquiry.lead_fee_payouts.exists()
+    ):
+        raise ConflictError(
+            code="has_payments",
+            message=(
+                "Cannot delete this enquiry because agent commission or lead-fee "
+                "payments are recorded against it."
+            ),
+        )
+
+    site = ConfirmedSite.objects.filter(enquiry=enquiry).first()
+    if site:
+        has_reports = site.service_reports.exists()
+        has_water = site.water_reports.exists()
+        has_complaints = site.complaints.exists()
+        has_orders = site.ecommerce_orders.exists()
+        has_confirmed_amc = site.quotations.filter(
+            quote_type=QuoteType.AMC,
+            status=QuotationStatus.CONFIRMED,
+        ).exists()
+
+        if has_reports or has_water or has_complaints or has_orders or has_confirmed_amc:
+            raise ConflictError(
+                code="has_field_records",
+                message=(
+                    "Cannot delete this enquiry because its site has service reports, "
+                    "water reports, complaints, or store orders. "
+                    "These are legal customer records that must be preserved."
+                ),
+            )
+        # Safe to delete site because it has no field records
+        site.delete()
+
     Quotation.objects.filter(enquiry=enquiry).delete()
     Followup.objects.filter(enquiry=enquiry).delete()
     enquiry.delete()
 
 
-@transaction.atomic
+@tenant_atomic
 def add_followup(
     *,
     enquiry_id: uuid.UUID,
@@ -139,7 +248,7 @@ def add_followup(
     return enquiry
 
 
-@transaction.atomic
+@tenant_atomic
 def update_followup(
     *,
     enquiry_id: uuid.UUID,
@@ -164,7 +273,7 @@ def update_followup(
     return enquiry
 
 
-@transaction.atomic
+@tenant_atomic
 def delete_followup(
     *,
     enquiry_id: uuid.UUID,
@@ -178,7 +287,31 @@ def delete_followup(
     return enquiry
 
 
-@transaction.atomic
+#: Agent / channel-partner commission applies to machine quotes only. AMC and
+#: spares quotes never carry one (owner, 2026-11-13).
+COMMISSION_QUOTE_TYPES = frozenset({QuoteType.NORMAL})
+
+_NO_COMMISSION = {
+    "agent_name": "",
+    "commission_type": "PERCENTAGE",
+    "commission_rate": 0,
+    "commission_amount": 0,
+}
+
+
+def _drop_commission_unless_allowed(quote_data: dict, quote_type: str) -> None:
+    """
+    Clear the commission fields of a quote type that may not carry one.
+
+    The quote builder already hides the agent section for these types, but the
+    rule lives here so no other caller can create a payable commission on an
+    AMC or spares quote.
+    """
+    if quote_type not in COMMISSION_QUOTE_TYPES:
+        quote_data.update(_NO_COMMISSION)
+
+
+@tenant_atomic
 def save_quotation(
     *,
     enquiry_id: uuid.UUID,
@@ -194,6 +327,10 @@ def save_quotation(
     from_details = quote_data.pop("from_details")
     to_details = quote_data.pop("to_details")
     items_data = quote_data.pop("items")
+
+    # THE CUSTOMER IS THE ENQUIRY'S. A quote cannot be addressed to somebody
+    # else by editing a text box; to change the customer, change the enquiry.
+    to_details["company_name"] = enquiry.customer_name
 
     # Resolve sender company name and details if missing or empty
     if not from_details.get("company_name"):
@@ -230,6 +367,11 @@ def save_quotation(
         if not quote:
             raise not_found("Quotation")
 
+        # A legacy non-machine quote whose commission has already been (partly)
+        # paid keeps it: wiping the amount would contradict the payouts on record.
+        if quote.commission_status not in ("PAID", "PARTIALLY_PAID"):
+            _drop_commission_unless_allowed(quote_data, quote_data.get("type", quote.quote_type))
+
         # Update quote fields
         for key, value in quote_data.items():
             if key == "selected_bank_id":
@@ -257,6 +399,7 @@ def save_quotation(
         # Recreate items (simplest approach for a draft)
         quote.items.all().delete()
     else:
+        _drop_commission_unless_allowed(quote_data, quote_data["type"])
         comm_amount = quote_data.get("commission_amount", 0)
         comm_status = "NONE"
         if comm_amount and float(comm_amount) > 0:
@@ -294,13 +437,76 @@ def save_quotation(
     return enquiry
 
 
-@transaction.atomic
+#: Statuses of a visit that has not happened yet (site_services' ScheduleStatus;
+#: spelled out because sales may not import that module).
+_UPCOMING_VISIT_STATUSES = ("SCHEDULED", "IN_PROGRESS")
+
+
+def _quotation_dependencies(enquiry: Enquiry, quote: Quotation) -> dict:
+    # Read through the reverse relation: counting needs no import of site_services.
+    visits = quote.service_schedules.all()
+    upcoming = visits.filter(status__in=_UPCOMING_VISIT_STATUSES).count()
+    visits = {"upcoming_visits": upcoming, "past_visits": visits.count() - upcoming}
+    deps = {
+        "quote_type": quote.quote_type,
+        "is_confirmed": quote.status == QuotationStatus.CONFIRMED,
+        "upcoming_visits": visits["upcoming_visits"],
+        "past_visits": visits["past_visits"],
+        "techno_commercial_documents": quote.techno_commercial_documents.count(),
+        "commission_payouts": quote.payouts.count(),
+        "blocked_reason": None,
+    }
+
+    # Hard stops. Payout records cascade with the quote (AgentPayout FK is
+    # CASCADE), so deleting would silently destroy records of money paid out.
+    if deps["commission_payouts"]:
+        deps["blocked_reason"] = (
+            "Commission payments are recorded against this quotation, "
+            "so it cannot be deleted."
+        )
+    # A confirmed machine sale is the order itself; it has its own unconfirm step.
+    elif quote.quote_type != QuoteType.AMC and enquiry.confirmed_quote_id == quote.id:
+        deps["blocked_reason"] = (
+            "This quotation is the confirmed order. Unconfirm the order before deleting it."
+        )
+
+    deps["has_dependents"] = bool(
+        deps["is_confirmed"]
+        or deps["upcoming_visits"]
+        or deps["past_visits"]
+        or deps["techno_commercial_documents"]
+    )
+    return deps
+
+
+def quotation_dependencies(*, enquiry_id: uuid.UUID, quote_id: uuid.UUID) -> dict:
+    """What deleting this quotation would affect --- shown before the user confirms."""
+    enquiry = Enquiry.objects.filter(id=enquiry_id).first()
+    if not enquiry:
+        raise not_found("Enquiry")
+    quote = Quotation.objects.filter(id=quote_id, enquiry=enquiry).first()
+    if not quote:
+        raise not_found("Quotation")
+    return _quotation_dependencies(enquiry, quote)
+
+
+@tenant_atomic
 def delete_quotation(
     *,
     enquiry_id: uuid.UUID,
     quote_id: uuid.UUID,
     actor_user_id: uuid.UUID,
+    confirmed: bool = False,
 ) -> Enquiry:
+    """
+    Delete a quotation, after `quotation_dependencies` has been shown to the user.
+
+    Refused outright (`delete_blocked`) when a dependency cannot be undone or
+    must be handled first; refused with `has_dependents` when there are
+    dependents the user has not confirmed. On delete, an AMC's upcoming visits
+    are cancelled; its past visits and any techno-commercial documents are kept,
+    just unlinked.
+    """
     enquiry = Enquiry.objects.filter(id=enquiry_id).first()
     if not enquiry:
         raise not_found("Enquiry")
@@ -309,6 +515,17 @@ def delete_quotation(
     if not quote:
         raise not_found("Quotation")
 
+    deps = _quotation_dependencies(enquiry, quote)
+    if deps["blocked_reason"]:
+        raise ConflictError(code="delete_blocked", message=deps["blocked_reason"])
+    if deps["has_dependents"] and not confirmed:
+        raise ConflictError(
+            code="has_dependents",
+            message="This quotation has linked records. Review them and confirm to delete.",
+        )
+
+    # An AMC's upcoming visits are cancelled by site_services, which owns them:
+    # its handler listens for this delete (pre_delete on dms_sales.Quotation).
     quote.delete()
 
     if enquiry.confirmed_quote_id == quote_id:
@@ -323,7 +540,47 @@ def delete_quotation(
     return enquiry
 
 
-@transaction.atomic
+#: Indian financial year runs April to March; OC numbers restart each year.
+_FY_ZONE = ZoneInfo("Asia/Kolkata")
+
+
+def _financial_year_label(today: datetime.date) -> str:
+    """26-27 for any date from 1 Apr 2026 to 31 Mar 2027."""
+    start = today.year if today.month >= 4 else today.year - 1
+    return f"{start % 100:02d}-{(start + 1) % 100:02d}"
+
+
+def _generate_sequential_oc_number(unit_id: uuid.UUID) -> str:
+    """
+    The dealership's next OC number for the current financial year, e.g.
+    STP/OC/26-27/001, then 002, ...
+
+    Must run inside the confirm transaction. It locks the dealership's site rows
+    first, so two people confirming at the same moment queue up instead of both
+    reading the same "last number" --- the (unit_id, oc_number) unique constraint
+    is conditional, and MySQL does not enforce conditional constraints at all.
+    """
+    prefix = f"STP/OC/{_financial_year_label(timezone.now().astimezone(_FY_ZONE).date())}/"
+    # Evaluated for the lock it takes, not for the rows.
+    list(
+        ConfirmedSite.objects.select_for_update()
+        .filter(unit_id=unit_id)
+        .values_list("id", flat=True)
+    )
+    existing_ocs = ConfirmedSite.objects.filter(
+        unit_id=unit_id,
+        oc_number__startswith=prefix,
+    ).values_list("oc_number", flat=True)
+
+    max_seq = 0
+    for oc in existing_ocs:
+        tail = oc[len(prefix):].strip()
+        if tail.isdigit():
+            max_seq = max(max_seq, int(tail))
+    return f"{prefix}{max_seq + 1:03d}"
+
+
+@tenant_atomic
 def confirm_order(
     *,
     enquiry_id: uuid.UUID,
@@ -341,16 +598,25 @@ def confirm_order(
     quote = Quotation.objects.filter(id=quote_id, enquiry=enquiry).first()
     if not quote:
         raise not_found("Quotation")
+    if quote.quote_type == QuoteType.AMC:
+        raise ConflictError(
+            code="amc_not_an_order",
+            message="An AMC quote cannot confirm the order. Confirm the machine quote instead.",
+        )
 
-    # Generate OC number
-    # NOT A SECRET, so S311 does not apply: this is a human-facing
-    # reference number, not a token.
-    #
-    # THE REAL PROBLEM WITH THIS LINE is that 900 possible values
-    # collide long before they run out -- a 50% chance of a duplicate
-    # after a few dozen records -- and the column has no uniqueness
-    # constraint. Reference numbering is Q31, still open.
-    oc_number = f"STP/OC/26-27/{random.randint(100, 999):03d}"  # noqa: S311
+    # THE ORDER BELONGS TO THE ENQUIRY'S UNIT, not to whoever clicks Confirm.
+    # An organisation admin confirming a dealer's enquiry must produce that
+    # dealer's site and that dealer's OC number, not the head office's.
+    unit_id = enquiry.unit_id
+
+    # Reuse existing OC number if this enquiry or site was previously confirmed
+    existing_site = ConfirmedSite.objects.filter(enquiry=enquiry).first()
+    if existing_site and existing_site.oc_number:
+        oc_number = existing_site.oc_number
+    elif enquiry.oc_number:
+        oc_number = enquiry.oc_number
+    else:
+        oc_number = _generate_sequential_oc_number(unit_id)
 
     enquiry.status = EnquiryStatus.CONFIRMED
     enquiry.confirmed_quote_id = quote_id
@@ -369,39 +635,58 @@ def confirm_order(
     else:
         quote.save(update_fields=["status"])
 
-    # Create the ConfirmedSite pivot
-    # Note: Using the enquiry's existing customer if available, else we'd create one.
-    # For now, we assume the customer is linked or we create a dummy one for the site.
+    # Ensure customer is linked to enquiry
     if not enquiry.customer_id:
-        from .models import Customer
-
-        customer = Customer.objects.create(
+        customer = _get_or_create_customer(
             unit_id=unit_id,
-            name=enquiry.customer_name,
-            contact_person=enquiry.contact_person,
-            phone=enquiry.phone,
+            name=enquiry.customer_name.strip(),
+            actor_user_id=actor_user_id,
+            defaults={
+                "contact_person": enquiry.contact_person,
+                "phone": enquiry.phone,
+                "address": enquiry.address,
+                "pincode": enquiry.pincode,
+            },
+        )
+        enquiry.customer = customer
+        enquiry.save(update_fields=["customer_id"])
+    else:
+        customer = enquiry.customer
+
+    # Create or reactivate the 1:1 ConfirmedSite pivot (never duplicate)
+    if existing_site:
+        existing_site.is_active = True
+        existing_site.confirmed_quote = quote
+        existing_site.customer = customer
+        existing_site.oc_number = oc_number
+        existing_site.address = enquiry.address
+        existing_site.pincode = enquiry.pincode
+        existing_site.save(
+            update_fields=[
+                "is_active",
+                "confirmed_quote_id",
+                "customer_id",
+                "oc_number",
+                "address",
+                "pincode",
+            ]
+        )
+    else:
+        ConfirmedSite.objects.create(
+            unit_id=unit_id,
+            enquiry=enquiry,
+            customer=customer,
+            confirmed_quote=quote,
+            oc_number=oc_number,
             address=enquiry.address,
             pincode=enquiry.pincode,
             created_by_user_id=actor_user_id,
         )
-        enquiry.customer = customer
-        enquiry.save(update_fields=["customer_id"])
-
-    ConfirmedSite.objects.create(
-        unit_id=unit_id,
-        enquiry=enquiry,
-        customer=enquiry.customer,
-        confirmed_quote=quote,
-        oc_number=oc_number,
-        address=enquiry.address,
-        pincode=enquiry.pincode,
-        created_by_user_id=actor_user_id,
-    )
 
     return enquiry
 
 
-@transaction.atomic
+@tenant_atomic
 def unconfirm_order(
     *,
     enquiry_id: uuid.UUID,
@@ -411,22 +696,71 @@ def unconfirm_order(
     if not enquiry:
         raise not_found("Enquiry")
 
+    if enquiry.status != EnquiryStatus.CONFIRMED:
+        raise ConflictError(code="not_confirmed", message="Enquiry is not currently confirmed.")
+
+    site = ConfirmedSite.objects.filter(enquiry=enquiry).first()
+    if site:
+        # Check for dependent field records that must be preserved
+        has_reports = site.service_reports.exists()
+        has_water = site.water_reports.exists()
+        has_complaints = site.complaints.exists()
+        has_orders = site.ecommerce_orders.exists()
+        has_confirmed_amc = site.quotations.filter(
+            quote_type=QuoteType.AMC,
+            status=QuotationStatus.CONFIRMED,
+        ).exists()
+
+        if has_reports or has_water or has_complaints or has_orders or has_confirmed_amc:
+            reasons = []
+            if has_reports:
+                reasons.append("service reports")
+            if has_water:
+                reasons.append("water reports")
+            if has_complaints:
+                reasons.append("complaints")
+            if has_orders:
+                reasons.append("store orders")
+            if has_confirmed_amc:
+                reasons.append("confirmed AMC contracts")
+            joined_reasons = ", ".join(reasons)
+            raise ConflictError(
+                code="has_field_records",
+                message=(
+                    f"Cannot unconfirm this order because the site has {joined_reasons} on record. "
+                    "These are legal customer records that must be preserved."
+                ),
+            )
+
+        # Deactivate all sites associated with this enquiry
+        ConfirmedSite.objects.filter(enquiry=enquiry).update(is_active=False)
+
+    # Revert the confirmed quotation status if attached
+    if enquiry.confirmed_quote_id:
+        quote = Quotation.objects.filter(id=enquiry.confirmed_quote_id).first()
+        if quote:
+            if quote.commission_status == "PAID" or quote.total_commission_paid > 0:
+                raise ConflictError(
+                    code="commission_paid",
+                    message=(
+                        "Cannot unconfirm this order because commission has already been paid out."
+                    ),
+                )
+            quote.status = QuotationStatus.QUOTE_SENT
+            if quote.commission_status == "PAYABLE":
+                quote.commission_status = "PENDING"
+            quote.save(update_fields=["status", "commission_status"])
+
     enquiry.status = EnquiryStatus.PENDING
     enquiry.confirmed_quote_id = None
     enquiry.oc_number = ""
     enquiry.updated_by_user_id = actor_user_id
     enquiry.save(update_fields=["status", "confirmed_quote_id", "oc_number", "updated_by_user_id"])
 
-    # Cascade delete ConfirmedSite if needed, but for now we just mark inactive
-    site = ConfirmedSite.objects.filter(enquiry=enquiry).first()
-    if site:
-        site.is_active = False
-        site.save(update_fields=["is_active"])
-
     return enquiry
 
 
-@transaction.atomic
+@tenant_atomic
 def confirm_amc_quote(
     *,
     enquiry_id: uuid.UUID,
@@ -466,7 +800,7 @@ def confirm_amc_quote(
 # ============================================================================
 
 
-@transaction.atomic
+@tenant_atomic
 def create_bank_account(
     *,
     unit_id: uuid.UUID,
@@ -499,7 +833,7 @@ def create_bank_account(
     return bank
 
 
-@transaction.atomic
+@tenant_atomic
 def update_bank_account(
     *,
     bank_id: uuid.UUID,
@@ -544,7 +878,7 @@ def update_bank_account(
     return bank
 
 
-@transaction.atomic
+@tenant_atomic
 def delete_bank_account(
     *,
     bank_id: uuid.UUID,
@@ -570,7 +904,7 @@ def delete_bank_account(
     bank.delete()
 
 
-@transaction.atomic
+@tenant_atomic
 def create_product_catalog(
     *,
     unit_id: uuid.UUID | None,
@@ -625,7 +959,7 @@ def create_product_catalog(
     return product
 
 
-@transaction.atomic
+@tenant_atomic
 def update_product_catalog(
     *,
     product_id: uuid.UUID,
@@ -693,7 +1027,7 @@ def update_product_catalog(
     return product
 
 
-@transaction.atomic
+@tenant_atomic
 def delete_product_catalog(
     *,
     product_id: uuid.UUID,
@@ -731,7 +1065,7 @@ def _format_file_size(size_bytes: int) -> str:
     return f"{size_bytes} B"
 
 
-@transaction.atomic
+@tenant_atomic
 def create_techno_commercial_document(
     *,
     unit_id: uuid.UUID,
@@ -778,7 +1112,7 @@ def create_techno_commercial_document(
     return doc
 
 
-@transaction.atomic
+@tenant_atomic
 def update_techno_commercial_document(
     *,
     document_id: uuid.UUID | str,
@@ -831,7 +1165,7 @@ def update_techno_commercial_document(
     return doc
 
 
-@transaction.atomic
+@tenant_atomic
 def delete_techno_commercial_document(
     *,
     document_id: uuid.UUID | str,
@@ -851,7 +1185,7 @@ def delete_techno_commercial_document(
     doc.delete()
 
 
-@transaction.atomic
+@tenant_atomic
 def record_commission_payment(
     *,
     quote_id: uuid.UUID,
@@ -951,7 +1285,7 @@ def record_commission_payment(
     return quote
 
 
-@transaction.atomic
+@tenant_atomic
 def record_lead_fee_payment(
     *,
     enquiry_id: uuid.UUID,

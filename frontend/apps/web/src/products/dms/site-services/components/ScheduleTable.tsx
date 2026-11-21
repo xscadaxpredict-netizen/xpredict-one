@@ -1,19 +1,85 @@
-import { Fragment, useState } from "react";
-import { CalendarIcon, Edit3Icon, Trash2Icon, FileTextIcon, ClockIcon, ChevronDownIcon, ChevronUpIcon } from "lucide-react";
-import type { Enquiry, SiteDetails } from "../../sales/api/types";
-import type { ScheduleEntry } from "../api/types";
+import { Fragment, useEffect, useState } from "react";
+import { CalendarIcon, ClockIcon, ChevronDownIcon, ChevronUpIcon } from "lucide-react";
+import type { ConfirmedSite, ScheduleEntry } from "../api/types";
 import { useDmsPermissions } from "../../shared/hooks/useDmsPermissions";
+import { VisitActions, VisitStatusBadge, type VisitHandlers } from "./VisitActions";
+import { visitHistoryLines } from "./visitStatus";
 import styles from "./ScheduleTable.module.css";
+import { formatDate, formatDateTime, parseApiDate } from "../../shared/format/date";
+import { intervalToDays } from "../../shared/format/interval";
 
-interface Props {
+/** Used when neither an active AMC nor the site profile sets an interval. */
+const DEFAULT_INTERVAL_DAYS = 30;
+
+/** The ISO date ("YYYY-MM-DD", local) `days` after `iso`. */
+function addDaysIso(iso: string, days: number): string | null {
+  const d = parseApiDate(iso);
+  if (!d) return null;
+  const next = new Date(d.getFullYear(), d.getMonth(), d.getDate() + days);
+  const mm = String(next.getMonth() + 1).padStart(2, "0");
+  const dd = String(next.getDate()).padStart(2, "0");
+  return `${next.getFullYear()}-${mm}-${dd}`;
+}
+
+/**
+ * A site-profile field edited in place. Keeps its own draft so typing is not
+ * fought by the server value; saves on blur or Enter (text) or on pick (date),
+ * and follows the server value whenever it is not being edited.
+ */
+function ProfileInput({
+  type,
+  value,
+  placeholder,
+  onSave,
+}: {
+  type: "text" | "date";
+  value: string;
+  placeholder?: string;
+  onSave: (value: string) => void;
+}) {
+  const [draft, setDraft] = useState(value);
+  const [editing, setEditing] = useState(false);
+  useEffect(() => {
+    if (!editing) setDraft(value);
+  }, [value, editing]);
+
+  const commit = (next: string) => {
+    if (next !== value) onSave(next);
+  };
+
+  return (
+    <input
+      type={type}
+      className={styles.inputSmall}
+      placeholder={placeholder}
+      value={draft}
+      onFocus={() => setEditing(true)}
+      onChange={(e) => {
+        setDraft(e.target.value);
+        // A date picker sets a whole value at once; a half-typed date is "" until complete.
+        if (type === "date" && e.target.value) commit(e.target.value);
+      }}
+      onBlur={() => {
+        setEditing(false);
+        commit(draft.trim());
+      }}
+      onKeyDown={(e) => {
+        if (e.key === "Enter") e.currentTarget.blur();
+      }}
+    />
+  );
+}
+
+interface Props extends VisitHandlers {
   activeTab: "visits" | "deployed";
-  sites: Enquiry[];
+  sites: ConfirmedSite[];
   schedules?: ScheduleEntry[];
   onUpdateSiteDetails: (siteId: string, field: string, value: string) => void;
-  onViewSchedule?: (schedule: ScheduleEntry) => void;
-  onEditSchedule?: (schedule: ScheduleEntry) => void;
-  onDeleteSchedule?: (scheduleId: string) => void;
-  onScheduleSite?: (site: Enquiry) => void;
+  onScheduleSite?: (site: ConfirmedSite) => void;
+  /** The signed-in person: Start and File report are offered on their own visits. */
+  currentUserId: string;
+  /** Sees and runs every visit (vs. only their own). */
+  canManage: boolean;
 }
 
 export function ScheduleTable({
@@ -21,10 +87,10 @@ export function ScheduleTable({
   sites,
   schedules = [],
   onUpdateSiteDetails,
-  onViewSchedule,
-  onEditSchedule,
-  onDeleteSchedule,
   onScheduleSite,
+  currentUserId,
+  canManage,
+  ...handlers
 }: Props) {
   const { canScheduleService, canEditSchedule, canCancelSchedule } = useDmsPermissions();
   const [expandedId, setExpandedId] = useState<string | null>(null);
@@ -34,11 +100,10 @@ export function ScheduleTable({
   };
 
   const getDueStatus = (nextDateStr?: string | null) => {
-    if (!nextDateStr) return null;
+    const target = parseApiDate(nextDateStr);
+    if (!target) return null;
     const today = new Date();
     today.setHours(0, 0, 0, 0);
-    const target = new Date(nextDateStr);
-    target.setHours(0, 0, 0, 0);
     const diffDays = Math.ceil((target.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
 
     if (diffDays < 0) return { label: `Overdue by ${Math.abs(diffDays)}d`, status: "overdue" as const };
@@ -46,19 +111,14 @@ export function ScheduleTable({
     return { label: `Upcoming (${diffDays}d)`, status: "upcoming" as const };
   };
 
-  const calculateNextDate = (lastDate?: string | null, intervalDays?: string | null) => {
-    if (!lastDate || !intervalDays) return null;
-    const d = new Date(lastDate);
-    d.setDate(d.getDate() + parseInt(intervalDays, 10));
-    return d.toISOString().split("T")[0];
-  };
-
   if (activeTab === "visits" && schedules.length === 0) {
     return (
       <div className={styles.emptyState}>
         <CalendarIcon size={36} className={styles.emptyIcon} />
         <div>No scheduled service visits found</div>
-        <div className={styles.muted}>Click "+ Schedule Service" to add a new visit schedule.</div>
+        <div className={styles.muted}>
+          {canManage ? 'Click "+ Schedule Service" to add a new visit schedule.' : "No visits are assigned to you right now."}
+        </div>
       </div>
     );
   }
@@ -67,7 +127,10 @@ export function ScheduleTable({
     return (
       <div className={styles.emptyState}>
         <CalendarIcon size={36} className={styles.emptyIcon} />
-        <div>No deployed customer sites found</div>
+        <div>No site is under AMC yet</div>
+        <div style={{ fontSize: "0.85rem", marginTop: "4px" }}>
+          A site appears here once its AMC quote is confirmed on the AMC tab.
+        </div>
       </div>
     );
   }
@@ -97,7 +160,7 @@ export function ScheduleTable({
                   <Fragment key={sch.id}>
                     <tr className={styles.row} onClick={() => toggleExpand(sch.id)} style={{ cursor: "pointer" }}>
                       <td className={styles.td}>
-                        <div className={styles.bold}>{sch.scheduled_date}</div>
+                        <div className={styles.bold}>{formatDate(sch.scheduled_date)}</div>
                       </td>
                       <td className={styles.td}>
                         <div className={styles.customerName}>{site?.customer_name || "Deployed Site"}</div>
@@ -113,42 +176,18 @@ export function ScheduleTable({
                         <div className={styles.muted}>{sch.notes || "—"}</div>
                       </td>
                       <td className={styles.td}>
-                        <span className={`${styles.statusBadge} ${styles.upcoming}`}>
-                          {sch.status}
-                        </span>
+                        <VisitStatusBadge visit={sch} />
                       </td>
                       <td className={styles.tdRight} onClick={(e) => e.stopPropagation()}>
                         <div className={styles.actions}>
-                          {onViewSchedule && (
-                            <button
-                              type="button"
-                              className={`${styles.iconBtn} ${styles.iconBtnPrimary}`}
-                              title="View Details"
-                              onClick={() => onViewSchedule(sch)}
-                            >
-                              <FileTextIcon size={14} />
-                            </button>
-                          )}
-                          {onEditSchedule && canEditSchedule && (
-                            <button
-                              type="button"
-                              className={styles.iconBtn}
-                              title="Edit Visit"
-                              onClick={() => onEditSchedule(sch)}
-                            >
-                              <Edit3Icon size={14} />
-                            </button>
-                          )}
-                          {onDeleteSchedule && canCancelSchedule && (
-                            <button
-                              type="button"
-                              className={`${styles.iconBtn} ${styles.iconBtnDanger}`}
-                              title="Delete Schedule"
-                              onClick={() => onDeleteSchedule(sch.id)}
-                            >
-                              <Trash2Icon size={14} />
-                            </button>
-                          )}
+                          <VisitActions
+                            visit={sch}
+                            currentUserId={currentUserId}
+                            canEdit={canEditSchedule}
+                            canCancel={canCancelSchedule}
+                            canManage={canManage}
+                            {...handlers}
+                          />
                           <button
                             type="button"
                             className={styles.expandBtn}
@@ -166,33 +205,23 @@ export function ScheduleTable({
                         <td colSpan={7} className={styles.expandedCell}>
                           <div className={styles.expandedContent}>
                             <div className={styles.mobileActionsBar}>
-                              {onViewSchedule && (
-                                <button
-                                  type="button"
-                                  className={`${styles.iconBtn} ${styles.iconBtnPrimary}`}
-                                  onClick={() => onViewSchedule(sch)}
-                                >
-                                  <FileTextIcon size={14} /> <span>View Details</span>
-                                </button>
-                              )}
-                              {onEditSchedule && canEditSchedule && (
-                                <button
-                                  type="button"
-                                  className={styles.iconBtn}
-                                  onClick={() => onEditSchedule(sch)}
-                                >
-                                  <Edit3Icon size={14} /> <span>Edit Visit</span>
-                                </button>
-                              )}
-                              {onDeleteSchedule && canCancelSchedule && (
-                                <button
-                                  type="button"
-                                  className={`${styles.iconBtn} ${styles.iconBtnDanger}`}
-                                  onClick={() => onDeleteSchedule(sch.id)}
-                                >
-                                  <Trash2Icon size={14} /> <span>Delete</span>
-                                </button>
-                              )}
+                              <VisitActions
+                                visit={sch}
+                                currentUserId={currentUserId}
+                                canEdit={canEditSchedule}
+                                canCancel={canCancelSchedule}
+                                canManage={canManage}
+                                withLabels
+                                {...handlers}
+                              />
+                            </div>
+                            <div className={styles.visitTimeline}>
+                              {sch.assigned_at && <span>Assigned {formatDateTime(sch.assigned_at)}</span>}
+                              {sch.started_at && <span>Started {formatDateTime(sch.started_at)}</span>}
+                              {sch.completed_at && <span>Completed {formatDateTime(sch.completed_at)}</span>}
+                              {visitHistoryLines(sch).map((line, i) => (
+                                <span key={i}>{line}</span>
+                              ))}
                             </div>
                           </div>
                         </td>
@@ -224,14 +253,15 @@ export function ScheduleTable({
             </thead>
             <tbody>
               {sites.map((site) => {
-                const sd = site.site_details || ({} as Partial<SiteDetails>);
+                const profile = site.service_profile;
                 const confirmedQuote = site.quotes.find((q) => q.id === site.confirmed_quote_id);
                 const activeAmcQuote = site.quotes.find((q) => q.type === "AMC" && q.status === "CONFIRMED");
-                const interval = activeAmcQuote?.service_interval || sd.service_interval || "30";
-                const latestReport = site.service_reports?.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())[0];
-                const lastDate = latestReport?.date || sd.last_serviced_date;
-                
-                const nextDate = calculateNextDate(lastDate, interval);
+                // An active AMC sets the interval; otherwise the site profile; otherwise 30 days.
+                const amcDays = intervalToDays(activeAmcQuote?.service_interval);
+                const intervalDays = amcDays ?? profile?.service_interval_days ?? DEFAULT_INTERVAL_DAYS;
+                // The last real visit (a service report) wins over a date typed in by hand.
+                const lastDate = site.last_service_report_date || profile?.last_serviced_date || null;
+                const nextDate = lastDate ? addDaysIso(lastDate, intervalDays) : null;
                 const dueStatus = getDueStatus(nextDate);
                 const isExpanded = expandedId === site.id;
 
@@ -240,46 +270,49 @@ export function ScheduleTable({
                     <tr className={styles.row} onClick={() => toggleExpand(site.id)} style={{ cursor: "pointer" }}>
                       <td className={styles.td}>
                         <div className={styles.customerName}>{site.customer_name}</div>
-                        <div className={styles.muted}>{site.address || site.phone}</div>
+                        <div className={styles.muted}>{site.address || site.site_name}</div>
                       </td>
                       <td className={styles.td}>
                         <div className={styles.ocNumber}>{site.oc_number || "Pending OC"}</div>
-                        <div className={styles.muted}>{confirmedQuote?.title || "Unknown Machine"}</div>
+                        <div className={styles.muted}>{confirmedQuote?.title || "Machine not linked"}</div>
                       </td>
                       <td className={styles.td}>
-                        <div className={styles.serviceType}>{sd.service_type || "Routine Maintenance"}</div>
-                        <div className={styles.muted}>Tech: {sd.technician || "Unassigned"}</div>
+                        <div className={styles.serviceType}>{profile?.service_type || "Routine Maintenance"}</div>
+                        <div className={styles.muted}>Tech: {profile?.technician_display_name || "Unassigned"}</div>
                       </td>
                       <td className={styles.td} onClick={(e) => e.stopPropagation()}>
-                        <input
+                        <ProfileInput
                           type="text"
-                          className={styles.inputSmall}
                           placeholder="e.g. DC/01"
-                          value={sd.dc_number || ""}
-                          onChange={(e) => onUpdateSiteDetails(site.id, "dc_number", e.target.value)}
+                          value={profile?.dc_number ?? ""}
+                          onSave={(v) => onUpdateSiteDetails(site.id, "dc_number", v)}
                         />
                       </td>
                       <td className={styles.td}>
                         <span className={styles.muted}>
-                          {activeAmcQuote ? `${activeAmcQuote.service_interval} (from AMC)` : `${sd.service_interval || "30"} Days`}
+                          {activeAmcQuote && amcDays
+                            ? `${activeAmcQuote.service_interval} (from AMC)`
+                            : `${intervalDays} days`}
                         </span>
                       </td>
                       <td className={styles.td} onClick={(e) => e.stopPropagation()}>
-                        {latestReport ? (
-                          <div className={styles.bold}>{latestReport.date}</div>
+                        {site.last_service_report_date ? (
+                          <div>
+                            <div className={styles.bold}>{formatDate(site.last_service_report_date)}</div>
+                            <div className={styles.muted}>from service report</div>
+                          </div>
                         ) : (
-                          <input
+                          <ProfileInput
                             type="date"
-                            className={styles.inputSmall}
-                            value={sd.last_serviced_date || ""}
-                            onChange={(e) => onUpdateSiteDetails(site.id, "last_serviced_date", e.target.value)}
+                            value={profile?.last_serviced_date ?? ""}
+                            onSave={(v) => onUpdateSiteDetails(site.id, "last_serviced_date", v)}
                           />
                         )}
                       </td>
                       <td className={styles.td}>
                         {nextDate ? (
                           <div>
-                            <div className={styles.nextDate}>{nextDate}</div>
+                            <div className={styles.nextDate}>{formatDate(nextDate)}</div>
                             {dueStatus && (
                               <span className={`${styles.statusBadge} ${styles[dueStatus.status]}`}>
                                 {dueStatus.label}
@@ -327,6 +360,37 @@ export function ScheduleTable({
                                 >
                                   <ClockIcon size={14} /> <span>Schedule Visit</span>
                                 </button>
+                              )}
+                            </div>
+
+                            {/* This site's visits, editable here --- they used to be reachable
+                                only from the other tab, so most people never found Edit/Delete. */}
+                            <div className={styles.siteVisits}>
+                              <div className={styles.siteVisitsTitle}>Scheduled visits</div>
+                              {schedules.filter((v) => v.site_id === site.id).length === 0 ? (
+                                <div className={styles.muted}>No visits scheduled for this site yet.</div>
+                              ) : (
+                                schedules
+                                  .filter((v) => v.site_id === site.id)
+                                  .sort((a, b) => a.scheduled_date.localeCompare(b.scheduled_date))
+                                  .map((v) => (
+                                    <div key={v.id} className={styles.siteVisitRow}>
+                                      <span className={styles.bold}>{formatDate(v.scheduled_date)}</span>
+                                      <span>{v.service_type || "Routine Maintenance"}</span>
+                                      <span className={styles.muted}>{v.technician_display_name || "Unassigned"}</span>
+                                      <VisitStatusBadge visit={v} />
+                                      <span className={styles.actions}>
+                                        <VisitActions
+                                          visit={v}
+                                          currentUserId={currentUserId}
+                                          canEdit={canEditSchedule}
+                                          canCancel={canCancelSchedule}
+                                          canManage={canManage}
+                                          {...handlers}
+                                        />
+                                      </span>
+                                    </div>
+                                  ))
                               )}
                             </div>
                           </div>

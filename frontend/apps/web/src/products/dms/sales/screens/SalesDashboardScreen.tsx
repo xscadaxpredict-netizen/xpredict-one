@@ -13,9 +13,16 @@ import {
   CheckSquareIcon,
 } from "lucide-react";
 import { useEnquiries } from "../hooks/useEnquiries";
+import { useShellContext } from "../../../../shell/context";
 import styles from "./SalesDashboardScreen.module.css";
+import { formatDate } from "../../shared/format/date";
 
 export function SalesDashboardScreen() {
+  // Links are absolute, not relative: this panel is also rendered inside the
+  // Welcome Hub's consolidated dashboard, where a relative link would resolve
+  // against /dms instead of this module.
+  const { membership } = useShellContext();
+  const modulePath = `/${membership.org_slug}/dms/sales`;
   const navigate = useNavigate();
   const { data: enquiries = [], isPending, isError, error } = useEnquiries();
 
@@ -140,13 +147,13 @@ export function SalesDashboardScreen() {
           <p>Real-time analytics for enquiries, quotations, conversions, and customer follow-ups.</p>
         </div>
         <div className={styles.actionButtons}>
-          <Link to="../enquiries" className={styles.secondaryBtn}>
+          <Link to={`${modulePath}/enquiries`} className={styles.secondaryBtn}>
             <TagIcon size={15} /> All Enquiries
           </Link>
-          <Link to="../orders" className={styles.secondaryBtn}>
+          <Link to={`${modulePath}/orders`} className={styles.secondaryBtn}>
             <CheckSquareIcon size={15} /> Confirmed Orders
           </Link>
-          <button onClick={() => navigate("../enquiries")} className={styles.primaryBtn}>
+          <button onClick={() => void navigate(`${modulePath}/enquiries`)} className={styles.primaryBtn}>
             <PlusIcon size={15} /> New Enquiry
           </button>
         </div>
@@ -230,7 +237,7 @@ export function SalesDashboardScreen() {
               <AlertCircleIcon size={18} color="var(--color-attention)" />
               Follow-ups Due & Overdue
             </div>
-            <Link to="../enquiries" className={styles.panelAction}>
+            <Link to={`${modulePath}/enquiries`} className={styles.panelAction}>
               View All <ArrowRightIcon size={12} style={{ display: "inline" }} />
             </Link>
           </div>
@@ -257,7 +264,7 @@ export function SalesDashboardScreen() {
                   <div>
                     <span className={`${styles.followupDateBadge} ${fu.isOverdue ? styles.followupDateBadgeOverdue : ""}`}>
                       {fu.isOverdue ? "Overdue: " : "Due: "}
-                      {fu.date}
+                      {formatDate(fu.date)}
                     </span>
                   </div>
                 </div>
@@ -274,7 +281,7 @@ export function SalesDashboardScreen() {
               <FileTextIcon size={18} color="var(--color-primary)" />
               Quotation Pipeline & Status
             </div>
-            <Link to="../quotations" className={styles.panelAction}>
+            <Link to={`${modulePath}/quotations`} className={styles.panelAction}>
               All Quotations <ArrowRightIcon size={12} style={{ display: "inline" }} />
             </Link>
           </div>
@@ -322,7 +329,7 @@ export function SalesDashboardScreen() {
             <ClockIcon size={18} color="var(--color-text-2)" />
             Recent Enquiries
           </div>
-          <Link to="../enquiries" className={styles.panelAction}>
+          <Link to={`${modulePath}/enquiries`} className={styles.panelAction}>
             View All Enquiries <ArrowRightIcon size={12} style={{ display: "inline" }} />
           </Link>
         </div>

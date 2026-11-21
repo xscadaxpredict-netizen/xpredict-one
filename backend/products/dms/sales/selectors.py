@@ -19,6 +19,7 @@ from django.db.models import Prefetch, Q
 
 from .models import (
     BankAccount,
+    Customer,
     Enquiry,
     Followup,
     ProductCatalog,
@@ -247,3 +248,11 @@ def list_agent_commissions(
         )
 
     return results
+
+
+def list_customers(*, search: str = "") -> QuerySet[Customer]:
+    """Dealer-scoped list of customers."""
+    qs = Customer.objects.all().order_by("name")
+    if search:
+        qs = qs.filter(name__icontains=search)
+    return qs

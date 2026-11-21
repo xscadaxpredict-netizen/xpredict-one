@@ -51,6 +51,12 @@ class Customer(UnitScopedModel):
             models.Index(fields=["unit_id", "name"]),
             models.Index(fields=["unit_id", "-created_at"]),
         ]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["unit_id", "name"],
+                name="uq_customer_unit_name",
+            ),
+        ]
 
     def __str__(self) -> str:
         return self.name
@@ -551,10 +557,10 @@ class ConfirmedSite(UnitScopedModel):
     confirmed_quote_id.
     """
 
-    enquiry = models.ForeignKey(
+    enquiry = models.OneToOneField(
         Enquiry,
         on_delete=models.PROTECT,
-        related_name="confirmed_sites",
+        related_name="confirmed_site",
     )
     customer = models.ForeignKey(
         Customer,

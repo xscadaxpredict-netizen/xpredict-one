@@ -38,6 +38,39 @@ export function useSchedules(siteId?: string) {
   });
 }
 
+/** Who can be assigned to this site's visits. Off until a site is chosen. */
+export function useSitePeople(siteId?: string) {
+  return useOrgQuery({
+    key: ["site-services", "site-people", siteId || "none"],
+    queryFn: (orgSlug) => api.listSitePeople(orgSlug, siteId as string),
+    enabled: Boolean(siteId),
+  });
+}
+
+export function useRescheduleVisit() {
+  const queryClient = useQueryClient();
+  return useOrgMutation({
+    mutationFn: (
+      orgSlug: string,
+      { scheduleId, payload }: { scheduleId: string; payload: { scheduled_date: string; technician_user_id?: string | null } },
+    ) => api.rescheduleVisit(orgSlug, scheduleId, payload),
+    onSuccess: () => {
+      invalidateSiteServicesQueries(queryClient);
+    },
+  });
+}
+
+export function useCancelVisit() {
+  const queryClient = useQueryClient();
+  return useOrgMutation({
+    mutationFn: (orgSlug: string, { scheduleId, reason }: { scheduleId: string; reason: string }) =>
+      api.cancelVisit(orgSlug, scheduleId, reason),
+    onSuccess: () => {
+      invalidateSiteServicesQueries(queryClient);
+    },
+  });
+}
+
 export function useCreateSchedule() {
   const queryClient = useQueryClient();
   return useOrgMutation({
@@ -63,11 +96,18 @@ export function useUpdateSchedule() {
 export function useDeleteSchedule() {
   const queryClient = useQueryClient();
   return useOrgMutation({
-    mutationFn: (orgSlug: string, scheduleId: string) =>
-      api.deleteSchedule(orgSlug, scheduleId),
+    mutationFn: (orgSlug: string, { scheduleId, confirm }: { scheduleId: string; confirm?: boolean }) =>
+      api.deleteSchedule(orgSlug, scheduleId, confirm),
     onSuccess: () => {
       invalidateSiteServicesQueries(queryClient);
     },
+  });
+}
+
+/** Fetches what deleting a visit would affect, for the confirmation dialog. Reads only. */
+export function useScheduleDependencies() {
+  return useOrgMutation({
+    mutationFn: (orgSlug: string, scheduleId: string) => api.getScheduleDependencies(orgSlug, scheduleId),
   });
 }
 
@@ -178,6 +218,19 @@ export function useUpdateComplaint() {
       orgSlug: string,
       { complaintId, payload }: { complaintId: string; payload: FormData | Record<string, any> }
     ) => api.updateComplaint(orgSlug, complaintId, payload),
+    onSuccess: () => {
+      invalidateSiteServicesQueries(queryClient);
+    },
+  });
+}
+
+export function useSetComplaintStatus() {
+  const queryClient = useQueryClient();
+  return useOrgMutation({
+    mutationFn: (
+      orgSlug: string,
+      { complaintId, status, notes }: { complaintId: string; status: "IN_PROGRESS" | "RESOLVED" | "CLOSED" | "OPEN"; notes?: string },
+    ) => api.setComplaintStatus(orgSlug, complaintId, status, notes),
     onSuccess: () => {
       invalidateSiteServicesQueries(queryClient);
     },

@@ -152,7 +152,9 @@ class DealerDetailView(OrgScopedAPIView):
         would confirm that a well-formed id is the thing being looked up.
         """
         try:
-            return BusinessUnit.objects.get(id=dealer_id, organization=self.organization)
+            return BusinessUnit.objects.get(
+                id=dealer_id, organization=self.organization, is_head_office__isnull=True
+            )
         except (BusinessUnit.DoesNotExist, ValidationError, ValueError):
             raise not_found("Dealer") from None
 
@@ -217,7 +219,9 @@ class DealerStatusView(OrgScopedAPIView):
     def _get_dealer(self, dealer_id: str) -> BusinessUnit:
         """The same filter-by-organization isolation as `DealerDetailView`."""
         try:
-            return BusinessUnit.objects.get(id=dealer_id, organization=self.organization)
+            return BusinessUnit.objects.get(
+                id=dealer_id, organization=self.organization, is_head_office__isnull=True
+            )
         except (BusinessUnit.DoesNotExist, ValidationError, ValueError):
             raise not_found("Dealer") from None
 

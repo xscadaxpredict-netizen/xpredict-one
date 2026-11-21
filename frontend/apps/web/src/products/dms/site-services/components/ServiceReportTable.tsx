@@ -1,5 +1,5 @@
 import { Fragment, useState } from "react";
-import { ClockIcon, MapPinIcon, CalendarIcon, UserIcon, CheckIcon, EyeIcon, CheckCircleIcon, AlertCircleIcon, Edit3Icon, Trash2Icon, FileTextIcon, LinkIcon, ChevronDownIcon, ChevronUpIcon } from "lucide-react";
+import { ClockIcon, CalendarIcon, UserIcon, CheckIcon, EyeIcon, CheckCircleIcon, AlertCircleIcon, Edit3Icon, Trash2Icon, FileTextIcon, LinkIcon, ChevronDownIcon, ChevronUpIcon } from "lucide-react";
 import { FileAttachmentCell } from "./FileAttachmentCell";
 import { useDmsPermissions } from "../../shared/hooks/useDmsPermissions";
 import styles from "./ServiceReportTable.module.css";
@@ -36,7 +36,7 @@ export function ServiceReportTable({ reports, onView, onEdit, onDelete, onShare 
         <thead>
           <tr>
             <th className={styles.th}>Report ID & Time</th>
-            <th className={styles.th}>Site & Zone</th>
+            <th className={styles.th}>Site</th>
             <th className={styles.th}>Service Date & Tech</th>
             <th className={styles.th}>Remarks & Attachments</th>
             <th className={styles.th}>Client Sign & Approval</th>
@@ -63,11 +63,6 @@ export function ServiceReportTable({ reports, onView, onEdit, onDelete, onShare 
                   <td className={styles.td}>
                     <div className={styles.bold}>{report.siteName}</div>
                     <div className={styles.muted} style={{ fontSize: "0.75rem" }}>OC: {report.ocNumber || "N/A"}</div>
-                    {report.zone && (
-                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.25rem', marginTop: '0.25rem', fontSize: '0.7rem', fontWeight: 600, padding: '0.1rem 0.45rem', borderRadius: '999px', background: '#EFF6FF', color: '#2563EB', border: '1px solid #DBEAFE' }}>
-                        <MapPinIcon size={10} /> {report.zone}
-                      </span>
-                    )}
                   </td>
                   <td className={styles.td}>
                     <div className={styles.bold} style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>

@@ -115,6 +115,8 @@ export const APP_CATALOG: AppDefinition[] = [
       {
         label: "Overview",
         items: [
+          // The one dashboard: each module's panel, shown only to people whose role
+          // holds that module (the same rule as the links below), filterable by name.
           { label: "Welcome Hub", path: "", icon: "grid", module: null },
         ],
       },
@@ -127,7 +129,6 @@ export const APP_CATALOG: AppDefinition[] = [
       {
         label: "Sales",
         items: [
-          { label: "Dashboard", path: "sales/dashboard", icon: "grid", module: "sales" },
           { label: "Enquiries", path: "sales/enquiries", icon: "users", module: "sales" },
           { label: "Confirmed orders", path: "sales/orders", icon: "clipboard-check", module: "sales" },
           { label: "Quotations", path: "sales/quotations", icon: "file-text", module: "sales" },
@@ -138,7 +139,6 @@ export const APP_CATALOG: AppDefinition[] = [
       {
         label: "Site Services",
         items: [
-          { label: "Dashboard", path: "site-services/dashboard", icon: "grid", module: "service" },
           { label: "AMC", path: "site-services/amc", icon: "shield-check", module: "service" },
           { label: "Scheduled Services", path: "site-services/scheduling", icon: "calendar", module: "service" },
           { label: "Service Reports", path: "site-services/reports", icon: "clipboard-check", module: "service" },
@@ -160,7 +160,6 @@ export const APP_CATALOG: AppDefinition[] = [
       {
         label: "E-Commerce",
         items: [
-          { label: "Dashboard", path: "ecommerce/dashboard", icon: "grid", module: "ecommerce" },
           { label: "Store Catalog", path: "ecommerce/catalog", icon: "store", module: "ecommerce" },
           { label: "My Orders", path: "ecommerce/orders", icon: "package", module: "ecommerce" },
         ],

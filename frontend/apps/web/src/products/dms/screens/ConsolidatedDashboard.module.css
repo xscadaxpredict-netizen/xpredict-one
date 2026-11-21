@@ -1,0 +1,56 @@
+.section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4, 16px);
+}
+
+.header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3, 12px);
+}
+
+.title {
+  margin: 0;
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: var(--color-text);
+}
+
+.filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.chip {
+  padding: 6px 14px;
+  border: 1px solid var(--color-border);
+  border-radius: 999px;
+  background: var(--color-surface);
+  color: var(--color-text-2);
+  font-size: 0.875rem;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.chip:hover {
+  border-color: var(--color-border-strong);
+  color: var(--color-text);
+}
+
+.chipActive,
+.chipActive:hover {
+  border-color: var(--color-primary);
+  background: var(--color-primary-050);
+  color: var(--color-primary-700);
+  font-weight: 600;
+}
+
+/* Separates the stacked panels when "All" is selected. */
+.panel + .panel {
+  padding-top: var(--space-5, 20px);
+  border-top: 1px solid var(--color-border);
+}

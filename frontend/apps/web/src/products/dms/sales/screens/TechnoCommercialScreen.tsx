@@ -16,6 +16,7 @@ import {
 } from "../hooks/useTechnoCommercial";
 import type { TechnoCommercialDocument } from "../api/technoCommercial";
 import { TechnoCommercialDialog } from "../components/TechnoCommercialDialog";
+import { DocumentViewerDialog } from "../components/DocumentViewerDialog";
 import { useDmsPermissions } from "../../shared/hooks/useDmsPermissions";
 import styles from "./TechnoCommercialScreen.module.css";
 
@@ -25,6 +26,16 @@ function SearchIcon() {
     <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
       <circle cx="11" cy="11" r="8" />
       <line x1="21" y1="21" x2="16.65" y2="16.65" />
+    </svg>
+  );
+}
+
+function DownloadIcon() {
+  return (
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+      <polyline points="7 10 12 15 17 10" />
+      <line x1="12" y1="15" x2="12" y2="3" />
     </svg>
   );
 }
@@ -77,6 +88,7 @@ export function TechnoCommercialScreen() {
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingDoc, setEditingDoc] = useState<TechnoCommercialDocument | null>(null);
+  const [viewingDoc, setViewingDoc] = useState<TechnoCommercialDocument | null>(null);
   const [deleteConfirmState, setDeleteConfirmState] = useState<{
     id: string;
     title: string;
@@ -262,16 +274,25 @@ export function TechnoCommercialScreen() {
                       <td className={`${styles.td} ${styles.tdRight}`}>
                         <div className={styles.actions}>
                           {doc.file_url && (
-                            <a
-                              href={doc.file_url}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className={styles.iconBtn}
-                              title="View Document"
-                              onClick={(e) => e.stopPropagation()}
-                            >
-                              <EyeIcon />
-                            </a>
+                            <>
+                              <button
+                                type="button"
+                                className={styles.iconBtn}
+                                title="View Document"
+                                onClick={(e) => { e.stopPropagation(); setViewingDoc(doc); }}
+                              >
+                                <EyeIcon />
+                              </button>
+                              <a
+                                href={doc.file_url}
+                                download={doc.file_name || true}
+                                className={styles.iconBtn}
+                                title="Download Document"
+                                onClick={(e) => e.stopPropagation()}
+                              >
+                                <DownloadIcon />
+                              </a>
+                            </>
                           )}
 
                           {canEditQuote && (
@@ -323,16 +344,25 @@ export function TechnoCommercialScreen() {
                           <div className={styles.expandedContent}>
                             <div className={styles.mobileActionsBar}>
                               {doc.file_url && (
-                                <a
-                                  href={doc.file_url}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  className={styles.iconBtn}
-                                  title="View Document"
-                                  onClick={(e) => e.stopPropagation()}
-                                >
-                                  <EyeIcon />
-                                </a>
+                                <>
+                                  <button
+                                    type="button"
+                                    className={styles.iconBtn}
+                                    title="View Document"
+                                    onClick={(e) => { e.stopPropagation(); setViewingDoc(doc); }}
+                                  >
+                                    <EyeIcon />
+                                  </button>
+                                  <a
+                                    href={doc.file_url}
+                                    download={doc.file_name || true}
+                                    className={styles.iconBtn}
+                                    title="Download Document"
+                                    onClick={(e) => e.stopPropagation()}
+                                  >
+                                    <DownloadIcon />
+                                  </a>
+                                </>
                               )}
 
                               {canEditQuote && (
@@ -415,6 +445,15 @@ export function TechnoCommercialScreen() {
       />
 
       {/* Delete Confirmation Modal */}
+      {viewingDoc && (
+        <DocumentViewerDialog
+          title={viewingDoc.title}
+          fileName={viewingDoc.file_name}
+          fileUrl={viewingDoc.file_url}
+          onClose={() => setViewingDoc(null)}
+        />
+      )}
+
       <ConfirmDialog
         open={deleteConfirmState !== null}
         title="Delete Document"

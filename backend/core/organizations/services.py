@@ -178,6 +178,8 @@ def sign_up(
         created_by_user_id=user.id,
     )
 
+    head_office_for(organization)
+
     for app in subscribed_apps:
         _subscribe_and_grant(organization, membership, app, actor_id=user.id)
 
@@ -516,6 +518,28 @@ def reopen_dealer(*, dealer: BusinessUnit) -> BusinessUnit:
     return dealer
 
 
+def head_office_for(organization: Organization) -> BusinessUnit:
+    """
+    The organisation's own working unit, created if it is missing.
+
+    Named after the organisation, so a quote it raises carries its name. If a
+    dealership already holds that name the head office is suffixed rather than
+    refused -- the head office is not something anybody chose a name for.
+    """
+    existing = BusinessUnit.objects.filter(organization=organization, is_head_office=True).first()
+    if existing:
+        return existing
+    name = organization.name.strip()[:200]
+    if BusinessUnit.objects.filter(organization=organization, name=name).exists():
+        name = f"{name[:186]} (Head office)"
+    return BusinessUnit.objects.create(
+        organization=organization,
+        name=name,
+        code=None,
+        is_head_office=True,
+    )
+
+
 def _assert_dealer_name_free(
     organization: Organization, name: str, excluding: uuid.UUID | None = None
 ) -> None:
@@ -654,7 +678,11 @@ def _resolve_unit(organization: Organization, unit_id: uuid.UUID | None) -> Busi
     if unit_id is None:
         return None
     try:
-        return BusinessUnit.objects.get(id=unit_id, organization=organization)
+        # The head office is not a dealership a person can be confined to:
+        # organisation staff are organisation-level members (unit NULL).
+        return BusinessUnit.objects.get(
+            id=unit_id, organization=organization, is_head_office__isnull=True
+        )
     except (BusinessUnit.DoesNotExist, DjangoValidationError, ValueError):
         # Another organization's dealership is not bad input to report back, it
         # is a dealership this caller cannot see.

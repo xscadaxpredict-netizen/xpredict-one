@@ -16,9 +16,16 @@ import {
   useServiceReports,
   useComplaints,
 } from "../hooks/useSiteServices";
+import { useShellContext } from "../../../../shell/context";
 import styles from "./SiteServicesDashboardScreen.module.css";
+import { formatDate } from "../../shared/format/date";
 
 export function SiteServicesDashboardScreen() {
+  // Links are absolute, not relative: this panel is also rendered inside the
+  // Welcome Hub's consolidated dashboard, where a relative link would resolve
+  // against /dms instead of this module.
+  const { membership } = useShellContext();
+  const modulePath = `/${membership.org_slug}/dms/site-services`;
   const navigate = useNavigate();
   const { data: sites = [], isPending: sitesLoading } = useSites();
   const { data: schedules = [], isPending: schedulesLoading } = useSchedules();
@@ -101,13 +108,13 @@ export function SiteServicesDashboardScreen() {
           <p>Real-time machine health, AMC coverage, technician scheduling, and customer issue tracking.</p>
         </div>
         <div className={styles.actionButtons}>
-          <Link to="../scheduling" className={styles.secondaryBtn}>
+          <Link to={`${modulePath}/scheduling`} className={styles.secondaryBtn}>
             <CalendarIcon size={15} /> Scheduled Services
           </Link>
-          <Link to="../complaints" className={styles.secondaryBtn}>
+          <Link to={`${modulePath}/complaints`} className={styles.secondaryBtn}>
             <AlertTriangleIcon size={15} /> Complaint Box
           </Link>
-          <button onClick={() => navigate("../scheduling")} className={styles.primaryBtn}>
+          <button onClick={() => void navigate(`${modulePath}/scheduling`)} className={styles.primaryBtn}>
             <PlusIcon size={15} /> Schedule Visit
           </button>
         </div>
@@ -208,7 +215,7 @@ export function SiteServicesDashboardScreen() {
               <CalendarIcon size={18} color="var(--color-primary)" />
               Upcoming Scheduled Visits
             </div>
-            <Link to="../scheduling" className={styles.panelAction}>
+            <Link to={`${modulePath}/scheduling`} className={styles.panelAction}>
               View Calendar <ArrowRightIcon size={12} style={{ display: "inline" }} />
             </Link>
           </div>
@@ -232,7 +239,7 @@ export function SiteServicesDashboardScreen() {
                   </div>
                   <div>
                     <span className={`${styles.kpiBadge} ${styles.badgeInfo}`}>
-                      {sc.scheduled_date} {sc.scheduled_time ? `• ${sc.scheduled_time}` : ""}
+                      {formatDate(sc.scheduled_date)} {sc.scheduled_time ? `• ${sc.scheduled_time}` : ""}
                     </span>
                   </div>
                 </div>
@@ -248,7 +255,7 @@ export function SiteServicesDashboardScreen() {
               <AlertTriangleIcon size={18} color="var(--color-danger)" />
               Active Customer Complaints
             </div>
-            <Link to="../complaints" className={styles.panelAction}>
+            <Link to={`${modulePath}/complaints`} className={styles.panelAction}>
               Complaint Box <ArrowRightIcon size={12} style={{ display: "inline" }} />
             </Link>
           </div>
@@ -305,7 +312,7 @@ export function SiteServicesDashboardScreen() {
             <ClockIcon size={18} color="var(--color-text-2)" />
             Recent Service Reports
           </div>
-          <Link to="../reports" className={styles.panelAction}>
+          <Link to={`${modulePath}/reports`} className={styles.panelAction}>
             View All Reports <ArrowRightIcon size={12} style={{ display: "inline" }} />
           </Link>
         </div>
@@ -332,7 +339,7 @@ export function SiteServicesDashboardScreen() {
                     <td>{siteNameMap[r.site_id] || "—"}</td>
                     <td>{r.technician_display_name || r.service_person_name || "—"}</td>
                     <td style={{ color: "var(--color-text-3)", fontSize: "var(--text-xs)" }}>
-                      {r.service_date}
+                      {formatDate(r.service_date)}
                     </td>
                     <td>
                       <span

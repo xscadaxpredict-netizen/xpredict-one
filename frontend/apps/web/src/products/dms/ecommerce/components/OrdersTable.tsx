@@ -4,6 +4,7 @@ import type { EcommerceOrder } from "../api/types";
 import { useDmsPermissions } from "../../shared/hooks/useDmsPermissions";
 import { OrderStatusBadge } from "./OrderStatusBadge";
 import styles from "./OrdersTable.module.css";
+import { formatDate } from "../../shared/format/date";
 
 interface Props {
   orders: EcommerceOrder[];
@@ -50,7 +51,7 @@ export function OrdersTable({ orders, onView, onApprove, onReject, onDeliver, on
                       <div style={{ fontWeight: 600 }}>{order.site_name}</div>
                       <div className={styles.muted}>{order.oc_number}</div>
                     </td>
-                    <td className={styles.td}>{new Date(order.date).toLocaleDateString()}</td>
+                    <td className={styles.td}>{formatDate(order.date)}</td>
                     <td className={styles.td}><span className={styles.accent}>₹{order.total_amount ? (order.total_amount * 1.18).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : "0.00"}</span></td>
                     <td className={styles.td}>
                       <OrderStatusBadge status={order.status} />

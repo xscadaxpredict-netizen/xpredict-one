@@ -267,7 +267,10 @@ class TestCreating:
         # Annotated, so a create that returned the raw row would be missing it.
         assert response.json()["user_count"] == 0
         assert response.json()["status"] == UnitStatus.ACTIVE
-        assert BusinessUnit.objects.filter(organization=result.organization).count() == 1
+        # The head office is a BusinessUnit too (C-local-4) but not a dealership.
+        assert BusinessUnit.objects.filter(
+            organization=result.organization, is_head_office__isnull=True
+        ).count() == 1
 
     def test_the_code_is_optional_and_several_may_go_without_one(self, client):
         """

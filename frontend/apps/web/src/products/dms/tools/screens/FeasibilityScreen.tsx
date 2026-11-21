@@ -183,7 +183,7 @@ export function FeasibilityScreen() {
   const [customContent, setCustomContent] = useState<Record<string, string>>({});
 
   // Form Parameters (backed by DB Master Template)
-  const [siteName, setSiteName] = useState("Spraying Systems India Pvt Ltd");
+  const [siteName, setSiteName] = useState("Xpredict Automation Solutions Pvt Ltd");
   const [siteLocation, setSiteLocation] = useState("Peenya Industrial Area, Bengaluru");
   const [surveyDate, setSurveyDate] = useState("2023-06-02");
   const [proposedModel, setProposedModel] = useState("HIDREC EZ 1000");
@@ -265,7 +265,7 @@ export function FeasibilityScreen() {
       setReportId(null);
       setSelectedSiteId("CUSTOM");
       const def = feasibilityTemplate?.default_parameters || {};
-      setSiteName(def.site_name || "Spraying Systems India Pvt Ltd");
+      setSiteName(def.site_name || "Xpredict Automation Solutions Pvt Ltd");
       setSiteLocation(def.site_location || "Peenya Industrial Area, Bengaluru");
       setSurveyDate(def.survey_date || "2023-06-02");
       setProposedModel(def.proposed_model || "HIDREC EZ 1000");
