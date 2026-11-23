@@ -1441,9 +1441,14 @@ class PanelRoleData:
     built_in: bool
     users: int
     modified_by: str | None
+    # Whether THE VIEWER may give it in Assign Admin (C89): it grants nothing
+    # they do not hold. Never the owner's row -- ownership is not given.
+    grantable: bool = False
 
 
-def admin_panel_roles(organization: Organization) -> list[PanelRoleData]:
+def admin_panel_roles(
+    organization: Organization, viewer: Membership | None = None
+) -> list[PanelRoleData]:
     """
     The Admin panel's roles, as its Roles tab lists them (the owner,
     2026-11-18): Organization Owner, Organization Admin, then the
@@ -1469,7 +1474,10 @@ def admin_panel_roles(organization: Organization) -> list[PanelRoleData]:
     """
     owners = _owners(organization).count()
     admin_members = _admin_members(organization).count()
-    org_admin = Role.objects.get(app_id=AppCode.ADMIN, code=ORGANISATION_ADMIN_ROLE)
+    org_admin = Role.objects.prefetch_related("permissions").get(
+        app_id=AppCode.ADMIN, code=ORGANISATION_ADMIN_ROLE
+    )
+    may_give = _may_give(viewer)
 
     return [
         PanelRoleData(
@@ -1487,21 +1495,37 @@ def admin_panel_roles(organization: Organization) -> list[PanelRoleData]:
             built_in=True,
             users=admin_members,
             modified_by=None,
+            grantable=may_give(org_admin),
         ),
-        *_custom_panel_roles(organization),
+        *_custom_panel_roles(organization, may_give),
     ]
 
 
-def _custom_panel_roles(organization: Organization) -> list[PanelRoleData]:
+def _may_give(viewer: Membership | None):
+    """
+    Whether `viewer` may give a role in Assign Admin: never beyond their own
+    access (the owner chose (b), 2026-11-23) -- the owner may give any. The
+    same rule `assign_admin_role()` enforces; this only greys the picker.
+    Prefetch the roles' `permissions`.
+    """
+    if viewer is None:
+        return lambda role: False
+    if viewer.is_owner:
+        return lambda role: True
+    held = permissions_for(viewer)
+    return lambda role: {p.code for p in role.permissions.all()} <= held
+
+
+def _custom_panel_roles(organization: Organization, may_give) -> list[PanelRoleData]:
     """
     The organisation's OWN Admin panel roles (the role builder, C72 piece 5),
     after the built-ins, oldest first. Users counts the members holding one;
     Modified By is whoever last saved it.
     """
     roles = list(
-        Role.objects.filter(organization_id=organization.id, app_id=AppCode.ADMIN).order_by(
-            "created_at", "name"
-        )
+        Role.objects.filter(organization_id=organization.id, app_id=AppCode.ADMIN)
+        .prefetch_related("permissions")
+        .order_by("created_at", "name")
     )
     if not roles:
         return []
@@ -1523,6 +1547,7 @@ def _custom_panel_roles(organization: Organization) -> list[PanelRoleData]:
             built_in=False,
             users=holders.get(role.id, 0),
             modified_by=editors.get(role.updated_by_user_id or role.created_by_user_id),
+            grantable=may_give(role),
         )
         for role in roles
     ]

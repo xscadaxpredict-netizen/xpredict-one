@@ -162,6 +162,11 @@ const FILTER_WORD: Record<Exclude<AdminFilter, "all">, string> = {
  */
 function AdminsTab({ basePath, personId }: { basePath: string; personId: string | undefined }) {
   const navigate = useNavigate();
+  const access = useAccess();
+  const mayAssign =
+    access.can("admin.admin.assign_admin") &&
+    access.can("admin.user.view") &&
+    access.can("admin.role.view");
   const { data: everyAdmin, isPending, isError, error, refetch } = useAdmins();
   const query = usePageSearch((state) => state.query);
   const [filter, setFilter] = useState<AdminFilter>("all");
@@ -194,15 +199,19 @@ function AdminsTab({ basePath, personId }: { basePath: string; personId: string 
         )}
         <span className={styles.spacer} />
         {/*
-          DRAWN ONLY (the owner, 2026-11-18): greyed out, no behaviour yet.
-          `aria-disabled` rather than `disabled`, so a keyboard still reaches it
-          and "Coming later" can be read.
+          ASSIGN ADMIN (C89): its own page. For whoever may assign admins AND
+          read what the page picks from -- the Users list and the roles.
+          Without them it stays greyed: `aria-disabled` rather than `disabled`,
+          so a keyboard still reaches it and the reason can be read.
         */}
         <button
           type="button"
           className={styles.primaryButton}
-          aria-disabled="true"
-          title="Coming later"
+          aria-disabled={mayAssign ? undefined : "true"}
+          title={mayAssign ? undefined : "You cannot assign admins"}
+          onClick={() => {
+            if (mayAssign) void navigate(`${basePath}/assign-admin`);
+          }}
         >
           <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true" focusable="false">
             <path

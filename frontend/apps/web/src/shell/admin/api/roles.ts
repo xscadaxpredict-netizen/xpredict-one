@@ -122,6 +122,11 @@ export interface PanelRole {
   users: number;
   /** Who last changed it -- always null for a built-in role. */
   modified_by: string | null;
+  /**
+   * Whether THE VIEWER may give it in Assign Admin (C89): it grants nothing
+   * they do not hold. Never the owner's row. Greys the picker only.
+   */
+  grantable: boolean;
 }
 
 export async function fetchPanelRoles(orgSlug: string): Promise<PanelRole[]> {

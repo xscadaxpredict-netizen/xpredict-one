@@ -143,6 +143,8 @@ class TestCreating:
             "built_in": False,
             "users": 0,
             "modified_by": "owner@acme.test",
+            # The owner may give any role (C89).
+            "grantable": True,
         }
         role = Role.objects.get(code=response.json()["code"])
         assert role.organization_id == result.organization.id

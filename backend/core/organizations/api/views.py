@@ -25,6 +25,7 @@ from core.organizations.api.serializers import (
     ApplicationMemberSerializer,
     ApplicationSerializer,
     AppRoleSerializer,
+    AssignAdminSerializer,
     AssignAppsSerializer,
     AssignUsersSerializer,
     DealerCreateSerializer,
@@ -56,6 +57,7 @@ from core.organizations.selectors import (
     territories_for,
 )
 from core.organizations.services import (
+    assign_admin_role,
     assign_apps,
     assign_users_to_app,
     change_app_role,
@@ -707,8 +709,29 @@ class AdminsView(OrgScopedAPIView):
     """
 
     required_permissions: ClassVar[list[str]] = ["admin.admin.view"]
+    # A VIEW THAT READS AND WRITES NAMES EVERY WRITE (C81). POST is Assign
+    # Admin: its own act, and the Users list's view, since the page picks
+    # people from it (as Assign users does, C87).
+    method_permissions: ClassVar[dict[str, list[str]]] = {
+        "POST": ["admin.admin.assign_admin", "admin.user.view"],
+    }
 
     def get(self, request: Request, org_slug: str) -> Response:
+        return Response(AdminSerializer(admins_for(self.organization), many=True).data)
+
+    def post(self, request: Request, org_slug: str) -> Response:
+        """
+        Assign Admin (C89): one Admin panel role for several people, all or
+        nothing. Answers with the Admins tab as it now stands.
+        """
+        payload = AssignAdminSerializer(data=request.data)
+        payload.is_valid(raise_exception=True)
+        assign_admin_role(
+            actor=self.membership,
+            organization=self.organization,
+            person_ids=payload.validated_data["users"],
+            role_code=payload.validated_data["role"],
+        )
         return Response(AdminSerializer(admins_for(self.organization), many=True).data)
 
 
@@ -730,7 +753,7 @@ class PanelRolesView(OrgScopedAPIView):
     method_permissions: ClassVar[dict[str, list[str]]] = {"POST": ["admin.role.create"]}
 
     def get(self, request: Request, org_slug: str) -> Response:
-        rows = admin_panel_roles(self.organization)
+        rows = admin_panel_roles(self.organization, self.membership)
         return Response(PanelRoleSerializer(rows, many=True).data)
 
     def post(self, request: Request, org_slug: str) -> Response:
@@ -745,7 +768,8 @@ class PanelRolesView(OrgScopedAPIView):
         )
 
         # The new row as the Roles tab shows it.
-        row = next(r for r in admin_panel_roles(self.organization) if r.code == role.code)
+        rows = admin_panel_roles(self.organization, self.membership)
+        row = next(r for r in rows if r.code == role.code)
         return Response(PanelRoleSerializer(row).data, status=status.HTTP_201_CREATED)
 
 
@@ -779,7 +803,8 @@ class PanelRoleDetailView(OrgScopedAPIView):
         )
 
         # The row as the Roles tab shows it, with its new Modified By.
-        row = next(r for r in admin_panel_roles(self.organization) if r.code == role.code)
+        rows = admin_panel_roles(self.organization, self.membership)
+        row = next(r for r in rows if r.code == role.code)
         return Response(PanelRoleSerializer(row).data)
 
     def delete(self, request: Request, org_slug: str, role_code: str) -> Response:

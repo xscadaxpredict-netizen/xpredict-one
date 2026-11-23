@@ -102,6 +102,7 @@ const ROLES: PanelRole[] = [
     built_in: true,
     users: 1,
     modified_by: null,
+    grantable: false,
   },
   {
     code: "admin.org_admin",
@@ -110,6 +111,7 @@ const ROLES: PanelRole[] = [
     built_in: true,
     users: 1,
     modified_by: null,
+    grantable: true,
   },
 ];
 

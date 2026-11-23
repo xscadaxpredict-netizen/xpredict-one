@@ -36,7 +36,10 @@ from core.organizations.exceptions import (
     ActivationCodeExpiredError,
     ActivationCodeInvalidError,
     ActivationCodeSpentError,
+    AdminAtDealershipError,
     AdministrationNotGrantableError,
+    AdminNotJoinedError,
+    AlreadyAnAdminError,
     AppAlreadyHeldError,
     AppNotSubscribedError,
     AppNotYetInUseError,
@@ -87,6 +90,7 @@ from core.organizations.models import (
 from core.organizations.selectors import (
     GRANTS_PREFETCH,
     ORGANISATION_ADMIN_ROLE,
+    admin_panel_role,
     can_manage,
     can_manage_person,
     permissions_for,
@@ -637,7 +641,13 @@ def grant_app_access(
     grant, _ = MembershipAppAccess.objects.get_or_create(
         membership=membership, app_id=app, defaults={"created_by_user_id": actor_id}
     )
-    MembershipAppRole.objects.update_or_create(app_access=grant, defaults={"role": role})
+    # WHO GAVE IT (Q71): the role row names its maker on creation and whoever
+    # last changed it, as the grant and its places already did.
+    MembershipAppRole.objects.update_or_create(
+        app_access=grant,
+        defaults={"role": role, "updated_by_user_id": actor_id},
+        create_defaults={"role": role, "created_by_user_id": actor_id},
+    )
     grant.territories.all().delete()
     for territory in {t.pk: t for t in territories}.values():
         MembershipAppTerritory.objects.create(
@@ -2145,3 +2155,95 @@ def _checked_admin_role(
         raise RoleNameTakenError
 
     return name, chosen
+
+
+# ---------------------------------------------------------------------------
+# ASSIGN ADMIN (the owner, 2026-11-23, from Zoho's): Admins and Roles -> Admins
+# -> Assign Admin, or a custom role's panel -> Assign Users. Several people, one
+# Admin panel role.
+# ---------------------------------------------------------------------------
+
+
+@transaction.atomic
+def assign_admin_role(
+    *,
+    actor: Membership,
+    organization: Organization,
+    person_ids: list[uuid.UUID],
+    role_code: str,
+) -> None:
+    """
+    Give each of these people the same Admin panel role -- Organization Admin
+    or one of the organisation's own (C89) -- at the organisation's root.
+
+    ALL OR NOTHING: one transaction, so one person who cannot be given it means
+    nobody is.
+
+    THE ROLE:
+    - looked up through `roles_for_organization()`, Admin panel roles only:
+      another organisation's role, a DMS role, "owner" or a made-up code is not
+      found (404);
+    - NEVER BEYOND THE GIVER'S OWN ACCESS (the owner chose (b), 2026-11-23):
+      anybody with `admin.admin.assign_admin` may give any Admin panel role --
+      Organization Admin included -- that grants nothing they do not hold
+      themselves (403). The owner holds everything by rule.
+
+    EACH PERSON, refused with the reason (409) unless they are:
+    - somebody the actor may manage (404 otherwise, as everywhere);
+    - a member who has joined -- not a pending invitation (C83);
+    - not the owner, who holds everything by rule;
+    - holding no Admin panel role yet -- one per person; Assign Admin only
+      ADDS, changing one is the admin row's Manage Roles;
+    - not placed at a dealership: an Admin panel role reaches the whole
+      organisation (C89), which `grant_app_access()` also refuses (C27).
+    """
+    if not person_ids:
+        raise InvalidInputError(
+            field_errors=[FieldError(field="users", code="required", detail="Pick somebody.")]
+        )
+    if len(set(person_ids)) != len(person_ids):
+        raise InvalidInputError(
+            field_errors=[
+                FieldError(field="users", code="duplicate", detail="Name each person once.")
+            ]
+        )
+
+    role = (
+        roles_for_organization(organization.id)
+        .filter(app_id=AppCode.ADMIN, code=role_code)
+        .prefetch_related("permissions")
+        .first()
+    )
+    if role is None:
+        raise not_found("Role")
+    if not actor.is_owner and not (
+        {p.code for p in role.permissions.all()} <= permissions_for(actor)
+    ):
+        raise RoleBeyondOwnAccessError(
+            "You cannot give a role with permissions you do not hold yourself."
+        )
+
+    root = Territory.objects.root_for(organization)
+    for person_id in person_ids:
+        person = find_person(organization, person_id)
+        _assert_can_manage_person(actor, person)
+        if isinstance(person, Invitation):
+            raise AdminNotJoinedError
+        if person.is_owner:
+            raise OwnerHoldsEveryAppError
+        if admin_panel_role(person) is not None:
+            raise AlreadyAnAdminError
+        if any(
+            _is_dealership_place(placement.territory)
+            for grant in person.grants.all()
+            for placement in grant.territories.all()
+        ):
+            raise AdminAtDealershipError
+
+        grant_app_access(
+            membership=person,
+            app=AppCode.ADMIN,
+            role=role,
+            territories=[root],
+            actor_id=actor.user_id,
+        )

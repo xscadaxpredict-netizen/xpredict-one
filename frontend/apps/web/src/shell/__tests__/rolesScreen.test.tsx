@@ -41,6 +41,7 @@ function panelRole(overrides: Partial<rolesApi.PanelRole> & { code: string }): r
     built_in: true,
     users: 0,
     modified_by: null,
+    grantable: true,
     ...overrides,
   };
 }

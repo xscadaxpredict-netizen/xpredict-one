@@ -72,6 +72,7 @@ const OWNER: rolesApi.PanelRole = {
   built_in: true,
   users: 1,
   modified_by: null,
+  grantable: false,
 };
 const ORG_ADMIN: rolesApi.PanelRole = {
   code: "admin.org_admin",
@@ -80,6 +81,7 @@ const ORG_ADMIN: rolesApi.PanelRole = {
   built_in: true,
   users: 1,
   modified_by: null,
+  grantable: true,
 };
 const CUSTOM: rolesApi.PanelRole = {
   code: "admin.custom_abc",
@@ -88,6 +90,7 @@ const CUSTOM: rolesApi.PanelRole = {
   built_in: false,
   users: 0,
   modified_by: "Anita Fernandes",
+  grantable: true,
 };
 
 const BUILDER: rolesApi.RoleBuilder = {

@@ -151,7 +151,10 @@ built-in `admin.org_admin`; somebody holding one of the organisation's own Admin
 roles is `member` and is NAMED by `admin_role {code, name}` (on `/me`, the Users list and
 the Admins tab). Never label or count "holds Administration at all" as Organization Admin.
 Reach is separate: ANY Admin panel role is organisation-wide (`_administers()`), with only
-that role's permissions.
+that role's permissions. **Assign Admin** (`POST /admin/admins/`, page
+`admins-and-roles/assign-admin`) gives one; anybody with `admin.admin.assign_admin` may give
+any role that does not exceed what they hold. It only ADDS -- Manage Roles / Unassign on the
+admin row are not built yet.
 
 **Frontend — built, merged, and running on Django.** Sign-in, the app launcher, the
 shell and Administration (Users, Dealers, Roles) all work in a browser against the

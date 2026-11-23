@@ -495,6 +495,9 @@ class PanelRoleSerializer(serializers.Serializer):
     built_in = serializers.BooleanField(read_only=True)
     users = serializers.IntegerField(read_only=True)
     modified_by = serializers.CharField(read_only=True, allow_null=True)
+    # Whether the person ASKING may give it in Assign Admin (C89): it grants
+    # nothing they do not hold. Greys the picker; the server checks again.
+    grantable = serializers.BooleanField(read_only=True)
 
 
 class NewPanelRoleSerializer(serializers.Serializer):
@@ -546,6 +549,13 @@ class RoleBuilderSerializer(serializers.Serializer):
 class ManagedAppSerializer(serializers.Serializer):
     code = serializers.CharField(read_only=True)
     name = serializers.CharField(read_only=True)
+
+
+class AssignAdminSerializer(serializers.Serializer):
+    """Assign Admin: `{"users": [ids], "role": "<Admin panel role code>"}`."""
+
+    users = serializers.ListField(child=serializers.UUIDField(), allow_empty=False)
+    role = serializers.CharField(max_length=60)
 
 
 class AdminSerializer(serializers.Serializer):

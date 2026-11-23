@@ -163,6 +163,8 @@ class TestEditing:
             "built_in": False,
             "users": 0,
             "modified_by": "owner@acme.test",
+            # The owner may give any role (C89).
+            "grantable": True,
         }
         assert held(code) == {"admin.user.view", "admin.user.update"}
 

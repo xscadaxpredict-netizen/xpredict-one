@@ -112,6 +112,7 @@ const ROLE_ROWS: rolesApi.PanelRole[] = [
     built_in: true,
     users: 1,
     modified_by: null,
+    grantable: false,
   },
 ];
 
@@ -129,6 +130,7 @@ beforeEach(() => {
     built_in: false,
     users: 0,
     modified_by: "Anita Fernandes",
+    grantable: true,
   });
 });
 

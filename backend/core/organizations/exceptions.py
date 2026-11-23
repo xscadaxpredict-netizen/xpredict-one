@@ -549,3 +549,37 @@ class RoleInUseError(ConflictError):
 
     code = "role_in_use"
     message = "Somebody still holds this role. Take it away from them first."
+
+
+class AlreadyAnAdminError(ConflictError):
+    """
+    Assign Admin named somebody who already holds an Admin panel role (C89: one
+    per person). Assign Admin only ADDS, like Assign applications; changing
+    somebody's role is the admin row's Manage Roles.
+    """
+
+    code = "already_an_admin"
+    message = "This person already holds an Admin panel role."
+
+
+class AdminNotJoinedError(ConflictError):
+    """
+    Assign Admin named a pending person. Nobody is made an admin before they
+    have joined (C83): an invitation sits nowhere and administers nothing.
+    """
+
+    code = "admin_not_joined"
+    message = "They have not joined yet. Make them an admin once they have."
+
+
+class AdminAtDealershipError(ConflictError):
+    """
+    Assign Admin named somebody placed at a dealership. Every Admin panel role
+    reaches the whole organisation (C89), so giving one would quietly widen a
+    dealership's person to everybody's people; C27 refuses it in
+    `grant_app_access()` too, in its own words. Place them organisation-wide
+    first.
+    """
+
+    code = "admin_at_dealership"
+    message = "Somebody placed at a dealership cannot hold an Admin panel role."

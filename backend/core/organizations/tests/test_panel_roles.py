@@ -104,7 +104,15 @@ class TestTheList:
     def test_the_fields_are_exactly_what_roles_ts_declares(self, client):
         rows = body(client, found())
 
-        assert set(rows[0]) == {"code", "name", "summary", "built_in", "users", "modified_by"}
+        assert set(rows[0]) == {
+            "code",
+            "name",
+            "summary",
+            "built_in",
+            "users",
+            "modified_by",
+            "grantable",
+        }
 
     def test_both_are_built_in_and_nobody_has_modified_them(self, client):
         rows = body(client, found())

@@ -21,6 +21,7 @@ import { Navigate } from "react-router-dom";
 
 import { ModuleRoutes, type ModuleRoute } from "../routing";
 import { AdminsAndRolesScreen } from "./screens/AdminsAndRolesScreen";
+import { AssignAdminScreen } from "./screens/AssignAdminScreen";
 import { ApplicationsScreen } from "./screens/ApplicationsScreen";
 import { DealersScreen } from "./screens/DealersScreen";
 import { EditRoleScreen, NewRoleScreen } from "./screens/NewRoleScreen";
@@ -57,6 +58,13 @@ const routes: ModuleRoute[] = [
     path: "admins-and-roles/roles/:roleCode/edit",
     permission: "admin.role.update",
     element: <EditRoleScreen />,
+  },
+  // Assign Admin (C89): its own page, on the right to assign admins. Fixed
+  // segments outrank `:tab/:roleCode` below.
+  {
+    path: "admins-and-roles/assign-admin",
+    permission: "admin.admin.assign_admin",
+    element: <AssignAdminScreen />,
   },
   // A role opened beside the Roles tab's list. "new" above is matched first:
   // React Router prefers a fixed segment to a parameter.

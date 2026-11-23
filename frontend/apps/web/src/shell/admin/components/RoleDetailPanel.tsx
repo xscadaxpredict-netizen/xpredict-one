@@ -21,7 +21,8 @@
  *                 so the server's refusal -- somebody still holds the role, a
  *                 member or a pending person -- is shown right there
  *                 (`admin.role.delete`).
- *   Assign Users  still drawn only, greyed.
+ *   Assign Users  Assign Admin's page with this role chosen (C89) -- for whoever
+ *                 may assign admins, and only a role they may give.
  *
  * NO CLONE ROLE: the owner does not want it (2026-11-23), though Zoho has it.
  * New Role's "Copy permissions from" already starts a role from another.
@@ -77,14 +78,30 @@ function RoleActions({ role, place }: { role: PanelRole; place: "row" | "panel" 
     disabled: !access.can("admin.role.delete"),
     onSelect: () => setDeleting(true),
   };
-  const items = place === "row" ? [edit, del] : [{ label: "Assign Users", disabled: true }, edit, del];
+  const assignUsers: RowMenuItem = {
+    label: "Assign Users",
+    disabled: !(
+      role.grantable &&
+      access.can("admin.admin.assign_admin") &&
+      access.can("admin.user.view")
+    ),
+    onSelect: () =>
+      void navigate(
+        `/${membership.org_slug}/admin/admins-and-roles/assign-admin?role=${encodeURIComponent(role.code)}`,
+      ),
+  };
+  const items = place === "row" ? [edit, del] : [assignUsers, edit, del];
 
   return (
     <>
       <RowMenu
         label={`More actions for ${role.name}`}
         items={items}
-        note={place === "panel" ? "Assign Users is coming later." : undefined}
+        note={
+          place === "panel" && assignUsers.disabled && role.grantable === false
+            ? "Assign Users: this role grants more than you hold."
+            : undefined
+        }
       />
       <ConfirmAppDialog
         open={deleting}

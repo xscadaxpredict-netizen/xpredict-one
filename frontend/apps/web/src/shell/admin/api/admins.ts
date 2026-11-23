@@ -41,3 +41,22 @@ export interface Admin {
 export async function fetchAdmins(orgSlug: string): Promise<Admin[]> {
   return request<Admin[]>(`/api/v1/orgs/${orgSlug}/admin/admins/`);
 }
+
+/** Assign Admin's form: people (membership ids) and ONE Admin panel role's code. */
+export interface AssignAdmin {
+  users: string[];
+  role: string;
+}
+
+/**
+ * Assign Admin (C89): one Admin panel role for several people, all or nothing.
+ * Answers with the Admins tab as it now stands. Refused with 409 and a reason
+ * (`already_an_admin`, `admin_not_joined`, `admin_at_dealership`), 403
+ * `role_beyond_own_access`, or 404 for a role or person not found.
+ */
+export async function assignAdmin(orgSlug: string, body: AssignAdmin): Promise<Admin[]> {
+  return request<Admin[]>(`/api/v1/orgs/${orgSlug}/admin/admins/`, {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+}
