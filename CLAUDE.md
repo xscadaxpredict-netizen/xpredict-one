@@ -114,9 +114,16 @@ services (`_assert_organisation_wide`), not the database constraint it used to b
 **The frontend ships Administration; the backend runs on MySQL and signs people in.**
 Keep this section current — it is the first thing a new developer reads.
 
-**ON `feat/admin-panel` (PUSHED to GitHub as its own branch at `ddaea1c`, 2026-11-23 --
-NOT merged, NOT on `main`, so not deployed; it does not yet contain `main`'s PRs #32-#35):
-ADMINISTRATION IS NOW THE ADMIN PANEL (C78)** -- reached from the shield in the topbar, not the launcher; an
+**`feat/admin-panel` NOW CONTAINS `main` (`450598a`, PRs #32-#35) -- merged 2026-11-23,
+pushed at `590a6fb`, NOT on `main`, so not deployed.** The territory ROOT is the head office
+(C82 amended): main's `is_head_office` rows stay until **`manage.py retire_head_offices`**
+(`--plan` first) folds them into each root AFTER that deploy. Migrations are ONE straight
+line, main's chains first and this branch's renames after -- **a laptop that ran this
+branch's old order cannot follow it: rebuild its databases** (drop every `xpredict_%`,
+recreate `xpredict_control`, `migrate`, sign up afresh; `npm ci` too, for `pdfjs-dist`).
+The PR into `main` waits for Nishanth's production checks and review.
+
+**ON `feat/admin-panel`: ADMINISTRATION IS NOW THE ADMIN PANEL (C78)** -- reached from the shield in the topbar, not the launcher; an
 accordion of the owner's modules (Organization, App Management, User Management); every
 list page shares `ListPage.module.css` / `ListFilter` / `RowMenu` and every side panel
 `RecordPanel.module.css`. **Its permissions hang off a section tree (C79):**
@@ -182,7 +189,7 @@ their endpoints authorise properly (C66, C67).
 settings, the fail-closed `TenantRouter`, `shared/base_models.py`, Celery wiring and 15
 apps with unique labels (5 control-plane, 10 tenant). **Plain DRF** — drf-spectacular was removed (C43), so there is
 no schema endpoint and no generated client. **`migrate` has run** and `xpredict_control`
-holds **26 tables** (measured 2026-11-12, after step 2d-3), and each organisation gets
+holds **28 tables** (measured 2026-11-23, after main's merge and a rebuild), and each organisation gets
 its own database beside it.
 
 Set the database up once, as a MySQL admin: `mysql -u root -p < backend/scripts/create_dev_db.sql`.
@@ -191,10 +198,11 @@ Set the database up once, as a MySQL admin: `mysql -u root -p < backend/scripts/
 `Territory` (was `BusinessUnit`), `Membership`, `Invitation`, `InvitationAppGrant` in
 `core/organizations`, with the grants `MembershipAppAccess`, `MembershipAppRole` and
 `MembershipAppTerritory`; `App`, `Permission`, `Role`, `RolePermission` in
-`core/permissions`; `AppSubscription` in `core/billing`; and `User`. **73 permissions and
-ten roles are seeded** — 48 permissions by `permissions/0002`, seven by `0004` (C67),
-three by `0009` (`admin.territory.*`, C72), one each by `0012` and `0013` (C78), and
-thirteen by `0018`, the owner's final Admin panel list (C79); the tenth role,
+`core/permissions`; `AppSubscription` in `core/billing`; and `User`. **74 permissions and
+ten roles are seeded** (counted 2026-11-23) — 48 permissions by `permissions/0002`, seven by `0004` (C67),
+three by `0009` (`admin.territory.*`, C72), one each by `0012` and `0013` (C78),
+thirteen by `0018`, the owner's final Admin panel list (C79), and `admin.user.edit_app`
+by `0019` (C86); the tenth role,
 "Organisation admin" (`admin.org_admin`), by `0010` (Q60). **The Admin panel's people
 permissions are `admin.user.*`, not `admin.person.*`** (renamed by `0017`/`0018`), and
 its 22 permissions hang off the `AppSection` tree with an `Action` each (C79); DMS's do
@@ -305,7 +313,8 @@ trap for whoever first moves an app between `CONTROL_PLANE_APPS` and
 `TENANT_APPS`.
 
 **TENANT APPS HAVE MODELS NOW, AND THIS FILE SAID OTHERWISE FOR MONTHS.** The five
-DMS modules bring **23 model classes and 19 tenant migrations**, so a freshly
+DMS modules brought **23 model classes and 19 tenant migrations** (44 migrations
+after main's merge, 2026-11-23), so a freshly
 provisioned organisation gets real tables --- it is no longer true that "a fresh
 tenant database has no tables at all", and a test that asserted exactly that had to
 be rewritten when the modules landed.
@@ -451,8 +460,8 @@ user row on every request and refuses an inactive one, so **disabling somebody t
 effect on their next request**, not after a token expires. The 15-minute access
 lifetime is how long a STOLEN token survives a logout.
 
-**Gates:** `npm run test -w web` (418), `npm run typecheck -w web`, and in `backend/`:
-`pytest` (1053), `ruff check .`, `manage.py makemigrations --check`, and
+**Gates:** `npm run test -w web` (469), `npm run typecheck -w web`, and in `backend/`:
+`pytest` (1091, 2026-11-23 after main's merge), `ruff check .`, `manage.py makemigrations --check`, and
 `.venv/Scripts/lint-imports.exe` — **not** `python -m importlinter.cli`, which exits 0
 without running. **Where Windows blocks the `.exe` ("Permission denied"), call the
 function:** `.venv/Scripts/python.exe -c "import sys; from importlinter.cli import
