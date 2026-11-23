@@ -134,9 +134,17 @@ grant into capability must check `is_active` too). The tile's Edit is
 **ROLES ARE ORGANISATION-SCOPED: `Role.organization_id` NULL = built-in; set = one
 organisation's. EVERY role lookup from a request goes through `roles_for_organization()`
 -- never a bare `Role.objects.get(code=...)`, or another organisation can grant a custom
-role by guessing its code.** A role opens in a side panel; its Edit / Delete / Clone /
-Assign Users are drawn only. Production needs a plain `migrate` for `organizations/0023`
-and `permissions/0019`-`0020`.
+role by guessing its code.** A role opens in a side panel. Production needs a plain
+`migrate` for `organizations/0023` and `permissions/0019`-`0020`.
+
+**Session 27 (C88 amended): a custom role's Edit Role and Delete Role WORK**
+(`PUT`/`DELETE /admin/panel-roles/<code>/`). **New Role and Edit Role share ONE check
+helper, `_checked_admin_role()` -- a rule added to one and not the other is a way round
+it.** Delete is refused (409 `role_in_use`) while a member OR a pending invitation holds
+the role; built-ins are 409 `built_in_role_unchangeable`. Clone Role, Assign Users and Add
+Description are still drawn only. **A PROTECT foreign key firing is NOT a 500 here:**
+`ProtectedError` is an `IntegrityError`, which the handler answers with a generic 409 and
+an error in the log -- check first and raise a named domain error.
 
 **Frontend — built, merged, and running on Django.** Sign-in, the app launcher, the
 shell and Administration (Users, Dealers, Roles) all work in a browser against the
