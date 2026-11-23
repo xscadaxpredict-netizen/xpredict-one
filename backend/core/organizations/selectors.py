@@ -29,6 +29,7 @@ from core.billing.models import AppSubscription, SubscriptionStatus
 from core.organizations.models import (
     GrantStatus,
     Invitation,
+    InvitationAppGrant,
     Membership,
     MembershipAppAccess,
     MembershipAppRole,
@@ -1399,6 +1400,166 @@ def application_members(organization: Organization, app_code: str) -> list[Appli
         )
 
     return sorted(people.values(), key=lambda person: (not person.is_owner, person.name.lower()))
+
+
+# --- An app's own Users page (C78 app settings; DMS first) ------------------
+
+
+@dataclass(frozen=True)
+class AppRoleData:
+    code: str
+    name: str
+
+
+@dataclass(frozen=True)
+class AppUserData:
+    """
+    One row of an app's own Users list (DMS settings -> Users & Roles -> Users).
+    Mirrors `AppUser` in `products/dms/app-settings/api.ts`.
+    """
+
+    id: uuid.UUID
+    """A MEMBERSHIP id -- or an INVITATION id for somebody pending (no membership yet)."""
+
+    first_name: str
+    last_name: str
+    email: str
+    is_owner: bool
+    role: AppRoleData | None
+    """Their role in THIS app. None for the owner, who holds every app by rule (C72)."""
+
+    territories: list[str]
+    """Where the grant places them. Empty for the owner (everywhere) and the pending."""
+
+    status: str
+    """
+    `active`, `inactive` or `pending` -- whether they can open THIS app now.
+
+    INACTIVE IS EITHER SWITCH: their account deactivated in the organisation,
+    or their access to this app disabled (the app tile's Disable, C85). Both
+    leave them unable to open the app, which is what this list is about.
+    """
+
+    created_at: datetime
+    """Not displayed: the order, as the Admin panel's Users list (arrival, oldest first)."""
+
+
+APP_USER_ACTIVE = "active"
+APP_USER_INACTIVE = "inactive"
+APP_USER_PENDING = "pending"
+
+
+def app_users(organization: Organization, app_code: str) -> list[AppUserData]:
+    """
+    Everybody who holds one app, for that app's own Users page (the owner,
+    2026-11-23): the OWNER FIRST AND ALWAYS -- every app has the owner by
+    default -- then the people holding a grant for it, active or not, then the
+    invitations that carry one, in the order they arrived.
+
+    UNLIKE `application_members()`, which counts who can open the app now,
+    this lists the switched-off and the pending too, each with a `status`, so
+    the page's filter has something to filter.
+
+    An app that is not subscribed opens for nobody (C16): an empty list.
+    Administration, or a code that is not an app, is 404.
+
+    WHOLE ORGANISATION, NOT SCOPED to the caller's places: only the owner
+    reaches it today (`dms.user.view`, held by no role). An app admin narrowed
+    to a territory will need scoping here before they are given it.
+    """
+    app = App.objects.exclude(code=AppCode.ADMIN).filter(code=app_code).first()
+    if app is None:
+        raise not_found("Application")
+
+    subscribed = AppSubscription.objects.filter(
+        organization=organization, app=app, status=SubscriptionStatus.ACTIVE
+    ).exists()
+    if not subscribed:
+        return []
+
+    owner = (
+        Membership.objects.filter(organization=organization, is_owner=True)
+        .select_related("user")
+        .first()
+    )
+
+    grants = (
+        MembershipAppAccess.objects.filter(app=app, membership__organization=organization)
+        .exclude(membership__is_owner=True)
+        .select_related("membership__user")
+        .prefetch_related(
+            Prefetch("roles", queryset=MembershipAppRole.objects.select_related("role")),
+            Prefetch(
+                "territories",
+                queryset=MembershipAppTerritory.objects.select_related(
+                    "territory__organization"
+                ),
+            ),
+        )
+    )
+    invitation_grants = InvitationAppGrant.objects.filter(
+        app=app,
+        invitation__organization=organization,
+        invitation__accepted_at__isnull=True,
+    ).select_related("invitation", "role")
+
+    people: list[AppUserData] = []
+    for grant in grants:
+        membership = grant.membership
+        held = next(iter(grant.roles.all()), None)
+        can_open = (
+            membership.status == MembershipStatus.ACTIVE and grant.status == GrantStatus.ACTIVE
+        )
+        people.append(
+            AppUserData(
+                id=membership.pk,
+                first_name=membership.user.first_name,
+                last_name=membership.user.last_name,
+                email=membership.user.email,
+                is_owner=False,
+                role=AppRoleData(held.role.code, held.role.name) if held else None,
+                territories=sorted(
+                    placement.territory.display_name for placement in grant.territories.all()
+                ),
+                status=APP_USER_ACTIVE if can_open else APP_USER_INACTIVE,
+                created_at=membership.created_at,
+            )
+        )
+    for invitation_grant in invitation_grants:
+        invitation = invitation_grant.invitation
+        people.append(
+            AppUserData(
+                id=invitation.pk,
+                first_name=invitation.first_name,
+                last_name=invitation.last_name,
+                email=invitation.email,
+                is_owner=False,
+                role=AppRoleData(invitation_grant.role.code, invitation_grant.role.name),
+                # AN INVITATION SITS NOWHERE (C83): placed when they join.
+                territories=[],
+                status=APP_USER_PENDING,
+                created_at=invitation.created_at,
+            )
+        )
+
+    # Arrival order, the id breaking ties (two rows in one transaction can
+    # share a timestamp) -- as `org_users()` does, and for the same reason.
+    people.sort(key=lambda person: (person.created_at, str(person.id)))
+
+    if owner is None:
+        return people
+    owner_row = AppUserData(
+        id=owner.pk,
+        first_name=owner.user.first_name,
+        last_name=owner.user.last_name,
+        email=owner.user.email,
+        is_owner=True,
+        role=None,
+        territories=[],
+        status=APP_USER_ACTIVE,
+        created_at=owner.created_at,
+    )
+    return [owner_row, *people]
 
 
 # --- The Admin panel's roles (C78, Admins and Roles -> Roles) ---------------

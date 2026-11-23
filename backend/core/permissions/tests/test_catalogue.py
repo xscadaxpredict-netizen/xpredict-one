@@ -22,20 +22,21 @@ pytestmark = pytest.mark.django_db
 
 
 class TestPermissions:
-    def test_there_are_74(self):
+    def test_there_are_75(self):
         """
         C42 settled on 48, C67 added seven, and C72 piece 1 added three
         (`admin.territory.view/create/update`, `permissions/0009`), and C78 one
         (`admin.organization_info.view`, `permissions/0012`) and one more
         (`admin.application.view`, `permissions/0013`), C79's final list
         thirteen (`0018`), and the app tile's Edit one more
-        (`admin.user.edit_app`, `0019`, 2026-11-20). A number
+        (`admin.user.edit_app`, `0019`, 2026-11-20), and DMS settings' Users
+        page one (`dms.user.view`, `0021`, 2026-11-23, held by no role). A number
         that drifts is a decision nobody made -- which is exactly what this
         assertion is for, and it did its job: the seven codes were added with a
         comment saying the catalogue had grown and this test was not updated
         with them.
         """
-        assert Permission.objects.count() == 74
+        assert Permission.objects.count() == 75
 
     def test_split_by_app_as_decided(self):
         """
@@ -44,11 +45,12 @@ class TestPermissions:
         constants, deleting a saved calculation) and two for store orders.
         Administration went 11 -> 14 with C72's territory three, and to 16 with
         C78's `admin.organization_info.view` and `admin.application.view`, to
-        29 with C79's final list and to 30 with `admin.user.edit_app`. Each app
+        29 with C79's final list and to 30 with `admin.user.edit_app`. DMS went
+        to 44 with `dms.user.view` (DMS settings' Users page, `0021`). Each app
         is asserted separately so a change to one cannot quietly reach another.
         """
         assert Permission.objects.filter(app_id=AppCode.ADMIN).count() == 30
-        assert Permission.objects.filter(app_id=AppCode.DMS).count() == 43
+        assert Permission.objects.filter(app_id=AppCode.DMS).count() == 44
         assert Permission.objects.filter(app_id=AppCode.CRM).count() == 1
 
     def test_every_code_is_app_resource_action(self):

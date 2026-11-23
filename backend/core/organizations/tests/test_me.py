@@ -211,8 +211,8 @@ class TestTheOwner:
         THE OWNER HOLDS ALL OF DMS BY RULE SINCE C72 STEP 2c, not their seed
         role. C41 seeds the owner at Group operations (40 permissions), which
         lacks Tech support's three ticket codes; this test pinned 40 until the
-        rule arrived, and the owner now holds all 43. `test_owner_by_rule.py`
-        names the three.
+        rule arrived, and the owner held all 43 -- 44 since `dms.user.view`
+        (2026-11-23). `test_owner_by_rule.py` names the three.
 
         THE MODULE LIST IS DERIVED, NOT STORED (C42): a module shows when the
         person holds at least one permission inside it. `tools` and
@@ -229,11 +229,20 @@ class TestTheOwner:
         dms = app_of(me(result.user), "acme-motors", AppCode.DMS)
 
         assert dms.accessible is True
-        assert codes(dms.modules) == ["ecommerce", "sales", "service", "tech-support", "tools"]
+        # `users`: DMS settings' Users page (`dms.user.view`, `permissions/0021`),
+        # which no role holds -- the owner reaches it by this same rule.
+        assert codes(dms.modules) == [
+            "ecommerce",
+            "sales",
+            "service",
+            "tech-support",
+            "tools",
+            "users",
+        ]
         assert dms.permissions == sorted(
             Permission.objects.filter(app=AppCode.DMS).values_list("code", flat=True)
         )
-        assert len(dms.permissions) == 43
+        assert len(dms.permissions) == 44
 
     def test_unbought_apps_are_shown_but_not_accessible(self):
         """
@@ -726,6 +735,8 @@ class TestAnAppNotOnTheTreeYet:
             module("service"),
             module("tech-support"),
             module("tools"),
+            # DMS settings' Users page (`dms.user.view`, owner only, 2026-11-23).
+            module("users"),
         ]
 
     def test_an_app_nobody_can_open_reports_no_modules(self):

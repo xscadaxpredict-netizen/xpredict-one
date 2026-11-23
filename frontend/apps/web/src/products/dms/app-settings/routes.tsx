@@ -13,12 +13,22 @@
  * they lack: a page you may not open looks like one that does not exist.
  */
 
+import type { ReactElement } from "react";
 import { Navigate, Route, Routes } from "react-router-dom";
 
 import { useShellContext } from "../../../shell/context";
 import { canOpenAppSettings } from "../../../shell/navigation";
 import { NotFoundScreen } from "../../../shell/screens/NotFoundScreen";
 import { SettingsPlaceholderScreen } from "../../../shell/screens/SettingsPlaceholderScreen";
+import { DmsUsersScreen } from "./DmsUsersScreen";
+
+/**
+ * The pages that are BUILT, by their path in the catalogue. Every other
+ * settings page is still "being built". One entry per screen as each lands.
+ */
+const BUILT: Record<string, ReactElement> = {
+  users: <DmsUsersScreen />,
+};
 
 export default function DmsSettingsRoutes() {
   const { membership, app } = useShellContext();
@@ -37,7 +47,7 @@ export default function DmsSettingsRoutes() {
         <Route
           key={page.path}
           path={page.path}
-          element={<SettingsPlaceholderScreen title={page.label} />}
+          element={BUILT[page.path] ?? <SettingsPlaceholderScreen title={page.label} />}
         />
       ))}
       <Route path="*" element={<NotFoundScreen />} />

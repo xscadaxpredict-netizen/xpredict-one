@@ -210,6 +210,12 @@ PERMISSIONS: list[tuple[str, str, str, str, str]] = [
         "Store orders",
         "Cancel a store order, or move it along",
     ),
+    # --- DMS: settings (behind the gear, C78 amended) ------------------------
+    #
+    # DMS's own Users page (`permissions/0021`, 2026-11-23). OWNER ONLY: no
+    # role holds it (see `_OWNER_ONLY` below) until the app-admin role is
+    # designed (Q63). Module `users`, not `settings` -- that is Load Master Data.
+    ("dms.user.view", "dms", "users", "Users", "See DMS's users"),
     # --- CRM ----------------------------------------------------------------
     #
     # ONE PERMISSION, deliberately. CRM is built after DMS ships, and designing
@@ -243,7 +249,16 @@ _ADMIN_PEOPLE = [
     "admin.user.resend_invitation",
 ]
 
-_DMS_READS = [code for code, app, *_rest in PERMISSIONS if app == "dms" and code.endswith(".view")]
+# HELD BY NO ROLE: the owner has them by rule, and nobody else yet. Kept out of
+# the "every DMS read" group below, which would otherwise hand DMS's settings to
+# the Fleet viewer just because the code ends in `.view`.
+_OWNER_ONLY = ["dms.user.view"]
+
+_DMS_READS = [
+    code
+    for code, app, *_rest in PERMISSIONS
+    if app == "dms" and code.endswith(".view") and code not in _OWNER_ONLY
+]
 _DMS_EXPORTS = [
     code for code, app, *_rest in PERMISSIONS if app == "dms" and code.endswith(".export")
 ]

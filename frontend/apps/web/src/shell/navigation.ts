@@ -277,7 +277,7 @@ export const APP_CATALOG: AppDefinition[] = [
         label: "Users & Roles",
         icon: "users",
         items: [
-          { label: "Users", path: "users", icon: "users", module: null },
+          { label: "Users", path: "users", icon: "users", module: null, search: "users" },
           { label: "Roles", path: "roles", icon: "key", module: null },
         ],
       },
@@ -414,13 +414,16 @@ export function pageSearchLabel(
   if (!item?.search || !app) return undefined;
   if (typeof item.search === "string") return item.search;
 
-  const own = `/${orgSlug}/${app.key}/${item.path}`;
+  const own = `${sidebarOf(app, orgSlug, pathname).base}${item.path}`;
   return item.search(pathname.slice(own.length).replace(/^\//, ""));
 }
 
 /**
  * The sidebar item for the page at `pathname`, if any: the one whose path the
  * address is, or starts with followed by a slash (`users/42` is Users).
+ *
+ * INSIDE AN APP'S SETTINGS (C78) it is a settings item, read against
+ * `/<org>/<app>/settings/` -- the sidebar showing there is the settings one.
  */
 export function currentNavItem(
   app: AppDefinition | undefined,
@@ -428,13 +431,25 @@ export function currentNavItem(
   pathname: string,
 ): NavItem | undefined {
   if (!app) return undefined;
-  const base = `/${orgSlug}/${app.key}/`;
+  const { base, groups } = sidebarOf(app, orgSlug, pathname);
   if (!pathname.startsWith(base)) return undefined;
   const rest = pathname.slice(base.length);
 
-  return app.nav
+  return groups
     .flatMap((group) => group.items)
     .find((item) => item.path !== "" && (rest === item.path || rest.startsWith(`${item.path}/`)));
+}
+
+/** Which sidebar is showing at `pathname`, and the address its paths are relative to. */
+function sidebarOf(
+  app: AppDefinition,
+  orgSlug: string,
+  pathname: string,
+): { base: string; groups: NavGroup[] } {
+  if (app.settings !== undefined && isInAppSettings(app, orgSlug, pathname)) {
+    return { base: `/${orgSlug}/${app.key}/${APP_SETTINGS_SEGMENT}/`, groups: app.settings };
+  }
+  return { base: `/${orgSlug}/${app.key}/`, groups: app.nav };
 }
 
 /** An app as the launcher needs it: what to draw, plus whether it can be opened. */

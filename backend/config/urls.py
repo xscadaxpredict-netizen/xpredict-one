@@ -42,6 +42,11 @@ urlpatterns = [
         include("products.dms.tech_support.api.urls"),
     ),
     path("api/v1/orgs/<str:org_slug>/dms/tools/", include("products.dms.tools.api.urls")),
+    # DMS settings, behind the gear (C78 amended): control-plane reads only.
+    path(
+        "api/v1/orgs/<str:org_slug>/dms/settings/",
+        include("products.dms.app_settings.api.urls"),
+    ),
     # No schema or docs routes. drf-spectacular was removed on 2026-10-02:
     # it had been in the scaffold since Phase 1 and the owner had never been
     # asked for it. Plain DRF until after the first public release.

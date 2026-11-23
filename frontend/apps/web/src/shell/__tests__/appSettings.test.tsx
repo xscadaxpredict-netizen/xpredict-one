@@ -28,6 +28,12 @@ vi.mock("../api/auth", async (importOriginal) => ({
   logout: vi.fn().mockResolvedValue(undefined),
 }));
 
+// Users is a real page now; its request is answered here so these tests stay
+// about the gear, the sidebar and the guard.
+vi.mock("../../products/dms/app-settings/api", () => ({
+  fetchDmsUsers: vi.fn().mockResolvedValue([]),
+}));
+
 vi.mock("../hooks/useNotifications", () => ({
   useNotifications: () => ({
     notifications: [],
@@ -160,7 +166,6 @@ describe("DMS settings", () => {
 
     expect(await screen.findByRole("heading", { name: "Users" })).toBeInTheDocument();
     expect(router.state.location.pathname).toBe("/acme-motors/dms/settings/users");
-    expect(screen.getByText("This page is being built.")).toBeInTheDocument();
 
     const sidebar = settingsSidebar();
     expect(within(sidebar).getByRole("button", { name: "Users & Roles" })).toHaveAttribute(
