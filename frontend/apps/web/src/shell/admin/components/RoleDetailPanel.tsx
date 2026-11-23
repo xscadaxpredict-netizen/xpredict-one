@@ -12,56 +12,105 @@
  *                organisation admins for Organization Admin, and nobody yet for
  *                a custom role -- nothing can give one until Assign Admin.
  *
- * THE ⋮ IS A CUSTOM ROLE'S ONLY -- Assign Users, Edit Role, Clone Role, Delete
- * Role -- and DRAWN ONLY: greyed, no behaviour yet (the owner, 2026-11-20).
- * Built-in roles cannot be changed or deleted, so they have none.
+ * THE ⋮ IS A CUSTOM ROLE'S ONLY -- on the row Clone / Edit / Delete Role, in
+ * the panel Assign Users / Edit / Clone / Delete Role (the owner's Zoho
+ * screens). Built-in roles cannot be changed or deleted, so they have none.
+ *
+ *   Edit Role    New Role's page, filled in (`admin.role.update`).
+ *   Delete Role  "Are you sure?", then the request while the question is open,
+ *                so the server's refusal -- somebody still holds the role, a
+ *                member or a pending person -- is shown right there
+ *                (`admin.role.delete`).
+ *   Clone Role, Assign Users  still drawn only, greyed.
  */
 
 import { asProblem } from "@xpredict/api-client";
 import { DetailPanel } from "@xpredict/ui";
 import { SearchIcon } from "lucide-react";
 import { useState } from "react";
+import { useLocation, useNavigate } from "react-router-dom";
 
+import { useAccess } from "../../access";
+import { useShellContext } from "../../context";
 import type { PanelRole } from "../api/roles";
 import { useAdmins } from "../hooks/useAdmins";
-import { useRoleBuilder } from "../hooks/useRoles";
+import { useDeletePanelRole, useRoleBuilder } from "../hooks/useRoles";
 import { roleInitials } from "../screens/RolesScreen";
+import { ConfirmAppDialog } from "./ConfirmAppDialog";
 import panel from "./RecordPanel.module.css";
 import styles from "./RoleDetailPanel.module.css";
-import { RowMenu } from "./RowMenu";
+import { RowMenu, type RowMenuItem } from "./RowMenu";
 import { displayName } from "./UserActions";
 
-/** The ⋮ on a custom role's ROW: Clone, Edit, Delete -- drawn only. */
-export function RoleRowActions({ role }: { role: PanelRole }) {
+/**
+ * A custom role's ⋮, on its row or in its panel -- one component, so both
+ * behave the same; only the order and Assign Users differ, as Zoho's do.
+ */
+function RoleActions({ role, place }: { role: PanelRole; place: "row" | "panel" }) {
+  const access = useAccess();
+  const { membership } = useShellContext();
+  const navigate = useNavigate();
+  const location = useLocation();
+  const rolesPath = `/${membership.org_slug}/admin/admins-and-roles/roles`;
+  const { mutateAsync: remove } = useDeletePanelRole({
+    // Off the deleted role's address, so its panel does not linger -- but only
+    // if it is the one open: deleting another from its row leaves yours be.
+    onDeleted: () => {
+      if (location.pathname.startsWith(`${rolesPath}/${role.code}`)) void navigate(rolesPath);
+    },
+  });
+  const [deleting, setDeleting] = useState(false);
+
   if (role.built_in) return null;
+
+  const edit: RowMenuItem = {
+    label: "Edit Role",
+    disabled: !access.can("admin.role.update"),
+    onSelect: () => void navigate(`${rolesPath}/${role.code}/edit`),
+  };
+  const clone: RowMenuItem = { label: "Clone Role", disabled: true };
+  const del: RowMenuItem = {
+    label: "Delete Role",
+    danger: true,
+    disabled: !access.can("admin.role.delete"),
+    onSelect: () => setDeleting(true),
+  };
+  const items =
+    place === "row"
+      ? [clone, edit, del]
+      : [{ label: "Assign Users", disabled: true }, edit, clone, del];
+
   return (
-    <RowMenu
-      label={`More actions for ${role.name}`}
-      items={[
-        { label: "Clone Role", disabled: true },
-        { label: "Edit Role", disabled: true },
-        { label: "Delete Role", danger: true, disabled: true },
-      ]}
-      note="Coming later."
-    />
+    <>
+      <RowMenu
+        label={`More actions for ${role.name}`}
+        items={items}
+        note={
+          place === "row"
+            ? "Clone Role is coming later."
+            : "Assign Users and Clone Role are coming later."
+        }
+      />
+      <ConfirmAppDialog
+        open={deleting}
+        onOpenChange={setDeleting}
+        title={`Delete ${role.name}`}
+        question="Are you sure you want to delete this role?"
+        verb="Delete"
+        onConfirm={() => remove(role.code)}
+      />
+    </>
   );
 }
 
-/** The ⋮ in a custom role's PANEL header: Assign Users as well -- drawn only. */
+/** The ⋮ on a custom role's ROW: Clone, Edit, Delete. */
+export function RoleRowActions({ role }: { role: PanelRole }) {
+  return <RoleActions role={role} place="row" />;
+}
+
+/** The ⋮ in a custom role's PANEL header: Assign Users as well. */
 function RolePanelActions({ role }: { role: PanelRole }) {
-  if (role.built_in) return null;
-  return (
-    <RowMenu
-      label={`More actions for ${role.name}`}
-      items={[
-        { label: "Assign Users", disabled: true },
-        { label: "Edit Role", disabled: true },
-        { label: "Clone Role", disabled: true },
-        { label: "Delete Role", danger: true, disabled: true },
-      ]}
-      note="Coming later."
-    />
-  );
+  return <RoleActions role={role} place="panel" />;
 }
 
 type Tab = "permissions" | "users";

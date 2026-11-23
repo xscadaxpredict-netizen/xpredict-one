@@ -23,7 +23,7 @@ import { ModuleRoutes, type ModuleRoute } from "../routing";
 import { AdminsAndRolesScreen } from "./screens/AdminsAndRolesScreen";
 import { ApplicationsScreen } from "./screens/ApplicationsScreen";
 import { DealersScreen } from "./screens/DealersScreen";
-import { NewRoleScreen } from "./screens/NewRoleScreen";
+import { EditRoleScreen, NewRoleScreen } from "./screens/NewRoleScreen";
 import { ProfileScreen } from "./screens/ProfileScreen";
 import { UsersScreen } from "./screens/UsersScreen";
 
@@ -52,6 +52,12 @@ const routes: ModuleRoute[] = [
   { path: "admins-and-roles", section: "admins_and_roles", element: <AdminsAndRolesScreen /> },
   // New Role (C72 piece 5): its own page, on the right to build roles.
   { path: "admins-and-roles/roles/new", permission: "admin.role.create", element: <NewRoleScreen /> },
+  // Edit Role: New Role's page, filled in, on the right to change roles.
+  {
+    path: "admins-and-roles/roles/:roleCode/edit",
+    permission: "admin.role.update",
+    element: <EditRoleScreen />,
+  },
   // A role opened beside the Roles tab's list. "new" above is matched first:
   // React Router prefers a fixed segment to a parameter.
   { path: "admins-and-roles/:tab/:roleCode", section: "role", element: <AdminsAndRolesScreen /> },

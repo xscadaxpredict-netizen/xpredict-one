@@ -10,10 +10,12 @@ import { useOrgMutation, useOrgQuery } from "@xpredict/api-client";
 
 import {
   createPanelRole,
+  deletePanelRole,
   fetchPanelRoles,
   fetchRoleBuilder,
   fetchRoles,
   type NewPanelRole,
+  updatePanelRole,
 } from "../api/roles";
 
 export const roleKeys = {
@@ -74,5 +76,31 @@ export function useCreatePanelRole() {
   return useOrgMutation({
     mutationFn: (orgSlug, body: NewPanelRole) => createPanelRole(orgSlug, body),
     invalidates: [roleKeys.panel(), roleKeys.builder(), roleKeys.all()],
+  });
+}
+
+/** Edit Role. The row, its Modified By and its copy-from entry all change. */
+export function useUpdatePanelRole() {
+  return useOrgMutation({
+    mutationFn: (orgSlug, { code, body }: { code: string; body: NewPanelRole }) =>
+      updatePanelRole(orgSlug, code, body),
+    invalidates: [roleKeys.panel(), roleKeys.builder(), roleKeys.all()],
+  });
+}
+
+/**
+ * Delete Role. The row and its copy-from entry go.
+ *
+ * `onDeleted` RUNS IN THE MUTATION'S OWN onSuccess, straight after the
+ * refetches start -- not after `mutateAsync` resolves. The refetched list no
+ * longer has the role, so the panel holding the ⋮ unmounts as soon as it
+ * lands; navigating any later raced it and left "That role is not in …" on
+ * screen (found by the test).
+ */
+export function useDeletePanelRole({ onDeleted }: { onDeleted?: () => void } = {}) {
+  return useOrgMutation({
+    mutationFn: (orgSlug, code: string) => deletePanelRole(orgSlug, code),
+    invalidates: [roleKeys.panel(), roleKeys.builder(), roleKeys.all()],
+    onSuccess: () => onDeleted?.(),
   });
 }

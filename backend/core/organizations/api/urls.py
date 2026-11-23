@@ -21,6 +21,7 @@ from core.organizations.api.views import (
     DealersView,
     InviteLinkView,
     OrganizationProfileView,
+    PanelRoleDetailView,
     PanelRolesView,
     ProvisioningView,
     ResendInvitationView,
@@ -64,6 +65,12 @@ urlpatterns = [
     # The Roles tab (C78). Not `admin/roles/`: that is the role catalogue the
     # invite and edit forms' pickers read, owned by `core.permissions`.
     path("admin/panel-roles/", PanelRolesView.as_view(), name="panel-roles"),
+    # Edit Role (PUT) and Delete Role (DELETE): the organisation's own roles only.
+    path(
+        "admin/panel-roles/<str:role_code>/",
+        PanelRoleDetailView.as_view(),
+        name="panel-role-detail",
+    ),
     # New Role's grid: the section tree and the roles to copy from (C72 piece 5).
     path("admin/role-builder/", RoleBuilderView.as_view(), name="role-builder"),
     # The Admins tab (C78), on its own permission (C79).

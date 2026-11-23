@@ -16,18 +16,28 @@
  * unticking View clears the row; Full ticks or clears the whole row. The
  * server checks all of them again, and that nobody builds a role with more
  * than they hold.
+ *
+ * EDIT ROLE IS THIS PAGE, FILLED IN (`EditRoleScreen`, a custom role's ⋮ →
+ * Edit Role): the same grid and the same rules, because the server saves an
+ * edited role exactly like a new one. No "Copy permissions from" -- the role
+ * already has its own. Save and Cancel go back to the role's side panel.
  */
 
 import { asProblem } from "@xpredict/api-client";
 import { ErrorState } from "@xpredict/ui";
 import { useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useParams } from "react-router-dom";
 
 import { useShellContext } from "../../context";
 import { Button } from "../../components/Button";
 import { FormBanner } from "../../components/FormBanner";
 import type { BuilderAction, BuilderRow } from "../api/roles";
-import { useCreatePanelRole, useRoleBuilder } from "../hooks/useRoles";
+import {
+  useCreatePanelRole,
+  usePanelRoles,
+  useRoleBuilder,
+  useUpdatePanelRole,
+} from "../hooks/useRoles";
 import styles from "./NewRoleScreen.module.css";
 
 /** The fixed columns, in order. "update" is shown as Edit, as Zoho does. */
@@ -46,16 +56,92 @@ function viewOf(row: BuilderRow): string | undefined {
   return row.actions.find((action) => action.code === "view")?.permission;
 }
 
+/** The role Edit Role opens with: what it is called and holds today. */
+interface EditedRole {
+  code: string;
+  name: string;
+  summary: string;
+  permissions: string[];
+}
+
 export function NewRoleScreen() {
+  return <RoleForm />;
+}
+
+/**
+ * Edit Role: waits for the role and the grid, then opens the form filled in.
+ * The role's permissions come from the builder's copy-from list, which holds
+ * every one of this organisation's own roles.
+ */
+export function EditRoleScreen() {
+  const { roleCode = "" } = useParams();
+  const roles = usePanelRoles();
+  const builder = useRoleBuilder();
+
+  if (roles.isPending || builder.isPending) {
+    return (
+      <div className={styles.page}>
+        <p className={styles.note}>Loading the role…</p>
+      </div>
+    );
+  }
+  if (roles.isError || builder.isError) {
+    const failure = asProblem(roles.error ?? builder.error);
+    return (
+      <div className={styles.page}>
+        <ErrorState
+          title="Could not load this role"
+          code={failure.code}
+          traceId={failure.trace_id}
+          onRetry={() => {
+            void roles.refetch();
+            void builder.refetch();
+          }}
+        />
+      </div>
+    );
+  }
+
+  const role = roles.data.find((r) => r.code === roleCode);
+  const template = builder.data.templates.find((t) => t.code === roleCode);
+  if (!role || role.built_in || !template) {
+    return (
+      <div className={styles.page}>
+        <p className={styles.note}>
+          {role?.built_in
+            ? "Built-in roles cannot be changed."
+            : "This role does not exist, or was deleted."}
+        </p>
+      </div>
+    );
+  }
+
+  return (
+    <RoleForm
+      editing={{
+        code: role.code,
+        name: role.name,
+        summary: role.summary,
+        permissions: template.permissions,
+      }}
+    />
+  );
+}
+
+function RoleForm({ editing }: { editing?: EditedRole }) {
   const { membership } = useShellContext();
   const navigate = useNavigate();
   const rolesPath = `/${membership.org_slug}/admin/admins-and-roles/roles`;
+  // Where Save and Cancel go: the list after New Role, the role's panel after Edit.
+  const backPath = editing ? `${rolesPath}/${editing.code}` : rolesPath;
   const { data: builder, isPending, isError, error, refetch } = useRoleBuilder();
-  const { mutateAsync: create, isPending: saving } = useCreatePanelRole();
+  const { mutateAsync: create, isPending: creating } = useCreatePanelRole();
+  const { mutateAsync: update, isPending: updating } = useUpdatePanelRole();
+  const saving = creating || updating;
 
-  const [name, setName] = useState("");
-  const [description, setDescription] = useState("");
-  const [held, setHeld] = useState<Set<string>>(new Set());
+  const [name, setName] = useState(editing?.name ?? "");
+  const [description, setDescription] = useState(editing?.summary ?? "");
+  const [held, setHeld] = useState<Set<string>>(() => new Set(editing?.permissions ?? []));
   const [open, setOpen] = useState<Record<string, boolean>>({});
   const [nameError, setNameError] = useState<string | null>(null);
   const [problem, setProblem] = useState<{ message: string; traceId?: string } | null>(null);
@@ -106,9 +192,14 @@ export function NewRoleScreen() {
       setProblem({ message: "Tick at least one permission." });
       return;
     }
+    const body = { name: name.trim(), description: description.trim(), permissions: [...held] };
     try {
-      await create({ name: name.trim(), description: description.trim(), permissions: [...held] });
-      void navigate(rolesPath);
+      if (editing) {
+        await update({ code: editing.code, body });
+      } else {
+        await create(body);
+      }
+      void navigate(backPath);
     } catch (failure) {
       const found = asProblem(failure);
       const fieldMessage = found.errors?.[0]?.detail;
@@ -127,7 +218,7 @@ export function NewRoleScreen() {
   return (
     <div className={styles.page}>
       <header className={styles.header}>
-        <h1 className={styles.title}>New Role</h1>
+        <h1 className={styles.title}>{editing ? "Edit Role" : "New Role"}</h1>
       </header>
 
       <div className={styles.body}>
@@ -156,24 +247,26 @@ export function NewRoleScreen() {
               )}
             </div>
 
-            <div className={styles.field}>
-              <label htmlFor="role-copy" className={styles.label}>
-                Copy permissions from
-              </label>
-              <select
-                id="role-copy"
-                className={styles.input}
-                defaultValue=""
-                onChange={(event) => copyFrom(event.target.value)}
-              >
-                <option value="">Start blank</option>
-                {builder?.templates.map((template) => (
-                  <option key={template.code} value={template.code}>
-                    {template.name}
-                  </option>
-                ))}
-              </select>
-            </div>
+            {!editing && (
+              <div className={styles.field}>
+                <label htmlFor="role-copy" className={styles.label}>
+                  Copy permissions from
+                </label>
+                <select
+                  id="role-copy"
+                  className={styles.input}
+                  defaultValue=""
+                  onChange={(event) => copyFrom(event.target.value)}
+                >
+                  <option value="">Start blank</option>
+                  {builder?.templates.map((template) => (
+                    <option key={template.code} value={template.code}>
+                      {template.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
           </div>
 
           <div className={styles.field}>
@@ -260,7 +353,7 @@ export function NewRoleScreen() {
         <Button type="button" isLoading={saving} onClick={() => void save()}>
           {saving ? "Saving…" : "Save"}
         </Button>
-        <Button type="button" variant="secondary" onClick={() => void navigate(rolesPath)}>
+        <Button type="button" variant="secondary" onClick={() => void navigate(backPath)}>
           Cancel
         </Button>
       </footer>

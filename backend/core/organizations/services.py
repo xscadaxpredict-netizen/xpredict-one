@@ -40,6 +40,7 @@ from core.organizations.exceptions import (
     AppAlreadyHeldError,
     AppNotSubscribedError,
     AppNotYetInUseError,
+    BuiltInRoleUnchangeableError,
     DealerAlreadyClosedError,
     DealerAlreadyOpenError,
     DealerCodeTakenError,
@@ -57,6 +58,7 @@ from core.organizations.exceptions import (
     OwnerProtectedError,
     PersonEmailTakenError,
     RoleBeyondOwnAccessError,
+    RoleInUseError,
     RoleNameTakenError,
     RoleNotInAppError,
     RoleScopeMismatchError,
@@ -1906,18 +1908,188 @@ def create_admin_role(
     """
     Make one of this organisation's own Admin panel roles.
 
-    EVERY RULE THE GRID SHOWS IS CHECKED AGAIN HERE, because a request does
-    not have to come from the grid:
+    Every rule is `_checked_admin_role()`'s, shared with Edit Role. The role
+    belongs to this organisation only (`organization_id`); its code is
+    generated, so it can never collide with a built-in one.
+    """
+    name, chosen = _checked_admin_role(
+        actor=actor, organization=organization, name=name, permissions=permissions
+    )
 
+    role = Role.objects.create(
+        code=f"admin.custom_{uuid.uuid4().hex[:12]}",
+        name=name,
+        app_id=AppCode.ADMIN,
+        level=RoleLevel.ORG,
+        summary=description.strip(),
+        organization_id=organization.id,
+        display_order=100,
+        created_by_user_id=actor.user_id,
+        updated_by_user_id=actor.user_id,
+    )
+    RolePermission.objects.bulk_create(
+        [
+            RolePermission(role=role, permission=permission, created_by_user_id=actor.user_id)
+            for permission in chosen
+        ]
+    )
+    return role
+
+
+@transaction.atomic
+def update_admin_role(
+    *,
+    actor: Membership,
+    organization: Organization,
+    code: str,
+    name: str,
+    description: str,
+    permissions: list[str],
+) -> Role:
+    """
+    Edit Role: one of this organisation's own Admin panel roles gets a new
+    name, description and permission list (the list REPLACES the old one).
+
+    THE SAME RULES AS NEW ROLE (`_checked_admin_role()`), because an edited role
+    is saved exactly like a new one -- an Edit that skipped a rule would be the
+    way round it. The name may stay its own.
+
+    "Never beyond your own access" reads the WHOLE new list, not only what was
+    added: you may not save a role more powerful than you are, even by
+    renaming one.
+
+    Whoever holds the role gets the new permissions on their next request --
+    permissions are read from the role, never copied onto the person.
+    """
+    role = _own_admin_role(organization, code)
+    name, chosen = _checked_admin_role(
+        actor=actor,
+        organization=organization,
+        name=name,
+        permissions=permissions,
+        keeping=role,
+    )
+
+    role.name = name
+    role.summary = description.strip()
+    role.updated_by_user_id = actor.user_id
+    role.save(update_fields=["name", "summary", "updated_by_user_id", "updated_at"])
+
+    # Only what changed: a permission kept keeps its row (and who added it).
+    wanted = {permission.id: permission for permission in chosen}
+    current = set(role.role_permissions.values_list("permission_id", flat=True))
+    role.role_permissions.exclude(permission_id__in=wanted).delete()
+    RolePermission.objects.bulk_create(
+        [
+            RolePermission(role=role, permission=permission, created_by_user_id=actor.user_id)
+            for permission_id, permission in wanted.items()
+            if permission_id not in current
+        ]
+    )
+    return role
+
+
+@transaction.atomic
+def delete_admin_role(*, organization: Organization, code: str) -> None:
+    """
+    Delete Role: one of this organisation's own Admin panel roles, REFUSED
+    WHILE ANYBODY HOLDS IT (409, `RoleInUseError`).
+
+    "Holds" is both kinds of person:
+
+    - a MEMBER, through their grant (`MembershipAppRole`);
+    - a PENDING person, through their invitation (`InvitationAppGrant`).
+
+    Both point at the role with PROTECT. Counting only one of them would send
+    the other into the database's refusal -- a `ProtectedError`, an
+    IntegrityError, which the handler logs as an error and answers with a
+    generic "conflicts with the current state" that tells the admin nothing.
+    (Revert-checked: without the invitation count, the pending-person test
+    gets exactly that.)
+
+    An ACCEPTED invitation's grant is a spent offer: accepting copied it into
+    the member's own grant, which is what is counted. Those rows go with the
+    role, or PROTECT would make a role nobody holds undeletable forever.
+
+    THE ROLE ROW IS LOCKED FIRST. A grant being written at the same moment
+    checks its foreign key against that row and waits, so nobody can be given
+    the role between the count and the delete.
+    """
+    role = _own_admin_role(organization, code)
+
+    members = (
+        MembershipAppRole.objects.filter(role=role)
+        .values("app_access__membership")
+        .distinct()
+        .count()
+    )
+    pending = InvitationAppGrant.objects.filter(
+        role=role, invitation__accepted_at__isnull=True
+    ).count()
+    if members or pending:
+        people = members + pending
+        held_by = "1 person" if people == 1 else f"{people} people"
+        waiting = f" ({pending} pending)" if pending else ""
+        raise RoleInUseError(
+            f"{role.name} is held by {held_by}{waiting}. Take the role away from them first.",
+            role_id=str(role.id),
+            members=members,
+            pending=pending,
+        )
+
+    InvitationAppGrant.objects.filter(role=role, invitation__accepted_at__isnull=False).delete()
+    role.delete()  # its RolePermission rows cascade
+
+
+def _own_admin_role(organization: Organization, code: str) -> Role:
+    """
+    The Admin panel role Edit / Delete Role named, LOCKED for the rest of the
+    transaction.
+
+    LOOKED UP THROUGH `roles_for_organization()`: another organisation's role
+    is not found (404), however well its code is known. A built-in role IS
+    found -- everybody sees it on the Roles tab -- and refused for what it is
+    (409). Organization Owner is not a role row at all ("owner" is the Roles
+    tab's code for the rule), so it is refused the same way.
+    """
+    if code == "owner":
+        raise BuiltInRoleUnchangeableError
+    role = (
+        roles_for_organization(organization.id)
+        .select_for_update()
+        .filter(app_id=AppCode.ADMIN, code=code)
+        .first()
+    )
+    if role is None:
+        raise not_found("Role")
+    if role.is_built_in:
+        raise BuiltInRoleUnchangeableError
+    return role
+
+
+def _checked_admin_role(
+    *,
+    actor: Membership,
+    organization: Organization,
+    name: str,
+    permissions: list[str],
+    keeping: Role | None = None,
+) -> tuple[str, list[Permission]]:
+    """
+    EVERY RULE A SAVED ADMIN PANEL ROLE OBEYS -- New Role's and Edit Role's,
+    from one place, so a rule added later binds both. Checked here because a
+    request does not have to come from the grid:
+
+    - a name;
     - only the Admin panel's permissions that are on the section tree (C79);
     - at least one;
     - RULE 5: anything on a page needs that page's View;
     - NEVER BEYOND THE BUILDER'S OWN ACCESS: a role cannot grant what its
       builder does not hold (the owner holds everything by rule);
     - a name not already used by this organisation's roles, or the built-ins'.
+      `keeping` is the role being edited, which may keep its own name.
 
-    The role belongs to this organisation only (`organization_id`); its code is
-    generated, so it can never collide with a built-in one.
+    Returns the cleaned name and the permission rows. Saves nothing.
     """
     name = name.strip()
     if not name:
@@ -1964,29 +2136,12 @@ def create_admin_role(
     if not actor.is_owner and not set(codes) <= permissions_for(actor):
         raise RoleBeyondOwnAccessError
 
-    taken = name.lower() in _BUILT_IN_PANEL_ROLE_NAMES or (
-        roles_for_organization(organization.id)
-        .filter(app_id=AppCode.ADMIN, name__iexact=name)
-        .exists()
+    others = roles_for_organization(organization.id).filter(
+        app_id=AppCode.ADMIN, name__iexact=name
     )
-    if taken:
+    if keeping is not None:
+        others = others.exclude(pk=keeping.pk)
+    if name.lower() in _BUILT_IN_PANEL_ROLE_NAMES or others.exists():
         raise RoleNameTakenError
 
-    role = Role.objects.create(
-        code=f"admin.custom_{uuid.uuid4().hex[:12]}",
-        name=name,
-        app_id=AppCode.ADMIN,
-        level=RoleLevel.ORG,
-        summary=description.strip(),
-        organization_id=organization.id,
-        display_order=100,
-        created_by_user_id=actor.user_id,
-        updated_by_user_id=actor.user_id,
-    )
-    RolePermission.objects.bulk_create(
-        [
-            RolePermission(role=role, permission=permission, created_by_user_id=actor.user_id)
-            for permission in chosen
-        ]
-    )
-    return role
+    return name, chosen

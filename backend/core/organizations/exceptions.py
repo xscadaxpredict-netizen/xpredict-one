@@ -521,3 +521,31 @@ class RoleBeyondOwnAccessError(AuthorizationError):
 
     code = "role_beyond_own_access"
     message = "You cannot build a role with permissions you do not hold yourself."
+
+
+class BuiltInRoleUnchangeableError(ConflictError):
+    """
+    Edit Role / Delete Role named Organization Owner or Organization Admin.
+    Built-in roles are Xpredict's, shared by every organisation (C28, C88):
+    nobody edits or deletes them. 409 rather than 404 -- the caller can see
+    the role, it is the role's nature that refuses.
+    """
+
+    code = "built_in_role_unchangeable"
+    message = "Built-in roles cannot be changed or deleted."
+
+
+class RoleInUseError(ConflictError):
+    """
+    Delete Role: somebody still holds the role -- a member through their grant,
+    or a pending person through their invitation. Both point at the role with
+    PROTECT, so deleting it anyway would be a database refusal: an
+    IntegrityError, which the handler logs as an error and answers with a
+    generic 409 that tells the admin nothing. Take the role away from them
+    first.
+
+    The message is built by the service with the counts.
+    """
+
+    code = "role_in_use"
+    message = "Somebody still holds this role. Take it away from them first."

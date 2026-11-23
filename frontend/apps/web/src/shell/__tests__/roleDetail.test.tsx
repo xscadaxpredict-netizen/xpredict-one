@@ -2,11 +2,13 @@
  * A role opened beside the Roles tab (the owner, 2026-11-20, from Zoho's):
  * a custom role's ⋮ (Clone, Edit, Delete) on its row, a side panel with
  * Permissions and Users, and the panel's own ⋮ (Assign Users, Edit, Clone,
- * Delete). The menus are DRAWN ONLY -- every item greyed.
+ * Delete). Edit Role and Delete Role work on `admin.role.update` / `delete`;
+ * Clone Role and Assign Users are still drawn only.
  */
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { fireEvent, screen, within } from "@testing-library/react";
+import { fireEvent, screen, waitFor, within } from "@testing-library/react";
+import { ApiError } from "@xpredict/api-client";
 
 import { fetchMe } from "../api/auth";
 import type * as authApi from "../api/auth";
@@ -14,7 +16,12 @@ import AdminRoutes from "../admin/routes";
 import type * as adminsApi from "../admin/api/admins";
 import { fetchAdmins } from "../admin/api/admins";
 import type * as rolesApi from "../admin/api/roles";
-import { fetchPanelRoles, fetchRoleBuilder } from "../admin/api/roles";
+import {
+  deletePanelRole,
+  fetchPanelRoles,
+  fetchRoleBuilder,
+  updatePanelRole,
+} from "../admin/api/roles";
 import { useUiStore } from "../../stores/uiStore";
 import { renderRoute } from "./harness";
 import { ADMIN_PANEL_TREE, appAccess, me, membership } from "./factories";
@@ -29,6 +36,8 @@ vi.mock("../admin/api/roles", async (importOriginal) => ({
   ...(await importOriginal<typeof rolesApi>()),
   fetchPanelRoles: vi.fn(),
   fetchRoleBuilder: vi.fn(),
+  updatePanelRole: vi.fn(),
+  deletePanelRole: vi.fn(),
 }));
 
 vi.mock("../admin/api/admins", async (importOriginal) => ({
@@ -50,6 +59,8 @@ const mockFetchMe = vi.mocked(fetchMe);
 const mockPanelRoles = vi.mocked(fetchPanelRoles);
 const mockBuilder = vi.mocked(fetchRoleBuilder);
 const mockAdmins = vi.mocked(fetchAdmins);
+const mockUpdate = vi.mocked(updatePanelRole);
+const mockDelete = vi.mocked(deletePanelRole);
 
 const withAdmin = [{ path: "admin/*", element: <AdminRoutes /> }];
 const ROLES = "/acme-motors/admin/admins-and-roles/roles";
@@ -142,7 +153,7 @@ async function openRole(code: string, name: string) {
 }
 
 describe("the custom role's ⋮ on its row", () => {
-  it("offers Clone, Edit and Delete, all greyed for now", async () => {
+  it("offers Clone, Edit and Delete, all greyed without update and delete", async () => {
     renderRoute({ path: ROLES, children: withAdmin });
 
     const row = await screen.findByRole("row", { name: /AU Admin/ });
@@ -192,7 +203,7 @@ describe("a role opened beside the list", () => {
     );
   });
 
-  it("has a ⋮ for a custom role: Assign Users, Edit, Clone, Delete -- all greyed", async () => {
+  it("has a ⋮ for a custom role: Assign Users, Edit, Clone, Delete -- greyed without the rights", async () => {
     const panel = await openRole("admin.custom_abc", "AU Admin");
 
     const menu = await openMenu(
@@ -243,5 +254,140 @@ describe("a role opened beside the list", () => {
     renderRoute({ path: `${ROLES}/admin.custom_gone`, children: withAdmin });
 
     expect(await screen.findByText(/That role is not in/)).toBeInTheDocument();
+  });
+});
+
+/** Somebody who may also change and delete roles (Organisation admin holds both). */
+function mayChangeRoles() {
+  mockFetchMe.mockResolvedValue(
+    me({
+      memberships: [
+        membership({
+          role: "admin",
+          apps: [
+            appAccess("dms"),
+            appAccess("admin", {
+              modules: ADMIN_PANEL_TREE,
+              permissions: [
+                "admin.role.view",
+                "admin.role.create",
+                "admin.role.update",
+                "admin.role.delete",
+                "admin.admin.view",
+              ],
+            }),
+          ],
+        }),
+      ],
+    }),
+  );
+}
+
+function item(menu: HTMLElement, name: string) {
+  return within(menu).getByRole("menuitem", { name });
+}
+
+describe("Edit Role and Delete Role", () => {
+  beforeEach(mayChangeRoles);
+
+  it("are live with the rights; Clone and Assign Users stay greyed", async () => {
+    const panel = await openRole("admin.custom_abc", "AU Admin");
+
+    const menu = await openMenu(
+      within(panel).getByRole("button", { name: "More actions for AU Admin" }),
+    );
+
+    expect(item(menu, "Edit Role")).not.toHaveAttribute("aria-disabled");
+    expect(item(menu, "Delete Role")).not.toHaveAttribute("aria-disabled");
+    expect(item(menu, "Clone Role")).toHaveAttribute("aria-disabled", "true");
+    expect(item(menu, "Assign Users")).toHaveAttribute("aria-disabled", "true");
+  });
+
+  it("Edit Role opens New Role's page filled in, without Copy permissions from", async () => {
+    const panel = await openRole("admin.custom_abc", "AU Admin");
+    const menu = await openMenu(
+      within(panel).getByRole("button", { name: "More actions for AU Admin" }),
+    );
+
+    fireEvent.click(item(menu, "Edit Role"));
+
+    expect(await screen.findByRole("heading", { name: "Edit Role" })).toBeInTheDocument();
+    expect(screen.getByLabelText(/Role name/)).toHaveValue("AU Admin");
+    expect(screen.queryByLabelText("Copy permissions from")).toBeNull();
+    expect(await screen.findByLabelText("View Users")).toBeChecked();
+    expect(screen.getByLabelText("Create Users")).not.toBeChecked();
+  });
+
+  it("saves the edit and goes back to the role's panel", async () => {
+    mockUpdate.mockResolvedValue({ ...CUSTOM, name: "AU Lead" });
+    renderRoute({ path: `${ROLES}/admin.custom_abc/edit`, children: withAdmin });
+
+    const name = await screen.findByLabelText(/Role name/);
+    fireEvent.change(name, { target: { value: "AU Lead" } });
+    fireEvent.click(await screen.findByLabelText("Create Users"));
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+
+    await waitFor(() => expect(mockUpdate).toHaveBeenCalledTimes(1));
+    const [, code, body] = mockUpdate.mock.calls[0] ?? [];
+    expect(code).toBe("admin.custom_abc");
+    expect(body?.name).toBe("AU Lead");
+    expect(new Set(body?.permissions)).toEqual(
+      new Set(["admin.user.view", "admin.user.assign_app", "admin.user.create"]),
+    );
+    expect(await screen.findByRole("complementary", { name: "AU Admin" })).toBeInTheDocument();
+  });
+
+  it("will not edit a built-in role, even by its address", async () => {
+    renderRoute({ path: `${ROLES}/admin.org_admin/edit`, children: withAdmin });
+
+    expect(await screen.findByText("Built-in roles cannot be changed.")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Save" })).toBeNull();
+  });
+
+  it("Delete Role asks first, then deletes and closes the panel", async () => {
+    mockDelete.mockResolvedValue(undefined);
+    const { router } = renderRoute({ path: `${ROLES}/admin.custom_abc`, children: withAdmin });
+    const panel = await screen.findByRole("complementary", { name: "AU Admin" });
+    const menu = await openMenu(
+      within(panel).getByRole("button", { name: "More actions for AU Admin" }),
+    );
+
+    fireEvent.click(item(menu, "Delete Role"));
+    const dialog = await screen.findByRole("dialog", { name: "Delete AU Admin" });
+    expect(dialog).toHaveTextContent("Are you sure you want to delete this role?");
+    mockPanelRoles.mockResolvedValue([OWNER, ORG_ADMIN]);
+    fireEvent.click(within(dialog).getByRole("button", { name: "Yes, Delete" }));
+
+    await waitFor(() => expect(mockDelete).toHaveBeenCalledTimes(1));
+    expect(mockDelete.mock.calls[0]?.[1]).toBe("admin.custom_abc");
+    // Off the deleted role's address -- not left on "That role is not in …".
+    await waitFor(() => expect(router.state.location.pathname).toBe(ROLES));
+    await waitFor(() => expect(screen.queryByText(/That role is not in/)).toBeNull());
+    expect(screen.queryByRole("complementary", { name: "AU Admin" })).toBeNull();
+  });
+
+  it("shows why a held role cannot be deleted, and keeps the dialog open", async () => {
+    mockDelete.mockRejectedValue(
+      new ApiError({
+        type: "about:blank",
+        title: "Conflict",
+        status: 409,
+        detail: "AU Admin is held by 2 people (1 pending). Take the role away from them first.",
+        code: "role_in_use",
+        trace_id: "t-1",
+      }),
+    );
+    renderRoute({ path: ROLES, children: withAdmin });
+    const row = await screen.findByRole("row", { name: /AU Admin/ });
+    const menu = await openMenu(within(row).getByRole("button", { name: "More actions for AU Admin" }));
+
+    fireEvent.click(item(menu, "Delete Role"));
+    const dialog = await screen.findByRole("dialog", { name: "Delete AU Admin" });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Yes, Delete" }));
+
+    expect(await within(dialog).findByRole("alert")).toHaveTextContent(
+      "AU Admin is held by 2 people (1 pending).",
+    );
+    expect(screen.getByRole("dialog", { name: "Delete AU Admin" })).toBeInTheDocument();
   });
 });

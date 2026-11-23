@@ -63,6 +63,7 @@ from core.organizations.services import (
     create_admin_role,
     create_dealer,
     create_territory,
+    delete_admin_role,
     invitation_for_link,
     invitation_link,
     invite_person,
@@ -74,6 +75,7 @@ from core.organizations.services import (
     set_app_status,
     set_person_status,
     unassign_app,
+    update_admin_role,
     update_dealer,
     update_person_details,
 )
@@ -745,6 +747,45 @@ class PanelRolesView(OrgScopedAPIView):
         # The new row as the Roles tab shows it.
         row = next(r for r in admin_panel_roles(self.organization) if r.code == role.code)
         return Response(PanelRoleSerializer(row).data, status=status.HTTP_201_CREATED)
+
+
+class PanelRoleDetailView(OrgScopedAPIView):
+    """
+    One of this organisation's own Admin panel roles: PUT is Edit Role, DELETE
+    is Delete Role (C72 piece 5, after New Role).
+
+    WRITE-ONLY, so the Roles tab's view sits beside each act (C81): you change
+    a role from the screen that shows it. A built-in role is refused (409), and
+    another organisation's role is not found (404) -- the service looks every
+    code up through `roles_for_organization()`.
+    """
+
+    required_permissions: ClassVar[list[str]] = ["admin.role.view"]
+    method_permissions: ClassVar[dict[str, list[str]]] = {
+        "PUT": ["admin.role.update"],
+        "DELETE": ["admin.role.delete"],
+    }
+
+    def put(self, request: Request, org_slug: str, role_code: str) -> Response:
+        """Edit Role: `{"name", "description", "permissions": [codes]}`, as New Role."""
+        payload = NewPanelRoleSerializer(data=request.data)
+        payload.is_valid(raise_exception=True)
+
+        role = update_admin_role(
+            actor=self.membership,
+            organization=self.organization,
+            code=role_code,
+            **payload.validated_data,
+        )
+
+        # The row as the Roles tab shows it, with its new Modified By.
+        row = next(r for r in admin_panel_roles(self.organization) if r.code == role.code)
+        return Response(PanelRoleSerializer(row).data)
+
+    def delete(self, request: Request, org_slug: str, role_code: str) -> Response:
+        """Delete Role: refused (409) while anybody holds it."""
+        delete_admin_role(organization=self.organization, code=role_code)
+        return Response(status=status.HTTP_204_NO_CONTENT)
 
 
 class RoleBuilderView(OrgScopedAPIView):

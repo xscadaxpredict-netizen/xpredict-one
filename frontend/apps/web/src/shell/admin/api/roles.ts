@@ -189,3 +189,26 @@ export async function createPanelRole(orgSlug: string, body: NewPanelRole): Prom
     body: JSON.stringify(body),
   });
 }
+
+/**
+ * Edit Role: the same body as New Role. The list REPLACES the role's
+ * permissions; the code never changes. Answers with the Roles tab's row.
+ */
+export async function updatePanelRole(
+  orgSlug: string,
+  code: string,
+  body: NewPanelRole,
+): Promise<PanelRole> {
+  return request<PanelRole>(`/api/v1/orgs/${orgSlug}/admin/panel-roles/${code}/`, {
+    method: "PUT",
+    body: JSON.stringify(body),
+  });
+}
+
+/**
+ * Delete Role. Refused with 409 `role_in_use` while anybody holds it (a member
+ * or a pending person), and `built_in_role_unchangeable` for a built-in.
+ */
+export async function deletePanelRole(orgSlug: string, code: string): Promise<void> {
+  await request<void>(`/api/v1/orgs/${orgSlug}/admin/panel-roles/${code}/`, { method: "DELETE" });
+}
