@@ -14,7 +14,7 @@ import { UsersScreen } from "../admin/screens/UsersScreen";
 import { fetchMe } from "../api/auth";
 import type * as authApi from "../api/auth";
 import { renderRoute } from "./harness";
-import { me, ownerMembership, adminRoleFor } from "./factories";
+import { USERS_ONLY_TREE, adminRoleFor, appAccess, me, membership, ownerMembership } from "./factories";
 
 vi.mock("../api/auth", async (importOriginal) => ({
   ...(await importOriginal<typeof authApi>()),
@@ -183,6 +183,46 @@ describe("the topbar search", () => {
     // Admins -- not floating below an empty heading strip.
     const message = screen.getByText("No active users match “zzz”.");
     expect(screen.getByRole("table").parentElement).toContainElement(message);
+  });
+});
+
+/** Somebody holding a custom Admin panel role with exactly these Users permissions (C89). */
+function signedInHolding(permissions: string[]) {
+  mockFetchMe.mockResolvedValue(
+    me({
+      memberships: [
+        membership({
+          role: "member",
+          admin_role: { code: "admin.custom_app", name: "Application Admin" },
+          apps: [appAccess("admin", { modules: USERS_ONLY_TREE, permissions })],
+        }),
+      ],
+    }),
+  );
+}
+
+describe("the ⋮ follows the viewer's permissions (the owner's report, 2026-11-23)", () => {
+  it("greys all three for somebody who may only view people", async () => {
+    signedInHolding(["admin.user.view", "admin.user.assign_app", "admin.user.unassign_app"]);
+    await openPage();
+
+    const menu = await openMenu("Nishanth S");
+
+    for (const name of ["Edit", "Deactivate", "Delete"]) {
+      expect(within(menu).getByRole("menuitem", { name })).toHaveAttribute("aria-disabled", "true");
+    }
+    expect(menu).toHaveTextContent("Your role lets you view people, not change them.");
+  });
+
+  it("offers each act only with its own permission", async () => {
+    signedInHolding(["admin.user.view", "admin.user.update"]);
+    await openPage();
+
+    const menu = await openMenu("Nishanth S");
+
+    expect(within(menu).getByRole("menuitem", { name: "Edit" })).not.toHaveAttribute("aria-disabled");
+    expect(within(menu).getByRole("menuitem", { name: "Deactivate" })).toHaveAttribute("aria-disabled", "true");
+    expect(within(menu).getByRole("menuitem", { name: "Delete" })).toHaveAttribute("aria-disabled", "true");
   });
 });
 

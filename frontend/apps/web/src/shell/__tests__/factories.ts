@@ -144,6 +144,11 @@ export function ownerMembership(): Membership {
           // Seeing the Users list: Assign users picks from it (C81).
           "admin.user.view",
           "admin.user.create",
+          // The Users ⋮ checks each act (Edit, Deactivate, Delete); the real
+          // `/me` sends the owner every permission by rule.
+          "admin.user.update",
+          "admin.user.deactivate",
+          "admin.user.delete",
           "admin.dealer.create",
           "admin.role.view",
           // Assign applications (C83), and the Applications panel's two tabs
