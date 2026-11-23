@@ -429,6 +429,9 @@ def create_service_report(
         raise not_found("Site")
     schedule_id = kwargs.pop("schedule_id", None) or None
     kwargs.pop("schedule", None)
+    # A report lives where its SITE lives (`home_follows`), whoever files it:
+    # a territory the caller supplies is ignored, never doubled (merge, 2026-11-23).
+    kwargs.pop("territory_id", None)
 
     # NOT A SECRET, so S311 does not apply: this is a human-facing
     # reference number, not a token.

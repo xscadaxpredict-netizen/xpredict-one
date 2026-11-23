@@ -22,16 +22,18 @@ from core.accounts.models import User
 from core.organizations import services as org_services
 from core.organizations.models import (
     Membership,
-    MembershipRole,
     MembershipStatus,
     Organization,
     OrganizationStatus,
+    Territory,
 )
 from core.organizations.selectors import dms_people_for_territory
-from core.permissions.models import AppAccess, AppCode, Role
+from core.organizations.services import grant_app_access
+from core.permissions.models import AppCode, Role
 from products.dms.sales.models import ConfirmedSite, Customer, Enquiry, Quotation
 from products.dms.site_services import selectors, services
 from products.dms.site_services.models import ServiceReport, SiteServiceProfile
+from shared.base_models import territory_scope
 from shared.exceptions import AuthorizationError, ConflictError, InvalidInputError
 
 pytestmark = pytest.mark.django_db(databases=["default", TEST_TENANT_ALIAS])
@@ -71,24 +73,29 @@ def world():
         db_port=3306,
         status=OrganizationStatus.ACTIVE,
     )
-    head_office = org_services.head_office_for(org)
+    # THE HEAD OFFICE IS THE ROOT (C82 amended; translated in the merge).
+    head_office = Territory.objects.root_for(org)
     dealer_a = org_services.create_dealer(organization=org, name="Dealer A")
     dealer_b = org_services.create_dealer(organization=org, name="Dealer B")
-    role = Role.objects.filter(app=AppCode.DMS).first()
-
     def person(email, unit, *, dms=True):
         user = User.objects.create_user(
             email=email, password="x-Strong-pass-1", first_name=email[:4]
         )
         membership = Membership.objects.create(
-            user=user,
-            organization=org,
-            unit=unit,
-            role=MembershipRole.MEMBER,
-            status=MembershipStatus.ACTIVE,
+            user=user, organization=org, status=MembershipStatus.ACTIVE
         )
+        # ON GRANTS (C72 2d): `main` set `Membership.unit` and an `AppAccess`
+        # row, both gone. A dealer's person holds DMS there; head-office staff
+        # (`unit` None) hold it at the root.
         if dms:
-            AppAccess.objects.create(membership=membership, app=AppCode.DMS, role=role)
+            grant_app_access(
+                membership=membership,
+                app=AppCode.DMS,
+                role=Role.objects.get(
+                    code="dms.sales_representative" if unit else "dms.group_operations"
+                ),
+                territories=[unit or head_office],
+            )
         return user
 
     people = {
@@ -100,6 +107,10 @@ def world():
     }
 
     token = current_tenant_db.set(TEST_TENANT_ALIAS)
+    # EVERY TERRITORY, ON PURPOSE: this branch's scope fails closed when
+    # nobody decided (`NOT_SET`); `main`'s treated that as "everything".
+    scope = territory_scope(None)
+    scope.__enter__()
     customer = _make(Customer, territory_id=dealer_a.id, name="Dell technologies")
     enquiry = _make(Enquiry, territory_id=dealer_a.id, customer=customer, status="CONFIRMED")
     site = _make(
@@ -113,8 +124,17 @@ def world():
         quote_type="AMC",
         status="CONFIRMED",
     )
-    yield {"org": org, "head_office": head_office, "dealer_a": dealer_a, "site": site, **people}
-    current_tenant_db.reset(token)
+    try:
+        yield {
+            "org": org,
+            "head_office": head_office,
+            "dealer_a": dealer_a,
+            "site": site,
+            **people,
+        }
+    finally:
+        scope.__exit__(None, None, None)
+        current_tenant_db.reset(token)
 
 
 def _visit(w, **extra):
@@ -140,8 +160,12 @@ def _report(w, visit, **extra):
 
 def test_assignable_people_are_the_sites_own_unit_with_dms_access(world):
     org, dealer_a, head_office = world["org"], world["dealer_a"], world["head_office"]
-    dealer_people = {p.user_id for p in dms_people_for_territory(organization=org, territory_id=dealer_a.id)}
-    org_people = {p.user_id for p in dms_people_for_territory(organization=org, territory_id=head_office.id)}
+    dealer_people = {
+        p.user_id for p in dms_people_for_territory(organization=org, territory_id=dealer_a.id)
+    }
+    org_people = {
+        p.user_id for p in dms_people_for_territory(organization=org, territory_id=head_office.id)
+    }
     assert dealer_people == {world["tech_a"].id, world["tech_a2"].id}
     assert org_people == {world["hq"].id}
 
@@ -182,7 +206,10 @@ def test_the_clients_signature_completes_the_visit(world):
     visit = _visit(world, technician_user_id=world["tech_a"].id)
     report = _report(world, visit)
     visit.refresh_from_db()
-    assert (report.territory_id, report.technician_user_id) == (world["dealer_a"].id, world["tech_a"].id)
+    assert (report.territory_id, report.technician_user_id) == (
+        world["dealer_a"].id,
+        world["tech_a"].id,
+    )
     assert visit.status == "IN_PROGRESS"
 
     services.record_client_signature(
