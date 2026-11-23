@@ -215,16 +215,70 @@ def administers_within(membership: Membership) -> frozenset[uuid.UUID] | None:
 def standing(membership: Membership) -> str:
     """
     `owner`, `admin` or `member` -- READ FROM `is_owner` AND THE GRANTS (C72
-    step 2c), no longer from `Membership.role`. An admin is somebody holding an
-    Administration grant ("Organisation admin", Q60). Kept as these three words
+    step 2c), no longer from `Membership.role`. Kept as these three words
     because `/me` and the users list still send them to a frontend that reads
     them, until piece 7.
+
+    `admin` IS THE BUILT-IN ORGANISATION ADMIN ROLE ONLY (C89, answering Q70).
+    It used to be ANY Administration grant, which was the same thing while that
+    role was the only one; once an organisation's own Admin panel roles can be
+    held (C88), somebody given "Application Admin" would have been labelled,
+    counted and treated as a full Organization Admin. They are `member` here,
+    and what they hold is `admin_role_of()`.
     """
     if membership.is_owner:
         return MembershipRole.OWNER
-    if any(grant.app_id == AppCode.ADMIN for grant in membership.grants.all()):
+    role = admin_panel_role(membership)
+    if role is not None and role.code == ORGANISATION_ADMIN_ROLE:
         return MembershipRole.ADMIN
     return MembershipRole.MEMBER
+
+
+def admin_panel_role(membership: Membership) -> Role | None:
+    """
+    The role on this person's Administration grant -- Organisation admin or one
+    of the organisation's own -- or None (C89). One role per grant
+    (`grant_one_role_per_grant`). Callers prefetch `GRANTS_PREFETCH`.
+    """
+    for grant in membership.grants.all():
+        if grant.app_id == AppCode.ADMIN:
+            for held in grant.roles.all():
+                return held.role
+    return None
+
+
+@dataclass(frozen=True)
+class AdminRoleData:
+    """
+    The Admin panel role somebody holds, AS THE ROLES TAB NAMES IT (C89):
+    `code` is the Roles tab row's code, so a role's Users tab finds its holders
+    by it. The owner is `"owner"`, a rule rather than a role row.
+    """
+
+    code: str
+    name: str
+
+
+# What the Roles tab calls the two built-ins. "Organization Admin" is not the
+# role row's own name ("Organisation admin"): the owner's spelling, from Zoho.
+OWNER_ROLE_NAME = "Organization Owner"
+ORGANISATION_ADMIN_NAME = "Organization Admin"
+
+
+def admin_role_of(membership: Membership) -> AdminRoleData | None:
+    """
+    WHAT THIS PERSON IS IN THE ADMIN PANEL, by the role they actually hold
+    (C89): Organization Owner, Organization Admin, one of the organisation's
+    own roles by its name -- or None. Every label and count reads this, never
+    "holds Administration at all".
+    """
+    if membership.is_owner:
+        return AdminRoleData(code="owner", name=OWNER_ROLE_NAME)
+    role = admin_panel_role(membership)
+    if role is None:
+        return None
+    name = ORGANISATION_ADMIN_NAME if role.code == ORGANISATION_ADMIN_ROLE else role.name
+    return AdminRoleData(code=role.code, name=name)
 
 
 def dealership_of(membership: Membership) -> Territory | None:
@@ -311,6 +365,13 @@ class MembershipData:
     unit_id: uuid.UUID | None
     unit_name: str | None
     apps: list[AppAccessData]
+
+    """
+    THE ADMIN PANEL ROLE THEY HOLD (C89) -- Organization Owner, Organization
+    Admin, one of the organisation's own -- or None. `role` stays the
+    owner/admin/member word; this is what the screens NAME them.
+    """
+    admin_role: AdminRoleData | None
 
     """
     WHETHER THIS ORGANIZATION'S DATABASE EXISTS YET (C50).
@@ -455,6 +516,7 @@ def _membership_data(
         org_name=membership.organization.name,
         org_slug=membership.organization.slug,
         role=standing(membership),
+        admin_role=admin_role_of(membership),
         unit_id=dealership.id if dealership else None,
         unit_name=dealership.name if dealership else None,
         # `organization` is select_related in `me()`, so this costs no query.
@@ -892,6 +954,13 @@ class OrgUserData:
     them will look.
     """
 
+    admin_role: AdminRoleData | None
+    """
+    The Admin panel role they hold, by name (C89) -- what the list and the
+    panel CALL them. None for a pending person and for a dealer admin, whose
+    administering comes from a DMS role, not the Admin panel.
+    """
+
     administers: str | None
     """
     `"organisation"`, `"dealer"`, or None -- the FACT, not the words (C53).
@@ -976,6 +1045,7 @@ def _membership_row(membership: Membership) -> OrgUserData:
         unit_id=dealership.id if dealership else None,
         unit_name=dealership.name if dealership else None,
         role=standing(membership),
+        admin_role=admin_role_of(membership),
         # `invited` is not reachable here: C51 put pending people in the other
         # table, and `MembershipStatus.INVITED` went with it.
         status=membership.status,
@@ -990,7 +1060,7 @@ def _membership_row(membership: Membership) -> OrgUserData:
         # From ACTIVE grants: a dealer admin whose DMS is disabled administers
         # nothing, since the grant permits nothing.
         administers=_administers(
-            standing(membership),
+            membership.is_owner,
             reach(membership) is not None,
             [g.role for g in grants if g.status == GrantStatus.ACTIVE],
         ),
@@ -1010,6 +1080,7 @@ def _invitation_row(invitation: Invitation) -> OrgUserData:
         unit_id=None,
         unit_name=None,
         role=MembershipRole.MEMBER,
+        admin_role=None,
         status="invited",
         apps=[_grant(g.app_id, g.role) for g in grants],
         created_at=invitation.created_at,
@@ -1027,23 +1098,28 @@ def _grant(app: str, role, status: str = GrantStatus.ACTIVE) -> AppGrantData:
     return AppGrantData(app=app, role_code=role.code, role_name=role.name, status=str(status))
 
 
-def _administers(standing: str, at_a_dealership: bool, roles: list) -> str | None:
+def _administers(is_owner: bool, at_a_dealership: bool, roles: list) -> str | None:
     """
-    Whether this person administers, and what.
+    Whether this person administers, and WHERE -- not what they may do there.
 
-    ORDER MATTERS. Standing is checked first because an owner or org admin
-    administers the whole organization whatever roles they hold -- and an
-    Organisation admin's grant sits at the root, so the second branch could
+    ORDER MATTERS. The owner, and anybody holding ANY Admin panel role, comes
+    first: they administer organisation-wide whatever else they hold -- an
+    Administration grant always sits at the root, so the second branch could
     never fire for them anyway.
 
-    `standing` and `at_a_dealership` come from the grants (C72 step 2c). An
-    invitation administers nothing (C83) and does not ask.
+    ANY ADMIN PANEL ROLE, NOT ONLY ORGANISATION ADMIN (C89). Somebody given the
+    organisation's own "Application Admin" reaches the whole organisation, and
+    does there only what that role permits. What they are CALLED is
+    `admin_role_of()`; this is only the reach.
+
+    `roles` are their ACTIVE grants' roles (C72 step 2c). An invitation
+    administers nothing (C83) and does not ask.
 
     `role.administers` is derived from the permissions the role grants (C44),
     so this cannot drift from what the role actually confers. Prefetch
     `role__permissions` before calling it in a loop.
     """
-    if standing in (MembershipRole.OWNER, MembershipRole.ADMIN):
+    if is_owner or any(role.app_id == AppCode.ADMIN for role in roles):
         return "organisation"
 
     if at_a_dealership and any(role.administers for role in roles):
@@ -1335,10 +1411,22 @@ def _owners(organization: Organization):
 
 def _admin_members(organization: Organization):
     """
-    Its organisation admins who are members -- active or deactivated: a
-    membership holding an Administration grant, the rule `standing()` reads.
-    The owner is never one, as in `standing()`. One grant per person per app
-    (`grant_unique_membership_app`), so no person comes back twice.
+    Its ORGANISATION ADMINS -- active or deactivated: members holding the
+    built-in Organisation admin role, the rule `standing()` reads (C89). NOT
+    everybody with an Administration grant: a custom role's holders are
+    counted on that role's own row. The owner is never one, as in `standing()`.
+    One grant per person per app (`grant_unique_membership_app`), so no person
+    comes back twice.
+    """
+    return _panel_role_holders(organization).filter(
+        grants__roles__role__code=ORGANISATION_ADMIN_ROLE
+    )
+
+
+def _panel_role_holders(organization: Organization):
+    """
+    Everybody but the owner holding ANY Admin panel role -- Organisation admin
+    or one of the organisation's own (C89): the Admins tab's people.
     """
     return Membership.objects.filter(
         organization=organization, is_owner__isnull=True, grants__app_id=AppCode.ADMIN
@@ -1358,14 +1446,9 @@ class PanelRoleData:
 def admin_panel_roles(organization: Organization) -> list[PanelRoleData]:
     """
     The Admin panel's roles, as its Roles tab lists them (the owner,
-    2026-11-18): Organization Owner and Organization Admin. App roles (DMS's)
-    are not here -- they belong to each app's own settings, which are not built
-    yet (C78).
-
-    BOTH ARE BUILT-IN. Nobody can make a role until C72 piece 5's role
-    builder, so `built_in` is always True and `modified_by` always None today;
-    the fields exist so the tab's "Custom roles" filter and "Modified By"
-    column read real data the day that changes.
+    2026-11-18): Organization Owner, Organization Admin, then the
+    organisation's own (C88). App roles (DMS's) are not here -- they belong to
+    each app's own settings, which are not built yet (C78).
 
     ORGANIZATION OWNER IS NOT A `Role` ROW. The owner holds everything by rule
     (C72 step 2c), so its row is written here. ORGANIZATION ADMIN IS the
@@ -1373,9 +1456,10 @@ def admin_panel_roles(organization: Organization) -> list[PanelRoleData]:
 
     USERS COUNTS EVERYONE HOLDING IT (the owner, 2026-11-18): active,
     deactivated and pending -- exactly the people the Users page's "All users"
-    filter and the Admins tab show with that role. An admin is a membership
-    holding an Administration grant (the rule `standing()` reads). Nobody is
-    invited AS an admin any more (C83), so pending invitations never count.
+    filter and the Admins tab show with that role. EACH ROLE COUNTS ITS OWN
+    HOLDERS (C89): Organization Admin is the built-in role's, never somebody
+    holding a custom one, so nobody is counted twice. Nobody is invited AS an
+    admin any more (C83), so pending invitations never count.
 
     THE SAME PEOPLE THE ADMINS TAB LISTS (`admins_for()`): both count from
     `_owners()` and `_admin_members()`, so the number here and the rows there
@@ -1390,7 +1474,7 @@ def admin_panel_roles(organization: Organization) -> list[PanelRoleData]:
     return [
         PanelRoleData(
             code="owner",
-            name="Organization Owner",
+            name=OWNER_ROLE_NAME,
             summary="Every permission, by rule — including the ones no role can give.",
             built_in=True,
             users=owners,
@@ -1398,7 +1482,7 @@ def admin_panel_roles(organization: Organization) -> list[PanelRoleData]:
         ),
         PanelRoleData(
             code=org_admin.code,
-            name="Organization Admin",
+            name=ORGANISATION_ADMIN_NAME,
             summary=org_admin.summary,
             built_in=True,
             users=admin_members,
@@ -1542,7 +1626,7 @@ def role_builder(organization: Organization) -> RoleBuilderData:
     templates = [
         BuilderTemplateData(
             code=role.code,
-            name="Organization Admin" if role.code == ORGANISATION_ADMIN_ROLE else role.name,
+            name=ORGANISATION_ADMIN_NAME if role.code == ORGANISATION_ADMIN_ROLE else role.name,
             permissions=sorted(p.code for p in role.permissions.all() if p.code in on_tree),
         )
         for role in roles_for_organization(organization.id)
@@ -1568,7 +1652,11 @@ class AdminData:
     first_name: str
     last_name: str
     email: str
+    # "owner", "admin" (Organisation admin) or "custom" (one of the
+    # organisation's own Admin panel roles) -- the tab's filter (C89).
     role: str
+    # The role itself, by the name the Roles tab gives it.
+    admin_role: AdminRoleData
     status: str
     apps_managed: list[ManagedAppData]
 
@@ -1576,10 +1664,11 @@ class AdminData:
 def admins_for(organization: Organization) -> list[AdminData]:
     """
     The organisation's admins, as the Admins tab lists them (C78): its owner
-    and its organisation admins -- active or deactivated. Nobody is invited as
-    an admin any more (C83), so there are no pending ones. Never a member,
-    never a dealer admin (they administer one dealership through a DMS
-    role, not the organisation).
+    and EVERYBODY HOLDING AN ADMIN PANEL ROLE -- Organisation admin or one of
+    the organisation's own (C89) -- active or deactivated, each named by the
+    role they hold. Nobody is invited as an admin any more (C83), so there are
+    no pending ones. Never a member, never a dealer admin (they administer one
+    dealership through a DMS role, not the organisation).
 
     ITS OWN ENDPOINT, NOT THE USERS LIST (C79: the server checks what the
     screen does). It needs `admin.admin.view`, not `admin.user.view`, and it
@@ -1591,13 +1680,15 @@ def admins_for(organization: Organization) -> list[AdminData]:
     `id` is the membership's -- the same id the Users page uses for that
     person. `status` is `active` or `disabled`.
 
-    APPS MANAGED is every app the organisation subscribes to, for every row:
-    the owner holds every app by rule and an organisation admin administers the
-    whole organisation (C72; the owner, 2026-11-18). Sent with the row, so the
-    panel needs no second endpoint -- and no second permission.
+    APPS MANAGED is every app the organisation subscribes to for the owner
+    (every app by rule) and an Organisation admin (the whole organisation; C72,
+    the owner 2026-11-18) -- and NONE for a custom role's holder (C89), who
+    does in the Admin panel only what that role permits and manages no app.
+    Sent with the row, so the panel needs no second endpoint -- and no second
+    permission.
 
     THE OWNER FIRST, then in the order people were added, like the Users page.
-    Four queries, however many admins.
+    A fixed number of queries, however many admins (the grants are prefetched).
     """
     active = set(
         AppSubscription.objects.filter(
@@ -1611,23 +1702,33 @@ def admins_for(organization: Organization) -> list[AdminData]:
         .order_by("display_order", "code")
     ]
 
-    def member_row(membership: Membership, role: str) -> AdminData:
+    def member_row(membership: Membership) -> AdminData:
+        held = admin_role_of(membership)
+        assert held is not None  # both querysets below hold an Admin panel role
+        kind = (
+            MembershipRole.OWNER
+            if membership.is_owner
+            else MembershipRole.ADMIN
+            if held.code == ORGANISATION_ADMIN_ROLE
+            else "custom"
+        )
         return AdminData(
             id=membership.id,
             first_name=membership.user.first_name,
             last_name=membership.user.last_name,
             email=membership.user.email,
-            role=role,
+            role=kind,
+            admin_role=held,
             status=membership.status,
-            apps_managed=apps,
+            apps_managed=apps if kind != "custom" else [],
         )
 
-    owners = [
-        member_row(m, MembershipRole.OWNER) for m in _owners(organization).select_related("user")
-    ]
+    owners = [member_row(m) for m in _owners(organization).select_related("user")]
     admins = [
-        (m.created_at, str(m.id), member_row(m, MembershipRole.ADMIN))
-        for m in _admin_members(organization).select_related("user")
+        (m.created_at, str(m.id), member_row(m))
+        for m in _panel_role_holders(organization)
+        .select_related("user")
+        .prefetch_related(*GRANTS_PREFETCH)
     ]
     return owners + [row for _, _, row in sorted(admins, key=lambda entry: entry[:2])]
 

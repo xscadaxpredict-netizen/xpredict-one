@@ -146,6 +146,13 @@ Description are still drawn only; there is NO Clone Role (the owner). **A PROTEC
 `ProtectedError` is an `IntegrityError`, which the handler answers with a generic 409 and
 an error in the log -- check first and raise a named domain error.
 
+**C89: A PERSON IS WHAT THEIR ADMIN PANEL ROLE SAYS.** `standing()` is `admin` only for the
+built-in `admin.org_admin`; somebody holding one of the organisation's own Admin panel
+roles is `member` and is NAMED by `admin_role {code, name}` (on `/me`, the Users list and
+the Admins tab). Never label or count "holds Administration at all" as Organization Admin.
+Reach is separate: ANY Admin panel role is organisation-wide (`_administers()`), with only
+that role's permissions.
+
 **Frontend — built, merged, and running on Django.** Sign-in, the app launcher, the
 shell and Administration (Users, Dealers, Roles) all work in a browser against the
 real backend. **NO `USE_FAKE_*` FLAG IS SWITCHED ON ANYWHERE.** Administration's

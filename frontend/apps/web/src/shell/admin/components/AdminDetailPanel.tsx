@@ -116,10 +116,17 @@ function ManagedApps({ admin }: { admin: Admin }) {
 
   return (
     <>
+      {/*
+        WHAT THEIR ROLE SAYS, NOT "EVERY APP" FOR EVERYBODY (C89, the owner's
+        report): somebody holding the organisation's own "Application Admin"
+        manages no app -- they do in the Admin panel only what that role allows.
+      */}
       <p className={tiles.note}>
         {admin.role === "owner"
           ? `As the owner, manages every app in ${membership.org_name}.`
-          : `As an organization admin, manages every app in ${membership.org_name}.`}
+          : admin.role === "admin"
+            ? `As an organization admin, manages every app in ${membership.org_name}.`
+            : `Holds the ${admin.admin_role.name} role: manages no app, and can do in the Admin panel only what that role allows.`}
       </p>
 
       {active.length > 0 && (

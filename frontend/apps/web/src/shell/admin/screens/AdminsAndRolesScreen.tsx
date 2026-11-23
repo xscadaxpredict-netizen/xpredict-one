@@ -124,29 +124,37 @@ export function AdminsAndRolesScreen() {
 
 /* ---- Admins -------------------------------------------------------------- */
 
-type AdminFilter = "all" | "owner" | "admin";
+type AdminFilter = "all" | "owner" | "admin" | "custom";
 
-/** By Admin panel role: the owner, and the "Organisation admin" role (Q60). */
+/** By Admin panel role: the owner, the built-in Organization Admin, the organisation's own. */
 const ADMIN_FILTERS = [
   { value: "all", label: "All admins" },
   { value: "owner", label: "Organization Owner" },
   { value: "admin", label: "Organization Admin" },
+  { value: "custom", label: "Custom roles" },
 ] as const;
 
-export const ROLE_LABEL: Record<"owner" | "admin", string> = {
+const FILTER_WORD: Record<Exclude<AdminFilter, "all">, string> = {
   owner: "Organization Owner",
   admin: "Organization Admin",
+  custom: "custom role",
 };
 
 /**
- * The organisation's admins -- its owner and everybody holding the
- * "Organisation admin" role at the root (C72 step 2d) -- from their OWN
- * endpoint, `GET /admin/admins/`, on the Admins tab's own permission
- * (`admin.admin.view`, C79). It used to be the Users list filtered here,
- * which needed `admin.user.view` and fetched every person to show two.
+ * The organisation's admins -- its owner and EVERYBODY HOLDING AN ADMIN PANEL
+ * ROLE, built-in or the organisation's own (C89) -- from their OWN endpoint,
+ * `GET /admin/admins/`, on the Admins tab's own permission (`admin.admin.view`,
+ * C79). It used to be the Users list filtered here, which needed
+ * `admin.user.view` and fetched every person to show two.
  *
- * APPS MANAGED is "All" for both. Each holds every app by rule or by role,
- * organisation-wide; an admin of ONE app is what the App Admins tab is for.
+ * EACH ROW NAMES THE ROLE THEY HOLD (`admin_role.name`, C89): "Application
+ * Admin", never "Organization Admin" for somebody who merely holds some Admin
+ * panel role.
+ *
+ * APPS MANAGED is "All" for the owner and an Organization Admin -- each holds
+ * every app by rule or by role, organisation-wide -- and a dash for a custom
+ * role's holder, who manages no app (C89). An admin of ONE app is what the App
+ * Admins tab is for.
  *
  * PICKING A ROW OPENS THE ADMIN BESIDE THE LIST, at its own address, looked up
  * in the FULL list so a search or a filter never closes what is open -- the
@@ -166,7 +174,7 @@ function AdminsTab({ basePath, personId }: { basePath: string; personId: string 
         needle === "" ||
         `${user.first_name} ${user.last_name} ${user.email}`.toLowerCase().includes(needle),
     );
-  const filterWord = filter === "all" ? "" : `${ROLE_LABEL[filter]} `;
+  const filterWord = filter === "all" ? "" : `${FILTER_WORD[filter]} `;
   const selected = personId ? everyAdmin?.find((user) => user.id === personId) : undefined;
   const openPath = (id: string) => `${basePath}/admin/${id}`;
 
@@ -271,9 +279,17 @@ function AdminsTab({ basePath, personId }: { basePath: string; personId: string 
                         </div>
                       </th>
                       <td>
-                        <span className={styles.rolePill}>{ROLE_LABEL[user.role]}</span>
+                        <span className={styles.rolePill}>{user.admin_role.name}</span>
                       </td>
-                      <td>All</td>
+                      <td>
+                        {user.apps_managed.length > 0 ? (
+                          "All"
+                        ) : (
+                          <span className={styles.none} aria-label="No apps">
+                            —
+                          </span>
+                        )}
+                      </td>
                       <td className={styles.actions}>
                         <AdminActions admin={user} />
                       </td>

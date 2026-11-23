@@ -187,6 +187,7 @@ class TestTheList:
             "unit_id",
             "unit_name",
             "role",
+            "admin_role",
             "status",
             "apps",
             "administers",

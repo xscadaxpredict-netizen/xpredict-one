@@ -214,6 +214,8 @@ export function OrgSwitcher({ memberships, currentOrgSlug, currentAppKey }: OrgS
 function standingLabel(membership: Membership): string | null {
   if (membership.role === "owner") return "Owner";
   if (membership.role === "admin") return "Admin";
+  // One of the organisation's own Admin panel roles, by its name (C89).
+  if (membership.admin_role) return membership.admin_role.name;
   return null;
 }
 

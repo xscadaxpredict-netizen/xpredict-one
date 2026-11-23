@@ -92,6 +92,14 @@ export interface AppSubModule {
   tabs: string[];
 }
 
+/** An Admin panel role somebody holds (C89). Mirrors `AdminRoleSerializer`. */
+export interface AdminRole {
+  /** The Roles tab row's code: "owner", "admin.org_admin", "admin.custom_…". */
+  code: string;
+  /** "Organization Owner", "Organization Admin", or the custom role's own name. */
+  name: string;
+}
+
 export interface Membership {
   org_id: string;
   org_name: string;
@@ -114,6 +122,14 @@ export interface Membership {
    * and the reason lists must show what people do.
    */
   role: "owner" | "admin" | "member";
+
+  /**
+   * THE ADMIN PANEL ROLE THEY HOLD, by the name the Roles tab gives it, or
+   * null (C89). `role` above says "admin" ONLY for the built-in Organization
+   * Admin: somebody holding one of the organisation's own Admin panel roles is
+   * `member` with this set, and is called by this name.
+   */
+  admin_role: AdminRole | null;
 
   /**
    * The dealer this membership is scoped to, or null for organisation-wide.
@@ -261,6 +277,7 @@ const FAKE_ME: Me = {
       is_ready: true,
       unit_closed: false,
       role: "owner",
+      admin_role: { code: "owner", name: "Organization Owner" },
       unit_id: null,
       unit_name: null,
       apps: [
@@ -390,6 +407,7 @@ const FAKE_ME: Me = {
        * the two places it missed.
        */
       role: "member",
+      admin_role: null,
       unit_id: "unit-2",
       unit_name: "Bangalore — Whitefield",
       apps: [

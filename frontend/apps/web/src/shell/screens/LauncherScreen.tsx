@@ -145,6 +145,8 @@ export function LauncherScreen() {
 function describeRole(membership: Membership): string {
   if (membership.role === "owner") return "the owner";
   if (membership.role === "admin") return "an organisation admin";
+  // One of the organisation's own Admin panel roles, by its name (C89).
+  if (membership.admin_role) return `${membership.admin_role.name} in the Admin panel`;
 
   const administers = membership.apps.some((app) => app.key === "admin" && app.accessible);
   if (administers) {

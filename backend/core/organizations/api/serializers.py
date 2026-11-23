@@ -223,6 +223,16 @@ class AppGrantSerializer(serializers.Serializer):
     status = serializers.CharField(read_only=True)
 
 
+class AdminRoleSerializer(serializers.Serializer):
+    """
+    The Admin panel role somebody holds (C89): `code` matches the Roles tab's
+    row ("owner" for the owner), `name` is what the screens call them.
+    """
+
+    code = serializers.CharField(read_only=True)
+    name = serializers.CharField(read_only=True)
+
+
 class OrgUserSerializer(serializers.Serializer):
     """
     One row of the Administration users list.
@@ -245,6 +255,9 @@ class OrgUserSerializer(serializers.Serializer):
     unit_name = serializers.CharField(read_only=True, allow_null=True)
 
     role = serializers.CharField(read_only=True)
+    # The Admin panel role they hold, by name (C89), or null. `role` above is
+    # "admin" only for the built-in Organisation admin.
+    admin_role = AdminRoleSerializer(read_only=True, allow_null=True)
     status = serializers.CharField(read_only=True)
     apps = AppGrantSerializer(many=True, read_only=True)
 
@@ -545,7 +558,9 @@ class AdminSerializer(serializers.Serializer):
     first_name = serializers.CharField(read_only=True)
     last_name = serializers.CharField(read_only=True)
     email = serializers.EmailField(read_only=True)
+    # "owner", "admin" or "custom" (C89) -- the tab's filter.
     role = serializers.CharField(read_only=True)
+    admin_role = AdminRoleSerializer(read_only=True)
     status = serializers.CharField(read_only=True)
     apps_managed = ManagedAppSerializer(many=True, read_only=True)
 

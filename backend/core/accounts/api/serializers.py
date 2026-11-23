@@ -158,6 +158,13 @@ class AppAccessSerializer(serializers.Serializer):
     permissions = serializers.ListField(child=serializers.CharField(), read_only=True)
 
 
+class _AdminRoleSerializer(serializers.Serializer):
+    """The Admin panel role they hold (C89). Mirrors `AdminRole` in auth.ts."""
+
+    code = serializers.CharField(read_only=True)
+    name = serializers.CharField(read_only=True)
+
+
 class MembershipSerializer(serializers.Serializer):
     """
     One organization this person belongs to.
@@ -173,6 +180,10 @@ class MembershipSerializer(serializers.Serializer):
     org_name = serializers.CharField(read_only=True)
     org_slug = serializers.CharField(read_only=True)
     role = serializers.CharField(read_only=True)
+    # The Admin panel role they hold, by name, or null (C89). `role` above says
+    # "admin" only for the built-in Organisation admin; somebody holding one of
+    # the organisation's own Admin panel roles is "member" with this set.
+    admin_role = _AdminRoleSerializer(read_only=True, allow_null=True)
     unit_id = serializers.UUIDField(read_only=True, allow_null=True)
     unit_name = serializers.CharField(read_only=True, allow_null=True)
     # Whether this organization's own database exists yet (C50, C1). The

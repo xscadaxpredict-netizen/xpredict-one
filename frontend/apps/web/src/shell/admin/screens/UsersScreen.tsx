@@ -112,9 +112,14 @@ export function UsersScreen() {
    * ADD USER IS THE ORGANISATION-WIDE ADMINS' (C83): an invited person sits
    * nowhere, so the server refuses anybody narrower -- a dealer admin -- with
    * a 403. Not offering the button is the screen agreeing with it.
+   *
+   * ANY ADMIN PANEL ROLE IS ORGANISATION-WIDE (C89): the owner, an
+   * Organization Admin, or somebody holding one of the organisation's own
+   * roles -- their Administration grant sits at the root. A dealer admin holds
+   * none (their administering is a DMS role), so `admin_role` is null for them.
    */
   const access = useAccess();
-  const canAddUsers = membership.role !== "member" && access.can("admin.user.create");
+  const canAddUsers = membership.admin_role !== null && access.can("admin.user.create");
 
   const showsOtherDealersPeople =
     callerIsOrgWide && (users?.some((user) => user.unit_name !== null) ?? false);

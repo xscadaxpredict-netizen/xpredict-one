@@ -14,7 +14,7 @@ import { UsersScreen } from "../admin/screens/UsersScreen";
 import { fetchMe } from "../api/auth";
 import type * as authApi from "../api/auth";
 import { renderRoute } from "./harness";
-import { me, ownerMembership } from "./factories";
+import { me, ownerMembership, adminRoleFor } from "./factories";
 
 vi.mock("../api/auth", async (importOriginal) => ({
   ...(await importOriginal<typeof authApi>()),
@@ -52,6 +52,7 @@ function user(overrides: Partial<usersApi.OrgUser> & { id: string }): usersApi.O
     unit_name: null,
     unit_id: null,
     role: "member",
+    admin_role: adminRoleFor(overrides.role ?? "member"),
     status: "active",
     apps: [],
     administers: null,
@@ -356,7 +357,9 @@ describe("a person opened beside the list", () => {
         id: "kochi",
         first_name: "Kiran",
         last_name: "",
-        role: "admin",
+        // A dealer admin is `member` standing with no Admin panel role (C40,
+        // C89): their administering is the DMS System administrator role.
+        role: "member",
         administers: "dealer",
         unit_id: "u1",
         unit_name: "Acme Kochi",
@@ -368,6 +371,22 @@ describe("a person opened beside the list", () => {
     expect(fact(info, "Last name")).toBe("—");
     expect(fact(info, "Role")).toBe("Dealer admin");
     expect(fact(info, "Dealer")).toContain("Acme Kochi");
+  });
+
+  it("names a custom Admin panel role's holder by that role, not Organization Admin (C89)", async () => {
+    mockFetchUsers.mockResolvedValue([
+      user({
+        id: "meena",
+        first_name: "Meena",
+        last_name: "Iyer",
+        role: "member",
+        admin_role: { code: "admin.custom_app", name: "Application Admin" },
+        administers: "organisation",
+      }),
+    ]);
+    const panel = await openPanel("meena", "Meena Iyer");
+
+    expect(fact(within(panel).getByRole("tabpanel"), "Role")).toBe("Application Admin");
   });
 
   it("folds Basic Information away and back", async () => {

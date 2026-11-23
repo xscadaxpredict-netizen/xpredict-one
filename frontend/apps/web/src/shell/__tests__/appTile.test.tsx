@@ -21,7 +21,7 @@ import { UsersScreen } from "../admin/screens/UsersScreen";
 import { fetchMe } from "../api/auth";
 import type * as authApi from "../api/auth";
 import { renderRoute } from "./harness";
-import { ADMIN_PANEL_TREE, appAccess, me, membership, roleCatalogue } from "./factories";
+import { ADMIN_PANEL_TREE, appAccess, me, membership, roleCatalogue, adminRoleFor } from "./factories";
 
 vi.mock("../api/auth", async (importOriginal) => ({
   ...(await importOriginal<typeof authApi>()),
@@ -77,6 +77,7 @@ function user(overrides: Partial<usersApi.OrgUser> & { id: string }): usersApi.O
     unit_name: null,
     unit_id: null,
     role: "member",
+    admin_role: adminRoleFor(overrides.role ?? "member"),
     status: "active",
     apps: [],
     administers: null,

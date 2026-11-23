@@ -187,6 +187,7 @@ class TestTheFields:
             "last_name",
             "email",
             "role",
+            "admin_role",
             "status",
             "apps_managed",
         }

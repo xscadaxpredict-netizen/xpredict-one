@@ -21,6 +21,8 @@
 
 import { request } from "@xpredict/api-client";
 
+import type { AdminRole } from "../../api/auth";
+
 /** Active, invited but not yet accepted, or switched off. */
 export type UserStatus = "active" | "invited" | "disabled";
 
@@ -79,6 +81,12 @@ export interface OrgUser {
 
   /** Organisation-level standing, distinct from any per-app role below. */
   role: "owner" | "admin" | "member";
+  /**
+   * The Admin panel role they hold, by name, or null (C89) -- what the list and
+   * the panel CALL them. `role` is "admin" only for the built-in Organization
+   * Admin.
+   */
+  admin_role: AdminRole | null;
 
   status: UserStatus;
   /**

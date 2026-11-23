@@ -8,7 +8,7 @@
  */
 
 import type { Role } from "../admin/api/roles";
-import type { AppAccess, AppKey, AppModule, Me, Membership } from "../api/auth";
+import type { AdminRole, AppAccess, AppKey, AppModule, Me, Membership } from "../api/auth";
 
 export function appAccess(key: AppKey, overrides: Partial<AppAccess> = {}): AppAccess {
   return {
@@ -51,12 +51,28 @@ export const USERS_ONLY_TREE: AppModule[] = [
   { code: "user_management", sub_modules: [{ code: "user", tabs: [] }] },
 ];
 
+/**
+ * The Admin panel role that goes with a standing word (C89), for factories:
+ * the owner and the built-in Organization Admin by name, a member none. A
+ * custom role is "AU Admin", the custom role the role tests use.
+ */
+export function panelRoleFor(role: "owner" | "admin" | "custom"): AdminRole {
+  if (role === "owner") return { code: "owner", name: "Organization Owner" };
+  if (role === "admin") return { code: "admin.org_admin", name: "Organization Admin" };
+  return { code: "admin.custom_abc", name: "AU Admin" };
+}
+
+export function adminRoleFor(role: Membership["role"]): AdminRole | null {
+  return role === "member" ? null : panelRoleFor(role);
+}
+
 export function membership(overrides: Partial<Membership> = {}): Membership {
   return {
     org_id: "org-1",
     org_name: "Acme Motors",
     org_slug: "acme-motors",
     role: "member",
+    admin_role: adminRoleFor(overrides.role ?? "member"),
     unit_id: null,
     unit_name: null,
     // Ready by default, because almost every test is about something else.

@@ -8,9 +8,9 @@
  *   Permissions  what the role holds, page by page: every action of the page,
  *                the held ones filled in. Read from the role builder's tree
  *                (`/admin/role-builder/`), so it is the same names as New Role.
- *   Users        who holds it: the owner for Organization Owner, the
- *                organisation admins for Organization Admin, and nobody yet for
- *                a custom role -- nothing can give one until Assign Admin.
+ *   Users        who holds it, by the role each person actually holds (C89):
+ *                the owner, the Organization Admins, or a custom role's own
+ *                holders -- nobody until Assign Admin can give one.
  *
  * THE ⋮ IS A CUSTOM ROLE'S ONLY -- on the row Edit / Delete Role, in the panel
  * Assign Users / Edit / Delete Role (the owner's Zoho screens). Built-in roles
@@ -272,20 +272,13 @@ function Permissions({ role }: { role: PanelRole }) {
 }
 
 /**
- * Who holds the role. The built-ins read the Admins tab's list; a custom role
- * cannot be given to anybody until Assign Admin exists.
+ * Who holds the role: the Admins tab's list, matched on the role EACH PERSON
+ * ACTUALLY HOLDS (`admin_role.code`, C89) -- so Organization Admin lists only
+ * its own holders, and a custom role lists its own, never each other's.
  */
 function Holders({ role }: { role: PanelRole }) {
-  const builtIn = role.built_in;
   const { data: admins, isPending, isError, error } = useAdmins();
 
-  if (!builtIn) {
-    return (
-      <p className={panel.note}>
-        Nobody has this role yet. Giving a role to somebody comes with Assign Admin.
-      </p>
-    );
-  }
   if (isPending) return <p className={panel.note}>Loading…</p>;
   if (isError) {
     return (
@@ -297,10 +290,16 @@ function Holders({ role }: { role: PanelRole }) {
     );
   }
 
-  const holders = (admins ?? []).filter((admin) =>
-    role.code === "owner" ? admin.role === "owner" : admin.role === "admin",
-  );
-  if (holders.length === 0) return <p className={panel.note}>Nobody has this role.</p>;
+  const holders = (admins ?? []).filter((admin) => admin.admin_role.code === role.code);
+  if (holders.length === 0) {
+    return (
+      <p className={panel.note}>
+        {role.built_in
+          ? "Nobody has this role."
+          : "Nobody has this role yet. Giving a role to somebody comes with Assign Admin."}
+      </p>
+    );
+  }
 
   return (
     <div className={panel.scroll}>

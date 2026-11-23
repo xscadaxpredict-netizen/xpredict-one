@@ -10,6 +10,8 @@
 
 import { request } from "@xpredict/api-client";
 
+import type { AdminRole } from "../../api/auth";
+
 /** An app somebody manages, for the admin's side panel. */
 export interface ManagedApp {
   code: string;
@@ -22,12 +24,16 @@ export interface Admin {
   first_name: string;
   last_name: string;
   email: string;
-  role: "owner" | "admin";
+  /** The tab's filter: the owner, the built-in Organization Admin, or a custom role (C89). */
+  role: "owner" | "admin" | "custom";
+  /** The role they hold, by the name the Roles tab gives it. */
+  admin_role: AdminRole;
   status: "active" | "disabled" | "invited";
   /**
-   * Every app the organisation subscribes to: the owner holds every app by
-   * rule and an organisation admin administers the whole organisation (C72).
-   * Sent with the row, so the panel needs no second endpoint or permission.
+   * Every app the organisation subscribes to for the owner (every app by rule)
+   * and an Organization Admin (the whole organisation, C72) -- and NONE for a
+   * custom role's holder, who does only what that role permits (C89). Sent
+   * with the row, so the panel needs no second endpoint or permission.
    */
   apps_managed: ManagedApp[];
 }

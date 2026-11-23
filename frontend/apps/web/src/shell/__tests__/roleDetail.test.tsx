@@ -137,8 +137,8 @@ beforeEach(() => {
   mockPanelRoles.mockResolvedValue([OWNER, ORG_ADMIN, CUSTOM]);
   mockBuilder.mockResolvedValue(BUILDER);
   mockAdmins.mockResolvedValue([
-    { id: "m-1", first_name: "Asha", last_name: "Rao", email: "asha@acme.test", role: "owner", status: "active", apps_managed: [] },
-    { id: "m-2", first_name: "Ravi", last_name: "Kumar", email: "ravi@acme.test", role: "admin", status: "active", apps_managed: [] },
+    { id: "m-1", first_name: "Asha", last_name: "Rao", email: "asha@acme.test", role: "owner", admin_role: { code: "owner", name: "Organization Owner" }, status: "active", apps_managed: [] },
+    { id: "m-2", first_name: "Ravi", last_name: "Kumar", email: "ravi@acme.test", role: "admin", admin_role: { code: "admin.org_admin", name: "Organization Admin" }, status: "active", apps_managed: [] },
   ]);
 });
 
@@ -230,7 +230,20 @@ describe("a role opened beside the list", () => {
 
     fireEvent.click(within(panel).getByRole("tab", { name: "Users" }));
 
-    expect(within(panel).getByText(/Nobody has this role yet/)).toBeInTheDocument();
+    expect(await within(panel).findByText(/Nobody has this role yet/)).toBeInTheDocument();
+  });
+
+  it("lists a custom role's own holders, and not under Organization Admin (C89)", async () => {
+    mockAdmins.mockResolvedValue([
+      { id: "m-2", first_name: "Ravi", last_name: "Kumar", email: "ravi@acme.test", role: "admin", admin_role: { code: "admin.org_admin", name: "Organization Admin" }, status: "active", apps_managed: [] },
+      { id: "m-3", first_name: "Meena", last_name: "Iyer", email: "meena@acme.test", role: "custom", admin_role: { code: "admin.custom_abc", name: "AU Admin" }, status: "active", apps_managed: [] },
+    ]);
+    const panel = await openRole("admin.custom_abc", "AU Admin");
+    fireEvent.click(within(panel).getByRole("tab", { name: "Users" }));
+
+    const people = await within(panel).findByRole("list", { name: "People with AU Admin" });
+    expect(within(people).getByText("Meena Iyer")).toBeInTheDocument();
+    expect(within(people).queryByText("Ravi Kumar")).toBeNull();
   });
 
   it("lists the organisation admins under Organization Admin", async () => {

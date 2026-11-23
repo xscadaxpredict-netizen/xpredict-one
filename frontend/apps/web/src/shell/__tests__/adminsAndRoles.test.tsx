@@ -19,7 +19,7 @@ import { fetchPanelRoles } from "../admin/api/roles";
 import { fetchMe } from "../api/auth";
 import type * as authApi from "../api/auth";
 import { renderRoute } from "./harness";
-import { appAccess, me, membership, ownerMembership } from "./factories";
+import { appAccess, me, membership, ownerMembership, panelRoleFor } from "./factories";
 
 vi.mock("../api/auth", async (importOriginal) => ({
   ...(await importOriginal<typeof authApi>()),
@@ -71,6 +71,7 @@ function admin(overrides: Partial<Admin> & { id: string }): Admin {
     last_name: "Last",
     email: `${overrides.id}@acme.test`,
     role: "admin",
+    admin_role: panelRoleFor(overrides.role ?? "admin"),
     status: "active",
     apps_managed: MANAGED,
     ...overrides,
@@ -82,6 +83,16 @@ const ADMINS = [
   admin({ id: "asha", first_name: "Asha", last_name: "Rao", role: "owner" }),
   admin({ id: "ravi", first_name: "Ravi", last_name: "Kumar", role: "admin" }),
 ];
+
+/** Somebody holding one of the organisation's own Admin panel roles (C89). */
+const MEENA = admin({
+  id: "meena",
+  first_name: "Meena",
+  last_name: "Iyer",
+  role: "custom",
+  admin_role: { code: "admin.custom_app", name: "Application Admin" },
+  apps_managed: [],
+});
 
 const ROLES: PanelRole[] = [
   {
@@ -201,12 +212,33 @@ describe("the Admins tab", () => {
       "All admins",
       "Organization Owner",
       "Organization Admin",
+      "Custom roles",
     ]);
 
     fireEvent.change(filter, { target: { value: "owner" } });
     expect(names()).toEqual(["Asha Rao"]);
 
     fireEvent.change(filter, { target: { value: "admin" } });
+    expect(names()).toEqual(["Ravi Kumar"]);
+  });
+
+  it("names a custom role's holder by that role, managing no app (C89)", async () => {
+    mockFetchAdmins.mockResolvedValue([...ADMINS, MEENA]);
+    renderRoute({ path: BASE, children: withAdmin });
+    await screen.findByRole("table");
+
+    const row = screen.getByRole("row", { name: /Meena Iyer/ });
+    expect(within(row).getByText("Application Admin")).toBeInTheDocument();
+    expect(within(row).queryByText("Organization Admin")).toBeNull();
+    expect(within(row).getByLabelText("No apps")).toBeInTheDocument();
+
+    fireEvent.change(screen.getByRole("combobox", { name: "Show" }), {
+      target: { value: "custom" },
+    });
+    expect(names()).toEqual(["Meena Iyer"]);
+    fireEvent.change(screen.getByRole("combobox", { name: "Show" }), {
+      target: { value: "admin" },
+    });
     expect(names()).toEqual(["Ravi Kumar"]);
   });
 
@@ -348,6 +380,16 @@ describe("an admin opened beside the list", () => {
     await within(panel).findByRole("list", { name: "Apps Ravi Kumar manages" });
 
     expect(mockFetchApplications).not.toHaveBeenCalled();
+  });
+
+  it("never says a custom role's holder manages every app (C89)", async () => {
+    mockFetchAdmins.mockResolvedValue([...ADMINS, MEENA]);
+    renderRoute({ path: `${BASE}/admin/meena`, children: withAdmin });
+    const panel = await screen.findByRole("complementary", { name: "Meena Iyer" });
+
+    expect(within(panel).getByText(/Holds the Application Admin role: manages no app/)).toBeInTheDocument();
+    expect(within(panel).queryByText(/manages every app/)).toBeNull();
+    expect(within(panel).queryByRole("list", { name: /manages/ })).toBeNull();
   });
 
   it("says the owner manages everything, and has no ⋮", async () => {

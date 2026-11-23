@@ -35,10 +35,14 @@ export function administersLabel(administers: OrgUser["administers"]): string | 
 
 /**
  * Their role in the Admin panel, as the Admins and Roles tabs name it, or null
- * if they administer nothing. The owner administers the organisation too, but
- * by rule, so they are named as the owner rather than as one more admin.
+ * if they administer nothing.
+ *
+ * THE ROLE THEY HOLD, BY NAME (C89): Organization Owner, Organization Admin,
+ * or the organisation's own role ("Application Admin") -- never "Organization
+ * Admin" for anybody who merely holds SOME Admin panel role. A dealer admin
+ * holds none; they are named from `administers`.
  */
-export function adminRoleLabel(user: Pick<OrgUser, "role" | "administers">): string | null {
-  if (user.role === "owner") return "Organization Owner";
+export function adminRoleLabel(user: Pick<OrgUser, "admin_role" | "administers">): string | null {
+  if (user.admin_role) return user.admin_role.name;
   return administersLabel(user.administers);
 }
