@@ -133,7 +133,17 @@ export interface AppDefinition {
    */
   kind: "product" | "settings";
   nav: NavGroup[];
+  /**
+   * THE APP'S OWN SETTINGS (C78), reached from the gear in the topbar: a full
+   * page at `/<org>/<app>/settings` whose sidebar is this accordion of modules
+   * instead of the app's `nav`. Paths are relative to that address. Left out,
+   * the app has no settings and no gear.
+   */
+  settings?: NavGroup[];
 }
+
+/** The path segment every app's settings live under (C78): `/<org>/<app>/settings`. */
+export const APP_SETTINGS_SEGMENT = "settings";
 
 /**
  * The panel's headings, in the order they are shown. A list rather than the
@@ -193,7 +203,10 @@ export const APP_CATALOG: AppDefinition[] = [
       {
         label: "Configuration",
         items: [
-          { label: "Load Master Data", path: "settings", icon: "database", module: "settings" },
+          // `master-data`, not `settings`: that address is DMS's own settings,
+          // reached from the gear (C78, the owner 2026-11-23). The module is
+          // still the backend's `settings`.
+          { label: "Load Master Data", path: "master-data", icon: "database", module: "settings" },
         ],
       },
       {
@@ -251,6 +264,31 @@ export const APP_CATALOG: AppDefinition[] = [
        * render for nobody while telling everybody who reads this file the
        * opposite of how the product works.
        */
+    ],
+    /*
+     * DMS SETTINGS, behind the gear (C78, C82; the owner 2026-11-23). The two
+     * modules C82 gives DMS, DRAWN ONLY: every page says it is being built.
+     * The gear and these pages are the OWNER'S alone until the app-admin role
+     * is designed (Q63) -- `canOpenAppSettings()` -- so the items carry
+     * `module: null` deliberately: the whole area is gated, not each link.
+     */
+    settings: [
+      {
+        label: "Users & Roles",
+        icon: "users",
+        items: [
+          { label: "Users", path: "users", icon: "users", module: null },
+          { label: "Roles", path: "roles", icon: "key", module: null },
+        ],
+      },
+      {
+        label: "Security & Controls",
+        icon: "shield-check",
+        items: [
+          { label: "Territory Management", path: "territories", icon: "compass", module: null },
+          { label: "Position Hierarchy", path: "position-hierarchy", icon: "user", module: null },
+        ],
+      },
     ],
   },
   {
@@ -463,6 +501,40 @@ export function launcherApps(membership: Membership): LauncherApp[] {
  */
 export function canOpenAdminPanel(membership: Membership): boolean {
   return visibleApps(membership).some((app) => app.definition.key === "admin" && app.enabled);
+}
+
+/**
+ * Whether this person gets the gear for `app`'s settings (C78), and may open them.
+ *
+ * THE OWNER ONLY, FOR NOW (the owner, 2026-11-23): app settings belong to an
+ * app admin, and that role is not designed yet (C82, Q63). When it is, it is
+ * added HERE, the one place that answers the question -- the gear, the
+ * settings sidebar and the route guard all ask this.
+ *
+ * Only a product with settings has a gear; the Admin panel has its shield.
+ * COURTESY, NOT SECURITY: no settings page asks the server anything yet.
+ */
+export function canOpenAppSettings(
+  membership: Membership,
+  app: AppDefinition | undefined,
+): boolean {
+  return (
+    app !== undefined &&
+    app.kind === "product" &&
+    app.settings !== undefined &&
+    membership.role === "owner"
+  );
+}
+
+/** Whether `pathname` is inside `app`'s settings (`/<org>/<app>/settings...`). */
+export function isInAppSettings(
+  app: AppDefinition | undefined,
+  orgSlug: string,
+  pathname: string,
+): boolean {
+  if (app?.settings === undefined) return false;
+  const base = `/${orgSlug}/${app.key}/${APP_SETTINGS_SEGMENT}`;
+  return pathname === base || pathname.startsWith(`${base}/`);
 }
 
 /**

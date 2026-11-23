@@ -14,9 +14,9 @@
  * with this" — and you get two highlighted items at once.
  */
 
-import { NavLink } from "react-router-dom";
+import { NavLink, useLocation } from "react-router-dom";
 
-import type { AppDefinition } from "../navigation";
+import { APP_SETTINGS_SEGMENT, isInAppSettings, type AppDefinition } from "../navigation";
 import { allows, useAccess } from "../access";
 import { useUiStore } from "../../stores/uiStore";
 import { AccordionNav } from "./AccordionNav";
@@ -47,8 +47,43 @@ export function Sidebar({ app, orgSlug, inDrawer = false, onNavigate }: SidebarP
   const collapsedPreference = useUiStore((state) => state.isSidebarCollapsed);
   const toggleSidebar = useUiStore((state) => state.toggleSidebar);
   const access = useAccess();
+  const { pathname } = useLocation();
 
   const isCollapsed = inDrawer ? false : collapsedPreference;
+
+  /*
+   * INSIDE AN APP'S SETTINGS (C78) the app's own links give way to its settings
+   * modules, drawn as the same accordion as the Admin panel's. Who may be here
+   * at all is decided once, by the route guard (`canOpenAppSettings`).
+   */
+  if (app.settings !== undefined && isInAppSettings(app, orgSlug, pathname)) {
+    const settingsGroups = app.settings
+      .map((group) => ({
+        ...group,
+        items: group.items.filter((item) => allows(access, item)),
+      }))
+      .filter((group) => group.items.length > 0 || group.comingSoon);
+
+    return (
+      <nav
+        className={styles.sidebar}
+        data-collapsed={isCollapsed || undefined}
+        data-drawer={inDrawer || undefined}
+        aria-label={`${app.name} settings navigation`}
+      >
+        <div className={styles.groups}>
+          <AccordionNav
+            appKey={`${app.key}/${APP_SETTINGS_SEGMENT}`}
+            orgSlug={orgSlug}
+            groups={settingsGroups}
+            isCollapsed={isCollapsed}
+            onNavigate={onNavigate}
+          />
+        </div>
+        {!inDrawer && <CollapseButton isCollapsed={isCollapsed} onToggle={toggleSidebar} />}
+      </nav>
+    );
+  }
 
   /*
    * Drop modules this person cannot open, then drop groups that are left
@@ -147,33 +182,43 @@ export function Sidebar({ app, orgSlug, inDrawer = false, onNavigate }: SidebarP
         </div>
       )}
 
-      {!inDrawer && (
-        <button
-          type="button"
-          className={styles.collapse}
-          onClick={toggleSidebar}
-          aria-label={isCollapsed ? "Expand sidebar" : "Collapse sidebar"}
-          aria-expanded={!isCollapsed}
-        >
-          <svg
-            width="14"
-            height="14"
-            viewBox="0 0 14 14"
-            aria-hidden="true"
-            focusable="false"
-          >
-            <path
-              d={isCollapsed ? "M5 3.5 8.5 7 5 10.5" : "M9 3.5 5.5 7 9 10.5"}
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="1.5"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            />
-          </svg>
-          <span className={styles.collapseLabel}>Collapse</span>
-        </button>
-      )}
+      {!inDrawer && <CollapseButton isCollapsed={isCollapsed} onToggle={toggleSidebar} />}
     </nav>
+  );
+}
+
+interface CollapseButtonProps {
+  isCollapsed: boolean;
+  onToggle: () => void;
+}
+
+/** The control at the foot of the rail that narrows it to icons and back. */
+function CollapseButton({ isCollapsed, onToggle }: CollapseButtonProps) {
+  return (
+    <button
+      type="button"
+      className={styles.collapse}
+      onClick={onToggle}
+      aria-label={isCollapsed ? "Expand sidebar" : "Collapse sidebar"}
+      aria-expanded={!isCollapsed}
+    >
+      <svg
+        width="14"
+        height="14"
+        viewBox="0 0 14 14"
+        aria-hidden="true"
+        focusable="false"
+      >
+        <path
+          d={isCollapsed ? "M5 3.5 8.5 7 5 10.5" : "M9 3.5 5.5 7 9 10.5"}
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.5"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+      </svg>
+      <span className={styles.collapseLabel}>Collapse</span>
+    </button>
   );
 }

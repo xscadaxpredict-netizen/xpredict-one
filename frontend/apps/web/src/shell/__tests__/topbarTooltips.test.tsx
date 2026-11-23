@@ -66,8 +66,10 @@ describe("topbar tooltips", () => {
   it("has no settings placeholder any more: the Admin panel's shield took its place", async () => {
     renderRoute({ path: "/acme-motors/admin/users" });
 
-    const bell = await screen.findByRole("button", { name: /^Notifications/ });
-    expect(bell.nextElementSibling).toHaveAccessibleName("Admin panel");
+    await screen.findByRole("button", { name: /^Notifications/ });
+    // The brand block inside the panel is also "Admin panel"; the shield is the last.
+    const links = screen.getAllByRole("link", { name: "Admin panel" });
+    expect(links.at(-1)).toHaveAttribute("href", "/acme-motors/admin");
     expect(screen.queryByRole("button", { name: "Settings" })).not.toBeInTheDocument();
   });
 });

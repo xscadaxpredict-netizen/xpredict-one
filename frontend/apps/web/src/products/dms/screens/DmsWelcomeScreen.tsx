@@ -129,10 +129,10 @@ export function DmsWelcomeScreen() {
         "Central repository for bulk master data loading, product SKUs, pricing baselines, and organization-wide operational parameters.",
       icon: Settings2,
       iconBg: "linear-gradient(135deg, #475569, #334155)",
-      primaryPath: `${basePath}/settings`,
+      primaryPath: `${basePath}/master-data`,
       primaryActionLabel: "Configure Master Data",
       screens: [
-        { label: "Load Master Data", path: `${basePath}/settings` },
+        { label: "Load Master Data", path: `${basePath}/master-data` },
       ],
     },
   ];

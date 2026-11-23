@@ -70,15 +70,21 @@ beforeEach(() => {
 });
 
 describe("the shield in the topbar", () => {
-  it("opens the Admin panel, straight after the bell", async () => {
+  it("opens the Admin panel, first after the line -- the organisation's side", async () => {
     mockFetchMe.mockResolvedValue(me({ memberships: [ownerMembership()] }));
 
     renderRoute({ path: "/acme-motors/dms", children: screens });
 
     const shield = await screen.findByRole("link", { name: "Admin panel" });
     expect(shield).toHaveAttribute("href", "/acme-motors/admin");
+    // The line (C78 amended, 2026-11-23): app-level icons before it, the
+    // organisation's after it, the shield first among them.
+    const group = shield.parentElement!;
+    expect(group.firstElementChild).toBe(shield);
+    expect(group.previousElementSibling).toHaveAttribute("aria-hidden", "true");
+    // The bell is on the app's side of the line, not with the shield.
     const bell = screen.getByRole("button", { name: /^Notifications/ });
-    expect(bell.nextElementSibling).toBe(shield);
+    expect(group.contains(bell)).toBe(false);
   });
 
   it("names itself on focus", async () => {
@@ -117,10 +123,9 @@ describe("the shield in the topbar", () => {
     renderRoute({ path: "/acme-motors/admin/dealers", children: screens });
 
     // Inside the panel the name block is ALSO a link called "Admin panel", so
-    // the shield is found by its place: straight after the bell.
-    const bell = await screen.findByRole("button", { name: /^Notifications/ });
-    const shield = bell.nextElementSibling;
-    expect(shield).toHaveAccessibleName("Admin panel");
+    // the shield is found by its place: the later of the two.
+    await screen.findByRole("button", { name: /^Notifications/ });
+    const shield = screen.getAllByRole("link", { name: "Admin panel" }).at(-1);
     expect(shield).toHaveAttribute("aria-current", "page");
   });
 });

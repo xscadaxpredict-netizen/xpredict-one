@@ -14,10 +14,17 @@
 import { useEffect } from "react";
 import { Link, useLocation } from "react-router-dom";
 import * as Tooltip from "@radix-ui/react-tooltip";
-import { SearchIcon } from "lucide-react";
+import { SearchIcon, SettingsIcon } from "lucide-react";
 
 import type { Me, Membership } from "../api/auth";
-import { canOpenAdminPanel, pageSearchLabel, type AppDefinition } from "../navigation";
+import {
+  APP_SETTINGS_SEGMENT,
+  canOpenAdminPanel,
+  canOpenAppSettings,
+  isInAppSettings,
+  pageSearchLabel,
+  type AppDefinition,
+} from "../navigation";
 import { usePageSearch } from "../../stores/pageSearchStore";
 import { useUiStore } from "../../stores/uiStore";
 import { AppIcon } from "./AppIcon";
@@ -137,10 +144,26 @@ export function Topbar({ me, membership, app }: TopbarProps) {
           currentAppKey={app?.key}
         />
 
+        {/*
+          THE LINE SEPARATES TWO LEVELS (the owner, 2026-11-23). Before it, the
+          APP you are in: its notifications and its own settings (the gear).
+          After it, the ORGANISATION and you: the Admin panel (the shield), your
+          account and the way to every other app.
+        */}
+        <div className={styles.actions}>
+          <NotificationMenu orgSlug={membership.org_slug} />
+          {app && canOpenAppSettings(membership, app) && (
+            <AppSettingsButton
+              orgSlug={membership.org_slug}
+              app={app}
+              isOpen={isInAppSettings(app, membership.org_slug, pathname)}
+            />
+          )}
+        </div>
+
         <span className={styles.divider} aria-hidden="true" />
 
         <div className={styles.actions}>
-          <NotificationMenu orgSlug={membership.org_slug} />
           {canOpenAdminPanel(membership) && (
             <AdminPanelButton orgSlug={membership.org_slug} isOpen={app?.key === "admin"} />
           )}
@@ -194,6 +217,47 @@ function AdminPanelButton({ orgSlug, isOpen }: AdminPanelButtonProps) {
         <Tooltip.Portal>
           <Tooltip.Content className={styles.tooltip} side="bottom" sideOffset={6}>
             Admin panel
+            <Tooltip.Arrow className={styles.tooltipArrow} width={10} height={5} />
+          </Tooltip.Content>
+        </Tooltip.Portal>
+      </Tooltip.Root>
+    </Tooltip.Provider>
+  );
+}
+
+interface AppSettingsButtonProps {
+  orgSlug: string;
+  app: AppDefinition;
+  /** True while this app's settings are open, so the gear shows it. */
+  isOpen: boolean;
+}
+
+/**
+ * The gear: the way into the open app's OWN settings (C78) -- "DMS settings"
+ * inside DMS -- beside the shield, which is the whole organisation's.
+ *
+ * Only inside an app that has settings, never on the launcher, and only for
+ * somebody `canOpenAppSettings()` lets in (the owner, for now). A link, like the
+ * shield, because it goes somewhere.
+ */
+function AppSettingsButton({ orgSlug, app, isOpen }: AppSettingsButtonProps) {
+  const label = `${app.name} settings`;
+  return (
+    <Tooltip.Provider delayDuration={400}>
+      <Tooltip.Root>
+        <Tooltip.Trigger asChild>
+          <Link
+            to={`/${orgSlug}/${app.key}/${APP_SETTINGS_SEGMENT}`}
+            className={styles.iconButton}
+            aria-label={label}
+            aria-current={isOpen ? "page" : undefined}
+          >
+            <SettingsIcon size={20} aria-hidden="true" />
+          </Link>
+        </Tooltip.Trigger>
+        <Tooltip.Portal>
+          <Tooltip.Content className={styles.tooltip} side="bottom" sideOffset={6}>
+            {label}
             <Tooltip.Arrow className={styles.tooltipArrow} width={10} height={5} />
           </Tooltip.Content>
         </Tooltip.Portal>
