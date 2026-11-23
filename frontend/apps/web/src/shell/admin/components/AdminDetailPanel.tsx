@@ -15,10 +15,17 @@
  */
 
 import { DetailPanel } from "@xpredict/ui";
+import { useState } from "react";
+import { useLocation, useNavigate } from "react-router-dom";
 
+import { useAccess } from "../../access";
 import { useShellContext } from "../../context";
 import { findApp } from "../../navigation";
 import type { Admin } from "../api/admins";
+import { useUnassignAdmin } from "../hooks/useAdmins";
+import { usePanelRoles } from "../hooks/useRoles";
+import { ConfirmAppDialog } from "./ConfirmAppDialog";
+import { ManageRolesDialog } from "./ManageRolesDialog";
 import panel from "./RecordPanel.module.css";
 import { RowMenu } from "./RowMenu";
 import { displayName } from "./UserActions";
@@ -26,25 +33,85 @@ import tiles from "./UserDetailPanel.module.css";
 import { initials } from "./UserTable";
 
 /**
- * The ⋮ for one admin: Manage Roles and Unassign (the owner, 2026-11-18).
+ * The ⋮ for one admin: Manage Roles and Unassign (the owner, 2026-11-23).
  *
- * DRAWN ONLY: both greyed out, no behaviour yet -- their permissions exist
- * (`admin.admin.assign_admin` / `unassign_admin`, C79) and the endpoints do
- * not. THE OWNER HAS NO ⋮ at all: ownership is not an admin role that can be
- * managed or taken away (C14).
+ *   Manage Roles  change their one Admin panel role (`admin.admin.assign_admin`
+ *                 -- the same act as giving one -- and `admin.role.view`, since
+ *                 the dialog lists the roles).
+ *   Unassign      take it away, after "Are you sure?" (`unassign_admin`). They
+ *                 keep every other app.
+ *
+ * GREYED, WITH WHY: on YOUR OWN row (it would lock you out -- the owner's
+ * choice), and on somebody whose current role is more than you hold (it is not
+ * `grantable` for you -- the owner's choice). THE OWNER HAS NO ⋮ at all:
+ * ownership is not an admin role that can be managed or taken away (C14).
+ * NONE OF THIS IS SECURITY: the server refuses each case again.
  */
 export function AdminActions({ admin }: { admin: Admin }) {
+  const { me, membership } = useShellContext();
+  const access = useAccess();
+  const navigate = useNavigate();
+  const location = useLocation();
+  // THE ROLES SAY WHETHER THEIR ROLE IS WITHIN YOURS (`grantable`), and only
+  // somebody with `admin.role.view` may read them. Without it neither act can
+  // be judged, so both stay greyed -- and no request bound to 403 is sent.
+  const seesRoles = access.can("admin.role.view");
+  const mayAct = access.can("admin.admin.assign_admin") || access.can("admin.admin.unassign_admin");
+  const roles = usePanelRoles({ enabled: seesRoles && mayAct });
+  const base = `/${membership.org_slug}/admin/admins-and-roles`;
+  const { mutateAsync: unassign } = useUnassignAdmin({
+    // Off their address, so their panel does not linger -- only if it is open.
+    onUnassigned: () => {
+      if (location.pathname.startsWith(`${base}/admin/${admin.id}`)) void navigate(base);
+    },
+  });
+  const [opened, setOpened] = useState<"manage" | "unassign" | null>(null);
+
   if (admin.role === "owner") return null;
 
+  const isSelf = admin.email.toLowerCase() === me.email.toLowerCase();
+  // Their current role within what you hold? Unknown until the roles load.
+  const yours = roles.data?.find((r) => r.code === admin.admin_role.code)?.grantable ?? false;
+  const canManage = !isSelf && yours && seesRoles && access.can("admin.admin.assign_admin");
+  const canUnassign = !isSelf && yours && seesRoles && access.can("admin.admin.unassign_admin");
+
   return (
-    <RowMenu
-      label={`More actions for ${displayName(admin)}`}
-      items={[
-        { label: "Manage Roles", disabled: true },
-        { label: "Unassign", danger: true, disabled: true },
-      ]}
-      note="Coming later."
-    />
+    <>
+      <RowMenu
+        label={`More actions for ${displayName(admin)}`}
+        items={[
+          { label: "Manage Roles", disabled: !canManage, onSelect: () => setOpened("manage") },
+          {
+            label: "Unassign",
+            danger: true,
+            disabled: !canUnassign,
+            onSelect: () => setOpened("unassign"),
+          },
+        ]}
+        note={
+          isSelf
+            ? "You cannot change your own admin role. Ask another admin."
+            : mayAct && !seesRoles
+              ? "Managing admins needs the Roles tab's view too."
+              : roles.data && !yours
+                ? "Their role is more than you hold."
+                : undefined
+        }
+      />
+      <ManageRolesDialog
+        admin={admin}
+        open={opened === "manage"}
+        onOpenChange={(open) => setOpened(open ? "manage" : null)}
+      />
+      <ConfirmAppDialog
+        open={opened === "unassign"}
+        onOpenChange={(open) => setOpened(open ? "unassign" : null)}
+        title={`Unassign ${displayName(admin)}`}
+        question={`Are you sure you want to unassign the admin role from ${displayName(admin)}?`}
+        verb="Unassign"
+        onConfirm={() => unassign(admin.id)}
+      />
+    </>
   );
 }
 

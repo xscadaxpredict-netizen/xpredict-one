@@ -299,7 +299,8 @@ function AdminsTab({ basePath, personId }: { basePath: string; personId: string 
                           </span>
                         )}
                       </td>
-                      <td className={styles.actions}>
+                      {/* Stops clicks from the ⋮ and its dialogs (portals) reaching the row (C87). */}
+                      <td className={styles.actions} onClick={(event) => event.stopPropagation()}>
                         <AdminActions admin={user} />
                       </td>
                     </tr>

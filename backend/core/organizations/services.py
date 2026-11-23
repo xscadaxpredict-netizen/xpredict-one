@@ -55,8 +55,10 @@ from core.organizations.exceptions import (
     InvitationExpiredError,
     InvitationNeedsSignInError,
     InvitationWrongAccountError,
+    NotAnAdminError,
     NotAnInvitationError,
     OrganizationNameUnusableError,
+    OwnAdminRoleError,
     OwnerHoldsEveryAppError,
     OwnerProtectedError,
     PersonEmailTakenError,
@@ -2247,3 +2249,103 @@ def assign_admin_role(
             territories=[root],
             actor_id=actor.user_id,
         )
+
+
+# ---------------------------------------------------------------------------
+# MANAGE ROLES / UNASSIGN (the owner, 2026-11-23): an admin's row on the Admins
+# tab -> ⋮. Change the one Admin panel role somebody holds, or take it away.
+# ---------------------------------------------------------------------------
+
+
+def _admin_to_act_on(
+    actor: Membership, organization: Organization, person_id: uuid.UUID
+) -> tuple[Membership, Role]:
+    """
+    The admin Manage Roles / Unassign names, and the role they hold -- after
+    every refusal both share, in this order:
+
+    - somebody the actor may not manage, or not in this organisation: 404;
+    - the owner (holds everything by rule; nothing to change): 409;
+    - somebody holding no Admin panel role (use Assign Admin): 409;
+    - THE ACTOR THEMSELVES (the owner's choice, 2026-11-23): 409 -- taking
+      your own role away locks you out with no way back;
+    - somebody whose CURRENT role grants more than the actor holds (the
+      owner's choice): 403 -- "never beyond your own access" applied to the
+      person acted on, or an "Application Admin" with `unassign_admin` could
+      strip a full Organization Admin. The owner may act on anybody.
+    """
+    person = find_person(organization, person_id)
+    _assert_can_manage_person(actor, person)
+    if isinstance(person, Invitation):
+        raise NotAnAdminError
+    if person.is_owner:
+        raise OwnerHoldsEveryAppError
+    current = admin_panel_role(person)
+    if current is None:
+        raise NotAnAdminError
+    if person.pk == actor.pk:
+        raise OwnAdminRoleError
+    if not actor.is_owner and not (
+        {p.code for p in current.permissions.all()} <= permissions_for(actor)
+    ):
+        raise RoleBeyondOwnAccessError(
+            "Their role grants more than you hold, so you cannot change it."
+        )
+    return person, current
+
+
+@transaction.atomic
+def change_admin_role(
+    *,
+    actor: Membership,
+    organization: Organization,
+    person_id: uuid.UUID,
+    role_code: str,
+) -> Membership:
+    """
+    Manage Roles: replace the Admin panel role somebody holds (one per person,
+    C89) -- every `_admin_to_act_on()` refusal, then the new role the same way
+    Assign Admin checks it: an Admin panel role of this organisation's (404
+    otherwise) that grants nothing beyond the actor's access (403). Their grant
+    stays at the root; the role row records who changed it (Q71).
+    """
+    person, _current = _admin_to_act_on(actor, organization, person_id)
+
+    role = (
+        roles_for_organization(organization.id)
+        .filter(app_id=AppCode.ADMIN, code=role_code)
+        .prefetch_related("permissions")
+        .first()
+    )
+    if role is None:
+        raise not_found("Role")
+    if not actor.is_owner and not (
+        {p.code for p in role.permissions.all()} <= permissions_for(actor)
+    ):
+        raise RoleBeyondOwnAccessError(
+            "You cannot give a role with permissions you do not hold yourself."
+        )
+
+    grant_app_access(
+        membership=person,
+        app=AppCode.ADMIN,
+        role=role,
+        territories=[Territory.objects.root_for(organization)],
+        actor_id=actor.user_id,
+    )
+    return person
+
+
+@transaction.atomic
+def unassign_admin_role(
+    *, actor: Membership, organization: Organization, person_id: uuid.UUID
+) -> Membership:
+    """
+    Unassign: take somebody's Admin panel role away -- every
+    `_admin_to_act_on()` refusal first. They stay a member with every other
+    app; they leave the Admins tab, and their role's count drops. Their next
+    request no longer carries the role's permissions.
+    """
+    person, _current = _admin_to_act_on(actor, organization, person_id)
+    revoke_app_access(membership=person, app=AppCode.ADMIN)
+    return person

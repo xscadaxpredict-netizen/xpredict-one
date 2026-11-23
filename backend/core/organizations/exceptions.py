@@ -583,3 +583,24 @@ class AdminAtDealershipError(ConflictError):
 
     code = "admin_at_dealership"
     message = "Somebody placed at a dealership cannot hold an Admin panel role."
+
+
+class NotAnAdminError(ConflictError):
+    """
+    Manage Roles / Unassign named somebody who holds no Admin panel role. There
+    is nothing to change or take away; giving them one is Assign Admin.
+    """
+
+    code = "not_an_admin"
+    message = "This person holds no Admin panel role. Use Assign Admin to give them one."
+
+
+class OwnAdminRoleError(ConflictError):
+    """
+    Manage Roles / Unassign on one's own row (the owner, 2026-11-23). Taking
+    your own Admin panel role away locks you out of the Admin panel with no way
+    back but somebody else; changing it is the same risk. Another admin does it.
+    """
+
+    code = "own_admin_role"
+    message = "You cannot change your own admin role. Ask another admin."

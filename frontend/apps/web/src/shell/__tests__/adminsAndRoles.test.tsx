@@ -6,11 +6,12 @@
  */
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { act, fireEvent, screen, within } from "@testing-library/react";
+import { act, fireEvent, screen, waitFor, within } from "@testing-library/react";
+import { ApiError } from "@xpredict/api-client";
 
 import AdminRoutes from "../admin/routes";
 import type { Admin } from "../admin/api/admins";
-import { fetchAdmins } from "../admin/api/admins";
+import { changeAdminRole, fetchAdmins, unassignAdmin } from "../admin/api/admins";
 import { fetchApplications } from "../admin/api/applications";
 import type * as usersApi from "../admin/api/users";
 import { fetchUsers } from "../admin/api/users";
@@ -29,7 +30,11 @@ vi.mock("../api/auth", async (importOriginal) => ({
 
 // The Admins tab's own endpoint (C79). The Users list is mocked only so a
 // test can say it was never asked for.
-vi.mock("../admin/api/admins", () => ({ fetchAdmins: vi.fn() }));
+vi.mock("../admin/api/admins", () => ({
+  fetchAdmins: vi.fn(),
+  changeAdminRole: vi.fn(),
+  unassignAdmin: vi.fn(),
+}));
 
 vi.mock("../admin/api/users", async (importOriginal) => ({
   ...(await importOriginal<typeof usersApi>()),
@@ -55,6 +60,8 @@ const mockFetchAdmins = vi.mocked(fetchAdmins);
 const mockFetchUsers = vi.mocked(fetchUsers);
 const mockFetchApplications = vi.mocked(fetchApplications);
 const mockFetchPanelRoles = vi.mocked(fetchPanelRoles);
+const mockChangeRole = vi.mocked(changeAdminRole);
+const mockUnassign = vi.mocked(unassignAdmin);
 
 const withAdmin = [{ path: "admin/*", element: <AdminRoutes /> }];
 const BASE = "/acme-motors/admin/admins-and-roles";
@@ -302,7 +309,7 @@ describe("the topbar search follows the tab", () => {
 
 
 describe("the ⋮ on an admin", () => {
-  it("offers Manage Roles and Unassign, both greyed out for now", async () => {
+  it("offers Manage Roles and Unassign, greyed without the rights to them", async () => {
     renderRoute({ path: BASE, children: withAdmin });
     await screen.findByRole("table");
 
@@ -483,5 +490,199 @@ describe("each tab follows its own section (C79)", () => {
     expect(await screen.findByText("Nothing here is ready for you yet.")).toBeInTheDocument();
     expect(router.state.location.pathname).toBe(BASE);
     expect(screen.getByRole("tab", { name: "App Admins" })).toHaveAttribute("aria-disabled", "true");
+  });
+});
+
+/* ---- Manage Roles and Unassign (the owner, 2026-11-23) ------------------- */
+
+/** Somebody who may manage admins: the tab, both acts, and the roles to judge them by. */
+function mayManageAdmins(email = "anita.f@acmemotors.in") {
+  mockFetchMe.mockResolvedValue(
+    me({
+      email,
+      memberships: [
+        membership({
+          role: "admin",
+          apps: [
+            appAccess("admin", {
+              modules: [
+                {
+                  code: "user_management",
+                  sub_modules: [{ code: "admins_and_roles", tabs: ["admin", "role"] }],
+                },
+              ],
+              permissions: [
+                "admin.admin.view",
+                "admin.admin.assign_admin",
+                "admin.admin.unassign_admin",
+                "admin.role.view",
+              ],
+            }),
+          ],
+        }),
+      ],
+    }),
+  );
+}
+
+const APP_ADMIN_ROLE: PanelRole = {
+  code: "admin.custom_app",
+  name: "Application Admin",
+  summary: "",
+  built_in: false,
+  users: 0,
+  modified_by: "Asha Rao",
+  grantable: true,
+};
+
+async function adminMenu(name: string) {
+  await screen.findByRole("table");
+  fireEvent.keyDown(screen.getByRole("button", { name: `More actions for ${name}` }), {
+    key: "Enter",
+  });
+  return screen.findByRole("menu");
+}
+
+async function liveItem(menu: HTMLElement, name: string) {
+  await waitFor(() =>
+    expect(within(menu).getByRole("menuitem", { name })).not.toHaveAttribute("aria-disabled"),
+  );
+  return within(menu).getByRole("menuitem", { name });
+}
+
+describe("Manage Roles and Unassign", () => {
+  beforeEach(() => {
+    mayManageAdmins();
+    mockFetchPanelRoles.mockResolvedValue([...ROLES, APP_ADMIN_ROLE]);
+  });
+
+  it("are live for somebody who may manage admins", async () => {
+    renderRoute({ path: BASE, children: withAdmin });
+
+    const menu = await adminMenu("Ravi Kumar");
+
+    await liveItem(menu, "Manage Roles");
+    await liveItem(menu, "Unassign");
+  });
+
+  it("are greyed on your own row", async () => {
+    mayManageAdmins("ravi@acme.test");
+    renderRoute({ path: BASE, children: withAdmin });
+
+    const menu = await adminMenu("Ravi Kumar");
+
+    for (const name of ["Manage Roles", "Unassign"]) {
+      expect(within(menu).getByRole("menuitem", { name })).toHaveAttribute("aria-disabled", "true");
+    }
+    expect(menu).toHaveTextContent("You cannot change your own admin role.");
+  });
+
+  it("are greyed on somebody whose role is more than you hold", async () => {
+    mockFetchPanelRoles.mockResolvedValue([
+      ROLES[0]!,
+      { ...ROLES[1]!, grantable: false },
+      APP_ADMIN_ROLE,
+    ]);
+    renderRoute({ path: BASE, children: withAdmin });
+
+    const menu = await adminMenu("Ravi Kumar");
+
+    expect(await within(menu).findByText("Their role is more than you hold.")).toBeInTheDocument();
+    expect(within(menu).getByRole("menuitem", { name: "Unassign" })).toHaveAttribute(
+      "aria-disabled",
+      "true",
+    );
+  });
+
+  it("Manage Roles starts on their current role and sends the new one", async () => {
+    mockChangeRole.mockResolvedValue(ADMINS);
+    const { router } = renderRoute({ path: BASE, children: withAdmin });
+    const menu = await adminMenu("Ravi Kumar");
+
+    fireEvent.click(await liveItem(menu, "Manage Roles"));
+    const dialog = await screen.findByRole("dialog", { name: "Manage Roles" });
+    const select = within(dialog).getByRole("combobox", { name: /Role/ });
+    await within(select).findByRole("option", { name: "Application Admin" });
+    expect(select).toHaveValue("admin.org_admin");
+    expect(within(dialog).getByRole("button", { name: "Save" })).toBeDisabled();
+
+    fireEvent.change(select, { target: { value: "admin.custom_app" } });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Save" }));
+
+    await waitFor(() =>
+      expect(mockChangeRole).toHaveBeenCalledWith("acme-motors", "ravi", "admin.custom_app"),
+    );
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    // Clicks inside the dialog (a portal) never opened the row's panel (C87).
+    expect(router.state.location.pathname).toBe(BASE);
+  });
+
+  it("Unassign asks first, then takes the role away", async () => {
+    mockUnassign.mockResolvedValue([ADMINS[0]!]);
+    renderRoute({ path: BASE, children: withAdmin });
+    const menu = await adminMenu("Ravi Kumar");
+
+    fireEvent.click(await liveItem(menu, "Unassign"));
+    const dialog = await screen.findByRole("dialog", { name: "Unassign Ravi Kumar" });
+    expect(dialog).toHaveTextContent(
+      "Are you sure you want to unassign the admin role from Ravi Kumar?",
+    );
+    fireEvent.click(within(dialog).getByRole("button", { name: "Yes, Unassign" }));
+
+    await waitFor(() => expect(mockUnassign).toHaveBeenCalledWith("acme-motors", "ravi"));
+  });
+
+  it("shows the server's refusal inside the dialog", async () => {
+    mockUnassign.mockRejectedValue(
+      new ApiError({
+        type: "about:blank",
+        title: "Forbidden",
+        status: 403,
+        detail: "Their role grants more than you hold, so you cannot change it.",
+        code: "role_beyond_own_access",
+        trace_id: "t-1",
+      }),
+    );
+    renderRoute({ path: BASE, children: withAdmin });
+    const menu = await adminMenu("Ravi Kumar");
+    fireEvent.click(await liveItem(menu, "Unassign"));
+    const dialog = await screen.findByRole("dialog", { name: "Unassign Ravi Kumar" });
+
+    fireEvent.click(within(dialog).getByRole("button", { name: "Yes, Unassign" }));
+
+    expect(await within(dialog).findByRole("alert")).toHaveTextContent("more than you hold");
+  });
+
+  it("never asks for the roles without the Roles tab's view", async () => {
+    mockFetchMe.mockResolvedValue(
+      me({
+        memberships: [
+          membership({
+            role: "member",
+            apps: [
+              appAccess("admin", {
+                modules: [
+                  {
+                    code: "user_management",
+                    sub_modules: [{ code: "admins_and_roles", tabs: ["admin"] }],
+                  },
+                ],
+                permissions: ["admin.admin.view", "admin.admin.unassign_admin"],
+              }),
+            ],
+          }),
+        ],
+      }),
+    );
+    renderRoute({ path: BASE, children: withAdmin });
+
+    const menu = await adminMenu("Ravi Kumar");
+
+    expect(within(menu).getByRole("menuitem", { name: "Unassign" })).toHaveAttribute(
+      "aria-disabled",
+      "true",
+    );
+    expect(menu).toHaveTextContent("Managing admins needs the Roles tab's view too.");
+    expect(mockFetchPanelRoles).not.toHaveBeenCalled();
   });
 });

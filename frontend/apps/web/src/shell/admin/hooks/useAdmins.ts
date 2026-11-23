@@ -8,7 +8,13 @@
 
 import { useOrgMutation, useOrgQuery } from "@xpredict/api-client";
 
-import { assignAdmin, fetchAdmins, type AssignAdmin } from "../api/admins";
+import {
+  assignAdmin,
+  changeAdminRole,
+  fetchAdmins,
+  unassignAdmin,
+  type AssignAdmin,
+} from "../api/admins";
 import { adminKeys, PEOPLE_CHANGED } from "./useUsers";
 
 export function useAdmins() {
@@ -26,5 +32,26 @@ export function useAssignAdmin() {
   return useOrgMutation({
     mutationFn: (orgSlug, body: AssignAdmin) => assignAdmin(orgSlug, body),
     invalidates: PEOPLE_CHANGED,
+  });
+}
+
+/** Manage Roles: the same things go stale as Assign Admin. */
+export function useChangeAdminRole() {
+  return useOrgMutation({
+    mutationFn: (orgSlug, { personId, role }: { personId: string; role: string }) =>
+      changeAdminRole(orgSlug, personId, role),
+    invalidates: PEOPLE_CHANGED,
+  });
+}
+
+/**
+ * Unassign. `onUnassigned` runs in the mutation's own onSuccess, before the
+ * refetched Admins tab drops the row -- the same race Delete Role met.
+ */
+export function useUnassignAdmin({ onUnassigned }: { onUnassigned?: () => void } = {}) {
+  return useOrgMutation({
+    mutationFn: (orgSlug, personId: string) => unassignAdmin(orgSlug, personId),
+    invalidates: PEOPLE_CHANGED,
+    onSuccess: () => onUnassigned?.(),
   });
 }

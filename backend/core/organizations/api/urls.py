@@ -13,6 +13,7 @@ from __future__ import annotations
 from django.urls import include, path
 
 from core.organizations.api.views import (
+    AdminDetailView,
     AdminsView,
     ApplicationMembersView,
     ApplicationsView,
@@ -75,6 +76,8 @@ urlpatterns = [
     path("admin/role-builder/", RoleBuilderView.as_view(), name="role-builder"),
     # The Admins tab (C78), on its own permission (C79).
     path("admin/admins/", AdminsView.as_view(), name="admins"),
+    # Manage Roles (PUT) and Unassign (DELETE) on one admin's row.
+    path("admin/admins/<str:person_id>/", AdminDetailView.as_view(), name="admin-detail"),
     path("admin/users/", UsersView.as_view(), name="users"),
     path("admin/users/<str:user_id>/", UserDetailView.as_view(), name="user-detail"),
     # BEFORE the activate/deactivate route below, which would otherwise match

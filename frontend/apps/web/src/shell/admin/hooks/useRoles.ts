@@ -53,10 +53,12 @@ export function useRoles({ enabled = true }: UseRolesOptions = {}) {
  * NOT reference data like `useRoles`: the counts change whenever somebody is
  * invited, made an admin or removed, so the default freshness applies.
  */
-export function usePanelRoles() {
+export function usePanelRoles({ enabled = true }: UseRolesOptions = {}) {
   return useOrgQuery({
     key: roleKeys.panel(),
     queryFn: (orgSlug) => fetchPanelRoles(orgSlug),
+    // False for somebody without `admin.role.view`: a request bound to 403.
+    enabled,
   });
 }
 

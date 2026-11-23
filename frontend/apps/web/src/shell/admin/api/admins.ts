@@ -60,3 +60,27 @@ export async function assignAdmin(orgSlug: string, body: AssignAdmin): Promise<A
     body: JSON.stringify(body),
   });
 }
+
+/**
+ * Manage Roles: change the one Admin panel role somebody holds. Refused with
+ * 409 (`own_admin_role`, `not_an_admin`, `owner_holds_every_app`) or 403
+ * `role_beyond_own_access` (their role, or the new one, is more than you hold).
+ * Answers with the Admins tab.
+ */
+export async function changeAdminRole(
+  orgSlug: string,
+  personId: string,
+  role: string,
+): Promise<Admin[]> {
+  return request<Admin[]>(`/api/v1/orgs/${orgSlug}/admin/admins/${personId}/`, {
+    method: "PUT",
+    body: JSON.stringify({ role }),
+  });
+}
+
+/** Unassign: take somebody's Admin panel role away; their other apps stay. */
+export async function unassignAdmin(orgSlug: string, personId: string): Promise<Admin[]> {
+  return request<Admin[]>(`/api/v1/orgs/${orgSlug}/admin/admins/${personId}/`, {
+    method: "DELETE",
+  });
+}

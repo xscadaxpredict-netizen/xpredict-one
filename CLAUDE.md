@@ -153,8 +153,9 @@ the Admins tab). Never label or count "holds Administration at all" as Organizat
 Reach is separate: ANY Admin panel role is organisation-wide (`_administers()`), with only
 that role's permissions. **Assign Admin** (`POST /admin/admins/`, page
 `admins-and-roles/assign-admin`) gives one; anybody with `admin.admin.assign_admin` may give
-any role that does not exceed what they hold. It only ADDS -- Manage Roles / Unassign on the
-admin row are not built yet.
+any role that does not exceed what they hold. The admin row's **Manage Roles / Unassign**
+(`PUT`/`DELETE /admin/admins/<id>/`) change or remove it -- never your own role, never
+somebody whose role is more than you hold.
 
 **Frontend — built, merged, and running on Django.** Sign-in, the app launcher, the
 shell and Administration (Users, Dealers, Roles) all work in a browser against the

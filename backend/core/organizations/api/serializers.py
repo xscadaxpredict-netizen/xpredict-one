@@ -558,6 +558,12 @@ class AssignAdminSerializer(serializers.Serializer):
     role = serializers.CharField(max_length=60)
 
 
+class ChangeAdminRoleSerializer(serializers.Serializer):
+    """Manage Roles: `{"role": "<Admin panel role code>"}`."""
+
+    role = serializers.CharField(max_length=60)
+
+
 class AdminSerializer(serializers.Serializer):
     """
     One row of the Admin panel's Admins tab (C78). Mirrors `Admin` in

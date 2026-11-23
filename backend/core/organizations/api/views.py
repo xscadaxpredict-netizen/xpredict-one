@@ -28,6 +28,7 @@ from core.organizations.api.serializers import (
     AssignAdminSerializer,
     AssignAppsSerializer,
     AssignUsersSerializer,
+    ChangeAdminRoleSerializer,
     DealerCreateSerializer,
     DealerDetailsSerializer,
     DealerSerializer,
@@ -60,6 +61,7 @@ from core.organizations.services import (
     assign_admin_role,
     assign_apps,
     assign_users_to_app,
+    change_admin_role,
     change_app_role,
     close_dealer,
     create_admin_role,
@@ -76,6 +78,7 @@ from core.organizations.services import (
     resend_invitation,
     set_app_status,
     set_person_status,
+    unassign_admin_role,
     unassign_app,
     update_admin_role,
     update_dealer,
@@ -731,6 +734,43 @@ class AdminsView(OrgScopedAPIView):
             organization=self.organization,
             person_ids=payload.validated_data["users"],
             role_code=payload.validated_data["role"],
+        )
+        return Response(AdminSerializer(admins_for(self.organization), many=True).data)
+
+
+class AdminDetailView(OrgScopedAPIView):
+    """
+    One admin on the Admins tab (the owner, 2026-11-23): PUT is Manage Roles
+    (change their Admin panel role), DELETE is Unassign (take it away).
+
+    WRITE-ONLY, so the tab's view sits beside each act (C81). Changing a role
+    is the same act as giving one, so it is `assign_admin`; taking one away is
+    `unassign_admin`. The services refuse the owner, a non-admin, yourself, and
+    anybody whose role is more than you hold.
+    """
+
+    required_permissions: ClassVar[list[str]] = ["admin.admin.view"]
+    method_permissions: ClassVar[dict[str, list[str]]] = {
+        "PUT": ["admin.admin.assign_admin"],
+        "DELETE": ["admin.admin.unassign_admin"],
+    }
+
+    def put(self, request: Request, org_slug: str, person_id: str) -> Response:
+        """Manage Roles: `{"role": code}`. Answers with the Admins tab."""
+        payload = ChangeAdminRoleSerializer(data=request.data)
+        payload.is_valid(raise_exception=True)
+        change_admin_role(
+            actor=self.membership,
+            organization=self.organization,
+            person_id=person_id,
+            role_code=payload.validated_data["role"],
+        )
+        return Response(AdminSerializer(admins_for(self.organization), many=True).data)
+
+    def delete(self, request: Request, org_slug: str, person_id: str) -> Response:
+        """Unassign: they keep every other app. Answers with the Admins tab."""
+        unassign_admin_role(
+            actor=self.membership, organization=self.organization, person_id=person_id
         )
         return Response(AdminSerializer(admins_for(self.organization), many=True).data)
 
