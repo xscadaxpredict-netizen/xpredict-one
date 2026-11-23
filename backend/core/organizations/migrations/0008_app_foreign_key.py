@@ -4,10 +4,14 @@ import django.db.models.deletion
 from django.db import migrations, models
 
 
+# AFTER `main`'s 0008 (Nishanth's head office), not beside it -- merge with
+# `main`, 2026-11-23. Production ran `main`'s 0008 first, and the next
+# migration here renames BusinessUnit to Territory: a side-by-side order let
+# Django build the rename before `main` added its column, and fail.
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('organizations', '0007_businessunit_gstin_businessunit_pan'),
+        ("organizations", "0008_businessunit_is_head_office"),
         ('permissions', '0007_app_foreign_key'),
     ]
 
