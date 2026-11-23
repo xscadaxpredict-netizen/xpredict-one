@@ -251,8 +251,16 @@ function Value({ text }: { text: string | null | undefined }) {
  * The link is not shown until an admin asks for it: it carries the token that
  * joins the organisation as this person, so it is fetched on a press rather
  * than sitting in the panel for everybody who clicks a row.
+ *
+ * EACH ON ITS ENDPOINT'S PERMISSION (the 2026-11-23 audit): Show link is
+ * `admin.user.create` -- handing out a way in is part of adding somebody --
+ * and Resend `admin.user.resend_invitation`. Greyed without them; they used
+ * to be live for anybody who could see a pending person, and 403.
  */
 function Invitation({ user }: { user: OrgUser }) {
+  const access = useAccess();
+  const canShow = access.can("admin.user.create");
+  const canResend = access.can("admin.user.resend_invitation");
   const { mutate: resend, isPending: resendPending, isSuccess: resent } = useResendInvitation();
   const [showLink, setShowLink] = useState(false);
   // Bumped by Resend so the link panel refetches, and says "New link ready".
@@ -266,7 +274,11 @@ function Invitation({ user }: { user: OrgUser }) {
         <button
           type="button"
           className={styles.secondaryAction}
-          onClick={() => setShowLink((shown) => !shown)}
+          aria-disabled={canShow ? undefined : "true"}
+          title={canShow ? undefined : "You cannot hand out invitation links"}
+          onClick={() => {
+            if (canShow) setShowLink((shown) => !shown);
+          }}
           aria-expanded={showLink}
         >
           {showLink ? "Hide link" : "Show link"}
@@ -276,7 +288,10 @@ function Invitation({ user }: { user: OrgUser }) {
           type="button"
           className={styles.secondaryAction}
           disabled={resendPending}
+          aria-disabled={canResend ? undefined : "true"}
+          title={canResend ? undefined : "You cannot resend invitations"}
           onClick={() => {
+            if (!canResend) return;
             /*
              * Reveal the new link rather than hiding the old one: the token has
              * changed, so showing the replacement IS the acknowledgement, and

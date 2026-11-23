@@ -21,7 +21,7 @@ import { UsersScreen } from "../admin/screens/UsersScreen";
 import type * as authApi from "../api/auth";
 import { fetchMe } from "../api/auth";
 import { renderRoute } from "./harness";
-import { me, ownerMembership, adminRoleFor } from "./factories";
+import { ADMIN_PANEL_TREE, adminRoleFor, appAccess, me, membership, ownerMembership } from "./factories";
 
 vi.mock("../api/auth", async (importOriginal) => ({
   ...(await importOriginal<typeof authApi>()),
@@ -94,6 +94,33 @@ beforeEach(() => {
    */
   writeText = vi.fn().mockResolvedValue(undefined);
   Object.assign(navigator, { clipboard: { writeText } });
+});
+
+describe("Show link and Resend follow the viewer's permissions (the 2026-11-23 audit)", () => {
+  it("are greyed for somebody who may only view people, and do nothing", async () => {
+    mockFetchMe.mockResolvedValue(
+      me({
+        memberships: [
+          membership({
+            admin_role: { code: "admin.custom_app", name: "Application Admin" },
+            apps: [appAccess("admin", { modules: ADMIN_PANEL_TREE, permissions: ["admin.user.view"] })],
+          }),
+        ],
+      }),
+    );
+    renderRoute({ path: "/acme-motors/admin/users/sanjay", children: adminRoutes });
+    const panel = await screen.findByRole("complementary", { name: "Sanjay Desai" });
+
+    const show = within(panel).getByRole("button", { name: "Show link" });
+    const resend = within(panel).getByRole("button", { name: "Resend" });
+    expect(show).toHaveAttribute("aria-disabled", "true");
+    expect(resend).toHaveAttribute("aria-disabled", "true");
+
+    fireEvent.click(show);
+    fireEvent.click(resend);
+    expect(mockFetchLink).not.toHaveBeenCalled();
+    expect(screen.queryByLabelText("Invitation link")).toBeNull();
+  });
 });
 
 describe("the link is fetched when it is asked for", () => {

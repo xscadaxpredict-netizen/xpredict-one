@@ -16,6 +16,7 @@ import { Link } from "react-router-dom";
 import { asProblem } from "@xpredict/api-client";
 import { DetailPanel } from "@xpredict/ui";
 
+import { useAccess } from "../../access";
 import type { Dealer } from "../api/dealers";
 import { useSetDealerStatus } from "../hooks/useDealers";
 import { EditDealerDialog } from "./EditDealerDialog";
@@ -31,6 +32,8 @@ interface DealerDetailPanelProps {
 
 export function DealerDetailPanel({ dealer, usersPath, onClose }: DealerDetailPanelProps) {
   const { mutate: setStatus, isPending, error } = useSetDealerStatus();
+  // The endpoint's own permission (the 2026-11-23 audit): greyed without it.
+  const canSetStatus = useAccess().can("admin.dealer.set_status");
 
   const isClosed = dealer.status === "disabled";
 
@@ -66,7 +69,7 @@ export function DealerDetailPanel({ dealer, usersPath, onClose }: DealerDetailPa
             <DropdownMenu.Content className={styles.menu} align="end" sideOffset={6}>
               <DropdownMenu.Item
                 className={styles.menuItem}
-                disabled={isPending}
+                disabled={isPending || !canSetStatus}
                 onSelect={() =>
                   setStatus({ dealerId: dealer.id, status: isClosed ? "active" : "disabled" })
                 }

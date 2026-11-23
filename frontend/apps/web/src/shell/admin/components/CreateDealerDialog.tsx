@@ -14,6 +14,7 @@ import * as Dialog from "@radix-ui/react-dialog";
 
 import { InfoHint } from "@xpredict/ui";
 
+import { useAccess } from "../../access";
 import { useCreateDealer } from "../hooks/useDealers";
 import { DealerForm, EMPTY_DEALER_FIELDS } from "./DealerForm";
 import styles from "./DealerDialog.module.css";
@@ -21,10 +22,16 @@ import styles from "./DealerDialog.module.css";
 export function CreateDealerDialog() {
   const [open, setOpen] = useState(false);
   const { mutateAsync: create, isPending } = useCreateDealer();
+  // The endpoint's own permission (the 2026-11-23 audit): greyed without it.
+  const allowed = useAccess().can("admin.dealer.create");
 
   return (
-    <Dialog.Root open={open} onOpenChange={setOpen}>
-      <Dialog.Trigger className={styles.trigger}>
+    <Dialog.Root open={open} onOpenChange={(next) => setOpen(next && allowed)}>
+      <Dialog.Trigger
+        className={styles.trigger}
+        aria-disabled={allowed ? undefined : "true"}
+        title={allowed ? undefined : "You cannot add dealerships"}
+      >
         <PlusIcon />
         Add dealer
       </Dialog.Trigger>

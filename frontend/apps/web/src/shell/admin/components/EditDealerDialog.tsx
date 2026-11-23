@@ -21,6 +21,7 @@ import * as Dialog from "@radix-ui/react-dialog";
 
 import { InfoHint } from "@xpredict/ui";
 
+import { useAccess } from "../../access";
 import type { Dealer } from "../api/dealers";
 import { useUpdateDealer } from "../hooks/useDealers";
 import { DealerForm, dealerToFields } from "./DealerForm";
@@ -33,10 +34,16 @@ interface EditDealerDialogProps {
 export function EditDealerDialog({ dealer }: EditDealerDialogProps) {
   const [open, setOpen] = useState(false);
   const { mutateAsync: update, isPending } = useUpdateDealer();
+  // The endpoint's own permission (the 2026-11-23 audit): greyed without it.
+  const allowed = useAccess().can("admin.dealer.update");
 
   return (
-    <Dialog.Root open={open} onOpenChange={setOpen}>
-      <Dialog.Trigger className={styles.secondaryTrigger}>
+    <Dialog.Root open={open} onOpenChange={(next) => setOpen(next && allowed)}>
+      <Dialog.Trigger
+        className={styles.secondaryTrigger}
+        aria-disabled={allowed ? undefined : "true"}
+        title={allowed ? undefined : "You cannot edit dealerships"}
+      >
         <PencilIcon />
         Edit
       </Dialog.Trigger>

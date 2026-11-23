@@ -138,6 +138,33 @@ describe("closing a dealership from Administration", () => {
   });
 });
 
+describe("the dealership actions follow the viewer's permissions (the 2026-11-23 audit)", () => {
+  it("greys Add dealer, Edit and Close for somebody who may only view them", async () => {
+    mockFetchMe.mockResolvedValue(
+      me({
+        memberships: [
+          membership({
+            role: "admin",
+            apps: [appAccess("admin", { permissions: ["admin.dealer.view"] })],
+          }),
+        ],
+      }),
+    );
+    const panel = await openPanel("unit-1", /Whitefield/);
+
+    expect(screen.getByRole("button", { name: /Add dealer/ })).toHaveAttribute("aria-disabled", "true");
+    expect(within(panel).getByRole("button", { name: /Edit/ })).toHaveAttribute("aria-disabled", "true");
+    fireEvent.click(within(panel).getByRole("button", { name: /Edit/ }));
+    expect(screen.queryByRole("dialog")).toBeNull();
+
+    openActionsMenu(panel);
+    expect(await screen.findByRole("menuitem", { name: "Close dealership" })).toHaveAttribute(
+      "aria-disabled",
+      "true",
+    );
+  });
+});
+
 describe("somebody who works at a dealership that has closed", () => {
   /*
    * `unit_closed` arrives on the membership and every app is inaccessible --

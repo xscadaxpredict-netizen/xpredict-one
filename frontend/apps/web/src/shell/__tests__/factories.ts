@@ -149,7 +149,10 @@ export function ownerMembership(): Membership {
           "admin.user.update",
           "admin.user.deactivate",
           "admin.user.delete",
+          "admin.user.resend_invitation",
           "admin.dealer.create",
+          "admin.dealer.update",
+          "admin.dealer.set_status",
           "admin.role.view",
           // Assign applications (C83), and the Applications panel's two tabs
           // (C79): the owner holds them by rule.
