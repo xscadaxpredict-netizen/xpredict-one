@@ -107,7 +107,8 @@ services (`_assert_organisation_wide`), not the database constraint it used to b
 **The frontend ships Administration; the backend runs on MySQL and signs people in.**
 Keep this section current — it is the first thing a new developer reads.
 
-**ON `feat/admin-panel` (committed through `fa4fb04`, 2026-11-21, NOT PUSHED):
+**ON `feat/admin-panel` (PUSHED to GitHub as its own branch at `ddaea1c`, 2026-11-23 --
+NOT merged, NOT on `main`, so not deployed; it does not yet contain `main`'s PRs #32-#35):
 ADMINISTRATION IS NOW THE ADMIN PANEL (C78)** -- reached from the shield in the topbar, not the launcher; an
 accordion of the owner's modules (Organization, App Management, User Management); every
 list page shares `ListPage.module.css` / `ListFilter` / `RowMenu` and every side panel
@@ -443,10 +444,13 @@ user row on every request and refuses an inactive one, so **disabling somebody t
 effect on their next request**, not after a token expires. The 15-minute access
 lifetime is how long a STOLEN token survives a logout.
 
-**Gates:** `npm run test -w web` (385), `npm run typecheck -w web`, and in `backend/`:
-`pytest` (966), `ruff check .`, `manage.py makemigrations --check`, and
+**Gates:** `npm run test -w web` (418), `npm run typecheck -w web`, and in `backend/`:
+`pytest` (1053), `ruff check .`, `manage.py makemigrations --check`, and
 `.venv/Scripts/lint-imports.exe` — **not** `python -m importlinter.cli`, which exits 0
-without running. Run them before pushing. **`npm run lint` is NOT green and never has
+without running. **Where Windows blocks the `.exe` ("Permission denied"), call the
+function:** `.venv/Scripts/python.exe -c "import sys; from importlinter.cli import
+lint_imports; sys.exit(lint_imports())"` -- it prints the contracts (6 kept on
+2026-11-23, its first real run on the owner's laptop). Run them before pushing. **`npm run lint` is NOT green and never has
 been on this code:** 139 errors in `apps/web`, inherited with the DMS modules and
 measured as deferrable in session 15. Do not quote it as passing.
 
