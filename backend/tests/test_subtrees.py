@@ -309,19 +309,21 @@ class TestFilingANewRecord:
 
         assert home != t.chennai.pk
 
-    def test_without_a_choice_the_temporary_guess_still_applies(self, tenant_db):
+    def test_without_a_choice_a_record_goes_to_the_persons_own_place(self, tenant_db):
         """
-        PINNED SO ITS REMOVAL IS DELIBERATE. Above several places with no
-        `X-Unit-Id`, the record goes to the first dealership created inside
-        the person's subtree -- today's behaviour, kept until the create forms
-        offer a choice.
+        THE TEMPORARY GUESS IS GONE, DELIBERATELY (the merge of `main`,
+        2026-11-23). It filed the record at the first dealership created inside
+        the person's subtree -- in that dealer's books, and nowhere at all with
+        no dealership yet. `main` fixed it for organisation-level people with a
+        head office; this branch files at the person's own place: here North,
+        the regional pool. The root -- the head office -- for org-level people.
         """
         result = found(tenant=True)
         t = build_tree(result.organization)
 
         home = self.create(result, self.rep(result, "n@apex.test", [t.north]))
 
-        assert home == t.delhi.pk
+        assert home == t.north.pk
 
 
 # ---------------------------------------------------------------------------

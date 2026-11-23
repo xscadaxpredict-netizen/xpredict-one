@@ -314,6 +314,9 @@ class CalculatorSettingsView(TenantAPIView):
 
 class ECDosingCalculationListView(TenantAPIView):
     required_permissions: ClassVar[list[str]] = []
+    # C81: every write named on purpose. OPEN TO EVERY DMS USER, as on `main`
+    # (Nishanth) -- kept in the merge (2026-11-23); review in the merge plan.
+    method_permissions: ClassVar[dict[str, list[str]]] = {"POST": []}
 
     def get(self, request, org_slug: str):
         territory_id = request.territory_id
@@ -343,6 +346,9 @@ class ECDosingCalculationListView(TenantAPIView):
 
 class ECDosingCalculationDetailView(TenantAPIView):
     required_permissions: ClassVar[list[str]] = []
+    # C81: every write named on purpose. OPEN TO EVERY DMS USER, as on `main`
+    # (Nishanth) -- kept in the merge (2026-11-23); review in the merge plan.
+    method_permissions: ClassVar[dict[str, list[str]]] = {"DELETE": []}
 
     def get(self, request, org_slug: str, pk: str):
         calc = get_ec_calculation(pk)
@@ -416,6 +422,10 @@ class FeasibilityTemplateView(TenantAPIView):
     """
 
     required_permissions: ClassVar[list[str]] = []
+    # ORGANISATION-WIDE DATA (one template for every dealership), so its write
+    # is granted at organisation level only (C67), like the calculator's
+    # constants -- `main` left it open to every DMS user (merge, 2026-11-23).
+    method_permissions: ClassVar[dict[str, list[str]]] = {"PUT": ["dms.calculator.manage"]}
 
     def get(self, request, org_slug: str):
         water_type = request.query_params.get("water_type")
@@ -428,6 +438,9 @@ class FeasibilityTemplateView(TenantAPIView):
 
 class FeasibilityReportListView(TenantAPIView):
     required_permissions: ClassVar[list[str]] = []
+    # C81: every write named on purpose. OPEN TO EVERY DMS USER, as on `main`
+    # (Nishanth) -- kept in the merge (2026-11-23); review in the merge plan.
+    method_permissions: ClassVar[dict[str, list[str]]] = {"POST": []}
 
     def get(self, request, org_slug: str):
         reports = get_feasibility_reports()
@@ -472,6 +485,9 @@ class FeasibilityReportListView(TenantAPIView):
 
 class FeasibilityReportDetailView(TenantAPIView):
     required_permissions: ClassVar[list[str]] = []
+    # C81: every write named on purpose. OPEN TO EVERY DMS USER, as on `main`
+    # (Nishanth) -- kept in the merge (2026-11-23); review in the merge plan.
+    method_permissions: ClassVar[dict[str, list[str]]] = {"PUT": [], "DELETE": []}
 
     def get(self, request, org_slug: str, pk: str):
         report = get_feasibility_report(pk)
@@ -495,6 +511,9 @@ class FeasibilityReportDetailView(TenantAPIView):
 
 class FeasibilityAttachmentView(TenantAPIView):
     required_permissions: ClassVar[list[str]] = []
+    # C81: every write named on purpose. OPEN TO EVERY DMS USER, as on `main`
+    # (Nishanth) -- kept in the merge (2026-11-23); review in the merge plan.
+    method_permissions: ClassVar[dict[str, list[str]]] = {"POST": []}
     parser_classes: ClassVar[list] = [MultiPartParser, FormParser]
 
     def get(self, request, org_slug: str, pk: str):

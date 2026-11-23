@@ -961,6 +961,10 @@ def create_product_catalog(
 
             ProductSpec.objects.create(
                 product=product,
+                # A spec lives with its product: global with a global one, a
+                # dealer's with a dealer's (merge, 2026-11-23 -- `main` left it
+                # global, visible to every dealer).
+                territory_id=product.territory_id,
                 spec_value=spec,
                 sort_order=idx,
             )
@@ -1028,6 +1032,10 @@ def update_product_catalog(
         for idx, spec in enumerate(spec_list):
             ProductSpec.objects.create(
                 product=product,
+                # A spec lives with its product: global with a global one, a
+                # dealer's with a dealer's (merge, 2026-11-23 -- `main` left it
+                # global, visible to every dealer).
+                territory_id=product.territory_id,
                 spec_value=spec,
                 sort_order=idx,
             )

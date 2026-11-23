@@ -44,7 +44,7 @@ from config.routers import current_tenant_db
 from conftest import TEST_TENANT_ALIAS
 from core.api import home_for
 from core.organizations.models import TerritoryKind
-from core.organizations.services import move_territory
+from core.organizations.services import create_territory
 from core.permissions.models import AppCode
 from products.dms.ecommerce.models import EcommerceOrder, EcommerceOrderItem
 from products.dms.homes import DEALERSHIP_RECORD
@@ -135,7 +135,16 @@ class TestEveryRecordTypeDeclaresItsHome:
         """Pinned, so adding one is a decision rather than a default."""
         filed = {m.__name__ for m in scoped_models() if m.home_kinds}
 
-        assert filed == {"Enquiry", "Customer", "BankAccount", "ProductCatalog", "CallRequest"}
+        # Bank accounts and products are GLOBAL-OR-LOCAL now (`main`, Nishanth):
+        # not territory-scoped. `main`'s three new filed record types join.
+        assert filed == {
+            "Enquiry",
+            "Customer",
+            "CallRequest",
+            "TechnoCommercialDocument",
+            "AgentPayout",
+            "ECDosingCalculation",
+        }
 
 
 # ---------------------------------------------------------------------------
@@ -156,7 +165,9 @@ class TestFilingUsesTheRecordTypesOwnKinds:
         North is inside the regional manager's subtree, and an enquiry may
         live there (the regional pool) -- but this record type may not, so
         naming North is ignored and the record goes where it would have gone
-        without a choice.
+        without a choice: nowhere, since the person's own place is a region
+        (the merge of `main`, 2026-11-23, removed the guess that picked the
+        first dealership) -- a 409 asking them to choose.
         """
         result = found()
         t = build_tree(result.organization)
@@ -172,7 +183,8 @@ class TestFilingUsesTheRecordTypesOwnKinds:
             )
 
         assert filed(Enquiry) == t.north.pk
-        assert filed(DealerOnly) == t.delhi.pk
+        with pytest.raises(ConflictError):
+            filed(DealerOnly)
 
     def test_their_own_branch_is_not_used_if_the_record_type_cannot_live_there(self):
         """
@@ -223,17 +235,23 @@ class TestFilingUsesTheRecordTypesOwnKinds:
 
     def test_nowhere_to_file_is_a_409_not_a_500(self, tenant_db):
         """
-        A region with no dealership yet, and no choice made: there is no
-        dealership to guess. This used to reach the database with no home and
-        come back as a 500.
+        Somebody whose only place is a WAREHOUSE (for stock: no DMS record
+        lives there), and no choice made: nowhere fits. This used to reach the
+        database with no home and come back as a 500. (A region with no
+        dealership was the case before the merge of `main`, 2026-11-23; a
+        regional person now files at their region, the regional pool.)
         """
         result = found(tenant=True)
         t = build_tree(result.organization)
-        at_south_only = person(result.organization, "s@apex.test", [t.south])
-        # Chennai is South's only dealership; take it away from the subtree.
-        move_territory(territory=t.chennai, parent_id=t.north.pk)
+        store = create_territory(
+            organization=result.organization,
+            kind=TerritoryKind.WAREHOUSE,
+            name="South store",
+            parent_id=t.south.pk,
+        )
+        at_store_only = person(result.organization, "s@apex.test", [store])
         client = APIClient()
-        client.force_authenticate(user=at_south_only.user)
+        client.force_authenticate(user=at_store_only.user)
 
         response = client.post(
             f"/api/v1/orgs/{result.organization.slug}/dms/sales/enquiries/",
@@ -294,9 +312,24 @@ class TestAChildTakesItsParentsHome:
 
 
 def make_site(territory_id) -> ConfirmedSite:
-    enquiry = Enquiry.objects.create(territory_id=territory_id, customer_name="C", phone="1")
+    """
+    A real site, as `main`'s site lifecycle counts one (merge, 2026-11-23): its
+    enquiry CONFIRMED, and a confirmed AMC -- no AMC, no visit.
+    """
+    enquiry = Enquiry.objects.create(
+        territory_id=territory_id, customer_name="C", phone="1", status="CONFIRMED"
+    )
     customer = Customer.objects.create(territory_id=territory_id, name="Customer")
-    return ConfirmedSite.objects.create(enquiry=enquiry, customer=customer)
+    site = ConfirmedSite.objects.create(enquiry=enquiry, customer=customer)
+    Quotation.objects.create(
+        enquiry=enquiry,
+        site=site,
+        title="AMC",
+        quote_no=f"AMC-{site.pk.hex[:8]}",
+        quote_type="AMC",
+        status="CONFIRMED",
+    )
+    return site
 
 
 class TestThroughTheApi:

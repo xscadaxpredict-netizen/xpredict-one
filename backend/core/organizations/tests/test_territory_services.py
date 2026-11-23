@@ -342,7 +342,9 @@ class TestARegionIsNeverTakenForADealership:
         seen at the region and above -- and the root the "head-office pool",
         so `X-Unit-Id` naming either is honoured. A warehouse is still never a
         DMS record's home (it is for stock): the header is ignored and the
-        request falls back as if it named nothing.
+        request falls back as if it named nothing -- to the owner's own place,
+        the root (the head office), since the merge of `main` (2026-11-23); it
+        used to be the first dealership.
         """
         result = found()
         north = create_territory(organization=result.organization, kind=REGION, name="North")
@@ -365,7 +367,8 @@ class TestARegionIsNeverTakenForADealership:
 
         assert filed_at(north) == north.pk
         assert filed_at(root) == root.pk
-        assert filed_at(store) == delhi.pk
+        assert filed_at(store) == root.pk
+        assert delhi  # still there: never chosen by default any more
 
     def test_the_dealer_endpoints_answer_404_for_a_region(self):
         result = found()
