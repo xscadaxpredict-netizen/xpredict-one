@@ -93,8 +93,14 @@ def provision_tenant(org_id: str) -> str:
     # tenant rows reference control-plane rows by plain UUID and never by
     # foreign key (C1) --- and `test_the_tenant_bookkeeping_names_no_control_app`
     # is what would catch it.
-    for app_label in tenant_migration_targets():
-        call_command("migrate", app_label, database=alias, interactive=False, verbosity=0)
+    from config.routers import current_tenant_db
+
+    token = current_tenant_db.set(alias)
+    try:
+        for app_label in tenant_migration_targets():
+            call_command("migrate", app_label, database=alias, interactive=False, verbosity=0)
+    finally:
+        current_tenant_db.reset(token)
 
     # .update(), not .save(): a plain save would write back every field loaded
     # at the top of this task, and minutes may have passed. If an admin renamed

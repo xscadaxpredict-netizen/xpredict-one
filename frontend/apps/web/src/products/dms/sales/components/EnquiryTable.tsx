@@ -10,6 +10,7 @@ import type { Enquiry } from "../api/types";
 import { StatusBadge } from "./StatusBadge";
 import { useDmsPermissions } from "../../shared/hooks/useDmsPermissions";
 import styles from "./EnquiryTable.module.css";
+import { formatDate, formatDateTime } from "../../shared/format/date";
 
 interface EnquiryTableProps {
   enquiries: Enquiry[];
@@ -164,7 +165,7 @@ function EnquiryRow({
           {latestFollowup ? (
             <div>
               <span className={styles.dateBadge}>
-                {latestFollowup.next_followup_date}
+                {formatDate(latestFollowup.next_followup_date)}
               </span>
               <div className={styles.followupText}>
                 {latestFollowup.remarks}
@@ -355,6 +356,19 @@ function EnquiryRow({
                     <MessageIcon />
                     <span>{enquiry.remarks}</span>
                   </div>
+                  {enquiry.agent_name && (
+                    <div className={styles.infoRow} style={{ marginTop: "6px" }}>
+                      <UserIcon />
+                      <span>
+                        <strong>Agent / Referrer:</strong> {enquiry.agent_name}
+                        {Number(enquiry.lead_fee) > 0 ? (
+                          <span style={{ marginLeft: "8px", color: "#7e22ce", fontWeight: 600 }}>
+                            (Lead Sourcing Fee: ₹{Number(enquiry.lead_fee).toLocaleString("en-IN")}{enquiry.lead_fee_status ? ` • ${enquiry.lead_fee_status}` : ""})
+                          </span>
+                        ) : null}
+                      </span>
+                    </div>
+                  )}
                 </div>
 
                 {/* Right: Follow-up history */}
@@ -366,11 +380,11 @@ function EnquiryRow({
                       <div className={styles.latestFollowup}>
                         <div className={styles.followupHeader}>
                           <span className={styles.followupDate}>
-                            {enquiry.followups[0]!.next_followup_date ? `Due: ${enquiry.followups[0]!.next_followup_date}` : "No date set"}
+                            {enquiry.followups[0]!.next_followup_date ? `Due: ${formatDate(enquiry.followups[0]!.next_followup_date)}` : "No date set"}
                           </span>
                           <div className={styles.followupActions}>
                             <span className={styles.followupAdded}>
-                              Added {enquiry.followups[0]!.entered_date}
+                              Added {formatDateTime(enquiry.followups[0]!.entered_date)}
                             </span>
                             {onEditFollowup && canEditEnquiry && (
                               <button
@@ -432,11 +446,11 @@ function EnquiryRow({
                                 <div key={f.id} className={styles.pastItem}>
                                   <div className={styles.followupHeader}>
                                     <span className={styles.pastDate}>
-                                      {f.next_followup_date ? `Due: ${f.next_followup_date}` : "No date set"}
+                                      {f.next_followup_date ? `Due: ${formatDate(f.next_followup_date)}` : "No date set"}
                                     </span>
                                     <div className={styles.followupActions}>
                                       <span className={styles.followupAdded}>
-                                        Added {f.entered_date}
+                                        Added {formatDateTime(f.entered_date)}
                                       </span>
                                       {onEditFollowup && canEditEnquiry && (
                                         <button
@@ -504,7 +518,7 @@ function EnquiryRow({
                         </div>
                         <div className={styles.quoteCardMeta}>
                           <span>#{quote.quote_no}</span>
-                          <span>{quote.date}</span>
+                          <span>{formatDate(quote.date)}</span>
                         </div>
                         <div className={styles.quoteCardFooter}>
                           <span className={styles.quoteCardAmount}>
@@ -613,6 +627,15 @@ function MessageIcon() {
   return (
     <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true" className={styles.infoIcon}>
       <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+    </svg>
+  );
+}
+
+function UserIcon() {
+  return (
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" className={styles.infoIcon}>
+      <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
+      <circle cx="12" cy="7" r="4" />
     </svg>
   );
 }

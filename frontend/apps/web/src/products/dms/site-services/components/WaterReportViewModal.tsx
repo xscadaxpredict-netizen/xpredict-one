@@ -1,4 +1,6 @@
 import { PrinterIcon, Edit3Icon, XIcon } from "lucide-react";
+import { useShellContext } from "../../../../shell/context";
+import { PrintAttachments, filesOf, usePrintAttachments } from "../../shared/print/PrintAttachments";
 import { FileAttachmentCell } from "./FileAttachmentCell";
 import styles from "./WaterReportViewModal.module.css";
 
@@ -10,22 +12,32 @@ interface Props {
 }
 
 export function WaterReportViewModal({ isOpen, report, onEdit, onClose }: Props) {
+  // Attachments print with the report: drawn when the view opens, so Print
+  // waits only for whatever is still being prepared.
+  const printFiles = usePrintAttachments(filesOf(isOpen ? report : null));
+  const { membership } = useShellContext();
   if (!isOpen || !report) return null;
 
   const displayDate = report.date || report.date_tested || "—";
 
   return (
     <div className={styles.modalOverlay} onClick={onClose}>
-      <div className={styles.modalContent} onClick={e => e.stopPropagation()}>
+      <div className={styles.modalContent} onClick={e => e.stopPropagation()} data-print-document>
         {/* Header */}
-        <div className={styles.modalHeader}>
+        <div className={styles.modalHeader} data-print-hide>
           <div>
             <h3 className={styles.modalTitle}>Water Quality Report</h3>
             <span className={styles.modalSubtitle}>Date Tested: {displayDate}</span>
           </div>
           <div className={styles.headerActions}>
-            <button type="button" className={styles.btnSecondary} onClick={() => window.print()}>
-              <PrinterIcon size={13} /> Print
+            <button
+              type="button"
+              className={styles.btnSecondary}
+              onClick={() => window.print()}
+              disabled={!printFiles.ready}
+              title={printFiles.ready ? undefined : "Preparing the attachments for printing"}
+            >
+              <PrinterIcon size={13} /> {printFiles.ready ? "Print" : "Preparing print..."}
             </button>
             <button type="button" className={styles.btnPrimary} onClick={onEdit}>
               <Edit3Icon size={13} /> Edit Report
@@ -41,7 +53,8 @@ export function WaterReportViewModal({ isOpen, report, onEdit, onClose }: Props)
           {/* Company Banner */}
           <div className={styles.bannerContainer}>
             <div>
-              <div className={styles.bannerTitle}>XPREDICT AUTOMATION SOLUTIONS PVT LTD</div>
+              {/* Whose report this is: the site's dealership, or the organisation for its own site. */}
+              <div className={styles.bannerTitle}>{(report.company_name || membership.org_name || "").toUpperCase()}</div>
               <div className={styles.bannerSubtitle}>Industrial Water & Wastewater Treatment | Water Quality Report</div>
             </div>
             <div className={styles.bannerRight}>
@@ -83,7 +96,9 @@ export function WaterReportViewModal({ isOpen, report, onEdit, onClose }: Props)
         </div>
 
         {/* Footer */}
-        <div className={styles.modalFooter}>
+        <PrintAttachments prepared={printFiles.prepared} />
+
+        <div data-print-hide className={styles.modalFooter}>
           <button type="button" className={styles.btnSecondary} onClick={onClose}>Close</button>
           <button type="button" className={styles.btnPrimary} onClick={onEdit}>
             <Edit3Icon size={14} /> Edit This Report

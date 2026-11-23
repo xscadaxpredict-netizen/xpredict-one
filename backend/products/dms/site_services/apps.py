@@ -9,3 +9,8 @@ class SiteServicesConfig(AppConfig):
     # module is prefixed with its product --- "sales" alone would collide the
     # moment another product grows a sales module.
     label = "dms_site_services"
+
+    def ready(self) -> None:
+        # Connects the signal receivers in handlers.py (e.g. cancelling an AMC's
+        # upcoming visits when the quote is deleted). Imported for that effect.
+        from . import handlers  # noqa: F401

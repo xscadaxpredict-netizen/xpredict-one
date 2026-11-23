@@ -1,7 +1,7 @@
 import { useState, useMemo } from 'react';
 import { useParams } from 'react-router-dom';
 import { CalculatorForm } from '../components/CalculatorForm';
-import { calculateCapacity } from '../api/capacityMath';
+import { calculateCapacity, matchStandardMachine, STANDARD_MACHINES_KLD } from '../api/capacityMath';
 import { useTools } from '../api/tools';
 import styles from './CapacityCalculatorScreen.module.css';
 
@@ -26,27 +26,19 @@ export function CapacityCalculatorScreen() {
     // Perform calculation based on the dynamic formulas
     const { totalLiters, breakdown } = calculateCapacity(input.application, input, constants);
     
-    // WTP capacity is simple daily demand in KLD
-    const wtpCapacityKLD = Math.ceil(totalLiters / 1000);
-    
     // STP capacity is usually 85% of total demand
     const stpCapacityLiters = totalLiters * 0.85; 
     const stpCapacityKLD = Math.ceil(stpCapacityLiters / 1000);
 
-    let recommendedTechSTP = 'SBR (Sequential Batch Reactor)';
-    if (stpCapacityKLD < 50) recommendedTechSTP = 'MBBR (Moving Bed Biofilm Reactor)';
-    else if (stpCapacityKLD > 500) recommendedTechSTP = 'MBR (Membrane Bioreactor)';
-
-    let recommendedTechWTP = 'Multi-Grade Sand Filter + Activated Carbon';
-    if (wtpCapacityKLD > 100) recommendedTechWTP = 'Fully Automatic RO + Softener System';
+    // Match to our standard product lineup (6 KLD, 25 KLD, 50 KLD)
+    const standardMachine = matchStandardMachine(stpCapacityKLD);
 
     const output = {
       totalDailyDemand: totalLiters,
       breakdown,
+      stpCapacityLiters,
       stpCapacity: stpCapacityKLD,
-      wtpCapacity: wtpCapacityKLD,
-      recommendedTechSTP,
-      recommendedTechWTP,
+      standardMachine,
     };
 
     setResult(output);
@@ -65,7 +57,7 @@ export function CapacityCalculatorScreen() {
     <div className={styles.container}>
       <div className={styles.header}>
         <h2 className={styles.title}>Plant Capacity Calculator</h2>
-        <p className={styles.subtitle}>Dynamically estimate Water and Sewage Treatment capacities based on application type.</p>
+        <p className={styles.subtitle}>Dynamically estimate Sewage Treatment capacities and match with our standard machine lineup.</p>
       </div>
 
       <div className={styles.contentRow}>
@@ -88,18 +80,56 @@ export function CapacityCalculatorScreen() {
                   <p style={{ fontSize: '0.85rem', color: 'var(--color-text-3)', marginTop: '0.25rem' }}>{result.breakdown}</p>
                 </div>
                 
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
-                  <div style={{ padding: '1rem', backgroundColor: 'var(--color-bg-3)', borderRadius: '8px', borderLeft: '4px solid #3b82f6' }}>
-                    <p style={{ color: 'var(--color-text-2)', fontSize: '0.9rem', marginBottom: '0.5rem' }}>WTP Capacity</p>
-                    <p style={{ fontSize: '1.25rem', fontWeight: 600, color: 'var(--color-text)' }}>{result.wtpCapacity} KLD</p>
-                    <p style={{ fontSize: '0.85rem', color: 'var(--color-text-3)', marginTop: '0.5rem' }}>Tech: {result.recommendedTechWTP}</p>
+                <div style={{ padding: '1rem', backgroundColor: 'var(--color-bg-3)', borderRadius: '8px', borderLeft: '4px solid #2563eb' }}>
+                  <p style={{ color: 'var(--color-text-2)', fontSize: '0.85rem', marginBottom: '0.35rem' }}>Suggested Standard Machine</p>
+                  <p style={{ fontSize: '1.45rem', fontWeight: 700, color: '#2563eb' }}>{result.standardMachine.label}</p>
+                  <p style={{ fontSize: '0.85rem', color: 'var(--color-text-3)', marginTop: '0.25rem' }}>
+                    {result.standardMachine.description}
+                  </p>
+                </div>
+
+                <div style={{ padding: '1rem', backgroundColor: 'var(--color-bg-3)', borderRadius: '8px' }}>
+                  <p style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--color-text-2)', marginBottom: '0.65rem' }}>
+                    Standard Machine Lineup (6 KLD, 25 KLD, 50 KLD):
+                  </p>
+                  <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
+                    {STANDARD_MACHINES_KLD.map((cap) => {
+                      const isMatch = result.standardMachine.capacityKLD === cap;
+                      const isUnder = cap < result.stpCapacity;
+                      return (
+                        <div
+                          key={cap}
+                          style={{
+                            flex: 1,
+                            minWidth: '100px',
+                            padding: '0.75rem',
+                            borderRadius: '8px',
+                            border: isMatch ? '2px solid #2563eb' : '1px solid var(--color-border)',
+                            backgroundColor: isMatch ? 'rgba(37, 99, 235, 0.08)' : 'var(--color-surface)',
+                            textAlign: 'center',
+                            transition: 'all 0.2s ease',
+                          }}
+                        >
+                          <div style={{ fontSize: '1.1rem', fontWeight: 700, color: isMatch ? '#1d4ed8' : 'var(--color-text)' }}>
+                            {cap} KLD
+                          </div>
+                          <div
+                            style={{
+                              fontSize: '0.75rem',
+                              marginTop: '4px',
+                              fontWeight: isMatch ? 600 : 400,
+                              color: isMatch ? '#2563eb' : isUnder ? 'var(--color-text-3)' : 'var(--color-text-2)',
+                            }}
+                          >
+                            {isMatch ? '✓ Recommended' : isUnder ? 'Below Load' : 'Available'}
+                          </div>
+                        </div>
+                      );
+                    })}
                   </div>
-                  
-                  <div style={{ padding: '1rem', backgroundColor: 'var(--color-bg-3)', borderRadius: '8px', borderLeft: '4px solid #10b981' }}>
-                    <p style={{ color: 'var(--color-text-2)', fontSize: '0.9rem', marginBottom: '0.5rem' }}>STP Capacity</p>
-                    <p style={{ fontSize: '1.25rem', fontWeight: 600, color: 'var(--color-text)' }}>{result.stpCapacity} KLD</p>
-                    <p style={{ fontSize: '0.85rem', color: 'var(--color-text-3)', marginTop: '0.5rem' }}>Tech: {result.recommendedTechSTP}</p>
-                  </div>
+                  <p style={{ fontSize: '0.8rem', color: 'var(--color-text-3)', marginTop: '0.75rem', fontStyle: 'italic' }}>
+                    {result.standardMachine.description}
+                  </p>
                 </div>
               </div>
             </div>

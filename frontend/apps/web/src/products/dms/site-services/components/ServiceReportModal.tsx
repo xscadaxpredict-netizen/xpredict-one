@@ -71,18 +71,13 @@ export function ServiceReportModal({ isOpen, isEditing, form, confirmedSites, on
         </div>
         <form onSubmit={onSubmit} className={styles.formContainer}>
           <div className={styles.modalBody}>
-            {/* 1. Select Site & Zone */}
-            <div className={styles.formRow}>
-              <div style={{ flex: 1 }}>
-                <label className={styles.label}>Zone (Pincode Filter)</label>
-                <input 
-                  type="text"
-                  placeholder="Enter pincode..."
-                  className={styles.input}
-                  value={form.zonePincode || ""}
-                  onChange={e => onFormChange({ zonePincode: e.target.value, siteId: "" })}
-                />
+            {/* 1. Select Site */}
+            {form.scheduleId && (
+              <div style={{ padding: "8px 12px", borderRadius: "6px", background: "#eff6ff", color: "#1d4ed8", fontSize: "0.85rem", marginBottom: "12px" }}>
+                Report for the visit on <strong>{form.visitLabel}</strong>. The visit is completed when the client signs this report.
               </div>
+            )}
+            <div className={styles.formRow}>
               <div style={{ flex: 2 }}>
                 <label className={styles.label}>
                   Select Site <span className={styles.required}>*</span>
@@ -91,53 +86,16 @@ export function ServiceReportModal({ isOpen, isEditing, form, confirmedSites, on
                   required 
                   className={styles.input}
                   value={form.siteId || ""}
+                  disabled={Boolean(form.scheduleId) || isEditing}
+                  title={isEditing ? "A filed report stays with its site" : undefined}
                   onChange={e => onFormChange({ siteId: e.target.value })}
                 >
                   <option value="">-- Choose Deployed Customer Site --</option>
-                  {confirmedSites
-                    ?.filter(s => !form.zonePincode || s.pincode === form.zonePincode || (s.address && s.address.includes(form.zonePincode)))
-                    .map(s => (
+                  {confirmedSites?.map(s => (
                       <option key={s.id} value={s.id}>{s.customer_name} ({s.oc_number || 'No OC'})</option>
                   ))}
                 </select>
               </div>
-            </div>
-
-            {/* 1.5 Zone Selection */}
-            <div className={styles.formRow}>
-              <div style={{ flex: 1 }}>
-                <label className={styles.label}>
-                  Service Zone <span className={styles.required}>*</span>
-                </label>
-                <select 
-                  required 
-                  className={styles.input}
-                  value={form.zone || "North Zone"}
-                  onChange={e => onFormChange({ zone: e.target.value })}
-                >
-                  <option value="North Zone">North Zone (Delhi NCR / UP / Punjab)</option>
-                  <option value="South Zone">South Zone (Tamil Nadu / Kerala / KA)</option>
-                  <option value="East Zone">East Zone (WB / Odisha / Bihar)</option>
-                  <option value="West Zone">West Zone (Maharashtra / Gujarat)</option>
-                  <option value="Central Zone">Central Zone (MP / Chhattisgarh)</option>
-                  <option value="Other">Other</option>
-                </select>
-              </div>
-              {form.zone === "Other" && (
-                <div style={{ flex: 1 }}>
-                  <label className={styles.label}>
-                    Custom Zone <span className={styles.required}>*</span>
-                  </label>
-                  <input 
-                    required
-                    type="text"
-                    placeholder="Enter custom zone"
-                    className={styles.input}
-                    value={form.customZone || ""}
-                    onChange={e => onFormChange({ customZone: e.target.value })}
-                  />
-                </div>
-              )}
             </div>
 
             {/* 2. Tech & Date */}
@@ -294,6 +252,7 @@ export function ServiceReportModal({ isOpen, isEditing, form, confirmedSites, on
                       label="Service Person Signature" 
                       isRequired={true} 
                       value={form.servicePersonSignature || ""} 
+                      locked={Boolean(form.servicePersonSignature && form.clientSignature)}
                       onChange={(val: string) => onFormChange({ servicePersonSignature: val })}
                     />
                   </div>
@@ -302,12 +261,18 @@ export function ServiceReportModal({ isOpen, isEditing, form, confirmedSites, on
                 <div className={styles.formRow}>
                   <div style={{ flex: 1 }}>
                     <label className={styles.label}>
-                      Client Name <span className={styles.required}>*</span>
+                      Client Name{" "}
+                      <span style={{ fontWeight: 400, fontSize: "0.75rem", color: "var(--color-text-3)" }}>
+                        (optional, the client enters it when signing by link)
+                      </span>
                     </label>
+                    {/* NOT REQUIRED HERE: the technician often does not know the
+                        name. The share-link page asks the client for it, and
+                        requires it there; whatever is typed here pre-fills it. */}
                     <input 
-                      required
                       type="text"
                       className={styles.input}
+                      placeholder="If you know it"
                       value={form.clientName || ""}
                       onChange={e => onFormChange({ clientName: e.target.value })}
                     />
@@ -317,6 +282,7 @@ export function ServiceReportModal({ isOpen, isEditing, form, confirmedSites, on
                       label="Client Signature" 
                       isRequired={false} 
                       value={form.clientSignature || ""} 
+                      locked={Boolean(form.servicePersonSignature && form.clientSignature)}
                       onChange={(val: string) => onFormChange({ clientSignature: val })}
                     />
                   </div>

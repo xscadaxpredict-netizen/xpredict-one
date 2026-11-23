@@ -14,19 +14,26 @@ from __future__ import annotations
 
 import uuid
 
-from django.db.models import QuerySet
+from django.db.models import Max, Q, QuerySet
 
-from products.dms.sales.models import ConfirmedSite
+from products.dms.sales.models import ConfirmedSite, EnquiryStatus
 
 from .exceptions import not_found
 from .models import Complaint, ServiceReport, ServiceSchedule, WaterReport
 
 
 def list_sites() -> QuerySet[ConfirmedSite]:
-    return ConfirmedSite.objects.filter(is_active=True).select_related(
-        "service_profile", "customer", "confirmed_quote"
+    return ConfirmedSite.objects.filter(
+        is_active=True,
+        enquiry__status=EnquiryStatus.CONFIRMED,
+    ).select_related(
+        "service_profile", "customer", "confirmed_quote", "enquiry"
     ).prefetch_related(
-        "quotations", # for AMC quotes
+        "quotations",  # for AMC quotes
+    ).annotate(
+        # The last visit actually done, from signed service reports --- the
+        # Deployed Sites table counts the next service date from it.
+        last_service_report_date=Max("service_reports__service_date"),
     ).order_by("-created_at")
 
 
@@ -37,10 +44,23 @@ def get_site(site_id: uuid.UUID) -> ConfirmedSite:
     return site
 
 
-def list_schedules(site_id: uuid.UUID | None = None) -> QuerySet[ServiceSchedule]:
-    qs = ServiceSchedule.objects.all().order_by("scheduled_date")
+def list_schedules(
+    site_id: uuid.UUID | None = None,
+    *,
+    technician_user_id: uuid.UUID | None = None,
+) -> QuerySet[ServiceSchedule]:
+    """
+    Visits, earliest first. `technician_user_id` narrows to one person's own
+    visits -- the "My visits" view for somebody who does not manage visits.
+    Dealer isolation already applies through TerritoryScopedModel.
+    """
+    qs = ServiceSchedule.objects.select_related("service_report").order_by(
+        "scheduled_date", "scheduled_time"
+    )
     if site_id:
         qs = qs.filter(site_id=site_id)
+    if technician_user_id is not None:
+        qs = qs.filter(technician_user_id=technician_user_id)
     return qs
 
 
@@ -79,10 +99,24 @@ def get_water_report(report_id: uuid.UUID) -> WaterReport:
     return report
 
 
-def list_complaints(site_id: uuid.UUID | None = None) -> QuerySet[Complaint]:
+def list_complaints(
+    site_id: uuid.UUID | None = None,
+    *,
+    only_for_user_id: uuid.UUID | None = None,
+) -> QuerySet[Complaint]:
+    """
+    Complaints, newest first. `only_for_user_id` narrows to the ones that
+    person is handling or raised -- the view for somebody who does not manage
+    complaints. Dealer isolation already applies through TerritoryScopedModel.
+    """
     qs = Complaint.objects.all().order_by("-created_at")
     if site_id:
         qs = qs.filter(site_id=site_id)
+    if only_for_user_id is not None:
+        qs = qs.filter(
+            Q(assigned_service_person_user_id=only_for_user_id)
+            | Q(complainant_user_id=only_for_user_id)
+        )
     return qs
 
 

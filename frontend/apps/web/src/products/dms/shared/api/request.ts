@@ -1,6 +1,31 @@
 import { ApiError, csrfHeaders, type Problem } from "@xpredict/api-client";
 
-export async function request<T>(url: string, init?: RequestInit): Promise<T> {
+const REFRESH_URL = "/api/v1/auth/refresh/";
+let inFlight: Promise<boolean> | null = null;
+
+async function refreshSession(): Promise<boolean> {
+  try {
+    const response = await fetch(REFRESH_URL, {
+      method: "POST",
+      credentials: "include",
+      headers: {
+        ...csrfHeaders("POST"),
+      },
+    });
+    return response.ok;
+  } catch {
+    return false;
+  }
+}
+
+function refreshOnce(): Promise<boolean> {
+  inFlight ??= refreshSession().finally(() => {
+    inFlight = null;
+  });
+  return inFlight;
+}
+
+async function doFetch(url: string, init?: RequestInit): Promise<Response> {
   // If body is FormData, don't set Content-Type so browser can set it with boundary
   const isFormData = init?.body instanceof FormData;
   const headers = new Headers(init?.headers);
@@ -11,11 +36,19 @@ export async function request<T>(url: string, init?: RequestInit): Promise<T> {
     headers.set(key, value);
   }
 
-  const response = await fetch(url, {
+  return fetch(url, {
     ...init,
     credentials: "include",
     headers,
   });
+}
+
+export async function request<T>(url: string, init?: RequestInit): Promise<T> {
+  let response = await doFetch(url, init);
+
+  if (response.status === 401 && url !== REFRESH_URL && (await refreshOnce())) {
+    response = await doFetch(url, init);
+  }
 
   if (!response.ok) {
     let problem: Problem | null = null;

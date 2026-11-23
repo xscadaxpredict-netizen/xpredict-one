@@ -5,12 +5,15 @@
 // Removed local ApiError import as it is in request.ts
 
 import type {
+  AgentCommissionRecord,
   BankAccount,
+  Customer,
   Enquiry,
   NewEnquiry,
   NewFollowup,
   NewQuotation,
   ProductPreset,
+  QuotationDependencies,
 } from "./types";
 
 import { request } from "../../shared/api/request";
@@ -103,14 +106,30 @@ export async function unconfirmOrder(
   });
 }
 
+/**
+ * `confirm` says the user has seen `getQuotationDependencies` and agreed. The
+ * backend refuses (409) to delete a quote with dependents without it.
+ */
 export async function deleteQuotation(
   orgSlug: string,
   enquiryId: string,
   quoteId: string,
+  confirm = false,
 ): Promise<Enquiry> {
-  return request<Enquiry>(`/api/v1/orgs/${orgSlug}/dms/sales/enquiries/${enquiryId}/quotations/${quoteId}/`, {
+  const query = confirm ? "?confirm=true" : "";
+  return request<Enquiry>(`/api/v1/orgs/${orgSlug}/dms/sales/enquiries/${enquiryId}/quotations/${quoteId}/${query}`, {
     method: "DELETE",
   });
+}
+
+export async function getQuotationDependencies(
+  orgSlug: string,
+  enquiryId: string,
+  quoteId: string,
+): Promise<QuotationDependencies> {
+  return request<QuotationDependencies>(
+    `/api/v1/orgs/${orgSlug}/dms/sales/enquiries/${enquiryId}/quotations/${quoteId}/dependencies/`,
+  );
 }
 
 export async function deleteEnquiry(orgSlug: string, enquiryId: string): Promise<void> {
@@ -215,4 +234,57 @@ export async function deleteProductPreset(
   return request<void>(`/api/v1/orgs/${orgSlug}/dms/sales/products/${productId}/`, {
     method: "DELETE",
   });
+}
+
+export interface DealerProfile {
+  id: string | null;
+  company_name: string;
+  address: string;
+  city: string;
+  state: string;
+  postal_code: string;
+  contact_person: string;
+  email: string;
+  phone: string;
+  gstin: string;
+  pan: string;
+  is_dealer: boolean;
+}
+
+export async function fetchDealerProfile(orgSlug: string): Promise<DealerProfile> {
+  return request<DealerProfile>(`/api/v1/orgs/${orgSlug}/dms/sales/dealer-profile/`);
+}
+
+export async function fetchCommissions(orgSlug: string): Promise<AgentCommissionRecord[]> {
+  return request<AgentCommissionRecord[]>(`/api/v1/orgs/${orgSlug}/dms/sales/commissions/`);
+}
+
+export async function recordCommissionPayment(
+  orgSlug: string,
+  payload:
+    | FormData
+    | {
+        type: "COMMISSION" | "LEAD_FEE";
+        reference_id: string;
+        payment_ref: string;
+        amount?: number;
+        paid_at?: string;
+        notes?: string;
+      }
+): Promise<{ status: string; payment_ref: string; paid_amount?: number; balance_amount?: number }> {
+  const isFormData = payload instanceof FormData;
+  return request<{ status: string; payment_ref: string; paid_amount?: number; balance_amount?: number }>(
+    `/api/v1/orgs/${orgSlug}/dms/sales/commissions/record-payment/`,
+    {
+      method: "POST",
+      body: isFormData ? payload : JSON.stringify(payload),
+    }
+  );
+}
+
+export async function fetchCustomers(orgSlug: string, search?: string): Promise<Customer[]> {
+  const url = search
+    ? `/api/v1/orgs/${orgSlug}/dms/sales/customers/?search=${encodeURIComponent(search)}`
+    : `/api/v1/orgs/${orgSlug}/dms/sales/customers/`;
+  return request<Customer[]>(url);
 }

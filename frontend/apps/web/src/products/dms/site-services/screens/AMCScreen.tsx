@@ -2,9 +2,11 @@ import { useState } from "react";
 import { ShieldCheckIcon } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useSites } from "../hooks/useSiteServices";
-import { useConfirmAmcQuote, useAddFollowup, useUpdateFollowup, useDeleteFollowup, useDeleteQuotation } from "../../sales/hooks/useEnquiries";
+import { useConfirmAmcQuote, useAddFollowup, useUpdateFollowup, useDeleteFollowup, useDeleteQuotation, useQuotationDependencies } from "../../sales/hooks/useEnquiries";
+import { planQuotationDelete } from "../../shared/deleteChecks";
 import type { NewFollowup, Followup } from "../../sales/api/types";
 import { QuoteBuilderDialog } from "../../sales/components/QuoteBuilderDialog";
+import { SiteSearchSelect } from "../components/SiteSearchSelect";
 import { QuotationPreviewDialog } from "../../sales/components/QuotationPreviewDialog";
 import { FollowupDialog } from "../../sales/components/FollowupDialog";
 import { AmcRow } from "../components/AmcRow";
@@ -16,6 +18,7 @@ export function AMCScreen() {
   const confirmQuoteMutation = useConfirmAmcQuote();
   const addFollowup = useAddFollowup();
   const deleteQuotation = useDeleteQuotation();
+  const quotationDependencies = useQuotationDependencies();
   const { data: sites, isPending, isError, error } = useSites();
   
   const [selectedSiteId, setSelectedSiteId] = useState("");
@@ -109,9 +112,22 @@ export function AMCScreen() {
   };
 
   const handleDeleteQuote = async (enquiryId: string, quoteId: string) => {
-    if (!(await showConfirm("Delete Quote", "Are you sure you want to delete this quote? This action cannot be undone."))) return;
+    // Ask the backend what depends on this quote (visits, active AMC, documents)
+    // and say so in the dialog, instead of a generic "are you sure".
+    let plan;
+    try {
+      plan = planQuotationDelete(await quotationDependencies.mutateAsync({ enquiryId, quoteId }));
+    } catch (err: any) {
+      void showAlert("Error", "Could not check this quote before deleting: " + (err?.message || err));
+      return;
+    }
+    if (plan.blocked) {
+      void showAlert("Cannot delete quote", plan.blocked);
+      return;
+    }
+    if (!(await showConfirm("Delete Quote", plan.message))) return;
     deleteQuotation.mutate(
-      { enquiryId, quoteId },
+      { enquiryId, quoteId, confirm: plan.confirm },
       {
         onSuccess: () => {
           queryClient.invalidateQueries({ queryKey: ["site-services"] });
@@ -126,30 +142,21 @@ export function AMCScreen() {
   return (
     <div className={styles.container}>
       <div className={styles.actionBar}>
-        <select
-          className={styles.siteSelect}
-          value={selectedSiteId}
-          onChange={(e) => setSelectedSiteId(e.target.value)}
-        >
-          <option value="">All Deployed Sites ({sites?.length || 0})</option>
-          {(sites || []).map((s) => (
-            <option key={s.id} value={s.id}>
-              {s.customer_name} ({s.oc_number || "No OC"})
-            </option>
-          ))}
-        </select>
+        <SiteSearchSelect sites={sites || []} value={selectedSiteId} onChange={setSelectedSiteId} />
 
-        <button
-          type="button"
-          className={styles.btnPrimary}
-          onClick={() => {
-            const site = sites?.find((s) => s.id === selectedSiteId) || sites?.[0];
-            if (site) handleOpenQuoteModal(site.enquiry_id);
-          }}
-          disabled={!sites?.length}
-        >
-          <ShieldCheckIcon size={16} /> Create AMC Quote
-        </button>
+        {/* AN AMC IS FOR ONE SITE: the button appears once a site is chosen. */}
+        {selectedSiteId && (
+          <button
+            type="button"
+            className={styles.btnPrimary}
+            onClick={() => {
+              const site = sites?.find((s) => s.id === selectedSiteId);
+              if (site) handleOpenQuoteModal(site.enquiry_id);
+            }}
+          >
+            <ShieldCheckIcon size={16} /> Create AMC Quote
+          </button>
+        )}
       </div>
 
       <div className={styles.tableContainer}>
@@ -222,6 +229,7 @@ export function AMCScreen() {
           onClose={() => setIsQuoteModalOpen(false)}
           enquiryId={editingEnquiryId}
           existingQuoteId={editingQuoteId || undefined}
+          allowedTypes={["AMC"]}
         />
       )}
 

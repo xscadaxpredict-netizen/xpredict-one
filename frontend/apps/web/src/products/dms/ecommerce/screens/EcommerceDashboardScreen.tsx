@@ -12,9 +12,15 @@ import {
   BoxIcon,
 } from "lucide-react";
 import { useOrders, useCatalog } from "../hooks/useEcommerce";
+import { useShellContext } from "../../../../shell/context";
 import styles from "./EcommerceDashboardScreen.module.css";
 
 export function EcommerceDashboardScreen() {
+  // Links are absolute, not relative: this panel is also rendered inside the
+  // Welcome Hub's consolidated dashboard, where a relative link would resolve
+  // against /dms instead of this module.
+  const { membership } = useShellContext();
+  const modulePath = `/${membership.org_slug}/dms/ecommerce`;
   const navigate = useNavigate();
   const { data: orders = [], isPending: ordersLoading } = useOrders();
   const { data: catalog = [], isPending: catalogLoading } = useCatalog();
@@ -87,10 +93,10 @@ export function EcommerceDashboardScreen() {
           <p>Track spare parts purchase orders, fulfillment pipeline, and consumables inventory.</p>
         </div>
         <div className={styles.actionButtons}>
-          <Link to="../orders" className={styles.secondaryBtn}>
+          <Link to={`${modulePath}/orders`} className={styles.secondaryBtn}>
             <ListOrderedIcon size={15} /> All Orders
           </Link>
-          <button onClick={() => navigate("../catalog")} className={styles.primaryBtn}>
+          <button onClick={() => void navigate(`${modulePath}/catalog`)} className={styles.primaryBtn}>
             <ShoppingCartIcon size={15} /> Browse Catalog
           </button>
         </div>
@@ -177,7 +183,7 @@ export function EcommerceDashboardScreen() {
               <PackageCheckIcon size={18} color="var(--color-primary)" />
               Order Fulfillment Pipeline
             </div>
-            <Link to="../orders" className={styles.panelAction}>
+            <Link to={`${modulePath}/orders`} className={styles.panelAction}>
               Manage Orders <ArrowRightIcon size={12} style={{ display: "inline" }} />
             </Link>
           </div>
@@ -242,7 +248,7 @@ export function EcommerceDashboardScreen() {
               <BoxIcon size={18} color="#7c3aed" />
               Top Requested Spares & Parts
             </div>
-            <Link to="../catalog" className={styles.panelAction}>
+            <Link to={`${modulePath}/catalog`} className={styles.panelAction}>
               View Catalog <ArrowRightIcon size={12} style={{ display: "inline" }} />
             </Link>
           </div>
@@ -274,7 +280,7 @@ export function EcommerceDashboardScreen() {
             <ClockIcon size={18} color="var(--color-text-2)" />
             Recent Purchase Orders
           </div>
-          <Link to="../orders" className={styles.panelAction}>
+          <Link to={`${modulePath}/orders`} className={styles.panelAction}>
             View All Orders <ArrowRightIcon size={12} style={{ display: "inline" }} />
           </Link>
         </div>

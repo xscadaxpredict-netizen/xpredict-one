@@ -4,6 +4,7 @@ import { SignaturePad } from "../components/SignaturePad";
 import { useDialog } from "../../shared/hooks/useDialog";
 import styles from "./PublicReportSignScreen.module.css";
 import { Loading } from "../../../../shell/components/Loading";
+import { formatDate } from "../../shared/format/date";
 
 export default function PublicReportSignScreen() {
   const { showAlert, DialogComponent } = useDialog();
@@ -30,6 +31,10 @@ export default function PublicReportSignScreen() {
           }
         } else {
           setReport(data);
+          // ONE CLIENT NAME: whatever was typed on the report is the starting
+          // point here. Corrected here, it is saved back onto the report, so
+          // the report and the signature never carry two different names.
+          setClientName(data.client_name || "");
         }
       })
       .catch((err) => setError(err.message))
@@ -98,7 +103,7 @@ export default function PublicReportSignScreen() {
           </div>
           <div className={styles.detailRow}>
             <span>Service Date:</span>
-            <strong>{report.service_date}</strong>
+            <strong>{formatDate(report.service_date)}</strong>
           </div>
           <div className={styles.detailRow}>
             <span>Technician:</span>

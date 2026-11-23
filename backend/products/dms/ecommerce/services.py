@@ -9,15 +9,14 @@ import uuid
 from decimal import Decimal
 from typing import Any
 
-from django.db import transaction
-
+from config.transactions import tenant_atomic
 from products.dms.sales.models import ConfirmedSite, ProductCatalog
 
 from .exceptions import not_found
 from .models import EcommerceOrder, EcommerceOrderItem, OrderStatus
 
 
-@transaction.atomic
+@tenant_atomic
 def place_order(
     *,
     site_id: uuid.UUID,
@@ -74,7 +73,7 @@ def place_order(
     return order
 
 
-@transaction.atomic
+@tenant_atomic
 def update_order_status(
     *,
     order_id: uuid.UUID,

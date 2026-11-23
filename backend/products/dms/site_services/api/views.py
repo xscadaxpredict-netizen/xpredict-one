@@ -8,19 +8,65 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from core.api import TenantAPIView
+from core.organizations.selectors import dms_people_for_territory, permissions_for
 from shared.base_models import territory_scope
 
 from .. import selectors, services
 from ..models import ServiceReport
 from .serializers import (
     ComplaintReadSerializer,
+    ComplaintStatusSerializer,
     ScheduleCreateUpdateSerializer,
     ScheduleReadSerializer,
     ServiceReportReadSerializer,
     SiteProfileUpdateSerializer,
     SiteReadSerializer,
+    UnitPersonSerializer,
+    VisitCancelSerializer,
+    VisitRescheduleSerializer,
     WaterReportReadSerializer,
 )
+
+#: Holding either of these means managing visits: seeing every visit in the
+#: units one can see, and assigning them. Anyone else sees only the visits
+#: assigned to them. Which roles grant these is set in Administration.
+VISIT_MANAGER_PERMISSIONS = frozenset({"dms.appointment.create", "dms.appointment.update"})
+
+
+def manages_visits(view: TenantAPIView) -> bool:
+    # The owner and Organization Admins (C89) -- `Membership.role` is gone.
+    if view.is_org_admin:
+        return True
+    return bool(permissions_for(view.membership) & VISIT_MANAGER_PERMISSIONS)
+
+
+#: Holding this means managing complaints: assigning them and seeing all.
+#: Everybody else sees the ones assigned to them or raised by them.
+COMPLAINT_MANAGER_PERMISSION = "dms.ticket.assign"
+
+
+def manages_complaints(view: TenantAPIView) -> bool:
+    # The owner and Organization Admins (C89) -- `Membership.role` is gone.
+    if view.is_org_admin:
+        return True
+    return COMPLAINT_MANAGER_PERMISSION in permissions_for(view.membership)
+
+
+def _kept_attachment_ids(request: Request) -> list[str] | None:
+    """
+    Every kept attachment id, or None if the form sent no list at all.
+
+    `request.data.dict()` keeps only the LAST value of a repeated key, so an
+    edit with several attachments used to delete all but one of them.
+    """
+    if hasattr(request.data, "getlist"):
+        if "kept_attachment_ids" not in request.data:
+            return None
+        return [v for v in request.data.getlist("kept_attachment_ids") if v]
+    value = request.data.get("kept_attachment_ids")
+    if value is None:
+        return None
+    return value if isinstance(value, list) else [value]
 
 
 class SiteListView(TenantAPIView):
@@ -45,20 +91,40 @@ class SiteProfileUpdateView(TenantAPIView):
         return Response(SiteReadSerializer(site).data)
 
 
+class SitePeopleView(TenantAPIView):
+    """Who can be assigned work on this site: its own unit's active DMS people."""
+
+    # Visits and complaints both assign people from here.
+    required_permissions: ClassVar[list[str]] = []  # see required_any_permission
+    required_any_permission: ClassVar[list[str]] = ["dms.appointment.view", "dms.ticket.view"]
+
+    def get(self, request: Request, org_slug: str, pk: str) -> Response:
+        site = selectors.get_site(site_id=pk)
+        people = dms_people_for_territory(
+            organization=self.organization, territory_id=site.territory_id
+        )
+        return Response(UnitPersonSerializer(people, many=True).data)
+
+
 class ScheduleListCreateView(TenantAPIView):
     required_permissions: ClassVar[list[str]] = ["dms.appointment.view"]
     method_permissions: ClassVar[dict[str, list[str]]] = {"POST": ["dms.appointment.create"]}
 
     def get(self, request: Request, org_slug: str) -> Response:
-        site_id = request.query_params.get("site_id")
-        schedules = selectors.list_schedules(site_id=site_id)
+        # MANAGERS SEE EVERY VISIT, everybody else only their own.
+        schedules = selectors.list_schedules(
+            site_id=request.query_params.get("site_id"),
+            technician_user_id=None if manages_visits(self) else request.user.id,
+        )
         return Response(ScheduleReadSerializer(schedules, many=True).data)
 
     def post(self, request: Request, org_slug: str) -> Response:
         payload = ScheduleCreateUpdateSerializer(data=request.data)
         payload.is_valid(raise_exception=True)
         schedule = services.create_schedule(
-            **payload.validated_data
+            organization=self.organization,
+            actor_user_id=request.user.id,
+            **payload.validated_data,
         )
         return Response(ScheduleReadSerializer(schedule).data, status=status.HTTP_201_CREATED)
 
@@ -71,17 +137,61 @@ class ScheduleDetailView(TenantAPIView):
     }
 
     def patch(self, request: Request, org_slug: str, pk: str) -> Response:
-        payload = ScheduleCreateUpdateSerializer(data=request.data)
+        payload = ScheduleCreateUpdateSerializer(data=request.data, partial=True)
         payload.is_valid(raise_exception=True)
+        data = {k: v for k, v in payload.validated_data.items() if k != "site_id"}
         schedule = services.update_schedule(
+            organization=self.organization,
             schedule_id=pk,
-            **payload.validated_data
+            actor_user_id=request.user.id,
+            **data,
         )
         return Response(ScheduleReadSerializer(schedule).data)
 
     def delete(self, request: Request, org_slug: str, pk: str) -> Response:
-        services.delete_schedule(schedule_id=pk)
+        # `?confirm=true` says the user has seen what depends on this visit.
+        services.delete_schedule(
+            schedule_id=pk, confirmed=request.query_params.get("confirm") == "true"
+        )
         return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+class VisitRescheduleView(TenantAPIView):
+    """Put a cancelled visit back on the schedule, on a new date."""
+
+    required_permissions: ClassVar[list[str]] = ["dms.appointment.update"]
+
+    def post(self, request: Request, org_slug: str, pk: str) -> Response:
+        payload = VisitRescheduleSerializer(data=request.data)
+        payload.is_valid(raise_exception=True)
+        schedule = services.reschedule_visit(
+            organization=self.organization,
+            schedule_id=pk,
+            actor_user_id=request.user.id,
+            **payload.validated_data,
+        )
+        return Response(ScheduleReadSerializer(schedule).data)
+
+
+class VisitCancelView(TenantAPIView):
+    required_permissions: ClassVar[list[str]] = ["dms.appointment.cancel"]
+
+    def post(self, request: Request, org_slug: str, pk: str) -> Response:
+        payload = VisitCancelSerializer(data=request.data)
+        payload.is_valid(raise_exception=True)
+        schedule = services.cancel_visit(
+            schedule_id=pk, reason=payload.validated_data["reason"], actor_user_id=request.user.id
+        )
+        return Response(ScheduleReadSerializer(schedule).data)
+
+
+class ScheduleDependenciesView(TenantAPIView):
+    """What deleting a visit would affect, for the confirmation dialog."""
+
+    required_permissions: ClassVar[list[str]] = ["dms.appointment.view"]
+
+    def get(self, request: Request, org_slug: str, pk: str) -> Response:
+        return Response(services.schedule_dependencies(schedule_id=pk))
 
 
 class ServiceReportListCreateView(TenantAPIView):
@@ -121,6 +231,10 @@ class ServiceReportDetailView(TenantAPIView):
         data = request.data.dict() if hasattr(request.data, "dict") else request.data.copy()
         files = request.FILES.getlist("attachments")
         data.pop("attachments", None)
+        data.pop("kept_attachment_ids", None)
+        kept = _kept_attachment_ids(request)
+        if kept is not None:
+            data["kept_attachment_ids"] = kept
         report = services.update_service_report(
             report_id=pk,
             files=files,
@@ -182,6 +296,10 @@ class WaterReportDetailView(TenantAPIView):
         data.pop("attachedItems", None)
         data.pop("attachmentName", None)
         data.pop("site_id", None)
+        data.pop("kept_attachment_ids", None)
+        kept = _kept_attachment_ids(request)
+        if kept is not None:
+            data["kept_attachment_ids"] = kept
 
         report = services.update_water_report(
             report_id=pk,
@@ -196,33 +314,40 @@ class WaterReportDetailView(TenantAPIView):
         return Response(status=status.HTTP_204_NO_CONTENT)
 
 
+def _complaint_payload(request: Request) -> dict:
+    """The writable fields of a complaint form, by name -- nothing else gets through."""
+    data = request.data
+    out: dict = {}
+    for key in ("description", "priority"):
+        if key in data:
+            out[key] = data.get(key)
+    if "assigned_user_id" in data:
+        out["assigned_user_id"] = data.get("assigned_user_id") or None
+    return out
+
+
 class ComplaintListCreateView(TenantAPIView):
     parser_classes: ClassVar[list] = [MultiPartParser, FormParser, JSONParser]
     required_permissions: ClassVar[list[str]] = ["dms.ticket.view"]
     method_permissions: ClassVar[dict[str, list[str]]] = {"POST": ["dms.ticket.create"]}
 
     def get(self, request: Request, org_slug: str) -> Response:
-        site_id = request.query_params.get("site_id")
-        complaints = selectors.list_complaints(site_id=site_id)
+        complaints = selectors.list_complaints(
+            site_id=request.query_params.get("site_id"),
+            only_for_user_id=None if manages_complaints(self) else request.user.id,
+        )
         return Response(ComplaintReadSerializer(complaints, many=True).data)
 
     def post(self, request: Request, org_slug: str) -> Response:
-        data = request.data.dict() if hasattr(request.data, "dict") else request.data.copy()
-        attachment = request.FILES.get("attachment")
-        files = request.FILES.getlist("attachments")
-        data.pop("attachment", None)
-        data.pop("attachments", None)
-        data.pop("zonePincode", None)
-        data.pop("attachedItems", None)
-        data.pop("attachmentName", None)
-        site_id = data.pop("site_id", None)
-
+        payload = _complaint_payload(request)
         complaint = services.create_complaint(
-            site_id=site_id,
-            actor_user_id=request.user.id if request.user and hasattr(request.user, "id") else None,
-            attachment=attachment,
-            files=files,
-            **data
+            organization=self.organization,
+            site_id=request.data.get("site_id"),
+            actor_user_id=request.user.id,
+            can_manage=manages_complaints(self),
+            attachment=request.FILES.get("attachment"),
+            files=request.FILES.getlist("attachments"),
+            **payload,
         )
         return Response(ComplaintReadSerializer(complaint).data, status=status.HTTP_201_CREATED)
 
@@ -236,21 +361,16 @@ class ComplaintDetailView(TenantAPIView):
     }
 
     def patch(self, request: Request, org_slug: str, pk: str) -> Response:
-        data = request.data.dict() if hasattr(request.data, "dict") else request.data.copy()
-        attachment = request.FILES.get("attachment")
-        files = request.FILES.getlist("attachments")
-        data.pop("attachment", None)
-        data.pop("attachments", None)
-        data.pop("zonePincode", None)
-        data.pop("attachedItems", None)
-        data.pop("attachmentName", None)
-        data.pop("site_id", None)
-
         complaint = services.update_complaint(
+            organization=self.organization,
             complaint_id=pk,
-            attachment=attachment,
-            files=files,
-            **data
+            actor_user_id=request.user.id,
+            can_manage=manages_complaints(self),
+            attachment=request.FILES.get("attachment"),
+            files=request.FILES.getlist("attachments"),
+            kept_attachment_ids=_kept_attachment_ids(request),
+            clear_attachment=request.data.get("clear_attachment") == "true",
+            **_complaint_payload(request),
         )
         return Response(ComplaintReadSerializer(complaint).data)
 
@@ -270,6 +390,24 @@ def _report_for_sign_link(token: str) -> ServiceReport | None:
     accident; now it says so on purpose.
     """
     return ServiceReport.all_territories.filter(sign_link_token=token).first()
+
+
+class ComplaintStatusView(TenantAPIView):
+    """Start work, resolve (with what was done), close, or reopen a complaint."""
+
+    required_permissions: ClassVar[list[str]] = ["dms.ticket.view"]
+
+    def post(self, request: Request, org_slug: str, pk: str) -> Response:
+        payload = ComplaintStatusSerializer(data=request.data)
+        payload.is_valid(raise_exception=True)
+        complaint = services.set_complaint_status(
+            complaint_id=pk,
+            status=payload.validated_data["status"],
+            notes=payload.validated_data.get("notes", ""),
+            actor_user_id=request.user.id,
+            can_manage=manages_complaints(self),
+        )
+        return Response(ComplaintReadSerializer(complaint).data)
 
 
 class PublicServiceReportView(APIView):
@@ -326,7 +464,6 @@ class PublicServiceReportSignView(APIView):
         import uuid
 
         from django.core.files.base import ContentFile
-        from django.utils import timezone
 
         try:
             format, imgstr = signature.split(';base64,')
@@ -338,19 +475,9 @@ class PublicServiceReportSignView(APIView):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        report.client_signature = data
-        report.client_name = client_name
-        report.client_signed_at = timezone.now()
-        report.status = "COMPLETED"
-        report.sign_link_token = uuid.uuid4()
-        report.save(
-            update_fields=[
-                "client_signature",
-                "client_name",
-                "client_signed_at",
-                "status",
-                "sign_link_token",
-            ]
+        # Through the service, so signing here completes the visit too.
+        services.record_client_signature(
+            report=report, signature_file=data, client_name=client_name
         )
 
         return Response({"detail": "Signature saved successfully"})

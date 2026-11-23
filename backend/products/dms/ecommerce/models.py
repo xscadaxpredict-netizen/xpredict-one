@@ -36,7 +36,7 @@ class EcommerceOrder(TerritoryScopedModel):
 
     site = models.ForeignKey(
         "dms_sales.ConfirmedSite",
-        on_delete=models.CASCADE,
+        on_delete=models.PROTECT,
         related_name="ecommerce_orders",
     )
     customer = models.ForeignKey(

@@ -136,3 +136,59 @@ export function calculateCapacity(appType: ApplicationType, inputs: any, constan
 
   return { totalLiters, breakdown };
 }
+
+export const STANDARD_MACHINES_KLD = [6, 25, 50] as const;
+
+export interface StandardMachineMatch {
+  capacityKLD: number;
+  label: string;
+  description: string;
+  isMultiUnit: boolean;
+  unitCount: number;
+}
+
+/**
+ * Matches calculated demand / sewage capacity to our standard machine lineup:
+ * - <= 6 KLD -> 6 KLD Standard Machine
+ * - <= 25 KLD -> 25 KLD Standard Machine
+ * - <= 50 KLD -> 50 KLD Standard Machine
+ * - > 50 KLD -> Multi-unit standard 50 KLD modular plants
+ */
+export function matchStandardMachine(requiredKLD: number): StandardMachineMatch {
+  const kld = Math.max(1, requiredKLD);
+  if (kld <= 6) {
+    return {
+      capacityKLD: 6,
+      label: '6 KLD Machine',
+      description: 'Matches our standard 6 KLD machine (covers up to 6,000 Litres/day).',
+      isMultiUnit: false,
+      unitCount: 1,
+    };
+  }
+  if (kld <= 25) {
+    return {
+      capacityKLD: 25,
+      label: '25 KLD Machine',
+      description: 'Matches our standard 25 KLD machine (covers up to 25,000 Litres/day).',
+      isMultiUnit: false,
+      unitCount: 1,
+    };
+  }
+  if (kld <= 50) {
+    return {
+      capacityKLD: 50,
+      label: '50 KLD Machine',
+      description: 'Matches our standard 50 KLD machine (covers up to 50,000 Litres/day).',
+      isMultiUnit: false,
+      unitCount: 1,
+    };
+  }
+  const units = Math.ceil(kld / 50);
+  return {
+    capacityKLD: units * 50,
+    label: `${units} × 50 KLD Machines (${units * 50} KLD)`,
+    description: `Requires ${units} units of standard 50 KLD modular machines to cover ${kld} KLD.`,
+    isMultiUnit: true,
+    unitCount: units,
+  };
+}

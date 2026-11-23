@@ -15,7 +15,9 @@ import {
   confirmAmcQuote,
   createEnquiry,
   deleteQuotation,
+  getQuotationDependencies,
   fetchBanks,
+  fetchDealerProfile,
   fetchEnquiries,
   fetchProductPresets,
   saveQuotation,
@@ -28,6 +30,9 @@ import {
   createProductPreset,
   updateProductPreset,
   deleteProductPreset,
+  fetchCommissions,
+  fetchCustomers,
+  recordCommissionPayment,
 } from "../api/enquiries";
 import { salesKeys } from "../api/keys";
 import type { NewEnquiry, NewFollowup, NewQuotation, BankAccount, ProductPreset } from "../api/types";
@@ -41,10 +46,25 @@ export function useEnquiries() {
   });
 }
 
+export function useCustomers(search?: string) {
+  return useOrgQuery({
+    key: salesKeys.customers(search),
+    queryFn: (orgSlug) => fetchCustomers(orgSlug, search),
+  });
+}
+
 export function useBanks() {
   return useOrgQuery({
     key: salesKeys.banks(),
     queryFn: (orgSlug) => fetchBanks(orgSlug),
+  });
+}
+
+export function useDealerProfile() {
+  return useOrgQuery({
+    key: salesKeys.dealerProfile(),
+    queryFn: (orgSlug) => fetchDealerProfile(orgSlug),
+    staleTime: 5 * 60 * 1000,
   });
 }
 
@@ -60,7 +80,7 @@ export function useProductPresets() {
 export function useCreateEnquiry() {
   return useOrgMutation({
     mutationFn: (orgSlug, body: NewEnquiry) => createEnquiry(orgSlug, body),
-    invalidates: [salesKeys.enquiries()],
+    invalidates: [salesKeys.enquiries(), salesKeys.customers()],
   });
 }
 
@@ -146,10 +166,18 @@ export function useDeleteQuotation() {
   return useOrgMutation({
     mutationFn: (
       orgSlug,
-      variables: { enquiryId: string; quoteId: string },
+      variables: { enquiryId: string; quoteId: string; confirm?: boolean },
     ) =>
-      deleteQuotation(orgSlug, variables.enquiryId, variables.quoteId),
+      deleteQuotation(orgSlug, variables.enquiryId, variables.quoteId, variables.confirm),
     invalidates: [salesKeys.enquiries(), ["site-services"]],
+  });
+}
+
+/** Fetches what a delete would affect, for the confirmation dialog. Reads only. */
+export function useQuotationDependencies() {
+  return useOrgMutation({
+    mutationFn: (orgSlug: string, variables: { enquiryId: string; quoteId: string }) =>
+      getQuotationDependencies(orgSlug, variables.enquiryId, variables.quoteId),
   });
 }
 
@@ -214,5 +242,31 @@ export function useDeleteProductPreset() {
   return useOrgMutation({
     mutationFn: (orgSlug, productId: string) => deleteProductPreset(orgSlug, productId),
     invalidates: [salesKeys.products()],
+  });
+}
+
+export function useCommissions() {
+  return useOrgQuery({
+    key: salesKeys.commissions(),
+    queryFn: (orgSlug) => fetchCommissions(orgSlug),
+  });
+}
+
+export function useRecordCommissionPayment() {
+  return useOrgMutation({
+    mutationFn: (
+      orgSlug,
+      payload:
+        | FormData
+        | {
+            type: "COMMISSION" | "LEAD_FEE";
+            reference_id: string;
+            payment_ref: string;
+            amount?: number;
+            paid_at?: string;
+            notes?: string;
+          }
+    ) => recordCommissionPayment(orgSlug, payload),
+    invalidates: [salesKeys.commissions(), salesKeys.enquiryList()],
   });
 }

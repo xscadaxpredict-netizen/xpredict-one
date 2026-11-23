@@ -3,6 +3,7 @@ import { ChevronDownIcon, ChevronUpIcon, MapPinIcon, MessageSquareIcon, EyeIcon,
 import type { Enquiry, Quotation } from "../../sales/api/types";
 import { useDmsPermissions } from "../../shared/hooks/useDmsPermissions";
 import styles from "./AmcRow.module.css";
+import { formatDate, formatDateTime } from "../../shared/format/date";
 
 interface Props {
   site: Enquiry;
@@ -76,7 +77,7 @@ export function AmcRow({
                 >
                   <EyeIcon size={14} />
                 </button>
-                {canEditQuote && (latestQuote.status === "DRAFT" || latestQuote.status === "QUOTE_SENT") && (
+                {canEditQuote && (
                   <button
                     type="button"
                     className={styles.iconBtn}
@@ -86,7 +87,8 @@ export function AmcRow({
                     <Edit3Icon size={14} />
                   </button>
                 )}
-                {canDeleteQuote && latestQuote.status !== "CONFIRMED" && (
+                {/* Confirmed AMCs too: the delete dialog lists what depends on it first. */}
+                {canDeleteQuote && (
                   <button
                     type="button"
                     className={`${styles.iconBtn} ${styles.iconBtnDanger}`}
@@ -188,10 +190,10 @@ export function AmcRow({
                       <div className={styles.historyCard} style={{ flexDirection: "column", alignItems: "flex-start", gap: "8px" }}>
                         <div style={{ display: "flex", justifyContent: "space-between", width: "100%", fontSize: "0.8rem", color: "var(--color-text-2)" }}>
                           <span style={{ fontWeight: 600, color: "var(--color-text)" }}>
-                            {site.followups[0]!.next_followup_date ? `Due: ${site.followups[0]!.next_followup_date}` : "No date set"}
+                            {site.followups[0]!.next_followup_date ? `Due: ${formatDate(site.followups[0]!.next_followup_date)}` : "No date set"}
                           </span>
                           <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-                            <span>Added {site.followups[0]!.entered_date}</span>
+                            <span>Added {formatDateTime(site.followups[0]!.entered_date)}</span>
                             {onEditFollowup && canEditAMC && (
                               <button
                                 type="button"
@@ -246,9 +248,9 @@ export function AmcRow({
                               {site.followups.slice(1).map((f) => (
                                 <div key={f.id} style={{ padding: "8px 0", borderTop: "1px dashed var(--color-border-strong)" }}>
                                   <div style={{ display: "flex", justifyContent: "space-between", fontSize: "0.8rem", color: "var(--color-text-2)", marginBottom: "4px" }}>
-                                    <span>{f.next_followup_date ? `Due: ${f.next_followup_date}` : "No date set"}</span>
+                                    <span>{f.next_followup_date ? `Due: ${formatDate(f.next_followup_date)}` : "No date set"}</span>
                                     <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-                                      <span>Added {f.entered_date}</span>
+                                      <span>Added {formatDateTime(f.entered_date)}</span>
                                       {onEditFollowup && canEditAMC && (
                                         <button
                                           type="button"
@@ -327,7 +329,7 @@ export function AmcRow({
                             >
                               <EyeIcon size={14} />
                             </button>
-                            {canEditQuote && (q.status === "DRAFT" || q.status === "QUOTE_SENT") && (
+                            {canEditQuote && (
                               <button
                                 type="button"
                                 className={styles.iconBtn}
@@ -335,6 +337,16 @@ export function AmcRow({
                                 title="Edit Quote"
                               >
                                 <Edit3Icon size={14} />
+                              </button>
+                            )}
+                            {canDeleteQuote && (
+                              <button
+                                type="button"
+                                className={`${styles.iconBtn} ${styles.iconBtnDanger}`}
+                                onClick={() => onDeleteQuote(q.id)}
+                                title="Delete Quote"
+                              >
+                                <Trash2Icon size={14} />
                               </button>
                             )}
                             {canConfirmOrder && q.status !== "CONFIRMED" && (

@@ -1,0 +1,27 @@
+.wrap { position: relative; flex: 1; min-width: 260px; max-width: 420px; }
+.input {
+  width: 100%;
+  padding: var(--space-2) var(--space-8) var(--space-2) var(--space-3);
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface);
+  color: var(--color-text);
+  font: inherit;
+}
+.input:focus { outline: 2px solid var(--color-primary); outline-offset: -1px; }
+.clear {
+  position: absolute; right: 6px; top: 50%; transform: translateY(-50%);
+  border: none; background: none; cursor: pointer; font-size: 1.2rem; line-height: 1;
+  color: var(--color-text-3); padding: 0 var(--space-1);
+}
+.list {
+  position: absolute; left: 0; right: 0; top: calc(100% + 4px); z-index: 50;
+  margin: 0; padding: var(--space-1) 0; list-style: none; max-height: 300px; overflow-y: auto;
+  background: var(--color-surface); border: 1px solid var(--color-border);
+  border-radius: var(--radius-md); box-shadow: var(--shadow-lg);
+}
+.option { display: flex; flex-direction: column; gap: 2px; padding: var(--space-2) var(--space-3); cursor: pointer; }
+.active { background: var(--color-surface-alt); }
+.name { font-size: var(--text-sm); font-weight: 500; color: var(--color-text); }
+.meta { font-size: var(--text-xs); color: var(--color-text-3); }
+.empty { padding: var(--space-2) var(--space-3); font-size: var(--text-sm); color: var(--color-text-3); }

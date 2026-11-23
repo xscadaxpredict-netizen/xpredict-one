@@ -1,21 +1,56 @@
 import { useState, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
 import { useTools } from '../api/tools';
-import { SaveIcon, RefreshCwIcon } from 'lucide-react';
+import { SaveIcon, RefreshCwIcon, LayersIcon, CalculatorIcon } from 'lucide-react';
 import { useDmsPermissions } from '../../shared/hooks/useDmsPermissions';
+import { useShellContext } from '../../../../shell/context';
+import { useAccess } from '../../../../shell/access';
+import { EcMasterSettingsTab } from './EcMasterSettingsTab';
+import type { EcConstants } from '../api/ecDosingMath';
+
+export const DEFAULT_CAPACITY_CONSTANTS = {
+  home_avg_members: 4,
+  home_lts_pp: 150,
+  school_lts_pp: 45,
+  commercial_lts_pp: 45,
+  hosp_opd_lts: 25,
+  hosp_ipd_lts: 400,
+  hosp_extra_lts: 25,
+  toilet_lts_pp: 15,
+  stp_emp_lts: 45,
+  stp_kitchen_lts: 15,
+  resort_persons_pr: 3,
+  resort_lts_pp: 80,
+  resort_kitchen_lts: 45,
+  resort_pool_lts: 45,
+};
 
 export function CalculatorSettingsScreen() {
   const { orgSlug } = useParams<{ orgSlug: string }>();
-  const { canManageSettings } = useDmsPermissions();
+  const { canConfigureCalculator } = useDmsPermissions();
+  const { membership } = useShellContext();
+  const access = useAccess();
+  const isManagerOrAdmin =
+    membership.role === "owner" ||
+    membership.role === "admin" ||
+    canConfigureCalculator ||
+    access.can("dms.enquiry.close") ||
+    access.can("dms.order.confirm") ||
+    access.can("admin.person.invite") ||
+    access.can("dms.manual.manage");
+
   const { calculatorSettings, settingsPending, updateCalculatorSettings } = useTools(orgSlug || '');
   
-  const [constants, setConstants] = useState<any>({});
-
+  const [activeTab, setActiveTab] = useState<"capacity" | "ec_master">("capacity");
+  const [constants, setConstants] = useState<any>(DEFAULT_CAPACITY_CONSTANTS);
   const [feedback, setFeedback] = useState<{message: string, type: 'success'|'error'} | null>(null);
 
   useEffect(() => {
-    if (calculatorSettings?.constants) {
-      setConstants(calculatorSettings.constants);
+    if (calculatorSettings?.constants && Object.keys(calculatorSettings.constants).length > 0) {
+      setConstants({
+        ...DEFAULT_CAPACITY_CONSTANTS,
+        ...calculatorSettings.constants,
+      });
     }
   }, [calculatorSettings]);
 
@@ -28,12 +63,22 @@ export function CalculatorSettingsScreen() {
     setConstants((prev: any) => ({ ...prev, [key]: value }));
   };
 
-  const handleSave = () => {
+  const handleSaveCapacityConstants = () => {
     updateCalculatorSettings(
       { constants },
       {
-        onSuccess: () => showFeedback("Constants saved successfully!"),
+        onSuccess: () => showFeedback("Capacity constants saved successfully!"),
         onError: () => showFeedback("Failed to save constants.", "error")
+      }
+    );
+  };
+
+  const handleSaveEcConstants = (ecData: EcConstants) => {
+    updateCalculatorSettings(
+      { ec_constants: ecData },
+      {
+        onSuccess: () => showFeedback("EC Master Data saved successfully!"),
+        onError: () => showFeedback("Failed to save EC Master Data.", "error")
       }
     );
   };
@@ -41,7 +86,7 @@ export function CalculatorSettingsScreen() {
   if (settingsPending) return <div style={{ padding: '2rem' }}>Loading Master Data...</div>;
 
   return (
-    <div style={{ padding: '2rem', maxWidth: '800px', margin: '0 auto', paddingBottom: '100px', position: 'relative' }}>
+    <div style={{ padding: '2rem', maxWidth: '1000px', margin: '0 auto', paddingBottom: '100px', position: 'relative' }}>
       
       {/* Toast Notification */}
       {feedback && (
@@ -62,14 +107,68 @@ export function CalculatorSettingsScreen() {
         </div>
       )}
 
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2rem' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
         <div>
-          <h2 style={{ fontSize: '1.5rem', fontWeight: 700, marginBottom: '0.5rem', color: 'var(--color-text)' }}>Calculator Constants</h2>
-          <p style={{ color: 'var(--color-text-2)' }}>Define the base consumption variables used across the Capacity Calculator.</p>
+          <h2 style={{ fontSize: '1.5rem', fontWeight: 700, marginBottom: '0.5rem', color: 'var(--color-text)' }}>Master Calculation Settings</h2>
+          <p style={{ color: 'var(--color-text-2)' }}>Define machine specifications, tank volumes, and standard calculation constants.</p>
         </div>
       </div>
-      
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+
+      {/* Sub-tab Navigation */}
+      <div style={{ display: 'flex', gap: '0.75rem', marginBottom: '2rem', borderBottom: '1px solid var(--color-border)', paddingBottom: '0.75rem' }}>
+        <button
+          type="button"
+          onClick={() => setActiveTab("capacity")}
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '0.5rem',
+            padding: '0.5rem 1rem',
+            borderRadius: '6px',
+            border: 'none',
+            cursor: 'pointer',
+            fontSize: '0.9rem',
+            fontWeight: 600,
+            background: activeTab === 'capacity' ? 'var(--color-primary)' : 'var(--color-surface)',
+            color: activeTab === 'capacity' ? '#ffffff' : 'var(--color-text)',
+            transition: 'all 0.15s ease'
+          }}
+        >
+          <CalculatorIcon size={16} /> STP Capacity Constants
+        </button>
+        <button
+          type="button"
+          onClick={() => setActiveTab("ec_master")}
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '0.5rem',
+            padding: '0.5rem 1rem',
+            borderRadius: '6px',
+            border: 'none',
+            cursor: 'pointer',
+            fontSize: '0.9rem',
+            fontWeight: 600,
+            background: activeTab === 'ec_master' ? 'var(--color-primary)' : 'var(--color-surface)',
+            color: activeTab === 'ec_master' ? '#ffffff' : 'var(--color-text)',
+            transition: 'all 0.15s ease'
+          }}
+        >
+          <LayersIcon size={16} /> EC Dosing & HRT Master Load
+        </button>
+      </div>
+
+      {/* EC Master Load Tab */}
+      {activeTab === "ec_master" && (
+        <EcMasterSettingsTab
+          initialData={calculatorSettings?.ec_constants}
+          onSave={handleSaveEcConstants}
+        />
+      )}
+
+      {/* STP Capacity Constants Tab */}
+      {activeTab === "capacity" && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
         
         {/* Home */}
         <div style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)', borderRadius: '8px', padding: '1.5rem' }}>
@@ -162,57 +261,42 @@ export function CalculatorSettingsScreen() {
           </div>
         </div>
 
+        {isManagerOrAdmin && (
+          <div style={{ marginTop: '2rem', display: 'flex', justifyContent: 'flex-end', gap: '1rem', alignItems: 'center' }}>
+            <button 
+              onClick={() => {
+                const defaults = { ...DEFAULT_CAPACITY_CONSTANTS };
+                setConstants(defaults);
+                updateCalculatorSettings(
+                  { constants: defaults },
+                  {
+                    onSuccess: () => showFeedback("Defaults loaded and saved!"),
+                    onError: () => showFeedback("Failed to save defaults.", "error")
+                  }
+                );
+              }}
+              style={{ padding: '0.75rem 1.5rem', background: 'var(--color-surface)', color: 'var(--color-text)', border: '1px solid var(--color-border-strong)', borderRadius: '8px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.5rem', fontWeight: 600 }}
+            >
+              <RefreshCwIcon size={16} /> Load Defaults
+            </button>
+            <button 
+              onClick={() => {
+                setConstants(calculatorSettings?.constants || {});
+                showFeedback("Changes discarded. Reverted to last saved constants.");
+              }}
+              style={{ padding: '0.75rem 1.5rem', background: 'transparent', border: '1px solid var(--color-border-strong)', borderRadius: '8px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.5rem' }}
+            >
+              <RefreshCwIcon size={16} /> Discard Changes
+            </button>
+            <button 
+              onClick={handleSaveCapacityConstants}
+              style={{ padding: '0.75rem 1.5rem', background: 'var(--color-primary)', color: 'white', border: 'none', borderRadius: '8px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.5rem', fontWeight: 600 }}
+            >
+              <SaveIcon size={16} /> Save Constants
+            </button>
+          </div>
+        )}
       </div>
-
-      {canManageSettings && (
-        <div style={{ marginTop: '2rem', display: 'flex', justifyContent: 'flex-end', gap: '1rem', alignItems: 'center' }}>
-          <button 
-            onClick={() => {
-              const defaults = {
-                  "home_avg_members": 4, 
-                  "home_lts_pp": 150,
-                  "school_lts_pp": 45,
-                  "commercial_lts_pp": 45,
-                  "hosp_opd_lts": 25,
-                  "hosp_ipd_lts": 400,
-                  "hosp_extra_lts": 25,
-                  "toilet_lts_pp": 15,
-                  "stp_emp_lts": 45,
-                  "stp_kitchen_lts": 15,
-                  "resort_persons_pr": 3,
-                  "resort_lts_pp": 80,
-                  "resort_kitchen_lts": 45,
-                  "resort_pool_lts": 45
-              };
-              setConstants(defaults);
-              updateCalculatorSettings(
-                { constants: defaults },
-                {
-                  onSuccess: () => showFeedback("Defaults loaded and saved!"),
-                  onError: () => showFeedback("Failed to save defaults.", "error")
-                }
-              );
-            }}
-            style={{ padding: '0.75rem 1.5rem', background: 'var(--color-surface)', color: 'var(--color-text)', border: '1px solid var(--color-border-strong)', borderRadius: '8px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.5rem', fontWeight: 600 }}
-          >
-            <RefreshCwIcon size={16} /> Load Defaults
-          </button>
-          <button 
-            onClick={() => {
-              setConstants(calculatorSettings?.constants || {});
-              showFeedback("Changes discarded. Reverted to last saved constants.");
-            }}
-            style={{ padding: '0.75rem 1.5rem', background: 'transparent', border: '1px solid var(--color-border-strong)', borderRadius: '8px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.5rem' }}
-          >
-            <RefreshCwIcon size={16} /> Discard Changes
-          </button>
-          <button 
-            onClick={handleSave}
-            style={{ padding: '0.75rem 1.5rem', background: 'var(--color-primary)', color: 'white', border: 'none', borderRadius: '8px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.5rem', fontWeight: 600 }}
-          >
-            <SaveIcon size={16} /> Save Constants
-          </button>
-        </div>
       )}
     </div>
   );

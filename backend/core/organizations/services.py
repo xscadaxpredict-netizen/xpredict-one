@@ -218,6 +218,10 @@ def sign_up(
         created_by_user_id=user.id,
     )
 
+    # NO HEAD OFFICE IS MADE HERE (merge with `main`, 2026-11-23): `main`
+    # created one per organisation (C-local-4); the ROOT made above is the head
+    # office now (C82 amended, the owner).
+
     for app in subscribed_apps:
         _subscribe_and_grant(organization, membership, app, actor_id=user.id)
 
@@ -1035,9 +1039,13 @@ def _resolve_unit(organization: Organization, unit_id: uuid.UUID | None) -> Terr
         return None
     try:
         # DEALERS ONLY until C72 piece 2: a person is placed at a dealership or
-        # at nothing. A region's id here is "no such dealer", the same 404.
+        # at nothing. A region's id here is "no such dealer", the same 404 --
+        # and so is one of `main`'s head offices until they are retired.
         return Territory.objects.get(
-            id=unit_id, organization=organization, kind=TerritoryKind.DEALER
+            id=unit_id,
+            organization=organization,
+            kind=TerritoryKind.DEALER,
+            is_head_office__isnull=True,
         )
     except (Territory.DoesNotExist, DjangoValidationError, ValueError):
         # Another organization's dealership is not bad input to report back, it

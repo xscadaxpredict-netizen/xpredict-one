@@ -71,6 +71,10 @@ export function useDmsPermissions() {
     canEditComplaint: isManagerOrAdmin || access.can("dms.ticket.update") || access.can("dms.appointment.update"),
     canResolveComplaint: isManagerOrAdmin || access.can("dms.ticket.close"),
     canDeleteComplaint: isManagerOrAdmin,
+    // Assigns complaints and sees all of them -- exactly the server's rule
+    // (owner/admin, or dms.ticket.assign). Everyone else sees the ones
+    // assigned to them or raised by them.
+    canManageComplaints: isOwnerOrAdmin || access.can("dms.ticket.assign"),
 
     // Tech Support: Call Requests
     canCreateCallRequest: isManagerOrAdmin || access.can("dms.ticket.create"),

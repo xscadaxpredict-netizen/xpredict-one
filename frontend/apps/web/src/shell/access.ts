@@ -130,7 +130,21 @@ export function accessFor(membership: Membership, appKey: string | undefined): A
     a.permissions.includes("admin.user.create")
   );
 
+  const isOrgAdmin =
+    !membership.unit_id && (
+      membership.role === "owner" ||
+      membership.role === "admin" ||
+      permissions.has("dms.manual.manage")
+    );
+
+  const isDealerManager =
+    Boolean(membership.unit_id) &&
+    (permissions.has("dms.order.confirm") || permissions.has("dms.enquiry.close"));
+
+  const canAccessSettings = isOrgAdmin || isDealerManager;
+
   const isManagerOrAdmin =
+    isOrgAdmin ||
     membership.role === "owner" ||
     membership.role === "admin" ||
     permissions.has("dms.enquiry.close") ||
@@ -138,9 +152,15 @@ export function accessFor(membership: Membership, appKey: string | undefined): A
     isDealerAdmin;
 
   return {
-    hasModule: (moduleKey) =>
-      modules.has(moduleKey) ||
-      (isManagerOrAdmin && (moduleKey === "ecommerce" || moduleKey === "tools")),
+    hasModule: (moduleKey) => {
+      if (moduleKey === "settings") {
+        return canAccessSettings;
+      }
+      return (
+        modules.has(moduleKey) ||
+        (isManagerOrAdmin && (moduleKey === "ecommerce" || moduleKey === "tools"))
+      );
+    },
     canSee: (sectionCode) => visible.has(sectionCode),
     can: (permission) => permissions.has(permission),
     modules: app.modules,

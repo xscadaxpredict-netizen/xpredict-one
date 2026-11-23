@@ -1,11 +1,18 @@
 import uuid
 
 from core.organizations.api.base import OrgScopedAPIView
-from core.organizations.models import Membership, Organization, Territory, TerritoryKind
+from core.organizations.models import (
+    Membership,
+    MembershipRole,
+    Organization,
+    Territory,
+    TerritoryKind,
+)
 from core.organizations.selectors import (
     permissions_for,
     placements_for,
     resolve_allowed_territories,
+    standing,
 )
 from core.permissions.models import AppCode
 from shared.base_models import allowed_territories
@@ -56,6 +63,26 @@ class TenantAPIView(OrgScopedAPIView):
         allowed = resolve_allowed_territories(self.membership, self.app_code)
         allowed_territories.set(allowed)
 
+        # WHERE THIS PERSON WORKS, for code that asks one place for the whole
+        # request -- `main`'s `request.unit_id` (Nishanth's DMS views), kept
+        # under its territory name in the merge (2026-11-23). The root for the
+        # owner and organisation-level people (the head office, C82 amended);
+        # their own place for everybody else. None when they have nowhere.
+        # A NEW record should still ask `self.home_for(Model)`.
+        try:
+            request.territory_id = self.home_for(_AnyPlace)
+        except ConflictError:
+            request.territory_id = None
+
+    @property
+    def is_org_admin(self) -> bool:
+        """
+        The owner or an Organization Admin (C89) -- `main`'s
+        `membership.role in ("owner", "admin") and membership.unit_id is None`,
+        both of which this branch dropped (C72 2d). Organisation-wide by rule.
+        """
+        return self.membership.is_owner or standing(self.membership) == MembershipRole.ADMIN
+
     def home_for(self, model) -> uuid.UUID:
         """Where a new `model` record filed by this request goes. See `home_for()`."""
         return home_for(
@@ -79,6 +106,13 @@ class TenantAPIView(OrgScopedAPIView):
                 "admin.user.create",
             })
         )
+
+
+class _AnyPlace:
+    """`request.territory_id`'s stand-in record type: may live anywhere."""
+
+    home_follows = None
+    home_kinds = tuple(TerritoryKind.values)
 
 
 def home_for(
@@ -105,14 +139,20 @@ def home_for(
        enquiry) -- is ignored, never honoured: it is how a person would
        otherwise file a record somewhere they cannot see, or somewhere it
        does not belong.
-    2. PLACED AT EXACTLY ONE DEALERSHIP OR BRANCH: there. No question to ask.
-    3. OTHERWISE -- a region, the root, or several places -- the first
-       dealership created inside their subtree. TEMPORARY, AND A GUESS: the
-       frontend sends no `X-Unit-Id`, so this is today's behaviour, kept until
-       the create forms gain a "dealership or branch" choice and this step is
-       removed with it (C72 piece 3, its own step).
+    2. PLACED AT EXACTLY ONE PLACE this record may live at: there -- a
+       dealership or a branch, a region, or THE ROOT, which is the head office
+       (C82 amended, the owner 2026-11-23). An organisation-level person's work
+       is the organisation's own, filed at the root.
+    3. OTHERWISE (several places): the first of their own places, by depth then
+       age, that this record may live at.
     4. Nowhere: a 409. It used to be `None`, which the database refused with a
        500 on the insert.
+
+    THIS USED TO FILE AN ORGANISATION-LEVEL PERSON'S WORK AT THE FIRST
+    DEALERSHIP CREATED -- in that dealer's books, and nowhere at all in an
+    organisation with no dealership yet. `main` fixed it with a "head office"
+    unit (C-local-4, Nishanth); the merge (2026-11-23) keeps the fix, filed at
+    the root instead.
     """
     if model.home_follows:
         raise TypeError(
@@ -131,17 +171,19 @@ def home_for(
     if chosen:
         return chosen.id
 
-    own = placements_for(membership, app)
-    if (
-        len(own) == 1
-        and own[0].kind in (TerritoryKind.DEALER, TerritoryKind.BRANCH)
-        and own[0].kind in kinds
-    ):
-        return own[0].id
-
-    first = places.filter(kind=TerritoryKind.DEALER).order_by("created_at").first()
-    if first:
-        return first.id
+    # The owner holds every app by rule with no grant (C72 2c): their place is
+    # the root.
+    own = (
+        [Territory.objects.root_for(organization)]
+        if membership.is_owner
+        else placements_for(membership, app)
+    )
+    fitting = sorted(
+        (place for place in own if place.kind in kinds),
+        key=lambda place: (place.depth, place.created_at),
+    )
+    if fitting:
+        return fitting[0].id
 
     raise ConflictError(
         code="no_home",

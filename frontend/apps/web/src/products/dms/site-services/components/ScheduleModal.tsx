@@ -1,4 +1,5 @@
 import { XIcon } from "lucide-react";
+import { useSitePeople } from "../hooks/useSiteServices";
 import styles from "./ScheduleModal.module.css";
 
 interface Props {
@@ -11,15 +12,23 @@ interface Props {
 }
 
 export function ScheduleModal({ isOpen, form, confirmedSites, onFormChange, onSubmit, onClose }: Props) {
+  // The people who can take this site's visit: its own dealership's (or, for
+  // the organisation's own site, the organisation's) active DMS users.
+  const { data: people, isLoading: peopleLoading } = useSitePeople(isOpen ? form.siteId : undefined);
   if (!isOpen) return null;
+  const knownPerson = !form.technicianUserId || (people ?? []).some((p) => p.user_id === form.technicianUserId);
 
   return (
     <div className={styles.modalOverlay} onClick={onClose}>
       <div className={styles.modalContent} onClick={e => e.stopPropagation()}>
         <div className={styles.modalHeader}>
           <div>
-            <h3 className={styles.modalTitle}>Schedule Service Visit</h3>
-            <p className={styles.modalSubtitle}>Assign maintenance date, technician, and service interval.</p>
+            <h3 className={styles.modalTitle}>{form.mode === "reschedule" ? "Reschedule Visit" : "Schedule Service Visit"}</h3>
+            <p className={styles.modalSubtitle}>
+              {form.mode === "reschedule"
+                ? "The same visit goes back on the schedule on the new date. Its cancellation stays in its history."
+                : "Assign maintenance date, technician, and service interval."}
+            </p>
           </div>
           <button type="button" className={styles.modalClose} onClick={onClose}><XIcon size={20} /></button>
         </div>
@@ -28,13 +37,14 @@ export function ScheduleModal({ isOpen, form, confirmedSites, onFormChange, onSu
           <div className={styles.modalBody}>
             <div>
               <label className={styles.label}>
-                              Select Site <span className={styles.required}>*</span> <span style={{ color: "red" }}>*</span>
+                              Select Site <span className={styles.required}>*</span>
                           </label>
               <select 
                 required 
                 className={styles.input}
                 value={form.siteId}
-                onChange={e => onFormChange({ siteId: e.target.value })}
+                disabled={Boolean(form.lockSite)}
+                onChange={e => onFormChange({ siteId: e.target.value, technicianUserId: "" })}
               >
                 <option value="">-- Choose Deployed Customer Site --</option>
                 {confirmedSites.map(s => (
@@ -47,6 +57,7 @@ export function ScheduleModal({ isOpen, form, confirmedSites, onFormChange, onSu
               <label className={styles.label}>Service Type <span className={styles.required}>*</span></label>
               <select 
                 className={styles.input}
+                disabled={form.mode === "reschedule"}
                 value={form.serviceType}
                 onChange={e => onFormChange({ serviceType: e.target.value })}
               >
@@ -58,7 +69,7 @@ export function ScheduleModal({ isOpen, form, confirmedSites, onFormChange, onSu
             <div className={styles.formRow}>
               <div style={{ flex: 1 }}>
                 <label className={styles.label}>
-                                  Scheduled Date <span className={styles.required}>*</span> <span style={{ color: "red" }}>*</span>
+                                  {form.mode === "reschedule" ? "New Date" : "Scheduled Date"} <span className={styles.required}>*</span>
                               </label>
                 <input 
                   required
@@ -70,13 +81,32 @@ export function ScheduleModal({ isOpen, form, confirmedSites, onFormChange, onSu
               </div>
               <div style={{ flex: 1 }}>
                 <label className={styles.label}>Assigned Technician</label>
-                <input 
-                  type="text"
-                  placeholder="e.g. Ramesh"
+                <select
                   className={styles.input}
-                  value={form.technician}
-                  onChange={e => onFormChange({ technician: e.target.value })}
-                />
+                  value={form.technicianUserId || ""}
+                  disabled={!form.siteId || peopleLoading}
+                  onChange={e => onFormChange({ technicianUserId: e.target.value })}
+                >
+                  <option value="">
+                    {!form.siteId ? "Choose a site first" : peopleLoading ? "Loading people..." : "— Unassigned —"}
+                  </option>
+                  {!knownPerson && (
+                    <option value={form.technicianUserId}>{form.technicianName || "Current technician"} (no longer available)</option>
+                  )}
+                  {(people ?? []).map((p) => (
+                    <option key={p.user_id} value={p.user_id}>{p.name} · {p.email}</option>
+                  ))}
+                </select>
+                {form.siteId && !peopleLoading && (people ?? []).length === 0 && (
+                  <div style={{ fontSize: "0.75rem", color: "#b45309", marginTop: "4px" }}>
+                    Nobody in this site's dealership has DMS access yet. Invite them in Administration → Users.
+                  </div>
+                )}
+                {form.legacyTechnician && !form.technicianUserId && (
+                  <div style={{ fontSize: "0.75rem", color: "var(--color-text-3)", marginTop: "4px" }}>
+                    Previously typed as “{form.legacyTechnician}”. Pick the person to assign it properly.
+                  </div>
+                )}
               </div>
             </div>
 
@@ -85,6 +115,7 @@ export function ScheduleModal({ isOpen, form, confirmedSites, onFormChange, onSu
               <textarea 
                 rows={2}
                 placeholder="Special instructions..."
+                disabled={form.mode === "reschedule"}
                 className={styles.input}
                 value={form.notes}
                 onChange={e => onFormChange({ notes: e.target.value })}
@@ -94,7 +125,7 @@ export function ScheduleModal({ isOpen, form, confirmedSites, onFormChange, onSu
 
           <div className={styles.modalFooter}>
             <button type="button" className={styles.btnSecondary} onClick={onClose}>Cancel</button>
-            <button type="submit" className={styles.btnPrimary}>Save Schedule</button>
+            <button type="submit" className={styles.btnPrimary}>{form.mode === "reschedule" ? "Reschedule Visit" : "Save Schedule"}</button>
           </div>
         </form>
       </div>

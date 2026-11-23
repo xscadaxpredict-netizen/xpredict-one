@@ -1,6 +1,7 @@
 import { Fragment, useState } from "react";
-import { AlertTriangleIcon, EyeIcon, Edit3Icon, Trash2Icon, CheckCircle2Icon, RotateCcwIcon, ChevronDownIcon, ChevronUpIcon } from "lucide-react";
+import { AlertTriangleIcon, EyeIcon, Edit3Icon, Trash2Icon, ChevronDownIcon, ChevronUpIcon } from "lucide-react";
 import { FileAttachmentCell } from "./FileAttachmentCell";
+import { ComplaintActions, COMPLAINT_STATUS_LABEL, type ComplaintMove } from "./ComplaintActions";
 import { useDmsPermissions } from "../../shared/hooks/useDmsPermissions";
 import styles from "./ComplaintTable.module.css";
 
@@ -8,12 +9,15 @@ interface Props {
   reports: any[];
   onView: (report: any) => void;
   onEdit: (report: any) => void;
-  onToggleStatus?: (report: any) => void;
+  onMove?: (report: any, status: ComplaintMove) => void;
   onDelete: (report: any) => void;
+  currentUserId: string;
 }
 
-export function ComplaintTable({ reports, onView, onEdit, onToggleStatus, onDelete }: Props) {
-  const { canEditComplaint, canDeleteComplaint, canResolveComplaint } = useDmsPermissions();
+export function ComplaintTable({ reports, onView, onEdit, onMove, onDelete, currentUserId }: Props) {
+  const { canEditComplaint, canDeleteComplaint, canManageComplaints } = useDmsPermissions();
+  // Edit what a complaint says: a manager, or whoever raised it.
+  const mayEdit = (r: any) => canEditComplaint && (canManageComplaints || r.complainant_user_id === currentUserId);
   const [expandedId, setExpandedId] = useState<string | null>(null);
 
   const toggleExpand = (id: string) => {
@@ -48,7 +52,6 @@ export function ComplaintTable({ reports, onView, onEdit, onToggleStatus, onDele
         </thead>
         <tbody>
           {reports.map((report) => {
-            const isResolved = report.status === "RESOLVED";
             const isExpanded = expandedId === report.id;
 
             return (
@@ -75,8 +78,11 @@ export function ComplaintTable({ reports, onView, onEdit, onToggleStatus, onDele
                     </span>
                   </td>
                   <td className={styles.td}>
-                    <span className={`${styles.badge} ${styles["status" + report.status]}`}>
-                      {report.status}
+                    <span
+                      className={`${styles.badge} ${styles["status" + report.status]}`}
+                      title={report.resolution_notes ? `Resolution: ${report.resolution_notes}` : undefined}
+                    >
+                      {COMPLAINT_STATUS_LABEL[report.status as keyof typeof COMPLAINT_STATUS_LABEL] ?? report.status}
                     </span>
                   </td>
                   <td className={styles.td} onClick={(e) => e.stopPropagation()}>
@@ -92,21 +98,18 @@ export function ComplaintTable({ reports, onView, onEdit, onToggleStatus, onDele
                   </td>
                   <td className={styles.tdRight} onClick={(e) => e.stopPropagation()}>
                     <div className={styles.actions}>
-                      {onToggleStatus && canResolveComplaint && (
-                        <button
-                          type="button"
-                          className={styles.iconBtn}
-                          style={{ color: isResolved ? "#f59e0b" : "#10b981" }}
-                          title={isResolved ? "Unresolve / Reopen Ticket" : "Mark as Resolved"}
-                          onClick={() => onToggleStatus(report)}
-                        >
-                          {isResolved ? <RotateCcwIcon size={16} /> : <CheckCircle2Icon size={16} />}
-                        </button>
+                      {onMove && (
+                        <ComplaintActions
+                          complaint={report}
+                          currentUserId={currentUserId}
+                          canManage={canManageComplaints}
+                          onMove={(status) => onMove(report, status)}
+                        />
                       )}
                       <button type="button" className={styles.iconBtn} title="View Complaint" onClick={() => onView(report)}>
                         <EyeIcon size={16} />
                       </button>
-                      {canEditComplaint && (
+                      {mayEdit(report) && (
                         <button type="button" className={styles.iconBtnPrimary} title="Edit Complaint" onClick={() => onEdit(report)}>
                           <Edit3Icon size={16} />
                         </button>
@@ -133,21 +136,19 @@ export function ComplaintTable({ reports, onView, onEdit, onToggleStatus, onDele
                     <td colSpan={9} className={styles.expandedCell}>
                       <div className={styles.expandedContent}>
                         <div className={styles.mobileActionsBar}>
-                          {onToggleStatus && canResolveComplaint && (
-                            <button
-                              type="button"
-                              className={styles.iconBtn}
-                              style={{ color: isResolved ? "#f59e0b" : "#10b981" }}
-                              onClick={() => onToggleStatus(report)}
-                            >
-                              {isResolved ? <RotateCcwIcon size={16} /> : <CheckCircle2Icon size={16} />}
-                              <span>{isResolved ? "Reopen" : "Resolve"}</span>
-                            </button>
+                          {onMove && (
+                            <ComplaintActions
+                              complaint={report}
+                              currentUserId={currentUserId}
+                              canManage={canManageComplaints}
+                              onMove={(status) => onMove(report, status)}
+                              withLabels
+                            />
                           )}
                           <button type="button" className={styles.iconBtn} onClick={() => onView(report)}>
                             <EyeIcon size={16} /> <span>View</span>
                           </button>
-                          {canEditComplaint && (
+                          {mayEdit(report) && (
                             <button type="button" className={styles.iconBtnPrimary} onClick={() => onEdit(report)}>
                               <Edit3Icon size={16} /> <span>Edit</span>
                             </button>

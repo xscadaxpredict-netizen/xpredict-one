@@ -11,8 +11,24 @@
 
 export type EnquiryStatus = "PENDING" | "CONFIRMED" | "LOST";
 
+export interface Customer {
+  id: string;
+  name: string;
+  contact_person: string;
+  phone: string;
+  email: string;
+  address: string;
+  pincode: string;
+  city: string;
+  state: string;
+  gst: string;
+  pan: string;
+  created_at: string;
+}
+
 export interface Enquiry {
   id: string;
+  customer_id?: string | null;
   customer_name: string;
   contact_person: string;
   address: string;
@@ -23,6 +39,12 @@ export interface Enquiry {
   status: EnquiryStatus;
   confirmed_quote_id: string | null;
   oc_number: string | null;
+  agent_id?: string | null;
+  agent_name?: string;
+  lead_fee?: number;
+  lead_fee_status?: "NONE" | "DUE" | "PAID";
+  lead_fee_payment_ref?: string;
+  lead_fee_paid_at?: string | null;
   followups: Followup[];
   quotes: Quotation[];
   site_details?: SiteDetails | null;
@@ -71,6 +93,7 @@ export interface Complaint {
 
 
 export interface NewEnquiry {
+  customer_id?: string | null;
   customer_name: string;
   contact_person: string;
   address: string;
@@ -79,6 +102,9 @@ export interface NewEnquiry {
   remarks: string;
   followup_remarks: string;
   followup_next_date: string;
+  agent_id?: string | null;
+  agent_name?: string;
+  lead_fee?: number;
 }
 
 // ---- Followup --------------------------------------------------------------
@@ -114,13 +140,13 @@ export interface QuotationItem {
 
 export interface AddressDetails {
   company_name: string;
-  contact_person: string;
-  phone: string;
-  email: string;
-  gst: string;
-  pan: string;
+  contact_person?: string;
+  phone?: string;
+  email?: string;
+  gst?: string;
+  pan?: string;
   address: string;
-  state: string;
+  state?: string;
 }
 
 export interface Quotation {
@@ -138,6 +164,17 @@ export interface Quotation {
   selected_bank_id: string;
   items: QuotationItem[];
   terms: string;
+  agent_id?: string | null;
+  agent_name?: string;
+  commission_type?: "PERCENTAGE" | "FIXED";
+  commission_rate?: number;
+  commission_amount?: number;
+  commission_status?: "NONE" | "PENDING" | "PAYABLE" | "PARTIALLY_PAID" | "PAID";
+  commission_payment_ref?: string;
+  commission_paid_at?: string | null;
+  paid_amount?: number;
+  balance_amount?: number;
+  payouts?: AgentPayoutItem[];
 }
 
 export interface NewQuotation {
@@ -152,12 +189,58 @@ export interface NewQuotation {
   selected_bank_id: string;
   items: Omit<QuotationItem, "id">[];
   terms: string;
+  agent_id?: string | null;
+  agent_name?: string;
+  commission_type?: "PERCENTAGE" | "FIXED";
+  commission_rate?: number;
+  commission_amount?: number;
+}
+
+export interface AgentPayoutAttachment {
+  id: string;
+  file_url: string;
+  file_name: string;
+  file_size: number;
+}
+
+export interface AgentPayoutItem {
+  id: string;
+  amount: number;
+  payment_ref: string;
+  paid_at: string | null;
+  notes?: string;
+  attachments: AgentPayoutAttachment[];
+}
+
+export interface AgentCommissionRecord {
+  type: "COMMISSION" | "LEAD_FEE";
+  id: string;
+  reference_id: string;
+  enquiry_id: string;
+  deal_title: string;
+  quote_no: string;
+  customer_name: string;
+  agent_id: string | null;
+  agent_name: string;
+  amount: number;
+  paid_amount?: number;
+  balance_amount?: number;
+  rate: number;
+  commission_type: "PERCENTAGE" | "FIXED";
+  status: string;
+  payment_ref: string;
+  paid_at: string | null;
+  created_at: string | null;
+  payouts?: AgentPayoutItem[];
 }
 
 // ---- Bank Account ----------------------------------------------------------
 
 export interface BankAccount {
   id: string;
+  unit_id?: string | null;
+  is_org_bank?: boolean;
+  ownership?: "ORGANIZATION" | "DEALER";
   bank_name: string;
   account_no: string;
   ifsc_code: string;
@@ -172,6 +255,9 @@ export type NewBankAccount = Omit<BankAccount, "id">;
 
 export interface ProductPreset {
   id: string;
+  unit_id?: string | null;
+  is_global?: boolean;
+  ownership?: "OEM" | "DEALER";
   type: QuoteType;
   name?: string;
   description: string;
@@ -185,3 +271,18 @@ export interface ProductPreset {
 }
 
 export type NewProductPreset = Omit<ProductPreset, "id">;
+
+/** What deleting a quotation would affect (GET .../quotations/<id>/dependencies/). */
+export interface QuotationDependencies {
+  quote_type: QuoteType;
+  is_confirmed: boolean;
+  /** Visits booked under this AMC that have not happened yet --- cancelled on delete. */
+  upcoming_visits: number;
+  /** Visits already done --- kept as history. */
+  past_visits: number;
+  techno_commercial_documents: number;
+  commission_payouts: number;
+  /** Set when the quote cannot be deleted at all; the reason is shown as-is. */
+  blocked_reason: string | null;
+  has_dependents: boolean;
+}

@@ -1,6 +1,7 @@
 import { Outlet, Navigate, useLocation } from "react-router-dom";
 import { BookOpenIcon, PlaySquareIcon, PhoneCallIcon, ClockIcon } from "lucide-react";
 import { TabBar } from "../../shared/components/TabBar";
+import styles from "../../shared/components/ModuleLayout.module.css";
 
 export function TechSupportLayout() {
   const location = useLocation();
@@ -18,19 +19,11 @@ export function TechSupportLayout() {
   }
 
   return (
-    <div style={{ padding: "var(--space-6)", height: "100%", display: "flex", flexDirection: "column" }}>
-      <div style={{ marginBottom: "var(--space-6)" }}>
-        <h1 style={{ fontSize: "var(--text-2xl)", fontWeight: 700, margin: "0 0 var(--space-1) 0" }}>
-          Installation & Technical Support
-        </h1>
-        <p style={{ color: "var(--color-text-2)", fontSize: "var(--text-sm)", margin: 0 }}>
-          Access product documentation, installation videos, and manage callback requests.
-        </p>
+    <div className={styles.moduleLayoutContainer}>
+      <div className={styles.tabBarWrapper}>
+        <TabBar tabs={tabs} />
       </div>
-
-      <TabBar tabs={tabs} />
-
-      <div style={{ flex: 1, overflowY: "auto" }}>
+      <div className={styles.outletContainer}>
         <Outlet />
       </div>
     </div>

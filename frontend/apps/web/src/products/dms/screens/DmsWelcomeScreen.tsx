@@ -13,10 +13,14 @@ import {
   Compass,
 } from "lucide-react";
 import { useShellContext } from "../../../shell/context";
+import { useAccess } from "../../../shell/access";
+import { ConsolidatedDashboard } from "./ConsolidatedDashboard";
 import styles from "./DmsWelcomeScreen.module.css";
 
 interface ModuleCardConfig {
   id: string;
+  /** Module key the role must hold --- the same keys navigation.ts uses. */
+  module: string;
   title: string;
   description: string;
   icon: typeof TrendingUp;
@@ -28,20 +32,22 @@ interface ModuleCardConfig {
 
 export function DmsWelcomeScreen() {
   const { membership } = useShellContext();
+  const access = useAccess();
   const basePath = `/${membership.org_slug}/dms`;
 
-  const modules: ModuleCardConfig[] = [
+  const allModules: ModuleCardConfig[] = [
     {
       id: "sales",
+      module: "sales",
       title: "Sales Management",
       description:
         "Commercial workflow from initial lead capture and RFQs to quotation generation, margin calculations, and confirmed sales orders.",
       icon: TrendingUp,
       iconBg: "linear-gradient(135deg, #2563eb, #1d4ed8)",
-      primaryPath: `${basePath}/sales/dashboard`,
+      primaryPath: `${basePath}?view=sales`,
       primaryActionLabel: "Open Sales Dashboard",
       screens: [
-        { label: "Sales Dashboard", path: `${basePath}/sales/dashboard` },
+        { label: "Sales Dashboard", path: `${basePath}?view=sales` },
         { label: "Enquiries & Leads", path: `${basePath}/sales/enquiries` },
         { label: "Confirmed Orders", path: `${basePath}/sales/orders` },
         { label: "Quotations", path: `${basePath}/sales/quotations` },
@@ -49,15 +55,16 @@ export function DmsWelcomeScreen() {
     },
     {
       id: "site-services",
+      module: "service",
       title: "Site Services & Scheduling",
       description:
         "Complete after-sales operations: Annual Maintenance Contracts (AMC), scheduled engineer visits, water quality test reports, and customer complaint tracking.",
       icon: Wrench,
       iconBg: "linear-gradient(135deg, #059669, #047857)",
-      primaryPath: `${basePath}/site-services/dashboard`,
+      primaryPath: `${basePath}?view=service`,
       primaryActionLabel: "Open Services Hub",
       screens: [
-        { label: "Service Dashboard", path: `${basePath}/site-services/dashboard` },
+        { label: "Service Dashboard", path: `${basePath}?view=service` },
         { label: "AMC Contracts", path: `${basePath}/site-services/amc` },
         { label: "Scheduled Services", path: `${basePath}/site-services/scheduling` },
         { label: "Service Reports", path: `${basePath}/site-services/reports` },
@@ -67,6 +74,7 @@ export function DmsWelcomeScreen() {
     },
     {
       id: "tech-support",
+      module: "tech-support",
       title: "Installation & Tech Support",
       description:
         "Field enablement resources: interactive equipment manuals, instructional video library, on-demand callback requests, and timer calibration calculators.",
@@ -83,21 +91,23 @@ export function DmsWelcomeScreen() {
     },
     {
       id: "ecommerce",
+      module: "ecommerce",
       title: "E-Commerce & Spare Parts",
       description:
         "Direct procurement store for OEM spare parts, consumable supplies, accessories, and automated order fulfillment tracking.",
       icon: ShoppingCart,
       iconBg: "linear-gradient(135deg, #d97706, #b45309)",
-      primaryPath: `${basePath}/ecommerce/dashboard`,
+      primaryPath: `${basePath}/ecommerce/catalog`,
       primaryActionLabel: "Go to Parts Store",
       screens: [
-        { label: "Store Dashboard", path: `${basePath}/ecommerce/dashboard` },
+        { label: "Store Dashboard", path: `${basePath}?view=ecommerce` },
         { label: "Store Catalog", path: `${basePath}/ecommerce/catalog` },
         { label: "My Orders", path: `${basePath}/ecommerce/orders` },
       ],
     },
     {
       id: "tools",
+      module: "tools",
       title: "Engineering Tools & Calculators",
       description:
         "Technical sizing utilities: plant capacity calculators, site feasibility evaluation forms, and marketing collateral repository.",
@@ -113,6 +123,7 @@ export function DmsWelcomeScreen() {
     },
     {
       id: "configuration",
+      module: "settings",
       title: "Master Configuration",
       description:
         "Central repository for bulk master data loading, product SKUs, pricing baselines, and organization-wide operational parameters.",
@@ -125,6 +136,9 @@ export function DmsWelcomeScreen() {
       ],
     },
   ];
+
+  // Only the modules this role can open, same rule as the sidebar.
+  const modules = allModules.filter((m) => access.hasModule(m.module));
 
   const lifecycleStages = [
     {
@@ -172,7 +186,7 @@ export function DmsWelcomeScreen() {
           </div>
 
           <h1 className={styles.heroTitle}>
-            Welcome to Dealer Management (DMS)
+            Welcome to Dealer Management System (DMS)
           </h1>
 
           <p className={styles.heroSubtitle}>
@@ -180,10 +194,11 @@ export function DmsWelcomeScreen() {
             to ongoing maintenance, engineering calculations, and spare parts procurement.
             All tools and workflows are ready for use.
           </p>
-
-
         </div>
       </section>
+
+      {/* One dashboard for every module this role holds, filterable by module */}
+      <ConsolidatedDashboard />
 
       {/* End-to-End Lifecycle Journey */}
       <section className={styles.lifecycleSection}>

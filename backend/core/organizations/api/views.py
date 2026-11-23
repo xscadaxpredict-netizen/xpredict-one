@@ -197,8 +197,14 @@ class DealerDetailView(OrgScopedAPIView):
         would confirm that a well-formed id is the thing being looked up.
         """
         try:
+            # DEALERS ONLY -- and never one of the head offices `main` created
+            # (C-local-4) while they are folded into the root (C82 amended,
+            # `retire_head_offices`).
             return Territory.objects.get(
-                id=dealer_id, organization=self.organization, kind=TerritoryKind.DEALER
+                id=dealer_id,
+                organization=self.organization,
+                kind=TerritoryKind.DEALER,
+                is_head_office__isnull=True,
             )
         except (Territory.DoesNotExist, ValidationError, ValueError):
             raise not_found("Dealer") from None
@@ -265,8 +271,14 @@ class DealerStatusView(OrgScopedAPIView):
     def _get_dealer(self, dealer_id: str) -> Territory:
         """The same filter-by-organization isolation as `DealerDetailView`."""
         try:
+            # DEALERS ONLY -- and never one of the head offices `main` created
+            # (C-local-4) while they are folded into the root (C82 amended,
+            # `retire_head_offices`).
             return Territory.objects.get(
-                id=dealer_id, organization=self.organization, kind=TerritoryKind.DEALER
+                id=dealer_id,
+                organization=self.organization,
+                kind=TerritoryKind.DEALER,
+                is_head_office__isnull=True,
             )
         except (Territory.DoesNotExist, ValidationError, ValueError):
             raise not_found("Dealer") from None

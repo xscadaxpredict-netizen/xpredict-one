@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import type { ProductPreset, NewProductPreset, QuoteType } from "../sales/api/types";
 import { useCreateProductPreset, useUpdateProductPreset } from "../sales/hooks/useEnquiries";
+import { useShellContext } from "../../../shell/context";
 import styles from "./SettingsDialog.module.css";
 
 interface Props {
@@ -11,6 +12,9 @@ interface Props {
 
 export function ProductModal({ open, onClose, product }: Props) {
   const dialogRef = useRef<HTMLDialogElement>(null);
+  const { membership } = useShellContext();
+  const isOrgAdmin = (membership.role === "owner" || membership.role === "admin") && !membership.unit_id;
+
   const createProduct = useCreateProductPreset();
   const updateProduct = useUpdateProductPreset();
 
@@ -77,6 +81,8 @@ export function ProductModal({ open, onClose, product }: Props) {
       payload.append("image", imageFile);
     }
 
+    payload.append("is_global", isOrgAdmin ? "true" : "false");
+
     if (product) {
       updateProduct.mutate({ productId: product.id, body: payload }, {
         onSuccess: () => {
@@ -109,7 +115,14 @@ export function ProductModal({ open, onClose, product }: Props) {
       }}
     >
       <header className={styles.header}>
-        <h2 className={styles.title}>{product ? "Edit Product" : "Add Product"}</h2>
+        <h2 className={styles.title}>
+          {product ? "Edit Product" : (isOrgAdmin ? "Add OEM Standard Product" : "Add Dealership Item")}
+        </h2>
+        <div style={{ marginTop: "4px" }}>
+          <span className={isOrgAdmin ? styles.oemBadge : styles.dealerBadge} style={{ display: "inline-block", padding: "2px 8px", borderRadius: "4px", fontSize: "0.75rem", fontWeight: 600 }}>
+            {isOrgAdmin ? "OEM Standard Catalog (All Dealerships)" : `My Dealership Catalog (${membership.unit_name || "Local"})`}
+          </span>
+        </div>
       </header>
         
       <form onSubmit={handleSubmit}>

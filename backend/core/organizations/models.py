@@ -395,6 +395,16 @@ class Territory(MP_Node, BaseModel):
     second True. The check constraint below keeps it in step with `kind`.
     """
 
+    is_head_office = models.BooleanField(null=True, blank=True, editable=False)
+    """
+    TRANSITIONAL: `main`'s head office (C-local-4, its migration 0008), kept
+    only until `manage.py retire_head_offices` has folded every one into its
+    organisation's ROOT, which is the head office now (C82 amended, the owner
+    2026-11-23). Production has the column, so it stays in the model until a
+    later release drops it. NOTHING NEW sets it: sign-up makes the root, not a
+    head office. Until then every dealer query leaves these rows out.
+    """
+
     objects = TerritoryManager()
 
     class Meta:
@@ -421,6 +431,11 @@ class Territory(MP_Node, BaseModel):
                     )
                 ),
                 name="territory_root_is_the_organisation",
+            ),
+            # `main`'s head-office rule (its migration 0008), under its own
+            # name, until the column goes (see `is_head_office`).
+            models.UniqueConstraint(
+                fields=["organization", "is_head_office"], name="unit_one_head_office"
             ),
             models.UniqueConstraint(
                 fields=["organization", "code"], name="territory_unique_org_code"

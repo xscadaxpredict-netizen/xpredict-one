@@ -690,10 +690,12 @@ def _summary(app: str, membership: Membership) -> str | None:
         return dealership.name
 
     # DEALERS ONLY: regions, branches and warehouses are territories too (C72),
-    # and "4 dealerships" must not count the region they sit in.
+    # and "4 dealerships" must not count the region they sit in -- nor one of
+    # `main`'s head offices until they are retired (`is_head_office`).
     count = Territory.objects.filter(
         organization_id=membership.organization_id,
         kind=TerritoryKind.DEALER,
+        is_head_office__isnull=True,
         status=UnitStatus.ACTIVE,
     ).count()
     return f"{count} dealership" if count == 1 else f"{count} dealerships"
@@ -858,7 +860,9 @@ def dealers_for(organization: Organization) -> list[Territory]:
     # to be asked for. DEALERS ONLY -- the dealers screen lists dealerships, and
     # the rest of the tree has its own endpoint (C72).
     return list(
-        Territory.objects.filter(organization=organization, kind=TerritoryKind.DEALER)
+        Territory.objects.filter(
+            organization=organization, kind=TerritoryKind.DEALER, is_head_office__isnull=True
+        )
         .annotate(
             user_count=Coalesce(Subquery(memberships, output_field=IntegerField()), Value(0))
         )
@@ -1757,3 +1761,81 @@ def admins_for(organization: Organization) -> list[AdminData]:
     ]
     return owners + [row for _, _, row in sorted(admins, key=lambda entry: entry[:2])]
 
+
+
+# ---------------------------------------------------------------------------
+# People who can be given work on a DMS record (Nishanth's C-local-4, from
+# `main`; rewritten on grants in the merge, 2026-11-23).
+# ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class UnitPerson:
+    user_id: uuid.UUID
+    name: str
+    email: str
+
+
+def dms_people_for_territory(
+    *, organization: Organization, territory_id: uuid.UUID | None
+) -> list[UnitPerson]:
+    """
+    Who can be assigned work (a visit, a complaint) on a record filed at
+    `territory_id`: the people whose ACTIVE DMS grant places them exactly
+    there. At the ROOT -- the head office (C82 amended) -- that is the
+    organisation's own people, and the owner, who holds DMS by rule.
+
+    Never both: a dealer's visit is not handed to head-office staff, nor the
+    other way round (Nishanth's rule, kept). EXACTLY there, not the subtree: a
+    region's record goes to the people placed at that region -- whether it
+    should also reach the dealerships under it is an open question in the
+    merge plan.
+
+    `main`'s version read `Membership.unit` and `AppAccess`, which this branch
+    deleted (C72 step 2d); this reads the grants. A disabled grant opens and
+    permits nothing (C85), so it puts nobody in the list. Which ROLE they hold
+    is deliberately not a filter (Nishanth's rule, kept).
+    """
+    if territory_id is None:
+        return []
+    try:
+        territory = Territory.objects.filter(id=territory_id, organization=organization).first()
+    except (DjangoValidationError, ValueError):
+        return []
+    if territory is None:
+        return []
+
+    members = [
+        grant.membership
+        for grant in MembershipAppAccess.objects.filter(
+            app_id=AppCode.DMS,
+            status=GrantStatus.ACTIVE,
+            membership__organization=organization,
+            membership__status=MembershipStatus.ACTIVE,
+            membership__user__is_active=True,
+            territories__territory=territory,
+        ).select_related("membership__user")
+    ]
+    if territory.is_root:
+        owner = (
+            Membership.objects.filter(
+                organization=organization,
+                is_owner=True,
+                status=MembershipStatus.ACTIVE,
+                user__is_active=True,
+            )
+            .select_related("user")
+            .first()
+        )
+        if owner is not None:
+            members.append(owner)
+
+    people = {
+        m.user_id: UnitPerson(
+            user_id=m.user_id,
+            name=f"{m.user.first_name} {m.user.last_name}".strip() or m.user.email,
+            email=m.user.email,
+        )
+        for m in members
+    }
+    return sorted(people.values(), key=lambda p: p.name.lower())

@@ -2,6 +2,13 @@
 
 **Every session: read this file first, then `context/01-PROJECT-STATE.md`.**
 That file is the single source of truth for where the project stands right now.
+It is imported below so Claude Code loads it automatically (a missing file on a
+fresh clone is simply skipped):
+
+@context/01-PROJECT-STATE.md
+
+**Start a session with `/resume`; end it with `/session-wrap`.** Scope: these rules
+apply only to work inside this repository — anything outside it is unrelated.
 
 > **`context/` and `.claude/` are local-only and deliberately not in version control.**
 > If you are on a clone and those directories are absent, that is expected --- not a

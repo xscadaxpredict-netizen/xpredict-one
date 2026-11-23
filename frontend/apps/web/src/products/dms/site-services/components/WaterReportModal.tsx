@@ -78,18 +78,8 @@ export function WaterReportModal({ isOpen, isEditing, form, confirmedSites, onFo
         </div>
         <form onSubmit={onSubmit} className={styles.formContainer}>
           <div className={styles.modalBody}>
-            {/* Zone Filter & Site */}
+            {/* Site */}
             <div className={styles.formRow}>
-              <div style={{ flex: 1 }}>
-                <label className={styles.label}>Zone (Pincode Filter)</label>
-                <input 
-                  type="text"
-                  placeholder="Enter pincode..."
-                  className={styles.input}
-                  value={form.zonePincode || ""}
-                  onChange={e => onFormChange({ zonePincode: e.target.value, siteId: "" })}
-                />
-              </div>
               <div style={{ flex: 2 }}>
                 <label className={styles.label}>
                   Select Site <span className={styles.required}>*</span>
@@ -101,9 +91,7 @@ export function WaterReportModal({ isOpen, isEditing, form, confirmedSites, onFo
                   onChange={e => onFormChange({ siteId: e.target.value })}
                 >
                   <option value="">-- Choose Deployed Customer Site --</option>
-                  {confirmedSites
-                    ?.filter(s => !form.zonePincode || s.pincode === form.zonePincode || (s.address && s.address.includes(form.zonePincode)))
-                    .map(s => (
+                  {confirmedSites?.map(s => (
                       <option key={s.id} value={s.id}>{s.customer_name} ({s.oc_number || 'No OC'})</option>
                   ))}
                 </select>

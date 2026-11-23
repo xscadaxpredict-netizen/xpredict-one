@@ -92,22 +92,50 @@ class ServiceSchedule(TerritoryScopedModel):
     scheduled_date = models.DateField()
     scheduled_time = models.TimeField(null=True, blank=True)
 
-    # Schema review #09: technician is a person, not just a name.
+    # THE TECHNICIAN IS A PERSON, not a typed name: an active member of the
+    # site's own unit with DMS access (a dealer's people for a dealer's site,
+    # the organisation's own people for a head-office site). The id points at
+    # `accounts_user` in the control database, so it is a plain UUID checked
+    # by `services._assignable_or_raise`, not a foreign key. The name is a
+    # snapshot taken at assignment, so an old visit still reads correctly
+    # after somebody is renamed or leaves.
     technician_user_id = models.UUIDField(null=True, blank=True)
     technician_display_name = models.CharField(max_length=255, blank=True, default="")
+    assigned_by_user_id = models.UUIDField(null=True, blank=True)
+    assigned_at = models.DateTimeField(null=True, blank=True)
 
+    # THE VISIT'S LIFE, moved only by services -- never by a PATCH:
+    #   SCHEDULED -> IN_PROGRESS (its report filed)
+    #             -> COMPLETED   (the client signed that report)
+    #   SCHEDULED / IN_PROGRESS -> CANCELLED (a manager, with a reason)
+    # "Overdue" is not stored: it is a SCHEDULED visit whose date has passed.
     status = models.CharField(
         max_length=20,
         choices=ScheduleStatus.choices,
         default=ScheduleStatus.SCHEDULED,
     )
+    started_at = models.DateTimeField(null=True, blank=True)
+    completed_at = models.DateTimeField(null=True, blank=True)
+    cancelled_at = models.DateTimeField(null=True, blank=True)
+    cancel_reason = models.TextField(blank=True, default="")
     notes = models.TextField(blank=True, default="")
+
+    # WHAT HAPPENED TO THIS VISIT, oldest first: cancelled (when, by whom, why)
+    # and rescheduled (from which date to which). A cancelled visit is
+    # rescheduled in place rather than replaced, so this is where the
+    # cancellation stays on record. Written only by services.
+    history = models.JSONField(default=list, blank=True)
 
     class Meta:
         indexes = [
             models.Index(fields=["territory_id", "status"]),
             models.Index(fields=["territory_id", "scheduled_date"]),
             models.Index(fields=["territory_id", "site_id"]),
+            # "My visits": one technician's visits in date order.
+            models.Index(
+                fields=["territory_id", "technician_user_id", "scheduled_date"],
+                name="sched_unit_tech_date",
+            ),
         ]
 
     def __str__(self) -> str:
@@ -147,20 +175,23 @@ class ServiceReport(TerritoryScopedModel):
 
     site = models.ForeignKey(
         "dms_sales.ConfirmedSite",
-        on_delete=models.CASCADE,
+        on_delete=models.PROTECT,
         related_name="service_reports",
     )
-    schedule = models.ForeignKey(
+    # ONE REPORT PER VISIT. Its signature is what completes the visit, so a
+    # second report for the same visit would make "which one completed it"
+    # unanswerable. Nullable: a breakdown call with no visit booked still
+    # gets a report. SET_NULL: deleting a visit keeps the signed report.
+    schedule = models.OneToOneField(
         ServiceSchedule,
         on_delete=models.SET_NULL,
         null=True,
         blank=True,
-        related_name="service_reports",
+        related_name="service_report",
     )
 
     report_code = models.CharField(max_length=50, blank=True, default="")
     service_date = models.DateField()
-    zone = models.CharField(max_length=100, blank=True, default="")
 
     # Schema review #09: technician stored as UUID + display name.
     technician_user_id = models.UUIDField(null=True, blank=True)
@@ -279,7 +310,7 @@ class WaterReport(TerritoryScopedModel):
 
     site = models.ForeignKey(
         "dms_sales.ConfirmedSite",
-        on_delete=models.CASCADE,
+        on_delete=models.PROTECT,
         related_name="water_reports",
     )
     date_tested = models.DateField()
@@ -342,7 +373,7 @@ class Complaint(TerritoryScopedModel):
 
     site = models.ForeignKey(
         "dms_sales.ConfirmedSite",
-        on_delete=models.CASCADE,
+        on_delete=models.PROTECT,
         related_name="complaints",
     )
     # The platform user who logged the complaint (customer or dealer rep).
@@ -360,26 +391,40 @@ class Complaint(TerritoryScopedModel):
         default=ComplaintStatus.OPEN,
     )
 
-    # The service person assigned to resolve the complaint.
+    # THE ASSIGNED PERSON, the same rule as a visit's technician (C-local-5):
+    # an active member of the site's own unit with DMS access, checked by the
+    # service; the name is a snapshot taken at assignment.
     assigned_service_person_name = models.CharField(
         max_length=255,
         blank=True,
         default="",
     )
     assigned_service_person_user_id = models.UUIDField(null=True, blank=True)
+    assigned_by_user_id = models.UUIDField(null=True, blank=True)
+    assigned_at = models.DateTimeField(null=True, blank=True)
 
     attachment = models.FileField(
         upload_to="complaints/",
         blank=True,
         default="",
     )
+    # STATUS MOVES THROUGH `set_complaint_status`, never a PATCH:
+    #   OPEN -> IN_PROGRESS -> RESOLVED (with what was done) -> CLOSED
+    #   RESOLVED / CLOSED -> OPEN (reopened)
     resolved_at = models.DateTimeField(null=True, blank=True)
+    resolved_by_user_id = models.UUIDField(null=True, blank=True)
+    resolution_notes = models.TextField(blank=True, default="")
 
     class Meta:
         indexes = [
             models.Index(fields=["territory_id", "status"]),
             models.Index(fields=["territory_id", "site_id"]),
             models.Index(fields=["territory_id", "-created_at"]),
+            # "My complaints": the assigned person's own.
+            models.Index(
+                fields=["territory_id", "assigned_service_person_user_id"],
+                name="complaint_unit_assignee",
+            ),
         ]
 
     def __str__(self) -> str:
