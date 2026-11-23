@@ -247,7 +247,7 @@ describe("the topbar search", () => {
     fireEvent.change(topbarSearch(), { target: { value: "crm" } });
     expect(rowNames()).toEqual(["CRM"]);
 
-    fireEvent.change(topbarSearch(), { target: { value: "dealership" } });
+    fireEvent.change(topbarSearch(), { target: { value: "management system" } });
     expect(rowNames()).toEqual(["DMS"]);
   });
 

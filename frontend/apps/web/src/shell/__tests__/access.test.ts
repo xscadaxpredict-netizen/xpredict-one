@@ -163,7 +163,8 @@ describe("accessFor", () => {
         unit_name: "Test Dealership",
         apps: [
           appAccess("dms", {
-            modules: ["sales"],
+            // A tree since C80 (merge, 2026-11-23): `main` sent plain words.
+            modules: modulesOf("sales"),
             permissions: ["dms.order.confirm", "dms.enquiry.close"],
           }),
         ],

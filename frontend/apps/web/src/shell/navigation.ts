@@ -154,7 +154,9 @@ export const APP_CATALOG: AppDefinition[] = [
     key: "dms",
     name: "DMS",
     description: "Dealer Management System (DMS)",
-    initials: "DMS",
+    // TWO LETTERS like every app badge (merge, 2026-11-23): `main`'s "DMS"
+    // repeated the app's own name beside it.
+    initials: "DM",
     section: "Operations",
     kind: "product",
     /*
