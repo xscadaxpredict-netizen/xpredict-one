@@ -1,9 +1,9 @@
 /**
  * A role opened beside the Roles tab (the owner, 2026-11-20, from Zoho's):
- * a custom role's ⋮ (Clone, Edit, Delete) on its row, a side panel with
- * Permissions and Users, and the panel's own ⋮ (Assign Users, Edit, Clone,
- * Delete). Edit Role and Delete Role work on `admin.role.update` / `delete`;
- * Clone Role and Assign Users are still drawn only.
+ * a custom role's ⋮ (Edit, Delete) on its row, a side panel with Permissions
+ * and Users, and the panel's own ⋮ (Assign Users, Edit, Delete). Edit Role and
+ * Delete Role work on `admin.role.update` / `delete`; Assign Users is still
+ * drawn only. No Clone Role: the owner does not want it.
  */
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -153,14 +153,14 @@ async function openRole(code: string, name: string) {
 }
 
 describe("the custom role's ⋮ on its row", () => {
-  it("offers Clone, Edit and Delete, all greyed without update and delete", async () => {
+  it("offers Edit and Delete -- no Clone -- greyed without update and delete", async () => {
     renderRoute({ path: ROLES, children: withAdmin });
 
     const row = await screen.findByRole("row", { name: /AU Admin/ });
     const menu = await openMenu(within(row).getByRole("button", { name: "More actions for AU Admin" }));
 
     const items = within(menu).getAllByRole("menuitem");
-    expect(items.map((item) => item.textContent)).toEqual(["Clone Role", "Edit Role", "Delete Role"]);
+    expect(items.map((item) => item.textContent)).toEqual(["Edit Role", "Delete Role"]);
     for (const item of items) expect(item).toHaveAttribute("aria-disabled", "true");
   });
 
@@ -203,7 +203,7 @@ describe("a role opened beside the list", () => {
     );
   });
 
-  it("has a ⋮ for a custom role: Assign Users, Edit, Clone, Delete -- greyed without the rights", async () => {
+  it("has a ⋮ for a custom role: Assign Users, Edit, Delete -- greyed without the rights", async () => {
     const panel = await openRole("admin.custom_abc", "AU Admin");
 
     const menu = await openMenu(
@@ -214,7 +214,6 @@ describe("a role opened beside the list", () => {
     expect(items.map((item) => item.textContent)).toEqual([
       "Assign Users",
       "Edit Role",
-      "Clone Role",
       "Delete Role",
     ]);
     for (const item of items) expect(item).toHaveAttribute("aria-disabled", "true");
@@ -290,7 +289,7 @@ function item(menu: HTMLElement, name: string) {
 describe("Edit Role and Delete Role", () => {
   beforeEach(mayChangeRoles);
 
-  it("are live with the rights; Clone and Assign Users stay greyed", async () => {
+  it("are live with the rights; Assign Users stays greyed", async () => {
     const panel = await openRole("admin.custom_abc", "AU Admin");
 
     const menu = await openMenu(
@@ -299,7 +298,6 @@ describe("Edit Role and Delete Role", () => {
 
     expect(item(menu, "Edit Role")).not.toHaveAttribute("aria-disabled");
     expect(item(menu, "Delete Role")).not.toHaveAttribute("aria-disabled");
-    expect(item(menu, "Clone Role")).toHaveAttribute("aria-disabled", "true");
     expect(item(menu, "Assign Users")).toHaveAttribute("aria-disabled", "true");
   });
 

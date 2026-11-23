@@ -12,16 +12,19 @@
  *                organisation admins for Organization Admin, and nobody yet for
  *                a custom role -- nothing can give one until Assign Admin.
  *
- * THE ⋮ IS A CUSTOM ROLE'S ONLY -- on the row Clone / Edit / Delete Role, in
- * the panel Assign Users / Edit / Clone / Delete Role (the owner's Zoho
- * screens). Built-in roles cannot be changed or deleted, so they have none.
+ * THE ⋮ IS A CUSTOM ROLE'S ONLY -- on the row Edit / Delete Role, in the panel
+ * Assign Users / Edit / Delete Role (the owner's Zoho screens). Built-in roles
+ * cannot be changed or deleted, so they have none.
  *
- *   Edit Role    New Role's page, filled in (`admin.role.update`).
- *   Delete Role  "Are you sure?", then the request while the question is open,
- *                so the server's refusal -- somebody still holds the role, a
- *                member or a pending person -- is shown right there
- *                (`admin.role.delete`).
- *   Clone Role, Assign Users  still drawn only, greyed.
+ *   Edit Role     New Role's page, filled in (`admin.role.update`).
+ *   Delete Role   "Are you sure?", then the request while the question is open,
+ *                 so the server's refusal -- somebody still holds the role, a
+ *                 member or a pending person -- is shown right there
+ *                 (`admin.role.delete`).
+ *   Assign Users  still drawn only, greyed.
+ *
+ * NO CLONE ROLE: the owner does not want it (2026-11-23), though Zoho has it.
+ * New Role's "Copy permissions from" already starts a role from another.
  */
 
 import { asProblem } from "@xpredict/api-client";
@@ -68,28 +71,20 @@ function RoleActions({ role, place }: { role: PanelRole; place: "row" | "panel" 
     disabled: !access.can("admin.role.update"),
     onSelect: () => void navigate(`${rolesPath}/${role.code}/edit`),
   };
-  const clone: RowMenuItem = { label: "Clone Role", disabled: true };
   const del: RowMenuItem = {
     label: "Delete Role",
     danger: true,
     disabled: !access.can("admin.role.delete"),
     onSelect: () => setDeleting(true),
   };
-  const items =
-    place === "row"
-      ? [clone, edit, del]
-      : [{ label: "Assign Users", disabled: true }, edit, clone, del];
+  const items = place === "row" ? [edit, del] : [{ label: "Assign Users", disabled: true }, edit, del];
 
   return (
     <>
       <RowMenu
         label={`More actions for ${role.name}`}
         items={items}
-        note={
-          place === "row"
-            ? "Clone Role is coming later."
-            : "Assign Users and Clone Role are coming later."
-        }
+        note={place === "panel" ? "Assign Users is coming later." : undefined}
       />
       <ConfirmAppDialog
         open={deleting}
@@ -103,7 +98,7 @@ function RoleActions({ role, place }: { role: PanelRole; place: "row" | "panel" 
   );
 }
 
-/** The ⋮ on a custom role's ROW: Clone, Edit, Delete. */
+/** The ⋮ on a custom role's ROW: Edit, Delete. */
 export function RoleRowActions({ role }: { role: PanelRole }) {
   return <RoleActions role={role} place="row" />;
 }

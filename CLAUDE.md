@@ -141,8 +141,8 @@ role by guessing its code.** A role opens in a side panel. Production needs a pl
 (`PUT`/`DELETE /admin/panel-roles/<code>/`). **New Role and Edit Role share ONE check
 helper, `_checked_admin_role()` -- a rule added to one and not the other is a way round
 it.** Delete is refused (409 `role_in_use`) while a member OR a pending invitation holds
-the role; built-ins are 409 `built_in_role_unchangeable`. Clone Role, Assign Users and Add
-Description are still drawn only. **A PROTECT foreign key firing is NOT a 500 here:**
+the role; built-ins are 409 `built_in_role_unchangeable`. Assign Users and Add
+Description are still drawn only; there is NO Clone Role (the owner). **A PROTECT foreign key firing is NOT a 500 here:**
 `ProtectedError` is an `IntegrityError`, which the handler answers with a generic 409 and
 an error in the log -- check first and raise a named domain error.
 
