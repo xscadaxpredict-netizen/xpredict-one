@@ -9,7 +9,7 @@ imports DRF. Named after the business situation rather than the HTTP shape:
 
 from __future__ import annotations
 
-from shared.exceptions import AuthorizationError, ConflictError, InvalidInputError
+from shared.exceptions import AuthorizationError, ConflictError, FieldError, InvalidInputError
 
 
 class ActivationCodeInvalidError(InvalidInputError):
@@ -253,6 +253,54 @@ class DealerAlreadyOpenError(ConflictError):
 
     code = "dealer_already_open"
     message = "That dealership is already open."
+
+
+# ---------------------------------------------------------------------------
+# DMS settings -> Territory Management (the owner, 2026-11-24). Any kind of
+# territory, with the details a dealership has today (C82 amended: every
+# territory may carry a code, GSTIN, PAN and an Active / Closed status). The
+# dealer-named errors above stay for the Admin panel's Dealers screen until it
+# goes (Q79: a later step).
+# ---------------------------------------------------------------------------
+
+
+class TerritoryCodeTakenError(ConflictError):
+    """Another territory in DMS's tree already uses this code -- of any kind."""
+
+    code = "territory_code_taken"
+    message = "Another territory already uses that code."
+
+
+class TerritoryGstinRequiredError(InvalidInputError):
+    """
+    A dealer needs its GSTIN, as it always has (the owner's rule for
+    dealerships: a GST-registered place of business). The other kinds may
+    carry one and need not. A field error, so the form shows it on the field.
+    """
+
+    code = "validation_failed"
+    message = "A dealer needs its GSTIN."
+
+    def __init__(self) -> None:
+        super().__init__(
+            field_errors=[
+                FieldError(field="gstin", code="required", detail="A dealer needs its GSTIN.")
+            ]
+        )
+
+
+class TerritoryAlreadyClosedError(ConflictError):
+    """The territory is already closed: the mirror of `DealerAlreadyClosedError`, any kind."""
+
+    code = "territory_already_closed"
+    message = "That territory is already closed."
+
+
+class TerritoryAlreadyOpenError(ConflictError):
+    """The territory is already open."""
+
+    code = "territory_already_open"
+    message = "That territory is already open."
 
 
 class UnitClosedError(AuthorizationError):

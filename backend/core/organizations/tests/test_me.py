@@ -218,7 +218,8 @@ class TestTheOwner:
         role. C41 seeds the owner at Group operations (40 permissions), which
         lacks Tech support's three ticket codes; this test pinned 40 until the
         rule arrived, and the owner held all 43 -- 48 since DMS settings' five
-        `dms.user.*` (2026-11-23/24). `test_owner_by_rule.py` names the three.
+        `dms.user.*` (2026-11-23/24), 52 with its four `dms.territory.*`.
+        `test_owner_by_rule.py` names the three.
 
         THE MODULE LIST IS DERIVED, NOT STORED (C42): a module shows when the
         person holds at least one permission inside it. `tools` and
@@ -242,13 +243,14 @@ class TestTheOwner:
             "sales",
             "service",
             "tech-support",
+            "territories",
             "tools",
             "users",
         ]
         assert dms.permissions == sorted(
             Permission.objects.filter(app=AppCode.DMS).values_list("code", flat=True)
         )
-        assert len(dms.permissions) == 48
+        assert len(dms.permissions) == 52
 
     def test_unbought_apps_are_shown_but_not_accessible(self):
         """
@@ -740,6 +742,8 @@ class TestAnAppNotOnTheTreeYet:
             module("sales"),
             module("service"),
             module("tech-support"),
+            # Territory Management (`dms.territory.view`, owner only, 2026-11-24).
+            module("territories"),
             module("tools"),
             # DMS settings' Users page (`dms.user.view`, owner only, 2026-11-23).
             module("users"),

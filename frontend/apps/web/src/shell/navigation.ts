@@ -285,7 +285,13 @@ export const APP_CATALOG: AppDefinition[] = [
         label: "Security & Controls",
         icon: "shield-check",
         items: [
-          { label: "Territory Management", path: "territories", icon: "compass", module: null },
+          {
+            label: "Territory Management",
+            path: "territories",
+            icon: "compass",
+            module: null,
+            search: "territories",
+          },
           { label: "Position Hierarchy", path: "position-hierarchy", icon: "user", module: null },
         ],
       },

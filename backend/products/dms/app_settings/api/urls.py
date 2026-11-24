@@ -2,6 +2,9 @@ from django.urls import path
 
 from .views import (
     DmsInviteRolesView,
+    DmsTerritoriesView,
+    DmsTerritoryDetailView,
+    DmsTerritoryStatusView,
     DmsUserDetailView,
     DmsUserRolesView,
     DmsUserStatusView,
@@ -22,4 +25,16 @@ urlpatterns = [
         name="dms-settings-user-status",
     ),
     path("invite-roles/", DmsInviteRolesView.as_view(), name="dms-settings-invite-roles"),
+    # Security & Controls -> Territory Management (2026-11-24).
+    path("territories/", DmsTerritoriesView.as_view(), name="dms-settings-territories"),
+    path(
+        "territories/<str:territory_id>/",
+        DmsTerritoryDetailView.as_view(),
+        name="dms-settings-territory",
+    ),
+    path(
+        "territories/<str:territory_id>/<str:action>/",
+        DmsTerritoryStatusView.as_view(),
+        name="dms-settings-territory-status",
+    ),
 ]

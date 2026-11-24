@@ -68,6 +68,10 @@ from core.organizations.exceptions import (
     RoleNotInAppError,
     RoleScopeMismatchError,
     SignInAddressLockedError,
+    TerritoryAlreadyClosedError,
+    TerritoryAlreadyOpenError,
+    TerritoryCodeTakenError,
+    TerritoryGstinRequiredError,
     TerritoryIsTheOrganisationError,
     TerritoryMoveIntoItselfError,
     TerritoryNameTakenError,
@@ -570,6 +574,156 @@ def move_territory(*, territory: Territory, parent_id: uuid.UUID | None) -> Terr
         raise TerritoryMoveIntoItselfError from None
 
     return Territory.objects.get(pk=territory.pk)
+
+
+# ---------------------------------------------------------------------------
+# DMS settings -> Territory Management (the owner, 2026-11-24).
+#
+# ONE DOOR FOR EVERY KIND, with every detail. C82 amended: any territory may
+# carry a code, GSTIN, PAN, contact and address, and an Active / Closed status
+# -- what only a dealership had. `create_territory` / `create_dealer` and the
+# dealer edits stay for the Admin panel's screens until they go (Q79).
+#
+# The same rules as those doors, from the same helpers: placement by
+# `assert_placement_allowed`, one name and one code per DMS tree, the PAN
+# derived from the GSTIN when none is given, and a dealer needs its GSTIN.
+# ---------------------------------------------------------------------------
+
+
+def _assert_territory_code_free(
+    organization: Organization, code: str | None, excluding: uuid.UUID | None = None
+) -> None:
+    # Optional, so only a GIVEN code can collide; any number may have none.
+    if not code:
+        return
+    existing = Territory.objects.of(organization, AppCode.DMS).filter(code=code)
+    if excluding is not None:
+        existing = existing.exclude(pk=excluding)
+    if existing.exists():
+        raise TerritoryCodeTakenError
+
+
+def _assert_gstin_if_dealer(kind: str, gstin: str) -> None:
+    """A dealer needs its GSTIN, as it always has; the other kinds need not (422)."""
+    if kind == TerritoryKind.DEALER and not gstin:
+        raise TerritoryGstinRequiredError
+
+
+@transaction.atomic
+def add_territory(
+    *,
+    organization: Organization,
+    kind: str,
+    name: str,
+    parent_id: uuid.UUID | None = None,
+    code: str | None = None,
+    gstin: str = "",
+    pan: str = "",
+    contact_person: str = "",
+    email: str = "",
+    phone: str = "",
+    city: str = "",
+    state: str = "",
+    postal_code: str = "",
+) -> Territory:
+    """
+    New Territory: a region, dealer, branch or warehouse in DMS's tree, under
+    a parent its kind may sit in (`parent_id` None = the organisation).
+
+    KEYWORD-ONLY, for `create_dealer`'s reason: most arguments are strings,
+    and a positional call that swapped city and state would be silently wrong.
+    """
+    parent = _resolve_parent(organization, parent_id)
+    assert_placement_allowed(kind, parent)
+    _assert_territory_name_free(organization, name)
+    _assert_territory_code_free(organization, code)
+    _assert_gstin_if_dealer(kind, gstin)
+
+    return _add_territory(
+        organization,
+        parent,
+        {
+            "kind": kind,
+            "name": name,
+            # NULL, never "": MySQL's unique index treats NULLs as distinct.
+            "code": code or None,
+            "gstin": gstin,
+            "pan": pan or extract_pan(gstin),
+            "contact_person": contact_person,
+            "email": email,
+            "phone": phone,
+            "city": city,
+            "state": state,
+            "postal_code": postal_code,
+        },
+    )
+
+
+@transaction.atomic
+def update_territory(*, territory: Territory, **fields: str | None) -> Territory:
+    """
+    Edit a territory's details: name, code, GSTIN, PAN, contact and address.
+
+    NOT ITS KIND, PLACE OR STATUS: the payload carries none of them. A kind
+    never changes (what may sit under it depends on it); moving is its own act
+    (`move_territory`, a later step on this screen); closing is its own
+    endpoint. NOT THE ROOT: it is the organisation, named by the organisation.
+
+    The PAN comes back from the GSTIN when it is cleared, as `update_dealer`.
+    """
+    _assert_not_the_root(territory)
+
+    name = fields.get("name")
+    if name is not None:
+        _assert_territory_name_free(territory.organization, name, excluding=territory.pk)
+    if "code" in fields:
+        _assert_territory_code_free(territory.organization, fields["code"], excluding=territory.pk)
+
+    gstin = fields.get("gstin", territory.gstin) or ""
+    _assert_gstin_if_dealer(territory.kind, gstin)
+    if not fields.get("pan"):
+        fields["pan"] = extract_pan(gstin)
+
+    for field, value in fields.items():
+        setattr(territory, field, (value or None) if field == "code" else value)
+
+    territory.save()
+    return territory
+
+
+@transaction.atomic
+def close_territory(*, territory: Territory) -> Territory:
+    """
+    Close a territory, of any kind (C63, which was a dealership's; C82
+    amended gives every territory a status).
+
+    ONE COLUMN ON ONE ROW, as `close_dealer`: nothing is written to people or
+    records, so reopening restores exactly what was there. Somebody all of
+    whose places are closed is shut out (`is_shut_out_by_closure`).
+
+    WHAT IS UNDER IT STAYS OPEN. Closing North does not close Delhi Motors in
+    it: each box has its own status, and the tree shows which are closed.
+    NOT THE ROOT: closing the organisation is not this.
+    """
+    _assert_not_the_root(territory)
+    if territory.status == UnitStatus.DISABLED:
+        raise TerritoryAlreadyClosedError
+
+    territory.status = UnitStatus.DISABLED
+    territory.save(update_fields=["status", "updated_at"])
+    return territory
+
+
+@transaction.atomic
+def reopen_territory(*, territory: Territory) -> Territory:
+    """Open a closed territory again -- symmetrical, because closing touched nothing else."""
+    _assert_not_the_root(territory)
+    if territory.status == UnitStatus.ACTIVE:
+        raise TerritoryAlreadyOpenError
+
+    territory.status = UnitStatus.ACTIVE
+    territory.save(update_fields=["status", "updated_at"])
+    return territory
 
 
 # ---------------------------------------------------------------------------

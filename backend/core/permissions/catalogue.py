@@ -223,6 +223,18 @@ PERMISSIONS: list[tuple[str, str, str, str, str]] = [
     ("dms.user.update", "dms", "users", "Users", "Edit somebody's details and DMS role"),
     ("dms.user.deactivate", "dms", "users", "Users", "Switch somebody's DMS off or back on"),
     ("dms.user.delete", "dms", "users", "Users", "Take DMS away from somebody"),
+    # Security & Controls -> Territory Management (`permissions/0024`,
+    # 2026-11-24): DMS's territory tree. Owner only too.
+    ("dms.territory.view", "dms", "territories", "Territories", "See DMS's territory tree"),
+    ("dms.territory.create", "dms", "territories", "Territories", "Add a territory to DMS's tree"),
+    ("dms.territory.update", "dms", "territories", "Territories", "Edit a territory's details"),
+    (
+        "dms.territory.set_status",
+        "dms",
+        "territories",
+        "Territories",
+        "Close a territory, or reopen it",
+    ),
     # --- CRM ----------------------------------------------------------------
     #
     # ONE PERMISSION, deliberately. CRM is built after DMS ships, and designing
@@ -265,6 +277,10 @@ _OWNER_ONLY = [
     "dms.user.update",
     "dms.user.deactivate",
     "dms.user.delete",
+    "dms.territory.view",
+    "dms.territory.create",
+    "dms.territory.update",
+    "dms.territory.set_status",
 ]
 
 _DMS_READS = [

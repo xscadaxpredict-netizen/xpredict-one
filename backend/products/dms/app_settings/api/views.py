@@ -7,18 +7,28 @@ from __future__ import annotations
 
 from typing import ClassVar
 
+from django.core.exceptions import ValidationError
 from rest_framework import status
 from rest_framework.request import Request
 from rest_framework.response import Response
 
 from core.organizations.api.base import OrgScopedAPIView
-from core.organizations.models import GrantStatus
-from core.organizations.selectors import app_users, invitable_roles, roles_for_app_person
+from core.organizations.models import GrantStatus, Territory
+from core.organizations.selectors import (
+    app_users,
+    invitable_roles,
+    roles_for_app_person,
+    territory_tree,
+)
 from core.organizations.services import (
+    add_territory,
+    close_territory,
     invite_to_app,
     remove_from_app,
+    reopen_territory,
     set_app_status,
     update_app_user,
+    update_territory,
 )
 from core.permissions.models import AppCode
 from shared.exceptions import not_found
@@ -27,6 +37,9 @@ from .serializers import (
     AppUserSerializer,
     DmsEditSerializer,
     DmsInviteSerializer,
+    DmsTerritoryEditSerializer,
+    DmsTerritoryNewSerializer,
+    DmsTerritorySerializer,
     InvitableRoleSerializer,
 )
 
@@ -181,3 +194,109 @@ class DmsUserRolesView(OrgScopedAPIView):
     def get(self, request: Request, org_slug: str, user_id: str) -> Response:
         roles = roles_for_app_person(self.organization, AppCode.DMS, user_id)
         return Response(InvitableRoleSerializer(roles, many=True).data)
+
+
+# ---------------------------------------------------------------------------
+# Security & Controls -> Territory Management (the owner, 2026-11-24).
+#
+# DMS's territory tree: see it, add to it, edit a box's details, close and
+# reopen a box. `dms.territory.*`, HELD BY NO ROLE (`permissions/0024`): the
+# owner alone, like the rest of DMS settings, until the app-admin role is
+# designed (Q63). Moving a box comes in a later step.
+# ---------------------------------------------------------------------------
+
+
+def _territory(organization, territory_id: str) -> Territory:
+    """
+    A box of THIS organisation's DMS tree, or 404. Paths are unique across
+    every organisation, so an id alone would reach another customer's tree;
+    another app's root is "no such territory" here too. A malformed id is the
+    same 404, so a 400 cannot confirm the shape of what is being looked up.
+    """
+    try:
+        return Territory.objects.get(
+            id=territory_id, organization=organization, app_id=AppCode.DMS
+        )
+    except (Territory.DoesNotExist, ValidationError, ValueError):
+        raise not_found("Territory") from None
+
+
+def _territory_row(organization, territory_id) -> dict:
+    """The box as the tree draws it, after a change -- so the two cannot disagree."""
+    box = next(t for t in territory_tree(organization) if str(t.pk) == str(territory_id))
+    return DmsTerritorySerializer(box).data
+
+
+class DmsTerritoriesView(OrgScopedAPIView):
+    """
+    `GET .../dms/settings/territories/` -- DMS's whole tree, in tree order,
+    every box with its details and the people placed at it.
+
+    `POST` -- New Territory: a region, dealer, branch or warehouse under a
+    parent its kind may sit in (`add_territory()`). 201 with the new box.
+
+    Control plane only (`OrgScopedAPIView`): territories are not tenant rows.
+    The page's view, and the write named (C81).
+    """
+
+    required_permissions: ClassVar[list[str]] = ["dms.territory.view"]
+    method_permissions: ClassVar[dict[str, list[str]]] = {
+        "POST": ["dms.territory.create"],
+    }
+
+    def get(self, request: Request, org_slug: str) -> Response:
+        return Response(DmsTerritorySerializer(territory_tree(self.organization), many=True).data)
+
+    def post(self, request: Request, org_slug: str) -> Response:
+        payload = DmsTerritoryNewSerializer(data=request.data)
+        payload.is_valid(raise_exception=True)
+
+        territory = add_territory(organization=self.organization, **payload.validated_data)
+        return Response(
+            _territory_row(self.organization, territory.pk), status=status.HTTP_201_CREATED
+        )
+
+
+class DmsTerritoryDetailView(OrgScopedAPIView):
+    """
+    `PUT .../territories/<id>/` -- Edit: name, code, GSTIN, PAN, contact and
+    address (`update_territory()`). Not the kind, the place or the status, and
+    never the root (409: it is the organisation). Answers with the box.
+    """
+
+    required_permissions: ClassVar[list[str]] = ["dms.territory.view"]
+    method_permissions: ClassVar[dict[str, list[str]]] = {
+        "PUT": ["dms.territory.update"],
+    }
+
+    def put(self, request: Request, org_slug: str, territory_id: str) -> Response:
+        territory = _territory(self.organization, territory_id)
+
+        payload = DmsTerritoryEditSerializer(data=request.data)
+        payload.is_valid(raise_exception=True)
+
+        update_territory(territory=territory, **payload.validated_data)
+        return Response(_territory_row(self.organization, territory.pk))
+
+
+class DmsTerritoryStatusView(OrgScopedAPIView):
+    """
+    `POST .../territories/<id>/close/` or `.../reopen/` -- any kind but the
+    root (`close_territory()` / `reopen_territory()`). One URL per act, as the
+    Dealers screen's; anything else is a URL that does not exist.
+    """
+
+    required_permissions: ClassVar[list[str]] = ["dms.territory.view", "dms.territory.set_status"]
+
+    _ACTIONS: ClassVar[dict[str, object]] = {
+        "close": close_territory,
+        "reopen": reopen_territory,
+    }
+
+    def post(self, request: Request, org_slug: str, territory_id: str, action: str) -> Response:
+        if action not in self._ACTIONS:
+            raise not_found("Territory")
+
+        territory = _territory(self.organization, territory_id)
+        self._ACTIONS[action](territory=territory)
+        return Response(_territory_row(self.organization, territory.pk))

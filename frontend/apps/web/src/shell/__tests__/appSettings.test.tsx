@@ -183,17 +183,19 @@ describe("DMS settings", () => {
   it("opens Security & Controls on its pages", async () => {
     mockFetchMe.mockResolvedValue(me({ memberships: [ownerMembership()] }));
 
-    renderRoute({ path: "/acme-motors/dms/settings/territories", children: screens });
+    // Position Hierarchy: still drawn only. (Territory Management is built --
+    // `dmsTerritories.test.tsx`.)
+    renderRoute({ path: "/acme-motors/dms/settings/position-hierarchy", children: screens });
 
-    expect(await screen.findByRole("heading", { name: "Territory Management" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Position Hierarchy" })).toBeInTheDocument();
     const sidebar = settingsSidebar();
     expect(within(sidebar).getByRole("button", { name: "Security & Controls" })).toHaveAttribute(
       "aria-expanded",
       "true",
     );
-    expect(within(sidebar).getByRole("link", { name: "Position Hierarchy" })).toHaveAttribute(
+    expect(within(sidebar).getByRole("link", { name: "Territory Management" })).toHaveAttribute(
       "href",
-      "/acme-motors/dms/settings/position-hierarchy",
+      "/acme-motors/dms/settings/territories",
     );
   });
 

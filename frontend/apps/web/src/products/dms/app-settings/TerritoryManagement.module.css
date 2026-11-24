@@ -1,0 +1,277 @@
+/*
+ * DMS settings -> Territory Management (2026-11-24): the tree chart, as on the
+ * design canvas. The page, toolbar and the panel beside it are the shared list
+ * format (`shell/admin/screens/ListPage.module.css`); this is the chart.
+ */
+
+/* The chart fills what the page has left and scrolls inside itself, both ways. */
+.chart {
+  min-height: 0;
+  height: 100%;
+  box-sizing: border-box;
+  overflow: auto;
+  padding: var(--space-8) var(--space-4);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface);
+}
+
+.legend {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--text-xs);
+  color: var(--color-text-3);
+}
+
+.legendSwatch {
+  width: 18px;
+  height: 12px;
+  border: 1px dashed var(--color-text-disabled);
+  border-radius: 3px;
+}
+
+.toolButton {
+  height: 36px;
+  padding: 0 var(--space-3);
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  color: var(--color-text);
+  font: inherit;
+  font-size: var(--text-sm);
+  cursor: pointer;
+}
+
+.toolButton:hover {
+  background: var(--color-surface-alt);
+}
+
+.toolButton:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 1px;
+}
+
+/* ---- The tree: each level a centred row, joined by lines --------------------- */
+
+/*
+ * The lines are borders on each item's ::before / ::after: a horizontal rule
+ * across the top of every sibling, meeting a short vertical drop from the
+ * parent (`ul ul::before`). The first and last sibling trim their outer half.
+ * Element selectors under `.tree` are not hashed by CSS Modules, on purpose.
+ */
+.tree {
+  width: max-content;
+  min-width: 100%;
+}
+
+.tree ul {
+  position: relative;
+  display: flex;
+  justify-content: center;
+  margin: 0;
+  padding: 24px 0 0;
+  list-style: none;
+}
+
+.tree li {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 24px 6px 0;
+}
+
+.tree li::before,
+.tree li::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  right: 50%;
+  width: 50%;
+  height: 24px;
+  border-top: 1px solid var(--color-border-strong);
+}
+
+.tree li::after {
+  right: auto;
+  left: 50%;
+  border-left: 1px solid var(--color-border-strong);
+}
+
+.tree li:only-child::before,
+.tree li:only-child::after {
+  display: none;
+}
+
+.tree li:only-child {
+  padding-top: 0;
+}
+
+.tree li:first-child::before,
+.tree li:last-child::after {
+  border: 0;
+}
+
+.tree li:last-child::before {
+  border-right: 1px solid var(--color-border-strong);
+  border-radius: 0 6px 0 0;
+}
+
+.tree li:first-child::after {
+  border-radius: 6px 0 0 0;
+}
+
+.tree ul ul::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 50%;
+  height: 24px;
+  border-left: 1px solid var(--color-border-strong);
+}
+
+/* The top: no line above the organisation. */
+.tree > ul {
+  padding-top: 0;
+}
+
+.tree > ul > li {
+  padding-top: 0;
+}
+
+.tree > ul > li::before,
+.tree > ul > li::after {
+  display: none;
+}
+
+/* ---- A box ------------------------------------------------------------------- */
+
+/* Holds the box and its fold button, which hangs off the box's bottom edge. */
+.node {
+  position: relative;
+}
+
+.box {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  width: 168px;
+  box-sizing: border-box;
+  padding: var(--space-2) var(--space-3) var(--space-4);
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface);
+  color: var(--color-text);
+  font: inherit;
+  text-align: center;
+  cursor: pointer;
+}
+
+.box[data-root] {
+  width: 200px;
+  background: var(--color-canvas);
+}
+
+.box:hover {
+  border-color: var(--color-primary);
+}
+
+.box:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+}
+
+/* The open box: a thicker edge and a tint, told apart from hover. */
+.box[aria-current="true"] {
+  border: 2px solid var(--color-primary);
+  background: var(--color-primary-050);
+  box-shadow: 0 0 0 3px var(--color-primary-100);
+}
+
+/* CLOSED: dashed and quieter, still there -- its history stays (C63). */
+.box[data-closed] {
+  border-style: dashed;
+  border-color: var(--color-text-disabled);
+  background: var(--color-canvas);
+  color: var(--color-text-2);
+}
+
+/* A search match: an amber ring, whether or not the box is open. */
+.box[data-match] {
+  box-shadow: 0 0 0 3px var(--color-attention);
+}
+
+.kind {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--color-text-3);
+}
+
+.boxName {
+  font-weight: 600;
+  line-height: 1.3;
+  overflow-wrap: anywhere;
+}
+
+.meta {
+  font-size: var(--text-xs);
+  color: var(--color-text-2);
+}
+
+.closedTag {
+  margin-top: 2px;
+  padding: 1px var(--space-2);
+  border-radius: var(--radius-pill);
+  background: var(--color-surface-alt);
+  color: var(--color-text-2);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+/* − / + on the box's bottom edge: fold or unfold what is under it. */
+.fold {
+  position: absolute;
+  left: 50%;
+  bottom: -11px;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  transform: translateX(-50%);
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-pill);
+  background: var(--color-surface);
+  color: var(--color-text-2);
+  font: inherit;
+  font-size: 14px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.fold[aria-expanded="false"] {
+  border-color: var(--color-primary);
+  background: var(--color-primary);
+  color: var(--color-primary-text);
+}
+
+.fold:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+}
+
+/* ---- The side panel ------------------------------------------------------------ */
+
+/* Two sections in the panel (Territory details, Tax and contact): a gap between them,
+   folded or open. The Users panel has one section, so its stylesheet has no such gap. */
+.sections {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}

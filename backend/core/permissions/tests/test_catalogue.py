@@ -22,7 +22,7 @@ pytestmark = pytest.mark.django_db
 
 
 class TestPermissions:
-    def test_there_are_79(self):
+    def test_there_are_83(self):
         """
         C42 settled on 48, C67 added seven, and C72 piece 1 added three
         (`admin.territory.view/create/update`, `permissions/0009`), and C78 one
@@ -32,13 +32,14 @@ class TestPermissions:
         (`admin.user.edit_app`, `0019`, 2026-11-20), and DMS settings' Users
         page one (`dms.user.view`, `0021`, 2026-11-23, held by no role), and its
         Invite User one (`dms.user.create`, `0022`, 2026-11-24), and its rows'
-        Edit, Deactivate and Delete three (`0023`, 2026-11-24). A number
+        Edit, Deactivate and Delete three (`0023`, 2026-11-24), and Territory
+        Management's four (`dms.territory.*`, `0024`, 2026-11-24). A number
         that drifts is a decision nobody made -- which is exactly what this
         assertion is for, and it did its job: the seven codes were added with a
         comment saying the catalogue had grown and this test was not updated
         with them.
         """
-        assert Permission.objects.count() == 79
+        assert Permission.objects.count() == 83
 
     def test_split_by_app_as_decided(self):
         """
@@ -50,11 +51,12 @@ class TestPermissions:
         29 with C79's final list and to 30 with `admin.user.edit_app`. DMS went
         to 44 with `dms.user.view` (DMS settings' Users page, `0021`) and 45 with
         `dms.user.create` (its Invite User, `0022`), and 48 with its rows' Edit,
-        Deactivate and Delete (`0023`). Each app
+        Deactivate and Delete (`0023`), and 52 with Territory Management's four
+        (`0024`). Each app
         is asserted separately so a change to one cannot quietly reach another.
         """
         assert Permission.objects.filter(app_id=AppCode.ADMIN).count() == 30
-        assert Permission.objects.filter(app_id=AppCode.DMS).count() == 48
+        assert Permission.objects.filter(app_id=AppCode.DMS).count() == 52
         assert Permission.objects.filter(app_id=AppCode.CRM).count() == 1
 
     def test_every_code_is_app_resource_action(self):
@@ -292,8 +294,14 @@ class TestModulesAreDerived:
         by_standing = set(
             Permission.objects.filter(app_id=AppCode.ADMIN).values_list("module", flat=True)
         )
+        # A THIRD WAY since DMS settings (2026-11-23/24): the owner holds every
+        # permission by rule, and DMS settings' are held by NO role until the
+        # app-admin role is designed (Q63). Named, not derived, so a module
+        # nobody can reach still fails here unless somebody decides it is the
+        # owner's alone. (`users` is also the Admin panel's module name.)
+        by_owner_alone = {"territories"}
 
-        assert all_modules == by_role | by_standing
+        assert all_modules == by_role | by_standing | by_owner_alone
 
     def test_dealers_and_roles_belong_to_the_organisation_admin_alone(self):
         """

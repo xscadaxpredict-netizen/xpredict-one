@@ -943,6 +943,33 @@ def territories_for(organization: Organization) -> list[Territory]:
     return _with_parent_ids(organization, territories)
 
 
+def territory_tree(organization: Organization) -> list[Territory]:
+    """
+    DMS settings -> Territory Management (2026-11-24): DMS's whole tree in tree
+    order, each box with `parent_id` and `people_count` -- the people placed AT
+    it by a DMS grant, counted once each, the same count as `dealers_for()`'s
+    `user_count`. What is under a box, and the people there, the screen adds up
+    from the tree itself.
+
+    DMS GRANTS ONLY: the tree is DMS's, and only DMS grants sit in it
+    (`grant_app_access()` refuses a place in another app's tree).
+    """
+    people = (
+        MembershipAppTerritory.objects.filter(territory=OuterRef("pk"))
+        .order_by()
+        .values("territory")
+        .annotate(total=Count("app_access__membership", distinct=True))
+        .values("total")
+    )
+    territories = list(
+        Territory.objects.of(organization, AppCode.DMS)
+        .select_related("organization")
+        .annotate(people_count=Coalesce(Subquery(people, output_field=IntegerField()), Value(0)))
+        .order_by("path")
+    )
+    return _with_parent_ids(organization, territories)
+
+
 def _with_parent_ids(organization: Organization, territories: list[Territory]) -> list[Territory]:
     """
     Set `parent_id` on each territory, from its path.

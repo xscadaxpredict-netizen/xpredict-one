@@ -1,0 +1,57 @@
+import { useOrgMutation, useOrgQuery } from "@xpredict/api-client";
+
+import { dealerKeys } from "../../../shell/admin/hooks/useDealers";
+import {
+  createTerritory,
+  fetchTerritories,
+  setTerritoryStatus,
+  updateTerritory,
+  type NewTerritory,
+  type TerritoryDetails,
+} from "./territories";
+import { dmsSettingsKeys } from "./useDmsUsers";
+
+export const territoryKeys = {
+  all: () => ["dms", "settings", "territories"] as const,
+};
+
+/*
+ * A change here is also seen on the Admin panel's Dealers list (the same
+ * dealers, until that screen goes -- Q79) and on DMS settings -> Users (each
+ * person's territory names), so those refresh with the tree.
+ */
+const TERRITORIES_CHANGED = [territoryKeys.all(), dealerKeys.all(), dmsSettingsKeys.users()];
+
+/** DMS's whole territory tree, in tree order. */
+export function useDmsTerritories() {
+  return useOrgQuery({
+    key: territoryKeys.all(),
+    queryFn: (orgSlug) => fetchTerritories(orgSlug),
+  });
+}
+
+/** New Territory. */
+export function useCreateTerritory() {
+  return useOrgMutation({
+    mutationFn: (orgSlug, body: NewTerritory) => createTerritory(orgSlug, body),
+    invalidates: TERRITORIES_CHANGED,
+  });
+}
+
+/** Edit a box's details. */
+export function useUpdateTerritory() {
+  return useOrgMutation({
+    mutationFn: (orgSlug, variables: { territoryId: string; body: TerritoryDetails }) =>
+      updateTerritory(orgSlug, variables.territoryId, variables.body),
+    invalidates: TERRITORIES_CHANGED,
+  });
+}
+
+/** Close or Reopen a box. */
+export function useSetTerritoryStatus() {
+  return useOrgMutation({
+    mutationFn: (orgSlug, variables: { territoryId: string; action: "close" | "reopen" }) =>
+      setTerritoryStatus(orgSlug, variables.territoryId, variables.action),
+    invalidates: TERRITORIES_CHANGED,
+  });
+}

@@ -21,6 +21,8 @@ import { canOpenAppSettings } from "../../../shell/navigation";
 import { NotFoundScreen } from "../../../shell/screens/NotFoundScreen";
 import { SettingsPlaceholderScreen } from "../../../shell/screens/SettingsPlaceholderScreen";
 import { DmsUsersScreen } from "./DmsUsersScreen";
+import { TerritoryFormScreen } from "./TerritoryFormScreen";
+import { TerritoryManagementScreen } from "./TerritoryManagementScreen";
 
 /**
  * The pages that are BUILT, by their path in the catalogue. Every other
@@ -28,6 +30,7 @@ import { DmsUsersScreen } from "./DmsUsersScreen";
  */
 const BUILT: Record<string, ReactElement> = {
   users: <DmsUsersScreen />,
+  territories: <TerritoryManagementScreen />,
 };
 
 export default function DmsSettingsRoutes() {
@@ -52,6 +55,12 @@ export default function DmsSettingsRoutes() {
       ))}
       {/* One person opened beside the list (the Admin panel's Users does the same). */}
       <Route path="users/:userId" element={<DmsUsersScreen />} />
+      {/* Territory Management (2026-11-24): New and Edit are their own pages
+          (Q78); a box opens beside the tree. `new` is a fixed segment, so it
+          wins over `:territoryId`. */}
+      <Route path="territories/new" element={<TerritoryFormScreen mode="new" />} />
+      <Route path="territories/:territoryId/edit" element={<TerritoryFormScreen mode="edit" />} />
+      <Route path="territories/:territoryId" element={<TerritoryManagementScreen />} />
       <Route path="*" element={<NotFoundScreen />} />
     </Routes>
   );

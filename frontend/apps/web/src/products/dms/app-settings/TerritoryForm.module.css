@@ -1,0 +1,92 @@
+/*
+ * New Territory and Edit territory: their OWN PAGE (the owner, 2026-11-24;
+ * Q78), as on the design canvas. The cards, fields and footer are New Role's
+ * (`shell/admin/screens/NewRoleScreen.module.css`); this adds the back arrow,
+ * the card headings, hints and the read-only boxes.
+ */
+
+.headerRow {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.back {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  color: var(--color-text);
+  text-decoration: none;
+}
+
+.back:hover {
+  background: var(--color-surface-alt);
+}
+
+.back:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 1px;
+}
+
+.subtitle {
+  margin: 2px 0 0;
+  font-size: var(--text-sm);
+  color: var(--color-text-2);
+}
+
+/* The cards fill the page's width, as New Role's do (the owner, 2026-11-24: a fixed
+   860px left a wide empty strip on the right). */
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+  /* Room for the body's scrollbar, so it does not sit on the cards' edge. */
+  padding-right: var(--space-3);
+}
+
+.cardTitle {
+  margin: 0;
+  font-size: var(--text-lg);
+  font-weight: 600;
+}
+
+.hint {
+  margin: 0;
+  font-size: var(--text-xs);
+  line-height: 1.45;
+  color: var(--color-text-3);
+}
+
+/* Kind and place on Edit: shown, not changed here. */
+.readOnly {
+  display: flex;
+  align-items: center;
+  height: var(--control-height);
+  padding: 0 var(--space-3);
+  border-radius: var(--radius-md);
+  background: var(--color-surface-alt);
+  color: var(--color-text-2);
+  font-size: var(--text-sm);
+}
+
+.identifier {
+  text-transform: uppercase;
+  font-family: var(--font-mono);
+}
+
+/* Two across, as on the design canvas; one on a phone. */
+.two {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+@media (max-width: 640px) {
+  .two {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
