@@ -25,8 +25,8 @@ from core.organizations.models import (
     Territory,
     TerritoryKind,
 )
-from core.organizations.services import grant_app_access, sign_up
-from core.permissions.models import AppCode, Role
+from core.organizations.services import accept_invitation, grant_app_access, sign_up
+from core.permissions.models import AppCode, Permission, Role, RolePermission
 
 pytestmark = [
     pytest.mark.django_db(databases=["default", TEST_TENANT_ALIAS]),
@@ -285,3 +285,206 @@ class TestWhoMayAsk:
         response = client.get(URL.format(slug=result.organization.slug))
 
         assert response.status_code == 401
+
+
+ROLES_URL = "/api/v1/orgs/{slug}/dms/settings/invite-roles/"
+
+
+def post_invite(client, result, body, user=None):
+    client.force_authenticate(user=user or result.user)
+    return client.post(URL.format(slug=result.organization.slug), body, format="json")
+
+
+def an_invite(**overrides):
+    return {
+        "first_name": "Priya",
+        "last_name": "M",
+        "email": "priya@acme.test",
+        "role": "dms.group_operations",
+        **overrides,
+    }
+
+
+class TestInviteUser:
+    """
+    Invite User (the owner, 2026-11-24): a person and their DMS role. They get
+    DMS because they are invited from it; the role is DMS's and organisation-
+    level, since an invitation is placed at the root when accepted (C83).
+    """
+
+    def test_creates_a_pending_person_holding_dms(self, client):
+        result = found()
+
+        response = post_invite(client, result, an_invite())
+
+        assert response.status_code == 201, response.content
+        row = response.json()
+        assert row["email"] == "priya@acme.test"
+        assert (row["first_name"], row["last_name"]) == ("Priya", "M")
+        assert row["status"] == "pending"
+        assert row["role"] == {"code": "dms.group_operations", "name": "Group operations"}
+        assert row["territories"] == []
+
+        invitation = Invitation.objects.get(email="priya@acme.test")
+        assert list(invitation.app_grants.values_list("app_id", "role__code")) == [
+            (AppCode.DMS, "dms.group_operations")
+        ]
+        assert not Membership.objects.filter(user__email="priya@acme.test").exists()
+
+    def test_the_new_row_is_the_lists_own(self, client):
+        result = found()
+
+        row = post_invite(client, result, an_invite()).json()
+
+        assert listing(client, result)[1] == row
+
+    def test_accepting_joins_dms_at_the_root_with_that_role(self, client):
+        result = found()
+        post_invite(client, result, an_invite(role="dms.fleet_viewer"))
+        invitation = Invitation.objects.get(email="priya@acme.test")
+
+        accept_invitation(token=invitation.token, password="correct horse battery staple")
+
+        joined = Membership.objects.get(user__email="priya@acme.test")
+        grant = joined.grants.get(app_id=AppCode.DMS)
+        assert grant.roles.get().role.code == "dms.fleet_viewer"
+        assert list(grant.territories.values_list("territory_id", flat=True)) == [root(result).pk]
+
+    @pytest.mark.parametrize(
+        "role",
+        [
+            "dms.manager",  # a dealership role: illegal at the root
+            "crm.member",  # another app's role
+            "admin.org_admin",  # the Admin panel's
+            "dms.no_such_role",
+        ],
+    )
+    def test_refuses_a_role_it_cannot_give_and_leaves_nothing_behind(self, client, role):
+        result = found()
+
+        response = post_invite(client, result, an_invite(role=role))
+
+        assert response.status_code == 409, response.content
+        # One transaction: the person is not left invited with no app.
+        assert not Invitation.objects.filter(email="priya@acme.test").exists()
+
+    def test_refuses_an_address_already_in_the_organisation(self, client):
+        result = found()
+
+        response = post_invite(client, result, an_invite(email="owner@acme.test"))
+
+        assert response.status_code == 409
+
+    @pytest.mark.parametrize("field", ["app", "unit_id", "territories"])
+    def test_refuses_fields_it_does_not_take(self, client, field):
+        result = found()
+
+        response = post_invite(client, result, {**an_invite(), field: "x"})
+
+        assert response.status_code == 422
+        assert not Invitation.objects.exists()
+
+    def test_needs_a_first_name_an_email_and_a_role(self, client):
+        result = found()
+
+        response = post_invite(client, result, {"last_name": "M"})
+
+        assert response.status_code == 422
+        fields = {error["field"] for error in response.json()["errors"]}
+        assert {"first_name", "email", "role"} <= fields
+
+    def test_no_role_holds_the_permission(self):
+        assert not Role.objects.filter(permissions__code="dms.user.create").exists()
+
+    def test_an_organisation_admin_is_refused(self, client):
+        result = found()
+        admin = member(
+            result,
+            email="admin@acme.test",
+            app=AppCode.ADMIN,
+            role_code="admin.org_admin",
+            place=root(result),
+        )
+
+        response = post_invite(client, result, an_invite(), user=admin.user)
+
+        assert response.status_code == 403
+        assert not Invitation.objects.exists()
+
+    @pytest.mark.parametrize("role_code", ["dms.system_admin", "dms.manager"])
+    def test_a_dealership_role_is_refused(self, client, role_code):
+        result = found()
+        person = member(result, email="dealer@acme.test", role_code=role_code)
+
+        response = post_invite(client, result, an_invite(), user=person.user)
+
+        assert response.status_code == 403
+
+
+class TestTheRolesItOffers:
+    def test_dms_organisation_level_roles_only(self, client):
+        result = found()
+        client.force_authenticate(user=result.user)
+
+        response = client.get(ROLES_URL.format(slug=result.organization.slug))
+
+        assert response.status_code == 200
+        codes = {role["code"] for role in response.json()}
+        assert codes == set(
+            Role.objects.filter(
+                app_id=AppCode.DMS, level="org", organization_id__isnull=True
+            ).values_list("code", flat=True)
+        )
+        assert codes == {"dms.group_operations", "dms.fleet_viewer"}
+        assert set(response.json()[0]) == {"code", "name", "summary"}
+
+    def test_an_organisation_admin_is_refused(self, client):
+        result = found()
+        admin = member(
+            result,
+            email="admin@acme.test",
+            app=AppCode.ADMIN,
+            role_code="admin.org_admin",
+            place=root(result),
+        )
+        client.force_authenticate(user=admin.user)
+
+        response = client.get(ROLES_URL.format(slug=result.organization.slug))
+
+        assert response.status_code == 403
+
+
+class TestInvitingIsItsOwnPermission:
+    """
+    Seeing the list is not inviting (C81: a view that reads and writes names its
+    write). Nobody holds either permission today, so a role is made here that
+    holds only the list's -- the shape an app admin who may look but not invite
+    would have.
+    """
+
+    def test_seeing_the_list_does_not_let_you_invite(self, client):
+        result = found()
+        looker = Role.objects.create(
+            code="dms.looker",
+            name="Looker",
+            app_id=AppCode.DMS,
+            level="org",
+            summary="Sees DMS's users.",
+            organization_id=result.organization.pk,
+        )
+        RolePermission.objects.create(
+            role=looker, permission=Permission.objects.get(code="dms.user.view")
+        )
+        person = member(
+            result, email="looker@acme.test", role_code="dms.looker", place=root(result)
+        )
+
+        client.force_authenticate(user=person.user)
+        slug = result.organization.slug
+        assert client.get(URL.format(slug=slug)).status_code == 200
+        assert client.get(ROLES_URL.format(slug=slug)).status_code == 403
+
+        response = post_invite(client, result, an_invite(), user=person.user)
+
+        assert response.status_code == 403
+        assert not Invitation.objects.exists()

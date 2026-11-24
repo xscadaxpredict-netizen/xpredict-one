@@ -1346,6 +1346,48 @@ def _update_invitation(
 
 
 @transaction.atomic
+def invite_to_app(
+    *,
+    actor: Membership,
+    organization: Organization,
+    app: str,
+    email: str,
+    first_name: str,
+    last_name: str,
+    role: str,
+) -> Invitation:
+    """
+    AN APP'S OWN ADD USER (the owner, 2026-11-24: DMS settings -> Users -> Add
+    User): a person, AND the app they are invited from, with that app's role.
+    "Since the user is getting created in the app they will get the app in
+    which they are created."
+
+    EXACTLY THE ADMIN PANEL'S TWO ACTS, in one transaction: `invite_person()`
+    (Add User) then `assign_apps()` (Assign applications) -- so every rule of
+    both holds here and cannot drift: organisation-wide inviters only, a free
+    address, a subscribed app, never Administration, a role that exists for
+    this organisation, and -- because an invitation is placed at the root on
+    accepting (C83) -- an ORGANISATION-LEVEL role only. A dealership role is
+    refused (`RoleScopeMismatchError`, 409) and, the transaction being whole,
+    no invitation is left behind.
+    """
+    invitation = invite_person(
+        actor=actor,
+        organization=organization,
+        email=email,
+        first_name=first_name,
+        last_name=last_name,
+    )
+    assign_apps(
+        actor=actor,
+        organization=organization,
+        person_id=invitation.pk,
+        apps=[{"app": app, "role": role}],
+    )
+    return invitation
+
+
+@transaction.atomic
 def assign_apps(
     *,
     actor: Membership,

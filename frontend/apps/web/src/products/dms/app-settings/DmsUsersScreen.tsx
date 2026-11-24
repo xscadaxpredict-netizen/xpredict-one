@@ -12,8 +12,9 @@
  * reads "Owner" and their territory "All" -- they hold every app, everywhere,
  * by rule (C72), whatever grant they may also carry.
  *
- * DRAWN ONLY, for now (the owner's choice): "Invite User" and each row's ⋮
- * are greyed out, and clicking a person opens nothing yet.
+ * ADD USER WORKS (2026-11-24): a person and their DMS role
+ * (`AddDmsUserDialog`). Each row's ⋮ is still drawn greyed, and clicking a
+ * person opens nothing yet.
  */
 
 import { useState } from "react";
@@ -21,11 +22,13 @@ import { EllipsisVerticalIcon } from "lucide-react";
 import { asProblem } from "@xpredict/api-client";
 import { ErrorState, InfoHint, TableSkeleton } from "@xpredict/ui";
 
+import { useAccess } from "../../../shell/access";
 import { useShellContext } from "../../../shell/context";
 import { ListFilter } from "../../../shell/admin/components/ListFilter";
 import listStyles from "../../../shell/admin/screens/ListPage.module.css";
 import { usePageSearch } from "../../../stores/pageSearchStore";
 import type { AppUser, AppUserStatus } from "./api";
+import { AddDmsUserDialog } from "./AddDmsUserDialog";
 import { useDmsUsers } from "./useDmsUsers";
 import styles from "./DmsUsersScreen.module.css";
 
@@ -56,6 +59,8 @@ export function DmsUsersScreen() {
   const { data: users, isPending, isError, error, refetch } = useDmsUsers();
   const query = usePageSearch((state) => state.query);
   const [filter, setFilter] = useState<Filter>("all");
+  // Add User is `dms.user.create` -- the owner's, for now (C78 amended).
+  const canAdd = useAccess().can("dms.user.create");
 
   const shown = users?.filter(
     (user) => (filter === "all" || user.status === filter) && matches(user, query),
@@ -79,15 +84,19 @@ export function DmsUsersScreen() {
           </span>
         )}
         <span className={listStyles.spacer} />
-        <button
-          type="button"
-          className={listStyles.primaryButton}
-          aria-disabled="true"
-          title="Coming soon"
-        >
-          <PlusIcon />
-          Invite User
-        </button>
+        {canAdd ? (
+          <AddDmsUserDialog orgName={membership.org_name} />
+        ) : (
+          <button
+            type="button"
+            className={listStyles.primaryButton}
+            aria-disabled="true"
+            title="You do not have permission to add people to DMS"
+          >
+            <PlusIcon />
+            Add User
+          </button>
+        )}
       </div>
 
       {isPending && (

@@ -48,6 +48,7 @@ from core.permissions.models import (
     AppSection,
     Permission,
     Role,
+    RoleLevel,
     roles_for_organization,
 )
 from core.permissions.registry import is_unit_aware
@@ -1560,6 +1561,30 @@ def app_users(organization: Organization, app_code: str) -> list[AppUserData]:
         created_at=owner.created_at,
     )
     return [owner_row, *people]
+
+
+@dataclass(frozen=True)
+class InvitableRoleData:
+    code: str
+    name: str
+    summary: str
+
+
+def invitable_roles(organization: Organization, app_code: str) -> list[InvitableRoleData]:
+    """
+    The roles an app's own Invite User may give (the owner, 2026-11-24): that
+    app's roles only, and ORGANISATION-LEVEL only -- an invitation is placed
+    at the root when accepted (C83), where a dealership role is not legal.
+    Built-in or this organisation's own (`roles_for_organization`), never
+    another's. The same rule `invite_to_app()` enforces, so the picker never
+    offers a role the save would refuse.
+    """
+    roles = (
+        roles_for_organization(organization.id)
+        .filter(app_id=app_code, level=RoleLevel.ORG)
+        .order_by("display_order", "name")
+    )
+    return [InvitableRoleData(code=r.code, name=r.name, summary=r.summary) for r in roles]
 
 
 # --- The Admin panel's roles (C78, Admins and Roles -> Roles) ---------------

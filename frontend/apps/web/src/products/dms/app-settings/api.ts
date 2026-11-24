@@ -29,3 +29,31 @@ export interface AppUser {
 export async function fetchDmsUsers(orgSlug: string): Promise<AppUser[]> {
   return request<AppUser[]>(`/api/v1/orgs/${orgSlug}/dms/settings/users/`);
 }
+
+/** A role Add User may give: DMS's organisation-level roles. */
+export interface InvitableRole {
+  code: string;
+  name: string;
+  /** One line on what the role does, shown under the picker. */
+  summary: string;
+}
+
+export async function fetchInviteRoles(orgSlug: string): Promise<InvitableRole[]> {
+  return request<InvitableRole[]>(`/api/v1/orgs/${orgSlug}/dms/settings/invite-roles/`);
+}
+
+/** What Add User sends. DMS is implied: they are added from it. */
+export interface NewDmsInvitation {
+  first_name: string;
+  last_name: string;
+  email: string;
+  role: string;
+}
+
+/** Invite somebody into DMS; answers with their new (pending) row. */
+export async function inviteDmsUser(orgSlug: string, body: NewDmsInvitation): Promise<AppUser> {
+  return request<AppUser>(`/api/v1/orgs/${orgSlug}/dms/settings/users/`, {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+}
