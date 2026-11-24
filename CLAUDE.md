@@ -149,6 +149,16 @@ the owner alone. Services `add_territory()` / `update_territory()` / `close_terr
 its own step (Q79); Move comes next. DMS settings' screens import Admin panel pieces that the
 eslint boundary refuses (Q81).
 
+**ASSIGNING PEOPLE TO TERRITORIES (2026-11-24, C82 amended): ONLY APP ROLES, and NO TERRITORY
+UNTIL ONE IS ASSIGNED.** Any DMS role sits at any territory; joining DMS places nobody, and a
+DMS grant with no place sees NO records (`resolve_allowed_territories()` -> empty set). Places
+change only through `set_app_places()` / `assign_to_territory()` / `remove_from_territory()` /
+`move_to_territory()` (all via `grant_app_access()`; C27 holds) -- the territory panel's People
+tab and DMS Users -> Edit's Territory field; permission `dms.user.update`.
+**`organizations/0027` unplaced every non-owner at DMS's root: after it deploys nobody but the
+owner sees DMS records until assigned.** A test building a DMS person with no territory now
+builds one who sees nothing -- pass the root to mean everywhere.
+
 **Session 26 added (C84-C88):** Edit user is BASIC INFORMATION ONLY -- other fields refused
 (422), so a save cannot touch apps or standing; `update_person()` has no endpoint until
 Assign Admin replaces it. The app tile's **Edit | Disable | Unassign** work; a grant has a
@@ -477,8 +487,8 @@ user row on every request and refuses an inactive one, so **disabling somebody t
 effect on their next request**, not after a token expires. The 15-minute access
 lifetime is how long a STOLEN token survives a logout.
 
-**Gates:** `npm run test -w web` (527), `npm run typecheck -w web`, and in `backend/`:
-`pytest` (1235, 2026-11-24 with Territory Management), `ruff check .`, `manage.py makemigrations --check`, and
+**Gates:** `npm run test -w web` (536), `npm run typecheck -w web`, and in `backend/`:
+`pytest` (1259, 2026-11-24 with territory assignment), `ruff check .`, `manage.py makemigrations --check`, and
 `.venv/Scripts/lint-imports.exe` — **not** `python -m importlinter.cli`, which exits 0
 without running. **Where Windows blocks the `.exe` ("Permission denied"), call the
 function:** `.venv/Scripts/python.exe -c "import sys; from importlinter.cli import

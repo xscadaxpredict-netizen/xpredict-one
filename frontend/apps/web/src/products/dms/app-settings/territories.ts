@@ -130,3 +130,64 @@ export async function setTerritoryStatus(
     { method: "POST" },
   );
 }
+
+/**
+ * Somebody placed AT a territory -- its People tab (2026-11-24). Mirrors
+ * `TerritoryPersonSerializer`. `id` is their membership id, as in DMS Users.
+ */
+export interface TerritoryPerson {
+  id: string;
+  first_name: string;
+  last_name: string;
+  email: string;
+  role: { code: string; name: string } | null;
+  /** Where else they work in DMS, by name. */
+  other_places: string[];
+  access_status: "active" | "disabled";
+}
+
+export async function fetchTerritoryPeople(
+  orgSlug: string,
+  territoryId: string,
+): Promise<TerritoryPerson[]> {
+  return request<TerritoryPerson[]>(
+    `/api/v1/orgs/${orgSlug}/dms/settings/territories/${territoryId}/people/`,
+  );
+}
+
+/** Assign users: ADD this territory to where each works. Answers with the list. */
+export async function assignPeople(
+  orgSlug: string,
+  territoryId: string,
+  users: string[],
+): Promise<TerritoryPerson[]> {
+  return request<TerritoryPerson[]>(
+    `/api/v1/orgs/${orgSlug}/dms/settings/territories/${territoryId}/people/`,
+    { method: "POST", body: JSON.stringify({ users }) },
+  );
+}
+
+/** Remove: this territory comes off where they work (their last may go). */
+export async function removePerson(
+  orgSlug: string,
+  territoryId: string,
+  personId: string,
+): Promise<void> {
+  await request<void>(
+    `/api/v1/orgs/${orgSlug}/dms/settings/territories/${territoryId}/people/${personId}/`,
+    { method: "DELETE" },
+  );
+}
+
+/** Move: this place swapped for another, their role and other places kept. */
+export async function movePerson(
+  orgSlug: string,
+  territoryId: string,
+  personId: string,
+  to: string,
+): Promise<void> {
+  await request<void>(
+    `/api/v1/orgs/${orgSlug}/dms/settings/territories/${territoryId}/people/${personId}/move/`,
+    { method: "POST", body: JSON.stringify({ to }) },
+  );
+}

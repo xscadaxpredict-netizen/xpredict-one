@@ -123,6 +123,7 @@ class TestTheList:
             "is_owner",
             "role",
             "territories",
+            "places",
             "status",
             "access_status",
         }
@@ -339,7 +340,7 @@ class TestInviteUser:
 
         assert listing(client, result)[1] == row
 
-    def test_accepting_joins_dms_at_the_root_with_that_role(self, client):
+    def test_accepting_joins_dms_with_that_role_and_no_place(self, client):
         result = found()
         post_invite(client, result, an_invite(role="dms.fleet_viewer"))
         invitation = Invitation.objects.get(email="priya@acme.test")
@@ -349,12 +350,12 @@ class TestInviteUser:
         joined = Membership.objects.get(user__email="priya@acme.test")
         grant = joined.grants.get(app_id=AppCode.DMS)
         assert grant.roles.get().role.code == "dms.fleet_viewer"
-        assert list(grant.territories.values_list("territory_id", flat=True)) == [root(result).pk]
+        # NO TERRITORY UNTIL ONE IS ASSIGNED (the owner, 2026-11-24).
+        assert not grant.territories.exists()
 
     @pytest.mark.parametrize(
         "role",
         [
-            "dms.manager",  # a dealership role: illegal at the root
             "crm.member",  # another app's role
             "admin.org_admin",  # the Admin panel's
             "dms.no_such_role",
@@ -423,7 +424,8 @@ class TestInviteUser:
 
 
 class TestTheRolesItOffers:
-    def test_dms_organisation_level_roles_only(self, client):
+    def test_every_dms_role(self, client):
+        """ONLY APP ROLES (the owner, 2026-11-24): no organisation / dealership level."""
         result = found()
         client.force_authenticate(user=result.user)
 
@@ -432,11 +434,11 @@ class TestTheRolesItOffers:
         assert response.status_code == 200
         codes = {role["code"] for role in response.json()}
         assert codes == set(
-            Role.objects.filter(
-                app_id=AppCode.DMS, level="org", organization_id__isnull=True
-            ).values_list("code", flat=True)
+            Role.objects.filter(app_id=AppCode.DMS, organization_id__isnull=True).values_list(
+                "code", flat=True
+            )
         )
-        assert codes == {"dms.group_operations", "dms.fleet_viewer"}
+        assert {"dms.group_operations", "dms.manager", "dms.technician"} <= codes
         assert set(response.json()[0]) == {"code", "name", "summary"}
 
     def test_an_organisation_admin_is_refused(self, client):
@@ -558,12 +560,24 @@ class TestEdit:
         assert response.json()["email"] == "later@acme.test"
         assert response.json()["role"]["code"] == "dms.fleet_viewer"
 
-    def test_a_role_that_does_not_fit_their_place_is_refused_and_nothing_is_saved(self, client):
+    def test_any_dms_role_fits_their_place(self, client):
+        """ONLY APP ROLES (the owner, 2026-11-24): once refused at a dealership."""
         result = found()
         person = member(result, email="nish@acme.test", role_code="dms.manager")
 
         response = as_owner(client, result).put(
             person_url(result, person.pk), an_edit(role="dms.group_operations"), format="json"
+        )
+
+        assert response.status_code == 200, response.content
+        assert response.json()["role"]["code"] == "dms.group_operations"
+
+    def test_an_unknown_role_is_refused_and_nothing_is_saved(self, client):
+        result = found()
+        person = member(result, email="nish@acme.test", role_code="dms.manager")
+
+        response = as_owner(client, result).put(
+            person_url(result, person.pk), an_edit(role="dms.no_such_role"), format="json"
         )
 
         assert response.status_code == 409
@@ -608,34 +622,25 @@ class TestEdit:
 
 
 class TestTheRolesEditOffers:
-    def test_somebody_at_a_dealership_is_offered_dealership_roles(self, client):
+    def test_everybody_is_offered_every_dms_role_wherever_they_are(self, client):
+        """ONLY APP ROLES (the owner, 2026-11-24): the place no longer narrows it."""
         result = found()
-        person = member(result, email="nish@acme.test", role_code="dms.manager")
-
-        response = as_owner(client, result).get(person_url(result, person.pk, "roles/"))
-
-        assert response.status_code == 200
-        codes = {role["code"] for role in response.json()}
-        assert codes == set(
-            Role.objects.filter(
-                app_id=AppCode.DMS, level="unit", organization_id__isnull=True
-            ).values_list("code", flat=True)
-        )
-
-    def test_somebody_at_the_root_and_somebody_pending_are_offered_organisation_roles(self, client):
-        result = found()
+        at_dealer = member(result, email="nish@acme.test", role_code="dms.manager")
         at_root = member(
             result, email="hq@acme.test", role_code="dms.fleet_viewer", place=root(result)
         )
         pending = invite(result, email="soon@acme.test", role_code="dms.group_operations")
         owner_client = as_owner(client, result)
+        every = set(
+            Role.objects.filter(app_id=AppCode.DMS, organization_id__isnull=True).values_list(
+                "code", flat=True
+            )
+        )
 
-        for person_id in (at_root.pk, pending.pk):
+        for person_id in (at_dealer.pk, at_root.pk, pending.pk):
             response = owner_client.get(person_url(result, person_id, "roles/"))
-            assert {role["code"] for role in response.json()} == {
-                "dms.group_operations",
-                "dms.fleet_viewer",
-            }
+            assert response.status_code == 200
+            assert {role["code"] for role in response.json()} == every
 
     def test_the_owner_another_org_s_person_and_nonsense_are_not_found(self, client):
         result = found()

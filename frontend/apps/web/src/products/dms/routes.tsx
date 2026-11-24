@@ -7,6 +7,7 @@ import EcommerceRoutes from "./ecommerce/routes";
 import ToolsRoutes from "./tools/routes";
 import SettingsPage from "./settings/SettingsPage";
 import DmsSettingsRoutes from "./app-settings/routes";
+import { UnplacedNotice } from "./UnplacedNotice";
 
 const routes: ModuleRoute[] = [
   { path: "", module: null, element: <DmsWelcomeScreen /> },
@@ -24,7 +25,13 @@ const routes: ModuleRoute[] = [
 ];
 
 export default function DmsRoutes() {
-  return <ModuleRoutes routes={routes} />;
+  return (
+    <>
+      {/* Somebody with no territory sees empty lists: this says why (2026-11-24). */}
+      <UnplacedNotice />
+      <ModuleRoutes routes={routes} />
+    </>
+  );
 }
 
 

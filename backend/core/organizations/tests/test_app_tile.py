@@ -162,16 +162,18 @@ class TestEdit:
         assert tile(response)["role_code"] == "dms.manager"
         assert [p.territory_id for p in grant_of(ravi).territories.all()] == [delhi.id]
 
-    def test_a_role_that_does_not_fit_where_they_sit_is_refused(self, client):
-        """C27: an organisation-level role for somebody at a dealership."""
+    def test_any_dms_role_fits_any_place(self, client):
+        """
+        ONLY APP ROLES (the owner, 2026-11-24): this was refused while roles had
+        an organisation / dealership level. A role says WHAT, the place WHERE.
+        """
         result = found()
         ravi = holding(result, "dms.sales_representative", place=dealership(result))
 
         response = edit(client, result, ravi.id, "dms.group_operations")
 
-        assert response.status_code == 409
-        assert response.json()["code"] == "role_scope_mismatch"
-        assert grant_of(ravi).roles.get().role.code == "dms.sales_representative"
+        assert response.status_code == 200
+        assert grant_of(ravi).roles.get().role.code == "dms.group_operations"
 
     def test_a_disabled_app_stays_disabled(self, client):
         result = found()

@@ -11,12 +11,18 @@ import { ApiError } from "@xpredict/api-client";
 import { fetchMe } from "../api/auth";
 import type * as authApi from "../api/auth";
 import {
+  assignPeople,
   createTerritory,
   fetchTerritories,
+  fetchTerritoryPeople,
+  movePerson,
+  removePerson,
   setTerritoryStatus,
   updateTerritory,
   type DmsTerritory,
+  type TerritoryPerson,
 } from "../../products/dms/app-settings/territories";
+import { fetchDmsUsers, type AppUser } from "../../products/dms/app-settings/api";
 import type * as territoriesApi from "../../products/dms/app-settings/territories";
 import DmsSettingsRoutes from "../../products/dms/app-settings/routes";
 import { useUiStore } from "../../stores/uiStore";
@@ -36,6 +42,15 @@ vi.mock("../../products/dms/app-settings/territories", async (importOriginal) =>
   createTerritory: vi.fn(),
   updateTerritory: vi.fn(),
   setTerritoryStatus: vi.fn(),
+  fetchTerritoryPeople: vi.fn(),
+  assignPeople: vi.fn(),
+  removePerson: vi.fn(),
+  movePerson: vi.fn(),
+}));
+
+// Assign users lists DMS's users.
+vi.mock("../../products/dms/app-settings/api", () => ({
+  fetchDmsUsers: vi.fn(),
 }));
 
 vi.mock("../hooks/useNotifications", () => ({
@@ -53,6 +68,11 @@ const mockFetchTerritories = vi.mocked(fetchTerritories);
 const mockCreateTerritory = vi.mocked(createTerritory);
 const mockUpdateTerritory = vi.mocked(updateTerritory);
 const mockSetTerritoryStatus = vi.mocked(setTerritoryStatus);
+const mockFetchPeople = vi.mocked(fetchTerritoryPeople);
+const mockAssignPeople = vi.mocked(assignPeople);
+const mockRemovePerson = vi.mocked(removePerson);
+const mockMovePerson = vi.mocked(movePerson);
+const mockFetchDmsUsers = vi.mocked(fetchDmsUsers);
 
 const GSTIN = "27AAPFU0939F1ZV";
 const GSTIN_PAN = "AAPFU0939F";
@@ -72,6 +92,8 @@ function realOwner() {
               "dms.territory.create",
               "dms.territory.update",
               "dms.territory.set_status",
+              "dms.user.view",
+              "dms.user.update",
             ],
           }
         : app,
@@ -140,6 +162,11 @@ beforeEach(() => {
   useUiStore.setState({ openSettingsModule: {}, isSidebarCollapsed: false });
   mockFetchMe.mockResolvedValue(me({ memberships: [realOwner()] }));
   mockFetchTerritories.mockResolvedValue(TREE);
+  mockFetchPeople.mockReset();
+  mockAssignPeople.mockReset();
+  mockRemovePerson.mockReset();
+  mockMovePerson.mockReset();
+  mockFetchDmsUsers.mockReset();
 });
 
 /** A box: its accessible name starts with its kind, which the fold button's does not. */
@@ -465,5 +492,159 @@ describe("Edit territory", () => {
       await screen.findByText(/This is the organisation itself/),
     ).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Save changes" })).not.toBeInTheDocument();
+  });
+});
+
+// --- A territory's People tab (2026-11-24) -------------------------------------------
+
+function personAt(overrides: Partial<TerritoryPerson>): TerritoryPerson {
+  return {
+    id: "p",
+    first_name: "",
+    last_name: "",
+    email: "p@acme.test",
+    role: { code: "dms.manager", name: "Manager" },
+    other_places: [],
+    access_status: "active",
+    ...overrides,
+  };
+}
+
+const AT_DELHI: TerritoryPerson[] = [
+  personAt({ id: "ravi", first_name: "Ravi", last_name: "Sharma", email: "ravi@acme.test" }),
+  personAt({
+    id: "priya",
+    first_name: "Priya",
+    last_name: "Mehta",
+    email: "priya@acme.test",
+    role: { code: "dms.sales_representative", name: "Sales representative" },
+    other_places: ["Jaipur Motors"],
+  }),
+];
+
+function dmsUser(overrides: Partial<AppUser>): AppUser {
+  return {
+    id: "u",
+    first_name: "",
+    last_name: "",
+    email: "u@acme.test",
+    is_owner: false,
+    role: { code: "dms.technician", name: "Technician" },
+    territories: [],
+    places: [],
+    status: "active",
+    access_status: "active",
+    ...overrides,
+  };
+}
+
+const DMS_USERS: AppUser[] = [
+  dmsUser({ id: "owner", first_name: "Asha", last_name: "Rao", is_owner: true, role: null }),
+  dmsUser({ id: "ravi", first_name: "Ravi", last_name: "Sharma", places: [{ id: "delhi", name: "Delhi Motors" }] }),
+  dmsUser({ id: "arjun", first_name: "Arjun", last_name: "Kumar" }),
+  dmsUser({ id: "meera", first_name: "Meera", last_name: "Iyer", places: [{ id: "jaipur", name: "Jaipur Motors" }] }),
+  dmsUser({ id: "mehul", first_name: "Mehul", last_name: "E", status: "pending", access_status: null }),
+];
+
+async function openPeople() {
+  mockFetchPeople.mockResolvedValue(AT_DELHI);
+  const rendered = await showTree(`${PAGE}/delhi`);
+  const panel = await screen.findByRole("complementary", { name: "Delhi Motors" });
+  fireEvent.click(within(panel).getByRole("tab", { name: /People/ }));
+  await within(panel).findByText("Ravi Sharma");
+  return { ...rendered, panel };
+}
+
+describe("a territory's People tab", () => {
+  it("lists who works here, with their role and where else", async () => {
+    const { panel } = await openPeople();
+
+    expect(within(panel).getByRole("tab", { name: "People (3)" })).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
+    expect(mockFetchPeople).toHaveBeenCalledWith("acme-motors", "delhi");
+    const list = within(panel).getByRole("list", { name: "People at Delhi Motors" });
+    expect(within(list).getByText("Sales representative")).toBeInTheDocument();
+    expect(within(list).getByText(/also at Jaipur Motors/)).toBeInTheDocument();
+    expect(
+      within(panel).getByText("Placed at Delhi Motors. They see its records and everything under it."),
+    ).toBeInTheDocument();
+    // Noida's two people.
+    expect(within(panel).getByText(/2 more people work in the territories under it/)).toBeInTheDocument();
+  });
+
+  it("assigns DMS users, greying who is here already and who has not joined", async () => {
+    mockFetchDmsUsers.mockResolvedValue(DMS_USERS);
+    mockAssignPeople.mockResolvedValue(AT_DELHI);
+    const { panel } = await openPeople();
+
+    fireEvent.click(within(panel).getByRole("button", { name: "+ Assign users" }));
+    const dialog = await screen.findByRole("dialog", { name: "Assign users" });
+    await within(dialog).findByText("Arjun Kumar");
+
+    // Never the owner; no role field, no "current place" choice.
+    expect(within(dialog).queryByText("Asha Rao")).not.toBeInTheDocument();
+    expect(within(dialog).queryByRole("combobox")).not.toBeInTheDocument();
+    expect(within(dialog).getByRole("checkbox", { name: /Ravi Sharma/ })).toBeDisabled();
+    expect(within(dialog).getByText("Already at Delhi Motors")).toBeInTheDocument();
+    expect(within(dialog).getByRole("checkbox", { name: /Mehul E/ })).toBeDisabled();
+    expect(within(dialog).getByText(/Technician · at Jaipur Motors/)).toBeInTheDocument();
+
+    fireEvent.click(within(dialog).getByRole("checkbox", { name: /Arjun Kumar/ }));
+    fireEvent.click(within(dialog).getByRole("checkbox", { name: /Meera Iyer/ }));
+    fireEvent.click(within(dialog).getByRole("button", { name: "Assign (2)" }));
+
+    await waitFor(() =>
+      expect(mockAssignPeople).toHaveBeenCalledWith("acme-motors", "delhi", ["arjun", "meera"]),
+    );
+  });
+
+  it("removes somebody from their only place after saying what that means", async () => {
+    mockRemovePerson.mockResolvedValue(undefined);
+    await openPeople();
+
+    fireEvent.keyDown(screen.getByRole("button", { name: "More actions for Ravi Sharma" }), {
+      key: "Enter",
+    });
+    fireEvent.click(
+      within(await screen.findByRole("menu")).getByRole("menuitem", {
+        name: "Remove from Delhi Motors",
+      }),
+    );
+    const dialog = await screen.findByRole("dialog", {
+      name: "Remove Ravi Sharma from Delhi Motors?",
+    });
+    expect(within(dialog).getByText(/see no DMS records until/)).toBeInTheDocument();
+
+    fireEvent.click(within(dialog).getByRole("button", { name: "Remove" }));
+
+    await waitFor(() =>
+      expect(mockRemovePerson).toHaveBeenCalledWith("acme-motors", "delhi", "ravi"),
+    );
+  });
+
+  it("moves somebody to another territory", async () => {
+    mockMovePerson.mockResolvedValue(undefined);
+    await openPeople();
+
+    fireEvent.keyDown(screen.getByRole("button", { name: "More actions for Priya Mehta" }), {
+      key: "Enter",
+    });
+    fireEvent.click(
+      within(await screen.findByRole("menu")).getByRole("menuitem", {
+        name: "Move to another territory",
+      }),
+    );
+    const dialog = await screen.findByRole("dialog", { name: "Move Priya Mehta" });
+    // Anywhere but here.
+    expect(within(dialog).queryByRole("option", { name: /^— — Delhi Motors/ })).not.toBeInTheDocument();
+
+    fireEvent.change(within(dialog).getByLabelText("Move to"), { target: { value: "south" } });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Move" }));
+
+    await waitFor(() =>
+      expect(mockMovePerson).toHaveBeenCalledWith("acme-motors", "delhi", "priya", "south"),
+    );
   });
 });

@@ -163,15 +163,15 @@ class TestWhatIsRefused:
         assert response.status_code == 409
         assert response.json()["code"] == "owner_holds_every_app"
 
-    def test_a_dealership_role(self, client):
-        """Organisation-wide, like Assign applications, until per-app territories (C82)."""
+    def test_any_dms_role(self, client):
+        """ONLY APP ROLES (the owner, 2026-11-24): what was a dealership role too."""
         result = found()
         asha = newcomer(result, "asha@acme.test")
 
         response = assign(client, result, "dms", [asha.id], "dms.manager")
 
-        assert response.status_code == 409
-        assert response.json()["code"] == "role_scope_mismatch"
+        assert response.status_code < 300, response.content
+        assert holds(asha, "dms")
 
     def test_administration(self, client):
         result = found()

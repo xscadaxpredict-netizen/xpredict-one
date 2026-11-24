@@ -190,11 +190,11 @@ class TestOwnersAndAdminsAreOrganisationWide:
         with pytest.raises(RoleScopeMismatchError):
             edit(result, result.membership, unit=delhi)
 
-    def test_an_invitation_holding_a_dealership_role_is_refused_at_accept(self):
+    def test_an_invitation_holding_any_dms_role_joins_with_no_place(self):
         """
-        An invitation's apps are placed at the root (C83), where a dealership
-        role is not legal. Refused as a 409 and left unspent -- `0022` refuses
-        to run while any such invitation is pending.
+        ONLY APP ROLES and NO TERRITORY UNTIL ONE IS ASSIGNED (the owner,
+        2026-11-24): what was a dealership role is accepted, and the person
+        joins DMS placed nowhere -- not at the root.
         """
         result = found()
         invitation = invite(result, email="old@apex.test")
@@ -202,12 +202,11 @@ class TestOwnersAndAdminsAreOrganisationWide:
             invitation=invitation, app_id=AppCode.DMS, role=Role.objects.get(code="dms.manager")
         )
 
-        with pytest.raises(RoleScopeMismatchError):
-            accept_invitation(token=invitation.token, password=PASSWORD)
+        joined = accept_invitation(token=invitation.token, password=PASSWORD).membership
 
-        invitation.refresh_from_db()
-        assert invitation.accepted_at is None
-        assert not Membership.objects.filter(user__email="old@apex.test").exists()
+        grant = joined.grants.get(app_id=AppCode.DMS)
+        assert grant.roles.get().role.code == "dms.manager"
+        assert not grant.territories.exists()
 
     def test_an_organisation_wide_admin_is_fine(self):
         result = found()

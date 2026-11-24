@@ -25,6 +25,7 @@ from core.organizations.models import (
     Membership,
     MembershipAppRole,
     MembershipAppTerritory,
+    Territory,
 )
 from core.organizations.services import (
     accept_invitation,
@@ -83,10 +84,22 @@ class TestItLetsAHealthyDatabaseThrough:
         run()
 
     def test_people_made_by_the_services(self):
+        """
+        AS THE SERVICES MADE THEM WHEN 0020 WAS WRITTEN: an organisation-wide
+        person sat at the root. Since 2026-11-24 joining DMS places nobody
+        (`0027` unplaced the rest) -- but on a real database 0020 always runs
+        BEFORE that, on data made the old way, so the old shape is what it must
+        let through.
+        """
         result = found()
         delhi = create_dealer(organization=result.organization, name="Delhi Motors")
         join(result, "ravi@apex.test", unit=delhi)
-        join(result, "anita@apex.test")
+        anita = join(result, "anita@apex.test")
+        grant = anita.grants.get(app_id="dms")
+        MembershipAppTerritory.objects.create(
+            app_access=grant,
+            territory=Territory.objects.root_for(result.organization, "dms"),
+        )
 
         run()
 

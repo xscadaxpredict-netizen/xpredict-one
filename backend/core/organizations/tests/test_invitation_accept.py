@@ -269,16 +269,21 @@ class TestAcceptingAsSomebodyNew:
         assert "xp_access" in response.cookies
         assert response.cookies["xp_access"]["httponly"] is True
 
-    def test_the_apps_come_across_organisation_wide(self, client):
-        """An invitation has no place (C83), so its apps are placed at the root."""
+    def test_the_apps_come_across_with_no_place(self, client):
+        """
+        An invitation has no place (C83), and since 2026-11-24 joining DMS places
+        nobody: no territory until one is assigned, so no DMS records.
+        """
         result = found()
         invite(result.organization)
 
         client.post(ACCEPT_URL.format(token=TOKEN), {"password": PASSWORD}, format="json")
 
         membership = Membership.objects.get(user__email="pending@acme.test")
-        assert membership.grants.get().app_id == AppCode.DMS
-        assert reach(membership) is None
+        grant = membership.grants.get()
+        assert grant.app_id == AppCode.DMS
+        assert not grant.territories.exists()
+        assert reach(membership) == frozenset()
 
     def test_an_invitation_with_no_app_joins_with_none(self, client):
         """C73 retired: a person may hold no app, and can open nothing yet."""

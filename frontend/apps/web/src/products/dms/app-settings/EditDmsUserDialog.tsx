@@ -2,10 +2,13 @@
  * Edit, on DMS settings -> Users (the owner, 2026-11-24): the Admin panel's
  * Edit -- first name, last name, email -- PLUS their role in DMS.
  *
- * THE ROLES OFFERED FIT THE PERSON (`users/<id>/roles/`): dealership roles for
- * somebody at a dealership, organisation-level ones for somebody at the top or
- * still pending -- exactly what the save accepts, so it is never refused for
- * a role this list offered.
+ * EVERY DMS ROLE IS OFFERED (`users/<id>/roles/`; the owner, 2026-11-24: only
+ * app roles -- a role says WHAT, the territory WHERE).
+ *
+ * TERRITORY (2026-11-24): where a joined person works, as chips; "Add a place"
+ * picks from DMS's tree. None is allowed -- they then see no DMS records until
+ * assigned. Somebody pending has no place yet (C83): they are placed once they
+ * have joined, so the field only says so.
  *
  * A JOINED PERSON'S EMAIL IS HOW THEY SIGN IN and cannot change (C25); a
  * pending person's still can, as in the Admin panel.
@@ -24,7 +27,11 @@ import { TextField } from "../../../shell/components/TextField";
 import styles from "../../../shell/admin/components/EditUserDialog.module.css";
 import pickerStyles from "../../../shell/admin/components/RolePicker.module.css";
 import type { AppUser } from "./api";
+import { KIND_LABEL } from "./territories";
+import { ancestorsOf, buildTree } from "./territoryTree";
 import { useDmsPersonRoles, useUpdateDmsUser } from "./useDmsUsers";
+import { useDmsTerritories } from "./useTerritories";
+import own from "./TerritoryPeople.module.css";
 
 const editSchema = z.object({
   first_name: z.string().trim().min(1, "Enter a first name."),
@@ -64,6 +71,12 @@ function EditForm({ user, onDone }: { user: AppUser; onDone: () => void }) {
   const [formError, setFormError] = useState<{ message: string; traceId?: string } | null>(null);
   const { data: roles, isPending: rolesLoading, isError: rolesFailed } = useDmsPersonRoles(user.id);
   const { mutateAsync: update, isPending: saving } = useUpdateDmsUser();
+  const { data: territories } = useDmsTerritories();
+  const [places, setPlaces] = useState(user.places);
+  const tree = buildTree(territories ?? []);
+  const addable = [...tree.byId.values()].filter(
+    (node) => !places.some((place) => place.id === node.territory.id),
+  );
 
   const {
     register,
@@ -87,7 +100,11 @@ function EditForm({ user, onDone }: { user: AppUser; onDone: () => void }) {
   async function onSubmit(values: EditFields) {
     setFormError(null);
     try {
-      await update({ userId: user.id, body: values });
+      await update({
+        userId: user.id,
+        // Where they work goes with the save -- for somebody who has joined.
+        body: isPending ? values : { ...values, territories: places.map((place) => place.id) },
+      });
       onDone();
     } catch (error) {
       const problem = asProblem(error);
@@ -103,7 +120,7 @@ function EditForm({ user, onDone }: { user: AppUser; onDone: () => void }) {
       <div className={styles.header}>
         <Dialog.Title className={styles.title}>Edit user</Dialog.Title>
         <Dialog.Description className={styles.description}>
-          Their basic information and their role in DMS.
+          Their basic information, their role in DMS and where they work.
         </Dialog.Description>
       </div>
 
@@ -181,6 +198,68 @@ function EditForm({ user, onDone }: { user: AppUser; onDone: () => void }) {
               </p>
             )}
             {chosen && <p className={pickerStyles.hint}>{chosen.summary}</p>}
+          </div>
+
+          <div className={pickerStyles.field}>
+            <span className={pickerStyles.label} id="dms-edit-territory">
+              Territory
+            </span>
+            {isPending ? (
+              <p className={pickerStyles.hint}>
+                They are placed in a territory once they have joined.
+              </p>
+            ) : (
+              <>
+                <ul className={own.chips} aria-labelledby="dms-edit-territory">
+                  {places.map((place) => (
+                    <li key={place.id} className={own.chip}>
+                      {place.name}
+                      <button
+                        type="button"
+                        aria-label={`Remove ${place.name}`}
+                        onClick={() =>
+                          setPlaces((current) => current.filter((p) => p.id !== place.id))
+                        }
+                      >
+                        ×
+                      </button>
+                    </li>
+                  ))}
+                  {places.length === 0 && <li className={own.none}>No territory yet</li>}
+                </ul>
+                <label className={pickerStyles.label} htmlFor="dms-edit-add-place">
+                  <span className={own.visuallyHidden}>Add a place</span>
+                </label>
+                <select
+                  id="dms-edit-add-place"
+                  className={pickerStyles.select}
+                  value=""
+                  disabled={!territories}
+                  onChange={(event) => {
+                    const node = tree.byId.get(event.target.value);
+                    if (node) {
+                      setPlaces((current) => [
+                        ...current,
+                        { id: node.territory.id, name: node.territory.name },
+                      ]);
+                    }
+                  }}
+                >
+                  <option value="">{territories ? "+ Add a place…" : "Loading territories…"}</option>
+                  {addable.map((node) => (
+                    <option key={node.territory.id} value={node.territory.id}>
+                      {`${"— ".repeat(ancestorsOf(node).length)}${node.territory.name} (${
+                        KIND_LABEL[node.territory.kind]
+                      })`}
+                    </option>
+                  ))}
+                </select>
+                <p className={pickerStyles.hint}>
+                  Where they work in DMS: they see the records there and below. With none, they
+                  see no records.
+                </p>
+              </>
+            )}
           </div>
         </div>
 

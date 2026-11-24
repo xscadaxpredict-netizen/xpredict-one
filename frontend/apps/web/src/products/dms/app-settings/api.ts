@@ -23,6 +23,8 @@ export interface AppUser {
   role: { code: string; name: string } | null;
   /** Where DMS places them. Empty for the owner (everywhere) and the pending. */
   territories: string[];
+  /** The same places with their ids, for Edit's Territory field (2026-11-24). */
+  places: { id: string; name: string }[];
   status: AppUserStatus;
   /**
    * Their DMS access itself, which Deactivate / Activate switch: `disabled`
@@ -64,12 +66,14 @@ export async function inviteDmsUser(orgSlug: string, body: NewDmsInvitation): Pr
   });
 }
 
-/** What Edit sends: their details and their DMS role. */
+/** What Edit sends: their details, their DMS role and -- once joined -- where they work. */
 export interface DmsUserEdit {
   first_name: string;
   last_name: string;
   email: string;
   role: string;
+  /** Exactly these territories (none allowed). Left out: their places stay. */
+  territories?: string[];
 }
 
 /** Edit: details and DMS role. Answers with their row. */

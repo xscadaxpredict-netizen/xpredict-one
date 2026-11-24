@@ -285,15 +285,15 @@ class TestTheGrantsAreTheWholeRecord:
 
         assert granted(member) == {("dms", role("dms.manager").pk, frozenset({delhi.pk}))}
 
-    def test_accepting_an_organisation_wide_invitation(self):
+    def test_accepting_an_invitation_places_nobody_in_dms(self):
+        """No territory until one is assigned (the owner, 2026-11-24)."""
         result = found()
 
         member = join(
             result, email="anita@apex.test", apps=[{"app": "dms", "role": "dms.fleet_viewer"}]
         )
-        root = Territory.objects.root_for(result.organization, AppCode.DMS)
 
-        assert granted(member) == {("dms", role("dms.fleet_viewer").pk, frozenset({root.pk}))}
+        assert granted(member) == {("dms", role("dms.fleet_viewer").pk, frozenset())}
 
     def test_editing_a_person_moves_them_and_changes_their_apps(self):
         result = found()

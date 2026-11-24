@@ -12,6 +12,13 @@ class AppRoleSerializer(serializers.Serializer):
     name = serializers.CharField(read_only=True)
 
 
+class PlaceSerializer(serializers.Serializer):
+    """A territory somebody works at: id and name."""
+
+    id = serializers.UUIDField(read_only=True)
+    name = serializers.CharField(read_only=True)
+
+
 class AppUserSerializer(serializers.Serializer):
     """
     One row of DMS settings -> Users. Mirrors `AppUser` in
@@ -25,6 +32,8 @@ class AppUserSerializer(serializers.Serializer):
     is_owner = serializers.BooleanField(read_only=True)
     role = AppRoleSerializer(read_only=True, allow_null=True)
     territories = serializers.ListField(child=serializers.CharField(), read_only=True)
+    # The same places with their ids, for Edit's Territory field (2026-11-24).
+    places = PlaceSerializer(many=True, read_only=True)
     status = serializers.CharField(read_only=True)
     access_status = serializers.CharField(read_only=True, allow_null=True)
 
@@ -75,12 +84,20 @@ class DmsEditSerializer(serializers.Serializer):
     last_name = serializers.CharField(max_length=150, allow_blank=True)
     email = serializers.EmailField()
     role = serializers.CharField(max_length=80)
+    # WHERE THEY WORK (2026-11-24): exactly these territories, none allowed.
+    # Left out, their places stay as they are.
+    territories = serializers.ListField(
+        child=serializers.UUIDField(), required=False, allow_empty=True
+    )
 
     def validate(self, attrs: dict) -> dict:
         unexpected = sorted(set(self.initial_data) - set(self.fields))
         if unexpected:
             raise serializers.ValidationError(
-                dict.fromkeys(unexpected, "Edit takes first name, last name, email and role only.")
+                dict.fromkeys(
+                    unexpected,
+                    "Edit takes first name, last name, email, role and territories only.",
+                )
             )
         return attrs
 
@@ -189,3 +206,31 @@ class DmsTerritoryNewSerializer(DmsTerritoryEditSerializer):
 
     kind = serializers.ChoiceField(choices=["region", "dealer", "branch", "warehouse"])
     parent_id = serializers.UUIDField(allow_null=True)
+
+
+# ---------------------------------------------------------------------------
+# A territory's People tab (2026-11-24). Mirrors `TerritoryPerson` in
+# `territories.ts`.
+# ---------------------------------------------------------------------------
+
+
+class TerritoryPersonSerializer(serializers.Serializer):
+    id = serializers.UUIDField(read_only=True)
+    first_name = serializers.CharField(read_only=True)
+    last_name = serializers.CharField(read_only=True)
+    email = serializers.EmailField(read_only=True)
+    role = AppRoleSerializer(read_only=True, allow_null=True)
+    other_places = serializers.ListField(child=serializers.CharField(), read_only=True)
+    access_status = serializers.CharField(read_only=True)
+
+
+class AssignPeopleSerializer(serializers.Serializer):
+    """Assign users: who. No role (it came with DMS), no "current place" (it only adds)."""
+
+    users = serializers.ListField(child=serializers.UUIDField(), allow_empty=False)
+
+
+class MovePersonSerializer(serializers.Serializer):
+    """Move: to which territory."""
+
+    to = serializers.UUIDField()

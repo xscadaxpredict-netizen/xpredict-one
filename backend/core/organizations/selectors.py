@@ -970,6 +970,71 @@ def territory_tree(organization: Organization) -> list[Territory]:
     return _with_parent_ids(organization, territories)
 
 
+@dataclass(frozen=True)
+class TerritoryPersonData:
+    """
+    One person on a territory's People tab (2026-11-24). Mirrors
+    `TerritoryPerson` in the frontend's `territories.ts`.
+    """
+
+    id: uuid.UUID
+    """Their MEMBERSHIP id -- the same id DMS settings -> Users uses."""
+    first_name: str
+    last_name: str
+    email: str
+    role: AppRoleData | None
+    other_places: list[str]
+    """Where else they work in this app, by name."""
+    access_status: str
+    """Their grant: `active`, or `disabled` after DMS Users' Deactivate."""
+
+
+def territory_people(organization: Organization, territory: Territory) -> list[TerritoryPersonData]:
+    """
+    The people placed AT this territory in its app's tree -- not under it --
+    by name. Only people who have joined: an invitation sits nowhere (C83).
+    The owner is never listed: they are everywhere by rule and placed nowhere.
+    """
+    grants = (
+        MembershipAppAccess.objects.filter(
+            app_id=territory.app_id,
+            membership__organization=organization,
+            territories__territory=territory,
+        )
+        .exclude(membership__is_owner=True)
+        .select_related("membership__user")
+        .prefetch_related(
+            Prefetch("roles", queryset=MembershipAppRole.objects.select_related("role")),
+            Prefetch(
+                "territories",
+                queryset=MembershipAppTerritory.objects.select_related("territory__organization"),
+            ),
+        )
+        .distinct()
+    )
+    people = []
+    for grant in grants:
+        user = grant.membership.user
+        held = next(iter(grant.roles.all()), None)
+        people.append(
+            TerritoryPersonData(
+                id=grant.membership_id,
+                first_name=user.first_name,
+                last_name=user.last_name,
+                email=user.email,
+                role=AppRoleData(held.role.code, held.role.name) if held else None,
+                other_places=sorted(
+                    p.territory.display_name
+                    for p in grant.territories.all()
+                    if p.territory_id != territory.pk
+                ),
+                access_status=str(grant.status),
+            )
+        )
+    people.sort(key=lambda p: (f"{p.first_name} {p.last_name}".strip() or p.email).lower())
+    return people
+
+
 def _with_parent_ids(organization: Organization, territories: list[Territory]) -> list[Territory]:
     """
     Set `parent_id` on each territory, from its path.
@@ -1498,6 +1563,14 @@ class AppRoleData:
 
 
 @dataclass(frozen=True)
+class PlaceData:
+    """A territory somebody works at: its id and the name the tree shows."""
+
+    id: uuid.UUID
+    name: str
+
+
+@dataclass(frozen=True)
 class AppUserData:
     """
     One row of an app's own Users list (DMS settings -> Users & Roles -> Users).
@@ -1516,6 +1589,9 @@ class AppUserData:
 
     territories: list[str]
     """Where the grant places them. Empty for the owner (everywhere) and the pending."""
+
+    places: list[PlaceData]
+    """The same places with their ids, for Edit's Territory field (2026-11-24)."""
 
     status: str
     """
@@ -1615,6 +1691,13 @@ def app_users(organization: Organization, app_code: str) -> list[AppUserData]:
                 territories=sorted(
                     placement.territory.display_name for placement in grant.territories.all()
                 ),
+                places=sorted(
+                    (
+                        PlaceData(placement.territory.pk, placement.territory.display_name)
+                        for placement in grant.territories.all()
+                    ),
+                    key=lambda place: place.name,
+                ),
                 status=APP_USER_ACTIVE if can_open else APP_USER_INACTIVE,
                 access_status=str(grant.status),
                 created_at=membership.created_at,
@@ -1632,6 +1715,7 @@ def app_users(organization: Organization, app_code: str) -> list[AppUserData]:
                 role=AppRoleData(invitation_grant.role.code, invitation_grant.role.name),
                 # AN INVITATION SITS NOWHERE (C83): placed when they join.
                 territories=[],
+                places=[],
                 status=APP_USER_PENDING,
                 access_status=None,
                 created_at=invitation.created_at,
@@ -1652,6 +1736,7 @@ def app_users(organization: Organization, app_code: str) -> list[AppUserData]:
         is_owner=True,
         role=None,
         territories=[],
+        places=[],
         status=APP_USER_ACTIVE,
         access_status=None,
         created_at=owner.created_at,
@@ -1668,18 +1753,19 @@ class InvitableRoleData:
 
 def invitable_roles(organization: Organization, app_code: str) -> list[InvitableRoleData]:
     """
-    The roles an app's own Invite User may give (the owner, 2026-11-24): that
-    app's roles only, and ORGANISATION-LEVEL only -- an invitation is placed
-    at the root when accepted (C83), where a dealership role is not legal.
-    Built-in or this organisation's own (`roles_for_organization`), never
-    another's. The same rule `invite_to_app()` enforces, so the picker never
-    offers a role the save would refuse.
+    The roles an app's own Add User may give: that app's roles, built-in or
+    this organisation's own (`roles_for_organization`), never another's. DMS
+    offers EVERY role (the owner, 2026-11-24: only app roles -- the territory,
+    assigned later, says where); an app without territories offers its
+    organisation-level ones. The same rule `invite_to_app()` enforces, so the
+    picker never offers a role the save would refuse.
     """
-    roles = (
-        roles_for_organization(organization.id)
-        .filter(app_id=app_code, level=RoleLevel.ORG)
-        .order_by("display_order", "name")
-    )
+    roles = roles_for_organization(organization.id).filter(app_id=app_code)
+    # ONLY APP ROLES (the owner, 2026-11-24): an app that uses territories
+    # offers every role -- the territory, assigned later, says where.
+    if not App.objects.filter(code=app_code, unit_aware=True).exists():
+        roles = roles.filter(level=RoleLevel.ORG)
+    roles = roles.order_by("display_order", "name")
     return [InvitableRoleData(code=r.code, name=r.name, summary=r.summary) for r in roles]
 
 
@@ -1708,7 +1794,8 @@ def roles_for_app_person(
         grant = MembershipAppAccess.objects.filter(membership=membership, app_id=app_code).first()
         if grant is not None:
             at_the_root = grant.territories.filter(territory__is_root=True).exists()
-            level = RoleLevel.ORG if at_the_root else RoleLevel.UNIT
+            unplaced = not grant.territories.exists()
+            level = RoleLevel.ORG if at_the_root or unplaced else RoleLevel.UNIT
     elif _as_uuid(person_id) and InvitationAppGrant.objects.filter(
         invitation__organization=organization,
         invitation__pk=_as_uuid(person_id),
@@ -1719,11 +1806,11 @@ def roles_for_app_person(
     if level is None:
         raise not_found("User")
 
-    roles = (
-        roles_for_organization(organization.id)
-        .filter(app_id=app_code, level=level)
-        .order_by("display_order", "name")
-    )
+    roles = roles_for_organization(organization.id).filter(app_id=app_code)
+    # Every role in an app that uses territories (2026-11-24); else the level.
+    if not App.objects.filter(code=app_code, unit_aware=True).exists():
+        roles = roles.filter(level=level)
+    roles = roles.order_by("display_order", "name")
     return [InvitableRoleData(code=r.code, name=r.name, summary=r.summary) for r in roles]
 
 

@@ -4,6 +4,9 @@ from .views import (
     DmsInviteRolesView,
     DmsTerritoriesView,
     DmsTerritoryDetailView,
+    DmsTerritoryPeopleView,
+    DmsTerritoryPersonMoveView,
+    DmsTerritoryPersonView,
     DmsTerritoryStatusView,
     DmsUserDetailView,
     DmsUserRolesView,
@@ -31,6 +34,22 @@ urlpatterns = [
         "territories/<str:territory_id>/",
         DmsTerritoryDetailView.as_view(),
         name="dms-settings-territory",
+    ),
+    # A territory's People tab (2026-11-24), before the generic `<action>/`.
+    path(
+        "territories/<str:territory_id>/people/",
+        DmsTerritoryPeopleView.as_view(),
+        name="dms-settings-territory-people",
+    ),
+    path(
+        "territories/<str:territory_id>/people/<str:person_id>/",
+        DmsTerritoryPersonView.as_view(),
+        name="dms-settings-territory-person",
+    ),
+    path(
+        "territories/<str:territory_id>/people/<str:person_id>/move/",
+        DmsTerritoryPersonMoveView.as_view(),
+        name="dms-settings-territory-person-move",
     ),
     path(
         "territories/<str:territory_id>/<str:action>/",

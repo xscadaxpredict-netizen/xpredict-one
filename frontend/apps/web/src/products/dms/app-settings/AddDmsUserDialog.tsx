@@ -5,9 +5,10 @@
  * they are invited FROM DMS, so they get DMS ("since the user is getting
  * created in the app they will get the app in which they are created").
  *
- * THE ROLES ARE DMS'S ORGANISATION-LEVEL ONES (`invite-roles/`): an invitation
- * is placed at the organisation's root when accepted (C83), where a dealership
- * role is not legal -- so the picker offers only what the save will take.
+ * EVERY DMS ROLE (`invite-roles/`; the owner, 2026-11-24: only app roles). The
+ * person joins with NO territory and sees no DMS records until one is assigned
+ * (Territory Management -> People, or Edit) -- the picker offers what the save
+ * will take.
  *
  * THE ADMIN PANEL'S ADD USER, plus a role: the same dialog styles, the same
  * fields, and the same ending -- nothing is emailed, the inviter gets the link

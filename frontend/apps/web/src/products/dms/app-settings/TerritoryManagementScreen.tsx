@@ -186,6 +186,7 @@ export function TerritoryManagementScreen() {
             <TerritoryDetailPanel
               key={selected.territory.id}
               node={selected}
+              tree={tree}
               onClose={() => void navigate(basePath)}
             />
           </div>

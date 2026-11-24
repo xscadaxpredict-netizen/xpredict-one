@@ -23,6 +23,7 @@ import DmsSettingsRoutes from "../../products/dms/app-settings/routes";
 import { useUiStore } from "../../stores/uiStore";
 import { renderRoute } from "./harness";
 import type * as usersApi from "../admin/api/users";
+import type * as territoriesApi from "../../products/dms/app-settings/territories";
 import { appAccess, me, membership, ownerMembership } from "./factories";
 
 vi.mock("../api/auth", async (importOriginal) => ({
@@ -39,6 +40,28 @@ vi.mock("../../products/dms/app-settings/api", () => ({
   updateDmsUser: vi.fn(),
   setDmsUserStatus: vi.fn(),
   removeDmsUser: vi.fn(),
+}));
+
+// Edit's Territory field reads DMS's tree (2026-11-24); the rules stay real.
+vi.mock("../../products/dms/app-settings/territories", async (importOriginal) => ({
+  ...(await importOriginal<typeof territoriesApi>()),
+  fetchTerritories: vi.fn().mockResolvedValue([
+    {
+      id: "root", kind: "organisation", name: "Acme Motors", parent_id: null, is_root: true,
+      status: "active", code: null, gstin: "", pan: "", contact_person: "", email: "",
+      phone: "", city: "", state: "", postal_code: "", people_count: 0,
+    },
+    {
+      id: "t-guindy", kind: "dealer", name: "Chennai — Guindy", parent_id: "root",
+      is_root: false, status: "active", code: null, gstin: "", pan: "", contact_person: "",
+      email: "", phone: "", city: "", state: "", postal_code: "", people_count: 1,
+    },
+    {
+      id: "t-delhi", kind: "dealer", name: "Delhi East", parent_id: "root", is_root: false,
+      status: "active", code: null, gstin: "", pan: "", contact_person: "", email: "",
+      phone: "", city: "", state: "", postal_code: "", people_count: 1,
+    },
+  ]),
 }));
 
 // The link the dialog ends on comes from the person's record, as in Add User.
@@ -116,6 +139,7 @@ function person(overrides: Partial<AppUser>): AppUser {
     is_owner: false,
     role: { code: "dms.manager", name: "Manager" },
     territories: [],
+    places: [],
     status: "active",
     access_status: "active",
     ...overrides,
@@ -139,6 +163,7 @@ const PEOPLE: AppUser[] = [
     email: "nish@acme.test",
     role: { code: "dms.sales_representative", name: "Sales representative" },
     territories: ["Chennai — Guindy"],
+    places: [{ id: "t-guindy", name: "Chennai — Guindy" }],
   }),
   person({
     id: "off",
@@ -146,6 +171,7 @@ const PEOPLE: AppUser[] = [
     last_name: "S",
     email: "ravi@acme.test",
     territories: ["Delhi East"],
+    places: [{ id: "t-delhi", name: "Delhi East" }],
     status: "inactive",
     access_status: "disabled",
   }),
@@ -295,6 +321,7 @@ describe("Add User", () => {
       is_owner: false,
       role: { code: "dms.fleet_viewer", name: "Fleet viewer" },
       territories: [],
+      places: [],
       status: "pending",
       access_status: null,
     });
@@ -555,8 +582,52 @@ describe("Edit", () => {
         last_name: "Kumar",
         email: "nish@acme.test",
         role: "dms.manager",
+        // Where they work goes with the save, unchanged here.
+        territories: ["t-guindy"],
       }),
     );
+  });
+
+  it("changes where they work: a place taken off, another added", async () => {
+    mockFetchPersonRoles.mockResolvedValue([
+      { code: "dms.sales_representative", name: "Sales representative", summary: "Sells." },
+    ]);
+    mockUpdateDmsUser.mockResolvedValue(PEOPLE[1]!);
+    const dialog = await openEdit();
+    await within(dialog).findByRole("option", { name: /Delhi East/ });
+
+    fireEvent.click(within(dialog).getByRole("button", { name: "Remove Chennai — Guindy" }));
+    expect(within(dialog).getByText("No territory yet")).toBeInTheDocument();
+    fireEvent.change(within(dialog).getByLabelText("Add a place"), {
+      target: { value: "t-delhi" },
+    });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Save changes" }));
+
+    await waitFor(() =>
+      expect(mockUpdateDmsUser).toHaveBeenCalledWith(
+        "acme-motors",
+        "nish",
+        expect.objectContaining({ territories: ["t-delhi"] }),
+      ),
+    );
+  });
+
+  it("says somebody pending is placed once they join, and sends no places", async () => {
+    mockFetchPersonRoles.mockResolvedValue(ROLES);
+    mockUpdateDmsUser.mockResolvedValue(PEOPLE[3]!);
+    const dialog = await openEdit("Priya M");
+    await within(dialog).findByRole("option", { name: "Fleet viewer" });
+
+    expect(
+      within(dialog).getByText("They are placed in a territory once they have joined."),
+    ).toBeInTheDocument();
+    fireEvent.change(within(dialog).getByLabelText("Role in DMS"), {
+      target: { value: "dms.fleet_viewer" },
+    });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Save changes" }));
+
+    await waitFor(() => expect(mockUpdateDmsUser).toHaveBeenCalled());
+    expect(mockUpdateDmsUser.mock.calls[0]![2]).not.toHaveProperty("territories");
   });
 
   it("saves their current role when only their name changes", async () => {

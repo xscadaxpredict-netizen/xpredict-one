@@ -40,6 +40,7 @@ from core.organizations.exceptions import (
     AdministrationNotGrantableError,
     AdminNotJoinedError,
     AlreadyAnAdminError,
+    AlreadyInTerritoryError,
     AppAlreadyHeldError,
     AppNotSubscribedError,
     AppNotYetInUseError,
@@ -61,6 +62,7 @@ from core.organizations.exceptions import (
     OwnAdminRoleError,
     OwnerHoldsEveryAppError,
     OwnerProtectedError,
+    PendingPersonCannotBePlacedError,
     PersonEmailTakenError,
     RoleBeyondOwnAccessError,
     RoleInUseError,
@@ -776,12 +778,16 @@ def grant_app_access(
     """
     if role.app_id != app:
         raise RoleNotInAppError
-    if not territories:
+    app_uses_territories = App.objects.filter(code=app, unit_aware=True).exists()
+    # NO TERRITORY UNTIL ONE IS ASSIGNED (the owner, 2026-11-24): a DMS grant
+    # may hold none, and its holder then sees no DMS records
+    # (`resolve_allowed_territories()` answers an empty set -- fails closed).
+    # An app that does not use territories is always placed at its root.
+    if not territories and not app_uses_territories:
         raise GrantNeedsTerritoryError
     if any(t.organization_id != membership.organization_id for t in territories):
         # Another organisation's territory is one the caller cannot see (C49).
         raise not_found("Territory")
-    app_uses_territories = App.objects.filter(code=app, unit_aware=True).exists()
     placed_at_a_dealership = any(_is_dealership_place(t) for t in territories)
 
     # C27 / Q53, BOTH WAYS ROUND, across the person's other grants: a
@@ -845,6 +851,11 @@ def _placement(
     """
     if unit is not None:
         return [unit]
+    # JOINING A TERRITORY APP PLACES NOBODY (the owner, 2026-11-24): "every user
+    # who joined the DMS app without any territory will not have any territory;
+    # everything is possible only when a territory is assigned."
+    if App.objects.filter(code=app, unit_aware=True).exists():
+        return []
     return [Territory.objects.root_for(organization, app)]
 
 
@@ -1166,6 +1177,11 @@ def _assert_grants_are_legal(
             # customers.
             raise DealerScopedAppError
 
+        # ONLY APP ROLES (the owner, 2026-11-24): in an app that uses
+        # territories a role says WHAT and the territory WHERE -- any role at
+        # any territory (C82 point 3). Other apps keep the level rule.
+        if role.app.unit_aware:
+            continue
         wanted = RoleLevel.UNIT if unit_id is not None else RoleLevel.ORG
         if role.level != wanted:
             raise RoleScopeMismatchError
@@ -1531,10 +1547,11 @@ def invite_to_app(
     (Add User) then `assign_apps()` (Assign applications) -- so every rule of
     both holds here and cannot drift: organisation-wide inviters only, a free
     address, a subscribed app, never Administration, a role that exists for
-    this organisation, and -- because an invitation is placed at the root on
-    accepting (C83) -- an ORGANISATION-LEVEL role only. A dealership role is
-    refused (`RoleScopeMismatchError`, 409) and, the transaction being whole,
-    no invitation is left behind.
+    this organisation, and -- for an app that does not use territories -- an
+    organisation-level role (refused with `RoleScopeMismatchError`, 409, and,
+    the transaction being whole, no invitation is left behind). DMS takes ANY
+    of its roles (the owner, 2026-11-24: only app roles), and accepting places
+    the person nowhere: no territory until one is assigned.
     """
     invitation = invite_person(
         actor=actor,
@@ -1570,9 +1587,10 @@ def assign_apps(
     ALL OR NOTHING: one transaction, every rule checked before anything is
     written, so one bad app assigns none of them.
 
-    PLACED AT THE ORGANISATION'S ROOT -- organisation-wide, so only an
-    organisation-level role is legal -- until each app has its own territories
-    (C82). A person already at a dealership (through DMS) keeps C27: no
+    WHERE: an app without territories is placed at its root, so only an
+    organisation-level role is legal there; DMS is placed NOWHERE and takes
+    any of its roles (the owner, 2026-11-24) -- a territory is assigned later.
+    A person already at a dealership (through DMS) keeps C27: no
     organisation-wide app beside it -- `grant_app_access()` refuses it.
 
     A PENDING PERSON gets the apps on their invitation (`InvitationAppGrant`);
@@ -1701,10 +1719,9 @@ def change_app_role(
     """
     The app tile's Edit: change the role somebody holds in one app.
 
-    ONLY THE ROLE. Their places in the app stay as they are, and the new role
-    must fit them (C27): an organisation-level role for somebody placed at the
-    organisation, a dealership role for somebody at a dealership. A disabled
-    grant stays disabled.
+    ONLY THE ROLE. Their places in the app stay as they are. In DMS any role
+    fits any place (2026-11-24: only app roles); an app without territories
+    keeps its organisation-level roles. A disabled grant stays disabled.
     """
     person = _person_for_app_action(actor, organization, person_id, app)
     [(_, new_role)] = _resolve_grants(organization, [{"app": app, "role": role}])
@@ -1722,7 +1739,9 @@ def change_app_role(
 
     grant = _held_grant(person, app)
     places = [p.territory for p in grant.territories.select_related("territory")]
-    at_the_root = any(territory.is_root for territory in places)
+    # A territory app takes any role anywhere (2026-11-24), and may hold no
+    # place at all; an app without territories is always at its root.
+    at_the_root = not places or any(territory.is_root for territory in places)
     _assert_grants_are_legal(
         organization, None if at_the_root else places[0].id, [(app, new_role)]
     )
@@ -1789,6 +1808,156 @@ def unassign_app(
     return person
 
 
+# ---------------------------------------------------------------------------
+# WHERE SOMEBODY WORKS IN A TERRITORY APP (the owner, 2026-11-24): a
+# territory's People tab (Assign users, Remove, Move) and DMS Users -> Edit.
+#
+# ONE WRITER, `set_app_places()` / `_write_places()`: the doors differ, the
+# rule cannot. Their role stays as it is -- only app roles, any role at any
+# territory -- and NO PLACE AT ALL is allowed: they then see no records until
+# somebody assigns one. Never the owner (everywhere by rule) nor somebody
+# pending (C83: an invitation sits nowhere).
+# ---------------------------------------------------------------------------
+
+
+def _territories_in_app(
+    organization: Organization, app: str, territory_ids: list[uuid.UUID]
+) -> list[Territory]:
+    """These territories of this organisation's tree for `app`, or 404 (C49)."""
+    wanted = list(dict.fromkeys(territory_ids))
+    found = {t.pk: t for t in Territory.objects.of(organization, app).filter(pk__in=wanted)}
+    if len(found) != len(wanted):
+        raise not_found("Territory")
+    return [found[pk] for pk in wanted]
+
+
+def _places_grant(
+    actor: Membership, organization: Organization, person_id: uuid.UUID, app: str
+) -> tuple[Membership, MembershipAppAccess]:
+    """The joined person and their grant for a territory app, or why not."""
+    if not App.objects.filter(code=app, unit_aware=True).exists():
+        raise not_found("App")
+    person = _person_for_app_action(actor, organization, person_id, app)
+    if isinstance(person, Invitation):
+        if person.app_grants.filter(app_id=app).exists():
+            raise PendingPersonCannotBePlacedError
+        raise not_found("App")
+    return person, _held_grant(person, app)
+
+
+def _current_places(grant: MembershipAppAccess) -> list[Territory]:
+    return [p.territory for p in grant.territories.select_related("territory")]
+
+
+def _write_places(
+    actor: Membership, person: Membership, grant: MembershipAppAccess, places: list[Territory]
+) -> None:
+    """Their grant, the same role, exactly these places -- through the one writer."""
+    held = grant.roles.select_related("role").first()
+    if held is None:  # a grant always carries its role; refuse rather than guess one
+        raise not_found("App")
+    grant_app_access(
+        membership=person,
+        app=grant.app_id,
+        role=held.role,
+        territories=places,
+        actor_id=actor.user_id,
+    )
+
+
+@transaction.atomic
+def set_app_places(
+    *,
+    actor: Membership,
+    organization: Organization,
+    person_id: uuid.UUID,
+    app: str,
+    territory_ids: list[uuid.UUID],
+) -> Membership:
+    """
+    Where somebody works in one territory app: EXACTLY these places, none
+    allowed -- DMS Users -> Edit's Territory field. Every C27 rule still holds
+    (`grant_app_access()`): somebody holding an app without territories is
+    never placed at a dealership.
+    """
+    person, grant = _places_grant(actor, organization, person_id, app)
+    places = _territories_in_app(organization, app, territory_ids)
+    _write_places(actor, person, grant, places)
+    return person
+
+
+@transaction.atomic
+def assign_to_territory(
+    *,
+    actor: Membership,
+    organization: Organization,
+    territory: Territory,
+    person_ids: list[uuid.UUID],
+) -> None:
+    """
+    A territory's Assign users: ADD this territory to where each person works.
+    Their role and their other places stay (the owner: "this will add the user
+    to this territory, that's all"). ALL OR NOTHING: one person who cannot be
+    placed (pending, already here, C27) assigns nobody.
+    """
+    wanted = list(dict.fromkeys(person_ids))
+    if not wanted:
+        raise InvalidInputError(
+            field_errors=[FieldError(field="users", code="required", detail="Choose somebody.")]
+        )
+    for person_id in wanted:
+        person, grant = _places_grant(actor, organization, person_id, territory.app_id)
+        places = _current_places(grant)
+        if any(place.pk == territory.pk for place in places):
+            raise AlreadyInTerritoryError
+        _write_places(actor, person, grant, [*places, territory])
+
+
+@transaction.atomic
+def remove_from_territory(
+    *,
+    actor: Membership,
+    organization: Organization,
+    territory: Territory,
+    person_id: uuid.UUID,
+) -> None:
+    """
+    Take this territory away from where somebody works. Their last place may
+    go: they then see no records until one is assigned. 404 if they do not
+    work here.
+    """
+    person, grant = _places_grant(actor, organization, person_id, territory.app_id)
+    places = _current_places(grant)
+    if not any(place.pk == territory.pk for place in places):
+        raise not_found("User")
+    _write_places(actor, person, grant, [p for p in places if p.pk != territory.pk])
+
+
+@transaction.atomic
+def move_to_territory(
+    *,
+    actor: Membership,
+    organization: Organization,
+    territory: Territory,
+    person_id: uuid.UUID,
+    to_territory_id: uuid.UUID,
+) -> None:
+    """
+    The People tab's Move: from THIS territory to another -- one place swapped
+    for another, their other places and their role untouched. 404 if they do
+    not work here; a destination they already work at simply stays.
+    """
+    person, grant = _places_grant(actor, organization, person_id, territory.app_id)
+    [destination] = _territories_in_app(organization, territory.app_id, [to_territory_id])
+    places = _current_places(grant)
+    if not any(place.pk == territory.pk for place in places):
+        raise not_found("User")
+    kept = [p for p in places if p.pk != territory.pk]
+    if not any(p.pk == destination.pk for p in kept):
+        kept.append(destination)
+    _write_places(actor, person, grant, kept)
+
+
 @transaction.atomic
 def update_app_user(
     *,
@@ -1800,6 +1969,7 @@ def update_app_user(
     last_name: str,
     email: str,
     role: str,
+    territory_ids: list[uuid.UUID] | None = None,
 ) -> Membership | Invitation:
     """
     AN APP'S OWN EDIT (the owner, 2026-11-24: DMS settings -> Users -> Edit):
@@ -1826,9 +1996,24 @@ def update_app_user(
         last_name=last_name,
         email=email,
     )
-    return change_app_role(
+    person = change_app_role(
         actor=actor, organization=organization, person_id=person_id, app=app, role=role
     )
+    # WHERE THEY WORK, when the form sends it (2026-11-24). Somebody pending
+    # has no place to change: an empty list is fine, a place is refused.
+    if territory_ids is not None:
+        if isinstance(person, Invitation):
+            if territory_ids:
+                raise PendingPersonCannotBePlacedError
+        else:
+            set_app_places(
+                actor=actor,
+                organization=organization,
+                person_id=person_id,
+                app=app,
+                territory_ids=territory_ids,
+            )
+    return person
 
 
 @transaction.atomic

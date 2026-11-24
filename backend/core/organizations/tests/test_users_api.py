@@ -33,7 +33,6 @@ from core.organizations.exceptions import (
     AdministrationNotGrantableError,
     AppNotSubscribedError,
     DealerScopedAppError,
-    RoleScopeMismatchError,
 )
 from core.organizations.models import (
     ActivationCode,
@@ -704,18 +703,18 @@ class TestC27DealerScopedGrants:
                 ],
             )
 
-    def test_a_dealer_scoped_person_cannot_hold_an_org_level_role(self):
+    def test_any_dms_role_at_a_dealership(self):
+        """ONLY APP ROLES (the owner, 2026-11-24): once refused as org-level."""
         result = found()
         unit = Territory.objects.create(organization=result.organization, name="Whitefield")
 
-        with pytest.raises(RoleScopeMismatchError):
-            edit(result, unit_id=unit.id, apps=[{"app": "dms", "role": "dms.group_operations"}])
+        edit(result, unit_id=unit.id, apps=[{"app": "dms", "role": "dms.group_operations"}])
 
-    def test_an_organisation_wide_person_cannot_hold_a_dealership_role(self):
+    def test_any_dms_role_with_no_place(self):
+        """And once refused as dealership-level for somebody not at a dealership."""
         result = found()
 
-        with pytest.raises(RoleScopeMismatchError):
-            edit(result, apps=[{"app": "dms", "role": "dms.manager"}])
+        edit(result, apps=[{"app": "dms", "role": "dms.manager"}])
 
     def test_administration_cannot_be_granted_as_an_app(self):
         """

@@ -2,8 +2,8 @@
  * A territory opened beside the tree (the owner, 2026-11-24): the same side
  * panel as DMS settings -> Users' person (`RecordPanel.module.css`) -- badge,
  * name, a line saying what and where it is, the ⋮ (`TerritoryActions`) -- and
- * ONE tab, Basic Info, in two foldable sections: Territory details, and Tax
- * and contact.
+ * two tabs: Basic Info, in two foldable sections (Territory details, Tax and
+ * contact), and PEOPLE (2026-11-24): who works here (`TerritoryPeopleTab`).
  */
 
 import { useState, type ReactNode } from "react";
@@ -27,15 +27,21 @@ import styles from "../../../shell/admin/components/UserDetailPanel.module.css";
 import { KIND_LABEL } from "./territories";
 import own from "./TerritoryManagement.module.css";
 import { TerritoryActions } from "./TerritoryActions";
-import { initialsOf, type TreeNode } from "./territoryTree";
+import { TerritoryPeopleTab } from "./TerritoryPeopleTab";
+import { initialsOf, type Tree, type TreeNode } from "./territoryTree";
 
 interface TerritoryDetailPanelProps {
   node: TreeNode;
+  /** The whole tree, for Move's list of places. */
+  tree: Tree;
   onClose: () => void;
 }
 
-export function TerritoryDetailPanel({ node, onClose }: TerritoryDetailPanelProps) {
+type Tab = "info" | "people";
+
+export function TerritoryDetailPanel({ node, tree, onClose }: TerritoryDetailPanelProps) {
   const [statusError, setStatusError] = useState<string | null>(null);
+  const [tab, setTab] = useState<Tab>("info");
   const { territory } = node;
 
   const where = territory.is_root
@@ -64,18 +70,30 @@ export function TerritoryDetailPanel({ node, onClose }: TerritoryDetailPanelProp
           type="button"
           role="tab"
           id="territory-tab-info"
-          aria-selected="true"
-          aria-controls="territory-panel-info"
+          aria-selected={tab === "info"}
+          aria-controls="territory-panel"
           className={panel.tab}
+          onClick={() => setTab("info")}
         >
           Basic Info
+        </button>
+        <button
+          type="button"
+          role="tab"
+          id="territory-tab-people"
+          aria-selected={tab === "people"}
+          aria-controls="territory-panel"
+          className={panel.tab}
+          onClick={() => setTab("people")}
+        >
+          People ({String(territory.people_count)})
         </button>
       </div>
 
       <div
         role="tabpanel"
-        id="territory-panel-info"
-        aria-labelledby="territory-tab-info"
+        id="territory-panel"
+        aria-labelledby={tab === "info" ? "territory-tab-info" : "territory-tab-people"}
         className={panel.panel}
       >
         <div className={panel.scroll}>
@@ -85,6 +103,9 @@ export function TerritoryDetailPanel({ node, onClose }: TerritoryDetailPanelProp
             </p>
           )}
 
+          {tab === "people" ? (
+            <TerritoryPeopleTab node={node} tree={tree} />
+          ) : (
           <div className={own.sections}>
             <Section id="territory-details" title="Territory details">
               <Fact icon={<CircleCheckIcon size={18} />} label="Status">
@@ -145,6 +166,7 @@ export function TerritoryDetailPanel({ node, onClose }: TerritoryDetailPanelProp
               </Fact>
             </Section>
           </div>
+          )}
         </div>
       </div>
     </DetailPanel>

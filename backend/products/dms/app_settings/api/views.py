@@ -18,13 +18,17 @@ from core.organizations.selectors import (
     app_users,
     invitable_roles,
     roles_for_app_person,
+    territory_people,
     territory_tree,
 )
 from core.organizations.services import (
     add_territory,
+    assign_to_territory,
     close_territory,
     invite_to_app,
+    move_to_territory,
     remove_from_app,
+    remove_from_territory,
     reopen_territory,
     set_app_status,
     update_app_user,
@@ -35,12 +39,15 @@ from shared.exceptions import not_found
 
 from .serializers import (
     AppUserSerializer,
+    AssignPeopleSerializer,
     DmsEditSerializer,
     DmsInviteSerializer,
     DmsTerritoryEditSerializer,
     DmsTerritoryNewSerializer,
     DmsTerritorySerializer,
     InvitableRoleSerializer,
+    MovePersonSerializer,
+    TerritoryPersonSerializer,
 )
 
 
@@ -133,12 +140,15 @@ class DmsUserDetailView(OrgScopedAPIView):
         payload = DmsEditSerializer(data=request.data)
         payload.is_valid(raise_exception=True)
 
+        data = dict(payload.validated_data)
+        territory_ids = data.pop("territories", None)
         update_app_user(
             actor=self.membership,
             organization=self.organization,
             app=AppCode.DMS,
             person_id=user_id,
-            **payload.validated_data,
+            territory_ids=territory_ids,
+            **data,
         )
         return Response(_row(self.organization, user_id))
 
@@ -300,3 +310,91 @@ class DmsTerritoryStatusView(OrgScopedAPIView):
         territory = _territory(self.organization, territory_id)
         self._ACTIONS[action](territory=territory)
         return Response(_territory_row(self.organization, territory.pk))
+
+
+# ---------------------------------------------------------------------------
+# A territory's People tab (the owner, 2026-11-24): who works here, Assign
+# users (adds this place), Remove, Move. Placing somebody changes THEIR DMS,
+# so it is `dms.user.update` -- the same act as DMS Users -> Edit's Territory
+# field. Seeing the tab needs the tree's view and the users' view.
+# ---------------------------------------------------------------------------
+
+_PEOPLE_VIEW = ["dms.territory.view", "dms.user.view"]
+
+
+class DmsTerritoryPeopleView(OrgScopedAPIView):
+    """
+    `GET .../territories/<id>/people/` -- the people placed AT this territory.
+    `POST` `{users: [ids]}` -- Assign users: ADD this territory to where each
+    works (`assign_to_territory()`), all or nothing. Answers with the list.
+    """
+
+    required_permissions: ClassVar[list[str]] = _PEOPLE_VIEW
+    method_permissions: ClassVar[dict[str, list[str]]] = {
+        "POST": ["dms.user.update"],
+    }
+
+    def get(self, request: Request, org_slug: str, territory_id: str) -> Response:
+        territory = _territory(self.organization, territory_id)
+        people = territory_people(self.organization, territory)
+        return Response(TerritoryPersonSerializer(people, many=True).data)
+
+    def post(self, request: Request, org_slug: str, territory_id: str) -> Response:
+        territory = _territory(self.organization, territory_id)
+        payload = AssignPeopleSerializer(data=request.data)
+        payload.is_valid(raise_exception=True)
+
+        assign_to_territory(
+            actor=self.membership,
+            organization=self.organization,
+            territory=territory,
+            person_ids=payload.validated_data["users"],
+        )
+        people = territory_people(self.organization, territory)
+        return Response(TerritoryPersonSerializer(people, many=True).data)
+
+
+class DmsTerritoryPersonView(OrgScopedAPIView):
+    """
+    `DELETE .../territories/<id>/people/<person>/` -- Remove: this territory
+    comes off where they work; their last place may go. 204.
+    """
+
+    required_permissions: ClassVar[list[str]] = [*_PEOPLE_VIEW, "dms.user.update"]
+
+    def delete(
+        self, request: Request, org_slug: str, territory_id: str, person_id: str
+    ) -> Response:
+        territory = _territory(self.organization, territory_id)
+        remove_from_territory(
+            actor=self.membership,
+            organization=self.organization,
+            territory=territory,
+            person_id=person_id,
+        )
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+class DmsTerritoryPersonMoveView(OrgScopedAPIView):
+    """
+    `POST .../territories/<id>/people/<person>/move/` `{to: id}` -- Move: this
+    place swapped for another, their role and other places untouched. 204.
+    """
+
+    required_permissions: ClassVar[list[str]] = [*_PEOPLE_VIEW, "dms.user.update"]
+
+    def post(
+        self, request: Request, org_slug: str, territory_id: str, person_id: str
+    ) -> Response:
+        territory = _territory(self.organization, territory_id)
+        payload = MovePersonSerializer(data=request.data)
+        payload.is_valid(raise_exception=True)
+
+        move_to_territory(
+            actor=self.membership,
+            organization=self.organization,
+            territory=territory,
+            person_id=person_id,
+            to_territory_id=payload.validated_data["to"],
+        )
+        return Response(status=status.HTTP_204_NO_CONTENT)

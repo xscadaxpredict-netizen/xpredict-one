@@ -24,7 +24,6 @@ from core.organizations.models import (
     Territory,
     TerritoryKind,
 )
-from core.organizations.selectors import reach
 from core.organizations.services import accept_invitation, grant_app_access, sign_up
 from core.permissions.models import AppCode, Permission, Role, RolePermission
 
@@ -105,7 +104,10 @@ class TestAssigning:
                 "status": "active",
             }
         ]
-        assert reach(Membership.objects.get(pk=asha.pk)) is None
+        # DMS PLACES NOBODY (the owner, 2026-11-24): no territory until one is
+        # assigned -- never "the root", which would mean everywhere.
+        grant = Membership.objects.get(pk=asha.pk).grants.get(app_id="dms")
+        assert not grant.territories.exists()
 
     def test_several_apps_in_one_request(self, client):
         result = found()
@@ -160,15 +162,15 @@ class TestWhatIsRefused:
         assert response.status_code == 409
         assert response.json()["code"] == "app_not_subscribed"
 
-    def test_a_dealership_level_role(self, client):
-        """Organisation-wide until per-app territories (C82): org-level roles only."""
+    def test_any_dms_role_is_given(self, client):
+        """ONLY APP ROLES (the owner, 2026-11-24): what was a dealership role too."""
         result = found()
         asha = newcomer(result)
 
         response = assign(client, result, asha.id, [{"app": "dms", "role": "dms.manager"}])
 
-        assert response.status_code == 409
-        assert response.json()["code"] == "role_scope_mismatch"
+        assert response.status_code == 200
+        assert response.json()["apps"][0]["role_code"] == "dms.manager"
 
     def test_another_apps_role(self, client):
         result = found()

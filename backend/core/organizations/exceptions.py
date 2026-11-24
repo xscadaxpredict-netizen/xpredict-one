@@ -303,6 +303,29 @@ class TerritoryAlreadyOpenError(ConflictError):
     message = "That territory is already open."
 
 
+# ---------------------------------------------------------------------------
+# Assigning people to territories (the owner, 2026-11-24): a territory's People
+# tab and DMS Users -> Edit.
+# ---------------------------------------------------------------------------
+
+
+class PendingPersonCannotBePlacedError(ConflictError):
+    """
+    Somebody who has not joined yet has no place to change: an invitation sits
+    nowhere (C83). They are assigned to territories once they have joined.
+    """
+
+    code = "pending_person_cannot_be_placed"
+    message = "They have not joined yet. Assign them to a territory once they have."
+
+
+class AlreadyInTerritoryError(ConflictError):
+    """They already work at this territory -- assigning only adds a place."""
+
+    code = "already_in_territory"
+    message = "They already work at that territory."
+
+
 class UnitClosedError(AuthorizationError):
     """
     The caller works at a dealership that has been closed (C63).
