@@ -987,6 +987,8 @@ class TerritoryPersonData:
     """Where else they work in this app, by name."""
     access_status: str
     """Their grant: `active`, or `disabled` after DMS Users' Deactivate."""
+    other_apps: list[str]
+    """Apps they hold that ignore territories: while held, only the organisation."""
 
 
 def territory_people(organization: Organization, territory: Territory) -> list[TerritoryPersonData]:
@@ -1012,6 +1014,13 @@ def territory_people(organization: Organization, territory: Territory) -> list[T
         )
         .distinct()
     )
+    others_of: dict = {}
+    for other in MembershipAppAccess.objects.filter(
+        membership_id__in=[g.membership_id for g in grants], app__unit_aware=False
+    ).select_related("app"):
+        others_of.setdefault(other.membership_id, []).append(
+            "the Admin panel" if other.app_id == AppCode.ADMIN else other.app.name
+        )
     people = []
     for grant in grants:
         user = grant.membership.user
@@ -1029,6 +1038,7 @@ def territory_people(organization: Organization, territory: Territory) -> list[T
                     if p.territory_id != territory.pk
                 ),
                 access_status=str(grant.status),
+                other_apps=sorted(others_of.get(grant.membership_id, [])),
             )
         )
     people.sort(key=lambda p: (f"{p.first_name} {p.last_name}".strip() or p.email).lower())
@@ -1593,6 +1603,13 @@ class AppUserData:
     places: list[PlaceData]
     """The same places with their ids, for Edit's Territory field (2026-11-24)."""
 
+    other_apps: list[str]
+    """
+    The apps they hold that do not use territories, by name (2026-11-24): while
+    they hold any, they can be placed only at the organisation -- a territory's
+    people hold DMS only.
+    """
+
     status: str
     """
     `active`, `inactive` or `pending` -- whether they can open THIS app now.
@@ -1673,6 +1690,31 @@ def app_users(organization: Organization, app_code: str) -> list[AppUserData]:
         invitation__accepted_at__isnull=True,
     ).select_related("invitation", "role")
 
+    # THE OTHER APPS each person holds that ignore territories -- one query for
+    # the members, one for the invitations, never one per person.
+    def _named(app_row) -> str:
+        return "the Admin panel" if app_row.code == AppCode.ADMIN else app_row.name
+
+    others_of: dict = {}
+    for other in (
+        MembershipAppAccess.objects.filter(
+            membership__organization=organization, app__unit_aware=False
+        )
+        .exclude(app=app)
+        .select_related("app")
+    ):
+        others_of.setdefault(other.membership_id, []).append(_named(other.app))
+    for other in (
+        InvitationAppGrant.objects.filter(
+            invitation__organization=organization,
+            invitation__accepted_at__isnull=True,
+            app__unit_aware=False,
+        )
+        .exclude(app=app)
+        .select_related("app")
+    ):
+        others_of.setdefault(other.invitation_id, []).append(_named(other.app))
+
     people: list[AppUserData] = []
     for grant in grants:
         membership = grant.membership
@@ -1698,6 +1740,7 @@ def app_users(organization: Organization, app_code: str) -> list[AppUserData]:
                     ),
                     key=lambda place: place.name,
                 ),
+                other_apps=sorted(others_of.get(membership.pk, [])),
                 status=APP_USER_ACTIVE if can_open else APP_USER_INACTIVE,
                 access_status=str(grant.status),
                 created_at=membership.created_at,
@@ -1716,6 +1759,7 @@ def app_users(organization: Organization, app_code: str) -> list[AppUserData]:
                 # AN INVITATION SITS NOWHERE (C83): placed when they join.
                 territories=[],
                 places=[],
+                other_apps=sorted(others_of.get(invitation.pk, [])),
                 status=APP_USER_PENDING,
                 access_status=None,
                 created_at=invitation.created_at,
@@ -1737,6 +1781,7 @@ def app_users(organization: Organization, app_code: str) -> list[AppUserData]:
         role=None,
         territories=[],
         places=[],
+        other_apps=[],
         status=APP_USER_ACTIVE,
         access_status=None,
         created_at=owner.created_at,

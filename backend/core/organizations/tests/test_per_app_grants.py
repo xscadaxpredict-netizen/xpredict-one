@@ -25,6 +25,7 @@ from conftest import TEST_TENANT_ALIAS
 from core.organizations.exceptions import (
     DealerScopedAppError,
     GrantNeedsTerritoryError,
+    OtherAppsHeldError,
     RoleNotInAppError,
 )
 from core.organizations.models import (
@@ -234,7 +235,8 @@ class TestADealershipsPeopleGetDmsOnly:
             membership=result.membership, app="crm", role=role("crm.member"), territories=[root]
         )
 
-        with pytest.raises(DealerScopedAppError):
+        # NAMED since 2026-11-24 (the owner): it says which apps to remove first.
+        with pytest.raises(OtherAppsHeldError):
             grant_app_access(
                 membership=result.membership,
                 app="dms",
@@ -242,21 +244,17 @@ class TestADealershipsPeopleGetDmsOnly:
                 territories=[delhi],
             )
 
-    def test_head_office_people_may_hold_both(self):
+    def test_people_at_the_organisation_may_hold_both(self):
         """
-        Somebody not at a dealership may hold DMS and CRM (C27). Each grant in
-        its own app's tree since 2026-11-24: CRM's region is CRM's.
+        Somebody at the organisation may hold DMS and CRM (C27). Since
+        2026-11-24 ANY territory below the organisation -- a region too --
+        holds DMS only, so "both" means the organisation, in each app's tree.
         """
         result = found()
-        north = Territory.objects.create(
-            organization=result.organization,
-            app=AppCode.CRM,
-            kind=TerritoryKind.REGION,
-            name="North",
-        )
+        crm_root = Territory.objects.root_for(result.organization, AppCode.CRM)
 
         grant_app_access(
-            membership=result.membership, app="crm", role=role("crm.member"), territories=[north]
+            membership=result.membership, app="crm", role=role("crm.member"), territories=[crm_root]
         )
 
         assert {g[0] for g in granted(result.membership)} == {"dms", "crm"}

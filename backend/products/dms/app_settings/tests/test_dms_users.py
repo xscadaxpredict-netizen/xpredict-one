@@ -124,6 +124,7 @@ class TestTheList:
             "role",
             "territories",
             "places",
+            "other_apps",
             "status",
             "access_status",
         }

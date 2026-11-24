@@ -157,7 +157,10 @@ change only through `set_app_places()` / `assign_to_territory()` / `remove_from_
 tab and DMS Users -> Edit's Territory field; permission `dms.user.update`.
 **`organizations/0027` unplaced every non-owner at DMS's root: after it deploys nobody but the
 owner sees DMS records until assigned.** A test building a DMS person with no territory now
-builds one who sees nothing -- pass the root to mean everywhere.
+builds one who sees nothing -- pass the root to mean everywhere. **A TERRITORY'S PEOPLE HOLD DMS
+ONLY:** anyone placed below the organisation (region, dealer, branch, warehouse) holds no app that
+ignores territories -- `grant_app_access()` refuses it (`OtherAppsHeldError` names the apps); only
+the organisation (the root) leaves somebody free to hold the Admin panel or CRM.
 
 **Session 26 added (C84-C88):** Edit user is BASIC INFORMATION ONLY -- other fields refused
 (422), so a save cannot touch apps or standing; `update_person()` has no endpoint until
@@ -487,8 +490,8 @@ user row on every request and refuses an inactive one, so **disabling somebody t
 effect on their next request**, not after a token expires. The 15-minute access
 lifetime is how long a STOLEN token survives a logout.
 
-**Gates:** `npm run test -w web` (536), `npm run typecheck -w web`, and in `backend/`:
-`pytest` (1259, 2026-11-24 with territory assignment), `ruff check .`, `manage.py makemigrations --check`, and
+**Gates:** `npm run test -w web` (538), `npm run typecheck -w web`, and in `backend/`:
+`pytest` (1267, 2026-11-24, DMS only below the organisation), `ruff check .`, `manage.py makemigrations --check`, and
 `.venv/Scripts/lint-imports.exe` — **not** `python -m importlinter.cli`, which exits 0
 without running. **Where Windows blocks the `.exe` ("Permission denied"), call the
 function:** `.venv/Scripts/python.exe -c "import sys; from importlinter.cli import

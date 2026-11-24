@@ -25,6 +25,11 @@ export interface AppUser {
   territories: string[];
   /** The same places with their ids, for Edit's Territory field (2026-11-24). */
   places: { id: string; name: string }[];
+  /**
+   * Apps they hold that ignore territories ("the Admin panel", "CRM"). While
+   * they hold any, they can be placed only at the organisation (2026-11-24).
+   */
+  other_apps: string[];
   status: AppUserStatus;
   /**
    * Their DMS access itself, which Deactivate / Activate switch: `disabled`

@@ -506,6 +506,7 @@ function personAt(overrides: Partial<TerritoryPerson>): TerritoryPerson {
     role: { code: "dms.manager", name: "Manager" },
     other_places: [],
     access_status: "active",
+    other_apps: [],
     ...overrides,
   };
 }
@@ -532,6 +533,7 @@ function dmsUser(overrides: Partial<AppUser>): AppUser {
     role: { code: "dms.technician", name: "Technician" },
     territories: [],
     places: [],
+    other_apps: [],
     status: "active",
     access_status: "active",
     ...overrides,
@@ -544,6 +546,7 @@ const DMS_USERS: AppUser[] = [
   dmsUser({ id: "arjun", first_name: "Arjun", last_name: "Kumar" }),
   dmsUser({ id: "meera", first_name: "Meera", last_name: "Iyer", places: [{ id: "jaipur", name: "Jaipur Motors" }] }),
   dmsUser({ id: "mehul", first_name: "Mehul", last_name: "E", status: "pending", access_status: null }),
+  dmsUser({ id: "nish", first_name: "Nishanth", last_name: "S", other_apps: ["the Admin panel"] }),
 ];
 
 async function openPeople() {
@@ -590,6 +593,11 @@ describe("a territory's People tab", () => {
     expect(within(dialog).getByText("Already at Delhi Motors")).toBeInTheDocument();
     expect(within(dialog).getByRole("checkbox", { name: /Mehul E/ })).toBeDisabled();
     expect(within(dialog).getByText(/Technician · at Jaipur Motors/)).toBeInTheDocument();
+    // A territory's people hold DMS only (2026-11-24).
+    expect(within(dialog).getByRole("checkbox", { name: /Nishanth S/ })).toBeDisabled();
+    expect(
+      within(dialog).getByText("Also holds the Admin panel — remove it in the Admin panel first"),
+    ).toBeInTheDocument();
 
     fireEvent.click(within(dialog).getByRole("checkbox", { name: /Arjun Kumar/ }));
     fireEvent.click(within(dialog).getByRole("checkbox", { name: /Meera Iyer/ }));
@@ -646,5 +654,50 @@ describe("a territory's People tab", () => {
     await waitFor(() =>
       expect(mockMovePerson).toHaveBeenCalledWith("acme-motors", "delhi", "priya", "south"),
     );
+  });
+});
+
+describe("a territory's people hold DMS only", () => {
+  it("lets somebody holding another app be assigned to the organisation", async () => {
+    mockFetchDmsUsers.mockResolvedValue(DMS_USERS);
+    mockFetchPeople.mockResolvedValue([]);
+    await showTree(`${PAGE}/root`);
+    const panel = await screen.findByRole("complementary", { name: "Acme Motors" });
+    fireEvent.click(within(panel).getByRole("tab", { name: /People/ }));
+
+    fireEvent.click(await within(panel).findByRole("button", { name: "+ Assign users" }));
+    const dialog = await screen.findByRole("dialog", { name: "Assign users" });
+    await within(dialog).findByText("Nishanth S");
+
+    expect(within(dialog).getByRole("checkbox", { name: /Nishanth S/ })).toBeEnabled();
+  });
+
+  it("offers only the organisation in Move to somebody holding another app", async () => {
+    mockFetchPeople.mockResolvedValue([
+      personAt({
+        id: "nish",
+        first_name: "Nishanth",
+        last_name: "S",
+        email: "nish@acme.test",
+        other_apps: ["the Admin panel"],
+      }),
+    ]);
+    await showTree(`${PAGE}/root`);
+    const panel = await screen.findByRole("complementary", { name: "Acme Motors" });
+    fireEvent.click(within(panel).getByRole("tab", { name: /People/ }));
+    await within(panel).findByText("Nishanth S");
+
+    fireEvent.keyDown(screen.getByRole("button", { name: "More actions for Nishanth S" }), {
+      key: "Enter",
+    });
+    fireEvent.click(
+      within(await screen.findByRole("menu")).getByRole("menuitem", {
+        name: "Move to another territory",
+      }),
+    );
+    const dialog = await screen.findByRole("dialog", { name: "Move Nishanth S" });
+
+    expect(within(dialog).getByRole("option", { name: /North \(Region\)/ })).toBeDisabled();
+    expect(within(dialog).getByText(/can be placed only at the organisation/)).toBeInTheDocument();
   });
 });

@@ -234,6 +234,7 @@ class TestPeopleTab:
             "role",
             "other_places",
             "access_status",
+            "other_apps",
         }
 
     def test_assign_adds_the_place_and_keeps_the_others_and_the_role(self, client):
@@ -550,3 +551,129 @@ class TestUnplaceMigration:
         assert places_of(at_root) == []
         assert places_of(at_both) == ["Delhi Motors"]
         assert places_of(owner) == owner_before
+
+
+# --- A territory's people hold DMS only (the owner, 2026-11-24) ----------------------
+
+
+def with_admin_panel(result, person):
+    """Give a DMS person the Admin panel too -- an app that ignores territories."""
+    grant_app_access(
+        membership=person,
+        app=AppCode.ADMIN,
+        role=Role.objects.get(code="admin.org_admin"),
+        territories=[root(result, AppCode.ADMIN)],
+    )
+    return person
+
+
+class TestATerritorysPeopleHoldDmsOnly:
+    @pytest.mark.parametrize("kind", [TerritoryKind.REGION, TerritoryKind.WAREHOUSE])
+    def test_somebody_holding_another_app_is_not_assigned_below_the_organisation(
+        self, client, kind
+    ):
+        result = found()
+        place = box(result, "Somewhere", kind)
+        person = with_admin_panel(result, member(result, email="both@acme.test"))
+
+        response = as_owner(client, result).post(
+            url(result, place), {"users": [str(person.pk)]}, format="json"
+        )
+
+        assert response.status_code == 409
+        body = response.json()
+        assert body["code"] == "other_apps_held"
+        assert "the Admin panel" in body["detail"]
+        assert places_of(person) == []
+
+    def test_the_organisation_takes_them(self, client):
+        result = found()
+        person = with_admin_panel(result, member(result, email="both@acme.test"))
+
+        response = as_owner(client, result).post(
+            url(result, root(result)), {"users": [str(person.pk)]}, format="json"
+        )
+
+        assert response.status_code == 200, response.content
+        assert places_of(person) == ["Acme Water"]
+
+    def test_moving_them_down_from_the_organisation_is_refused(self, client):
+        result = found()
+        north = box(result, "North")
+        person = with_admin_panel(
+            result, member(result, email="both@acme.test", places=[root(result)])
+        )
+
+        response = as_owner(client, result).post(
+            url(result, root(result), f"{person.pk}/move/"), {"to": str(north.pk)}, format="json"
+        )
+
+        assert response.status_code == 409
+        assert response.json()["code"] == "other_apps_held"
+        assert places_of(person) == ["Acme Water"]
+
+    def test_moving_up_to_the_organisation_and_between_territories_is_just_moving(self, client):
+        result = found()
+        north = box(result, "North")
+        delhi = box(result, "Delhi Motors", TerritoryKind.DEALER, north)
+        person = member(result, email="p@acme.test", places=[delhi])
+        owner = as_owner(client, result)
+
+        between = owner.post(
+            url(result, delhi, f"{person.pk}/move/"), {"to": str(north.pk)}, format="json"
+        )
+        up = owner.post(
+            url(result, north, f"{person.pk}/move/"), {"to": str(root(result).pk)}, format="json"
+        )
+
+        assert (between.status_code, up.status_code) == (204, 204)
+        assert places_of(person) == ["Acme Water"]
+
+    def test_edit_cannot_place_them_below_the_organisation_and_saves_nothing(self, client):
+        result = found()
+        north = box(result, "North")
+        meera = with_admin_panel(
+            result,
+            member(result, email="meera@acme.test", role_code="dms.service_advisor"),
+        )
+
+        response = as_owner(client, result).put(
+            user_url(result, meera.pk),
+            an_edit(first_name="Changed", territories=[str(north.pk)]),
+            format="json",
+        )
+
+        assert response.status_code == 409
+        assert places_of(meera) == []
+        meera.user.refresh_from_db()
+        assert meera.user.first_name != "Changed"
+
+    def test_somebody_at_a_region_is_given_no_other_app(self, client):
+        result = found()
+        north = box(result, "North")
+        person = member(result, email="rm@acme.test", places=[north])
+
+        response = as_owner(client, result).post(
+            f"/api/v1/orgs/{result.organization.slug}/admin/admins/",
+            {"users": [str(person.pk)], "role": "admin.org_admin"},
+            format="json",
+        )
+
+        assert response.status_code == 409
+        assert not person.grants.filter(app_id=AppCode.ADMIN).exists()
+
+    def test_dms_users_rows_name_the_other_apps(self, client):
+        result = found()
+        with_admin_panel(result, member(result, email="both@acme.test"))
+        member(result, email="only@acme.test")
+
+        rows = {
+            row["email"]: row["other_apps"]
+            for row in as_owner(client, result)
+            .get(f"/api/v1/orgs/{result.organization.slug}/dms/settings/users/")
+            .json()
+        }
+
+        assert rows["both@acme.test"] == ["the Admin panel"]
+        assert rows["only@acme.test"] == []
+        assert rows["owner@acme.test"] == []

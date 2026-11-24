@@ -27,7 +27,7 @@ import { TextField } from "../../../shell/components/TextField";
 import styles from "../../../shell/admin/components/EditUserDialog.module.css";
 import pickerStyles from "../../../shell/admin/components/RolePicker.module.css";
 import type { AppUser } from "./api";
-import { KIND_LABEL } from "./territories";
+import { KIND_LABEL, namesOf } from "./territories";
 import { ancestorsOf, buildTree } from "./territoryTree";
 import { useDmsPersonRoles, useUpdateDmsUser } from "./useDmsUsers";
 import { useDmsTerritories } from "./useTerritories";
@@ -247,7 +247,12 @@ function EditForm({ user, onDone }: { user: AppUser; onDone: () => void }) {
                 >
                   <option value="">{territories ? "+ Add a place…" : "Loading territories…"}</option>
                   {addable.map((node) => (
-                    <option key={node.territory.id} value={node.territory.id}>
+                    <option
+                      key={node.territory.id}
+                      value={node.territory.id}
+                      // A territory's people hold DMS only (2026-11-24).
+                      disabled={user.other_apps.length > 0 && !node.territory.is_root}
+                    >
                       {`${"— ".repeat(ancestorsOf(node).length)}${node.territory.name} (${
                         KIND_LABEL[node.territory.kind]
                       })`}
@@ -255,8 +260,9 @@ function EditForm({ user, onDone }: { user: AppUser; onDone: () => void }) {
                   ))}
                 </select>
                 <p className={pickerStyles.hint}>
-                  Where they work in DMS: they see the records there and below. With none, they
-                  see no records.
+                  {user.other_apps.length > 0
+                    ? `They also hold ${namesOf(user.other_apps)}, so they can be placed only at the organisation. People at a territory hold DMS only — remove the other apps in the Admin panel first.`
+                    : "Where they work in DMS: they see the records there and below. With none, they see no records."}
                 </p>
               </>
             )}

@@ -21,7 +21,7 @@ import styles from "../../../shell/admin/components/AssignAppsDialog.module.css"
 import type { AppUser } from "./api";
 import { displayName } from "./DmsUserActions";
 import { initials } from "./DmsUserDetailPanel";
-import type { DmsTerritory, TerritoryPerson } from "./territories";
+import { namesOf, type DmsTerritory, type TerritoryPerson } from "./territories";
 import { useDmsUsers } from "./useDmsUsers";
 import { useAssignPeople } from "./useTerritories";
 
@@ -77,6 +77,10 @@ function AssignPeople({
   function whyNot(user: AppUser): string | null {
     if (hereIds.has(user.id)) return `Already at ${territory.name}`;
     if (user.status === "pending") return "Not joined yet — assign them once they have";
+    // A TERRITORY'S PEOPLE HOLD DMS ONLY (2026-11-24): the organisation takes anyone.
+    if (!territory.is_root && user.other_apps.length > 0) {
+      return `Also holds ${namesOf(user.other_apps)} — remove it in the Admin panel first`;
+    }
     return null;
   }
 

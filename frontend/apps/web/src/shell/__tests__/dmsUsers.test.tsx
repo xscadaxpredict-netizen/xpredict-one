@@ -140,6 +140,7 @@ function person(overrides: Partial<AppUser>): AppUser {
     role: { code: "dms.manager", name: "Manager" },
     territories: [],
     places: [],
+    other_apps: [],
     status: "active",
     access_status: "active",
     ...overrides,
@@ -322,6 +323,7 @@ describe("Add User", () => {
       role: { code: "dms.fleet_viewer", name: "Fleet viewer" },
       territories: [],
       places: [],
+      other_apps: [],
       status: "pending",
       access_status: null,
     });

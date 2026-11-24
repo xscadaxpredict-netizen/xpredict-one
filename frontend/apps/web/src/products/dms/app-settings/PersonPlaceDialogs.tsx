@@ -15,7 +15,7 @@ import { Button } from "../../../shell/components/Button";
 import { FormBanner } from "../../../shell/components/FormBanner";
 import confirm from "../../../shell/admin/components/RemoveUserDialog.module.css";
 import pickerStyles from "../../../shell/admin/components/RolePicker.module.css";
-import { KIND_LABEL, type DmsTerritory, type TerritoryPerson } from "./territories";
+import { KIND_LABEL, namesOf, type DmsTerritory, type TerritoryPerson } from "./territories";
 import { ancestorsOf, type Tree } from "./territoryTree";
 import { useMovePerson, useRemovePerson } from "./useTerritories";
 
@@ -107,6 +107,7 @@ export function MovePersonDialog({
   const [to, setTo] = useState("");
   const { mutateAsync: move, isPending } = useMovePerson();
   const name = personName(person);
+  const heldElsewhere = person.other_apps.length > 0;
 
   // Anywhere in the tree but here, in tree order, indented by depth.
   const options = [...tree.byId.values()].filter((node) => node.territory.id !== territory.id);
@@ -144,13 +145,25 @@ export function MovePersonDialog({
             >
               <option value="">Choose a territory…</option>
               {options.map((node) => (
-                <option key={node.territory.id} value={node.territory.id}>
+                <option
+                  key={node.territory.id}
+                  value={node.territory.id}
+                  // A territory's people hold DMS only (2026-11-24).
+                  disabled={heldElsewhere && !node.territory.is_root}
+                >
                   {`${"— ".repeat(ancestorsOf(node).length)}${node.territory.name} (${
                     KIND_LABEL[node.territory.kind]
                   }${node.territory.status === "disabled" ? ", closed" : ""})`}
                 </option>
               ))}
             </select>
+            {heldElsewhere && (
+              <p className={pickerStyles.hint}>
+                {name} also holds {namesOf(person.other_apps)}, so they can be placed only at the
+                organisation. People at a territory hold DMS only — remove the other apps in the
+                Admin panel first.
+              </p>
+            )}
           </div>
 
           {error && <FormBanner>{error}</FormBanner>}

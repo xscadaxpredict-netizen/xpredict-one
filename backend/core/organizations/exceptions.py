@@ -319,6 +319,19 @@ class PendingPersonCannotBePlacedError(ConflictError):
     message = "They have not joined yet. Assign them to a territory once they have."
 
 
+class OtherAppsHeldError(ConflictError):
+    """
+    A TERRITORY'S PEOPLE HOLD DMS ONLY (the owner, 2026-11-24): somebody who
+    also holds another app (the Admin panel, CRM) cannot be assigned or moved
+    into any territory but the organisation. REFUSED AND SAID WHY -- the owner
+    chose it over offering to remove the apps -- naming them, so the admin
+    knows what to remove before placing the person.
+    """
+
+    code = "other_apps_held"
+    message = "People placed at a territory hold DMS only. Remove their other apps first."
+
+
 class AlreadyInTerritoryError(ConflictError):
     """They already work at this territory -- assigning only adds a place."""
 
@@ -412,7 +425,9 @@ class DealerScopedAppError(ConflictError):
     """
 
     code = "dealer_scoped_app"
-    message = "Somebody at a dealership can only be given DMS."
+    # EVERY TERRITORY BELOW THE ORGANISATION since 2026-11-24 (the owner), not
+    # only dealerships: a region's, branch's or warehouse's people hold DMS only.
+    message = "Somebody placed at a territory can only be given DMS."
 
 
 class RoleScopeMismatchError(ConflictError):
@@ -668,7 +683,7 @@ class AdminAtDealershipError(ConflictError):
     """
 
     code = "admin_at_dealership"
-    message = "Somebody placed at a dealership cannot hold an Admin panel role."
+    message = "Somebody placed at a territory cannot hold an Admin panel role."
 
 
 class NotAnAdminError(ConflictError):

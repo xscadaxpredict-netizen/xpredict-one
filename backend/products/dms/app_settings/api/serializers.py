@@ -34,6 +34,8 @@ class AppUserSerializer(serializers.Serializer):
     territories = serializers.ListField(child=serializers.CharField(), read_only=True)
     # The same places with their ids, for Edit's Territory field (2026-11-24).
     places = PlaceSerializer(many=True, read_only=True)
+    # Apps that do not use territories: while held, only the organisation (2026-11-24).
+    other_apps = serializers.ListField(child=serializers.CharField(), read_only=True)
     status = serializers.CharField(read_only=True)
     access_status = serializers.CharField(read_only=True, allow_null=True)
 
@@ -222,6 +224,7 @@ class TerritoryPersonSerializer(serializers.Serializer):
     role = AppRoleSerializer(read_only=True, allow_null=True)
     other_places = serializers.ListField(child=serializers.CharField(), read_only=True)
     access_status = serializers.CharField(read_only=True)
+    other_apps = serializers.ListField(child=serializers.CharField(), read_only=True)
 
 
 class AssignPeopleSerializer(serializers.Serializer):

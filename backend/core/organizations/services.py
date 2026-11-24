@@ -59,6 +59,7 @@ from core.organizations.exceptions import (
     NotAnAdminError,
     NotAnInvitationError,
     OrganizationNameUnusableError,
+    OtherAppsHeldError,
     OwnAdminRoleError,
     OwnerHoldsEveryAppError,
     OwnerProtectedError,
@@ -742,21 +743,23 @@ def reopen_territory(*, territory: Territory) -> Territory:
 # ---------------------------------------------------------------------------
 
 
-def _is_dealership_place(territory: Territory) -> bool:
+def _is_below_the_organisation(territory: Territory) -> bool:
     """
-    Is this a place that belongs to a dealership -- a dealer, a branch, or
-    anything (a warehouse) inside a dealer?
+    Is this any territory but a tree's root -- a region, dealer, branch or
+    warehouse?
 
-    Somebody placed at one is a dealership's person, and Q53 says a
-    dealership's people get DMS and nothing else.
+    A TERRITORY'S PEOPLE HOLD DMS ONLY (the owner, 2026-11-24). C27 / Q53 said
+    it of dealerships (a dealer, a branch, anything inside a dealer); it now
+    holds for every territory below the organisation. Only the root -- the
+    organisation itself -- leaves somebody free to hold other apps.
     """
-    if territory.kind in (TerritoryKind.DEALER, TerritoryKind.BRANCH):
-        return True
-    step = Territory.steplen
-    ancestors = [territory.path[:end] for end in range(step, len(territory.path), step)]
-    return Territory.objects.filter(
-        organization_id=territory.organization_id, path__in=ancestors, kind=TerritoryKind.DEALER
-    ).exists()
+    return not territory.is_root
+
+
+def _app_names(apps) -> str:
+    """'the Admin panel and CRM' -- the words a refusal shows."""
+    names = ["the Admin panel" if app.code == AppCode.ADMIN else app.name for app in apps]
+    return names[0] if len(names) == 1 else f"{', '.join(names[:-1])} and {names[-1]}"
 
 
 @transaction.atomic
@@ -788,18 +791,28 @@ def grant_app_access(
     if any(t.organization_id != membership.organization_id for t in territories):
         # Another organisation's territory is one the caller cannot see (C49).
         raise not_found("Territory")
-    placed_at_a_dealership = any(_is_dealership_place(t) for t in territories)
+    placed_below = any(_is_below_the_organisation(t) for t in territories)
 
-    # C27 / Q53, BOTH WAYS ROUND, across the person's other grants: a
-    # dealership's person may not hold an app that ignores territories, and a
-    # person holding such an app may not be placed at a dealership elsewhere.
+    # C27 / Q53, BOTH WAYS ROUND, across the person's other grants -- for every
+    # territory below the organisation since 2026-11-24: a territory's person
+    # may not hold an app that ignores territories, and a person holding such
+    # an app may not be placed below the organisation. The second is NAMED
+    # (`OtherAppsHeldError`): the admin removes those apps first (the owner).
     others = MembershipAppAccess.objects.filter(membership=membership).exclude(app_id=app)
-    if placed_at_a_dealership and (
-        not app_uses_territories or others.filter(app__unit_aware=False).exists()
-    ):
+    if placed_below and not app_uses_territories:
         raise DealerScopedAppError
+    if placed_below:
+        held = [g.app for g in others.filter(app__unit_aware=False).select_related("app")]
+        if held:
+            user = membership.user
+            who = f"{user.first_name} {user.last_name}".strip() or user.email
+            raise OtherAppsHeldError(
+                f"{who} also holds {_app_names(held)}. People placed at a territory hold "
+                "DMS only -- remove the other apps in the Admin panel first, or place "
+                "them at the organisation."
+            )
     if not app_uses_territories and any(
-        _is_dealership_place(placement.territory)
+        _is_below_the_organisation(placement.territory)
         for placement in MembershipAppTerritory.objects.filter(
             app_access__in=others
         ).select_related("territory")
@@ -2697,7 +2710,7 @@ def assign_admin_role(
         if admin_panel_role(person) is not None:
             raise AlreadyAnAdminError
         if any(
-            _is_dealership_place(placement.territory)
+            _is_below_the_organisation(placement.territory)
             for grant in person.grants.all()
             for placement in grant.territories.all()
         ):

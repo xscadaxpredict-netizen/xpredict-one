@@ -144,6 +144,15 @@ export interface TerritoryPerson {
   /** Where else they work in DMS, by name. */
   other_places: string[];
   access_status: "active" | "disabled";
+  /** Apps they hold that ignore territories: while held, only the organisation. */
+  other_apps: string[];
+}
+
+/** "the Admin panel and CRM" */
+export function namesOf(apps: string[]): string {
+  return apps.length <= 1
+    ? (apps[0] ?? "")
+    : `${apps.slice(0, -1).join(", ")} and ${apps[apps.length - 1] ?? ""}`;
 }
 
 export async function fetchTerritoryPeople(
