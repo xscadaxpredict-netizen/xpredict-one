@@ -102,8 +102,13 @@ describe("Show link and Resend follow the viewer's permissions (the 2026-11-23 a
       me({
         memberships: [
           membership({
-            admin_role: { code: "admin.custom_app", name: "Application Admin" },
-            apps: [appAccess("admin", { modules: ADMIN_PANEL_TREE, permissions: ["admin.user.view"] })],
+            apps: [
+              appAccess("admin", {
+                modules: ADMIN_PANEL_TREE,
+                permissions: ["admin.user.view"],
+                role: { code: "admin.custom_app", name: "Application Admin" },
+              }),
+            ],
           }),
         ],
       }),

@@ -358,8 +358,8 @@ class AppAccessData:
     role: AppRoleData | None
     """
     THE ROLE THEY HOLD IN THIS APP (the owner, 2026-11-24: "each app will have
-    their own role"). The admin app's is their Admin panel role -- exactly
-    `MembershipData.admin_role`, which this replaces (step 3 removes it). Any
+    their own role"). The admin app's is their Admin panel role (C89) -- what
+    `MembershipData.admin_role` used to say before it was removed. Any
     other app's is their grant's role; the owner's is "Owner" in every app,
     held by rule. None where they hold no role -- a dealer admin reaches the
     Admin panel through a DMS role, not an Admin panel one -- and for an app
@@ -385,13 +385,6 @@ class MembershipData:
     unit_id: uuid.UUID | None
     unit_name: str | None
     apps: list[AppAccessData]
-
-    """
-    THE ADMIN PANEL ROLE THEY HOLD (C89) -- Organization Owner, Organization
-    Admin, one of the organisation's own -- or None. `role` stays the
-    owner/admin/member word; this is what the screens NAME them.
-    """
-    admin_role: AdminRoleData | None
 
     """
     WHETHER THIS ORGANIZATION'S DATABASE EXISTS YET (C50).
@@ -536,7 +529,6 @@ def _membership_data(
         org_name=membership.organization.name,
         org_slug=membership.organization.slug,
         role=standing(membership),
-        admin_role=admin_role_of(membership),
         unit_id=dealership.id if dealership else None,
         unit_name=dealership.name if dealership else None,
         # `organization` is select_related in `me()`, so this costs no query.
@@ -636,8 +628,8 @@ def _role_in_app(app: str, membership: Membership) -> tuple[AppRoleData | None, 
     """
     The role this person holds in `app`, and where it places them (2026-11-24).
 
-    THE ADMIN APP'S IS `admin_role_of()` -- the same answer `admin_role` gives,
-    so the two cannot disagree while both exist. Every other app's comes from
+    THE ADMIN APP'S IS `admin_role_of()` -- the Admin panel role (C89), which
+    `/me` sends nowhere else. Every other app's comes from
     its ACTIVE grant (a disabled one opens nothing, so it never gets here); the
     owner's is "Owner" everywhere, by rule (C72 step 2c).
 

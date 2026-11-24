@@ -170,7 +170,10 @@ class TestMe:
         membership = client.get("/api/v1/me/").json()["memberships"][0]
 
         assert membership["role"] == "member"
-        assert membership["admin_role"] == {"code": code, "name": "Application Admin"}
+        # On the admin app's own entry since 2026-11-24 (`admin_role` is gone).
+        admin = next(app for app in membership["apps"] if app["key"] == "admin")
+        assert admin["role"] == {"code": code, "name": "Application Admin"}
+        assert "admin_role" not in membership
 
 
 class TestTheRolesTabCounts:

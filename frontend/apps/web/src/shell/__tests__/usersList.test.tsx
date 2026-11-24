@@ -193,8 +193,13 @@ function signedInHolding(permissions: string[]) {
       memberships: [
         membership({
           role: "member",
-          admin_role: { code: "admin.custom_app", name: "Application Admin" },
-          apps: [appAccess("admin", { modules: USERS_ONLY_TREE, permissions })],
+          apps: [
+            appAccess("admin", {
+              modules: USERS_ONLY_TREE,
+              permissions,
+              role: { code: "admin.custom_app", name: "Application Admin" },
+            }),
+          ],
         }),
       ],
     }),

@@ -167,7 +167,7 @@ class AppAccessSerializer(serializers.Serializer):
     modules = ModuleSerializer(many=True, read_only=True)
     permissions = serializers.ListField(child=serializers.CharField(), read_only=True)
     # The role they hold IN THIS APP, and where it places them (2026-11-24).
-    # The admin app's is their Admin panel role -- what `admin_role` below said.
+    # The admin app's is their Admin panel role (C89) -- `/me` sends it nowhere else.
     role = _AdminRoleSerializer(read_only=True, allow_null=True)
     places = serializers.ListField(child=serializers.CharField(), read_only=True)
 
@@ -187,10 +187,8 @@ class MembershipSerializer(serializers.Serializer):
     org_name = serializers.CharField(read_only=True)
     org_slug = serializers.CharField(read_only=True)
     role = serializers.CharField(read_only=True)
-    # The Admin panel role they hold, by name, or null (C89). `role` above says
-    # "admin" only for the built-in Organisation admin; somebody holding one of
-    # the organisation's own Admin panel roles is "member" with this set.
-    admin_role = _AdminRoleSerializer(read_only=True, allow_null=True)
+    # NO `admin_role` (removed 2026-11-24): the Admin panel role they hold is
+    # the admin app's own `role` in `apps` below (C89 amended).
     unit_id = serializers.UUIDField(read_only=True, allow_null=True)
     unit_name = serializers.CharField(read_only=True, allow_null=True)
     # Whether this organization's own database exists yet (C50, C1). The

@@ -1,11 +1,8 @@
 /**
  * Each app's own role on `/me` (the owner, 2026-11-24: "each app will have
- * their own role"). The Admin panel's is the admin app's role, which replaces
- * `Membership.admin_role` -- so the screens that named somebody by their Admin
- * panel role must read it from the app, not from the old field.
- *
- * Each case below gives somebody a role ONLY on the admin app's entry, with
- * `admin_role` empty: a screen still reading the old field would show nothing.
+ * their own role"). The Admin panel's is the admin app's role; the separate
+ * `Membership.admin_role` it replaced has been removed, so the screens that
+ * name somebody by their Admin panel role read it from the app.
  */
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -31,7 +28,6 @@ const BRANCH_ADMIN = { code: "admin.custom_branch", name: "Branch Admin" };
 function branchAdmin(overrides: Parameters<typeof membership>[0] = {}) {
   return membership({
     role: "member",
-    admin_role: null,
     apps: [
       appAccess("dms", { role: { code: "dms.fleet_viewer", name: "Fleet viewer" } }),
       appAccess("admin", { permissions: ["admin.user.view"], role: BRANCH_ADMIN }),
@@ -56,7 +52,7 @@ describe("appRole and adminPanelRole", () => {
     const person = branchAdmin();
 
     expect(appRole(person, "crm")).toBeNull();
-    expect(adminPanelRole(membership({ admin_role: null, apps: [] }))).toBeNull();
+    expect(adminPanelRole(membership({ apps: [] }))).toBeNull();
   });
 });
 

@@ -74,7 +74,6 @@ export function membership(overrides: Partial<Membership> = {}): Membership {
     org_name: "Acme Motors",
     org_slug: "acme-motors",
     role: "member",
-    admin_role: adminRoleFor(overrides.role ?? "member"),
     unit_id: null,
     unit_name: null,
     // Ready by default, because almost every test is about something else.
@@ -86,12 +85,14 @@ export function membership(overrides: Partial<Membership> = {}): Membership {
     apps: [],
     ...overrides,
   };
-  // AS THE REAL `/me` DOES (2026-11-24): the admin app's role IS the Admin
-  // panel role. A test that sets the app's role itself keeps it.
+  // AS THE REAL `/me` DOES (2026-11-24): the Admin panel role is the admin
+  // app's own `role` -- the owner's or an organisation admin's, from their
+  // standing. A test that sets the app's role itself keeps it.
+  const panelRole = adminRoleFor(built.role);
   return {
     ...built,
     apps: built.apps.map((app) =>
-      app.key === "admin" && app.role === null ? { ...app, role: built.admin_role } : app,
+      app.key === "admin" && app.role === null ? { ...app, role: panelRole } : app,
     ),
   };
 }

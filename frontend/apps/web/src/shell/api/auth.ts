@@ -50,7 +50,7 @@ export interface AppAccess {
   /**
    * THE ROLE THEY HOLD IN THIS APP (the owner, 2026-11-24: "each app will have
    * their own role"), or null. The ADMIN app's is their Admin panel role --
-   * what `Membership.admin_role` said, which this replaces (read it through
+   * what `Membership.admin_role` said before it was removed (read it through
    * `appRole()` / `adminPanelRole()` in `shell/appRole.ts`). Any other app's
    * is their role there; the owner's is "Owner" in every app. Null for an app
    * they cannot open, and for a dealer admin's Admin panel (they reach it
@@ -141,17 +141,8 @@ export interface Membership {
    */
   role: "owner" | "admin" | "member";
 
-  /**
-   * BEING REPLACED (2026-11-24) by the admin app's own `role` in `apps` --
-   * read `adminPanelRole()` instead; nothing in the screens reads this any
-   * more, and it goes in the next step.
-   *
-   * THE ADMIN PANEL ROLE THEY HOLD, by the name the Roles tab gives it, or
-   * null (C89). `role` above says "admin" ONLY for the built-in Organization
-   * Admin: somebody holding one of the organisation's own Admin panel roles is
-   * `member` with this set, and is called by this name.
-   */
-  admin_role: AdminRole | null;
+  // NO `admin_role` (removed 2026-11-24, C89 amended): the Admin panel role
+  // they hold is the admin app's own `role` -- read it with `adminPanelRole()`.
 
   /**
    * The dealer this membership is scoped to, or null for organisation-wide.
@@ -299,7 +290,6 @@ const FAKE_ME: Me = {
       is_ready: true,
       unit_closed: false,
       role: "owner",
-      admin_role: { code: "owner", name: "Organization Owner" },
       unit_id: null,
       unit_name: null,
       apps: [
@@ -437,7 +427,6 @@ const FAKE_ME: Me = {
        * the two places it missed.
        */
       role: "member",
-      admin_role: null,
       unit_id: "unit-2",
       unit_name: "Bangalore — Whitefield",
       apps: [

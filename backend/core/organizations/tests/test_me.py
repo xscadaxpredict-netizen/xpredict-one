@@ -39,7 +39,12 @@ from core.organizations.models import (
     TerritoryKind,
     UnitStatus,
 )
-from core.organizations.selectors import me, permissions_for, resolve_allowed_territories
+from core.organizations.selectors import (
+    admin_role_of,
+    me,
+    permissions_for,
+    resolve_allowed_territories,
+)
 from core.organizations.services import grant_app_access, sign_up
 from core.permissions.models import AppCode, Permission, Role, RolePermission
 
@@ -829,7 +834,7 @@ class TestEachAppCarriesItsOwnRole:
     """
     Each app entry names the role held IN THAT APP, and where it places them
     (the owner, 2026-11-24: "each app will have their own role"). The admin
-    app's is the Admin panel role -- what `admin_role` says, which it replaces.
+    app's is the Admin panel role -- what `admin_role` said before it was removed.
     """
 
     def test_the_owner_is_owner_in_every_app_and_everywhere(self):
@@ -843,17 +848,25 @@ class TestEachAppCarriesItsOwnRole:
         assert (dms.role.code, dms.role.name) == ("owner", "Owner")
         assert dms.places == []
 
-    def test_the_admin_app_s_role_is_exactly_admin_role(self):
+    def test_the_admin_app_s_role_is_the_admin_panel_role(self):
         result = found()
         add_org_admin(result.organization)
 
         for user in (result.user, User.objects.get(email="orgadmin@acme.test")):
-            membership = me(user).memberships[0]
+            membership = next(m for m in me(user).memberships)
             admin = next(app for app in membership.apps if app.key == AppCode.ADMIN)
-            assert (admin.role.code, admin.role.name) == (
-                membership.admin_role.code,
-                membership.admin_role.name,
-            )
+            held = admin_role_of(Membership.objects.get(user=user))
+            assert (admin.role.code, admin.role.name) == (held.code, held.name)
+
+    def test_admin_role_is_gone_from_me(self):
+        """Removed 2026-11-24 (C89 amended): the admin app's `role` replaced it."""
+        result = found()
+        client = APIClient()
+        client.force_authenticate(user=result.user)
+
+        membership = client.get("/api/v1/me/").json()["memberships"][0]
+
+        assert "admin_role" not in membership
 
     def test_somebody_at_a_dealership_carries_their_dms_role_and_place(self):
         result = found()
