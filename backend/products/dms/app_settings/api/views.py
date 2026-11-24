@@ -12,11 +12,23 @@ from rest_framework.request import Request
 from rest_framework.response import Response
 
 from core.organizations.api.base import OrgScopedAPIView
-from core.organizations.selectors import app_users, invitable_roles
-from core.organizations.services import invite_to_app
+from core.organizations.models import GrantStatus
+from core.organizations.selectors import app_users, invitable_roles, roles_for_app_person
+from core.organizations.services import (
+    invite_to_app,
+    remove_from_app,
+    set_app_status,
+    update_app_user,
+)
 from core.permissions.models import AppCode
+from shared.exceptions import not_found
 
-from .serializers import AppUserSerializer, DmsInviteSerializer, InvitableRoleSerializer
+from .serializers import (
+    AppUserSerializer,
+    DmsEditSerializer,
+    DmsInviteSerializer,
+    InvitableRoleSerializer,
+)
 
 
 class DmsUsersView(OrgScopedAPIView):
@@ -76,4 +88,96 @@ class DmsInviteRolesView(OrgScopedAPIView):
 
     def get(self, request: Request, org_slug: str) -> Response:
         roles = invitable_roles(self.organization, AppCode.DMS)
+        return Response(InvitableRoleSerializer(roles, many=True).data)
+
+
+def _row(organization, person_id) -> dict:
+    """The person as the list draws them, after a change -- so the two cannot disagree."""
+    person = next(p for p in app_users(organization, AppCode.DMS) if str(p.id) == str(person_id))
+    return AppUserSerializer(person).data
+
+
+class DmsUserDetailView(OrgScopedAPIView):
+    """
+    One person on DMS settings -> Users (the owner, 2026-11-24). ALL ON THEIR
+    DMS, not their account (the owner's choice):
+
+    - `PUT` -- Edit: first name, last name, email and DMS role
+      (`update_app_user()`). Answers with their row.
+    - `DELETE` -- Delete: take DMS away (`remove_from_app()`); they stay in the
+      organisation. A pending person left with no app is cancelled. 204.
+
+    The page's view, then each act (C81). All held by no role: the owner alone.
+    """
+
+    required_permissions: ClassVar[list[str]] = ["dms.user.view"]
+    method_permissions: ClassVar[dict[str, list[str]]] = {
+        "PUT": ["dms.user.update"],
+        "DELETE": ["dms.user.delete"],
+    }
+
+    def put(self, request: Request, org_slug: str, user_id: str) -> Response:
+        payload = DmsEditSerializer(data=request.data)
+        payload.is_valid(raise_exception=True)
+
+        update_app_user(
+            actor=self.membership,
+            organization=self.organization,
+            app=AppCode.DMS,
+            person_id=user_id,
+            **payload.validated_data,
+        )
+        return Response(_row(self.organization, user_id))
+
+    def delete(self, request: Request, org_slug: str, user_id: str) -> Response:
+        remove_from_app(
+            actor=self.membership,
+            organization=self.organization,
+            person_id=user_id,
+            app=AppCode.DMS,
+        )
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+class DmsUserStatusView(OrgScopedAPIView):
+    """
+    Deactivate or Activate somebody's DMS: `POST .../users/<id>/deactivate/` or
+    `.../activate/` -- the app tile's Disable / Enable (`set_app_status()`).
+    Their role and territory are kept, so Activate gives everything back; their
+    account and other apps are untouched. One URL per act, as the Admin panel's.
+    """
+
+    required_permissions: ClassVar[list[str]] = ["dms.user.view", "dms.user.deactivate"]
+
+    # The whole vocabulary; anything else is a URL that does not exist.
+    _STATUSES: ClassVar[dict[str, str]] = {
+        "activate": GrantStatus.ACTIVE,
+        "deactivate": GrantStatus.DISABLED,
+    }
+
+    def post(self, request: Request, org_slug: str, user_id: str, action: str) -> Response:
+        if action not in self._STATUSES:
+            raise not_found("User")
+
+        set_app_status(
+            actor=self.membership,
+            organization=self.organization,
+            person_id=user_id,
+            app=AppCode.DMS,
+            status=self._STATUSES[action],
+        )
+        return Response(_row(self.organization, user_id))
+
+
+class DmsUserRolesView(OrgScopedAPIView):
+    """
+    `GET .../users/<id>/roles/` -- the roles Edit may give THIS person: DMS's
+    roles at the level they are placed (`roles_for_app_person()`), so the
+    picker offers exactly what the save accepts.
+    """
+
+    required_permissions: ClassVar[list[str]] = ["dms.user.view", "dms.user.update"]
+
+    def get(self, request: Request, org_slug: str, user_id: str) -> Response:
+        roles = roles_for_app_person(self.organization, AppCode.DMS, user_id)
         return Response(InvitableRoleSerializer(roles, many=True).data)

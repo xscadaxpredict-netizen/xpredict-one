@@ -2,8 +2,8 @@
  * DMS settings -> Users & Roles -> Users (the owner, 2026-11-23): everybody who
  * holds DMS, in the SAME FORMAT as the Admin panel's Users list
  * (`ListPage.module.css`, `ListFilter`) -- title, toolbar with the filter on
- * the left and the main button on the right, then the table in its card. The
- * TOPBAR's box searches it ("Search users", by name or email).
+ * the left and the main button on the right, then the list and the open person
+ * side by side. The TOPBAR's box searches it ("Search users", by name or email).
  *
  * THE CONTENT IS DMS'S: User details, Role (in DMS), Territory, Status -- from
  * the owner's Zoho screenshot, plus where DMS places each person.
@@ -12,13 +12,14 @@
  * reads "Owner" and their territory "All" -- they hold every app, everywhere,
  * by rule (C72), whatever grant they may also carry.
  *
- * ADD USER WORKS (2026-11-24): a person and their DMS role
- * (`AddDmsUserDialog`). Each row's ⋮ is still drawn greyed, and clicking a
- * person opens nothing yet.
+ * ADD USER (2026-11-24): a person and their DMS role (`AddDmsUserDialog`).
+ * EACH ROW'S ⋮ (2026-11-24): Edit, Deactivate / Activate, Delete -- all on the
+ * person's DMS (`DmsUserActions`). CLICKING A PERSON opens them beside the
+ * list with one tab, Basic Info (`DmsUserDetailPanel`), at `users/<id>`.
  */
 
 import { useState } from "react";
-import { EllipsisVerticalIcon } from "lucide-react";
+import { Link, useNavigate, useParams } from "react-router-dom";
 import { asProblem } from "@xpredict/api-client";
 import { ErrorState, InfoHint, TableSkeleton } from "@xpredict/ui";
 
@@ -29,6 +30,8 @@ import listStyles from "../../../shell/admin/screens/ListPage.module.css";
 import { usePageSearch } from "../../../stores/pageSearchStore";
 import type { AppUser, AppUserStatus } from "./api";
 import { AddDmsUserDialog } from "./AddDmsUserDialog";
+import { DmsUserActions, displayName } from "./DmsUserActions";
+import { DmsUserDetailPanel, initials } from "./DmsUserDetailPanel";
 import { useDmsUsers } from "./useDmsUsers";
 import styles from "./DmsUsersScreen.module.css";
 
@@ -59,12 +62,23 @@ export function DmsUsersScreen() {
   const { data: users, isPending, isError, error, refetch } = useDmsUsers();
   const query = usePageSearch((state) => state.query);
   const [filter, setFilter] = useState<Filter>("all");
+  const [statusError, setStatusError] = useState<string | null>(null);
   // Add User is `dms.user.create` -- the owner's, for now (C78 amended).
   const canAdd = useAccess().can("dms.user.create");
 
+  const { userId } = useParams<{ userId: string }>();
+  const navigate = useNavigate();
+  const basePath = `/${membership.org_slug}/dms/settings/users`;
+
+  /*
+   * `shown` is the LIST's view (filter, search); `selected` is what the URL says
+   * is OPEN, looked up in the FULL list -- a search is no reason to close the
+   * person somebody is reading (the Admin panel's Users, for the same reason).
+   */
   const shown = users?.filter(
     (user) => (filter === "all" || user.status === filter) && matches(user, query),
   );
+  const selected = userId ? users?.find((user) => user.id === userId) : undefined;
 
   return (
     <div className={listStyles.page}>
@@ -99,68 +113,126 @@ export function DmsUsersScreen() {
         )}
       </div>
 
-      {isPending && (
-        <TableSkeleton label="users" columns={[320, 160, 160, 96, 56]} rows={5} />
-      )}
+      <div className={listStyles.split} data-detail={selected ? "" : undefined}>
+        <div className={listStyles.listArea}>
+          {isPending && (
+            <TableSkeleton label="users" columns={[320, 160, 160, 96, 56]} rows={5} />
+          )}
 
-      {isError && (
-        <ErrorState
-          title="Could not load users"
-          code={asProblem(error).code}
-          traceId={asProblem(error).trace_id}
-          onRetry={() => void refetch()}
-        />
-      )}
+          {isError && (
+            <ErrorState
+              title="Could not load users"
+              code={asProblem(error).code}
+              traceId={asProblem(error).trace_id}
+              onRetry={() => void refetch()}
+            />
+          )}
 
-      {shown && (
-        <div className={listStyles.tableWrap}>
-          <table className={listStyles.table}>
-            <caption className={listStyles.visuallyHidden}>
-              Everyone who holds DMS, the owner first.
-            </caption>
-            <thead>
-              <tr>
-                <th scope="col">User details</th>
-                <th scope="col">Role</th>
-                <th scope="col">Territory</th>
-                <th scope="col">Status</th>
-                <th scope="col" className={listStyles.actions}>
-                  <span className={listStyles.visuallyHidden}>Actions</span>
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              {shown.map((user) => (
-                <UserRow key={user.id} user={user} />
-              ))}
-            </tbody>
-          </table>
+          {statusError && (
+            <p className={listStyles.missing} role="alert">
+              {statusError}
+            </p>
+          )}
 
-          {/* Never "nothing exists": the owner is always there, so an empty
-              table means the filter or the search is too narrow. */}
-          {shown.length === 0 && (
-            <p className={listStyles.empty}>
-              {query.trim()
-                ? `No ${FILTER_WORD[filter]}users match “${query.trim()}”.`
-                : `No ${FILTER_WORD[filter]}users.`}
+          {shown && (
+            <div className={listStyles.tableWrap}>
+              <table className={listStyles.table}>
+                <caption className={listStyles.visuallyHidden}>
+                  Everyone who holds DMS, the owner first. Select a person to see their details.
+                </caption>
+                <thead>
+                  <tr>
+                    <th scope="col">User details</th>
+                    <th scope="col">Role</th>
+                    <th scope="col">Territory</th>
+                    <th scope="col">Status</th>
+                    <th scope="col" className={listStyles.actions}>
+                      <span className={listStyles.visuallyHidden}>Actions</span>
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {shown.map((user) => (
+                    <UserRow
+                      key={user.id}
+                      user={user}
+                      basePath={basePath}
+                      isOpen={user.id === selected?.id}
+                      onSelect={() => void navigate(`${basePath}/${user.id}`)}
+                      onRemoved={() => {
+                        if (user.id === userId) void navigate(basePath);
+                      }}
+                      onStatusError={setStatusError}
+                    />
+                  ))}
+                </tbody>
+              </table>
+
+              {/* Never "nothing exists": the owner is always there, so an empty
+                  table means the filter or the search is too narrow. */}
+              {shown.length === 0 && (
+                <p className={listStyles.empty}>
+                  {query.trim()
+                    ? `No ${FILTER_WORD[filter]}users match “${query.trim()}”.`
+                    : `No ${FILTER_WORD[filter]}users.`}
+                </p>
+              )}
+            </div>
+          )}
+
+          {/* An address naming somebody not in the list: a stale link, or a
+              person removed from DMS since. Said, not silently dropped. */}
+          {userId && users && !selected && (
+            <p className={listStyles.missing} role="status">
+              That person no longer holds DMS.{" "}
+              <Link to={basePath} className={listStyles.linkButton}>
+                Back to all users
+              </Link>
             </p>
           )}
         </div>
-      )}
+
+        {selected && (
+          <div className={listStyles.panelSlot}>
+            {/* A NEW panel per person, so one person's error never shows on the next. */}
+            <DmsUserDetailPanel
+              key={selected.id}
+              user={selected}
+              onClose={() => void navigate(basePath)}
+            />
+          </div>
+        )}
+      </div>
     </div>
   );
 }
 
-function UserRow({ user }: { user: AppUser }) {
+interface UserRowProps {
+  user: AppUser;
+  basePath: string;
+  isOpen: boolean;
+  onSelect: () => void;
+  onRemoved: () => void;
+  onStatusError: (message: string | null) => void;
+}
+
+function UserRow({ user, basePath, isOpen, onSelect, onRemoved, onStatusError }: UserRowProps) {
   return (
-    <tr>
+    <tr className={listStyles.row} data-open={isOpen || undefined} onClick={onSelect}>
       <th scope="row">
         <div className={listStyles.entity}>
           <span className={listStyles.badge} aria-hidden="true">
             {initials(user)}
           </span>
           <div className={listStyles.stack}>
-            <span className={listStyles.primary}>{displayName(user)}</span>
+            <Link
+              to={`${basePath}/${user.id}`}
+              className={listStyles.primary}
+              aria-current={isOpen ? "page" : undefined}
+              onClick={(event) => event.stopPropagation()}
+            >
+              {displayName(user)}
+            </Link>
             <span className={listStyles.sub}>{user.email}</span>
           </div>
           {user.is_owner && <span className={styles.ownerTag}>Owner</span>}
@@ -183,32 +255,13 @@ function UserRow({ user }: { user: AppUser }) {
           {STATUS_LABEL[user.status]}
         </span>
       </td>
-      <td className={listStyles.actions}>
-        <button
-          type="button"
-          className={styles.menuTrigger}
-          aria-label={`More actions for ${displayName(user)}`}
-          aria-disabled="true"
-          title="Coming soon"
-        >
-          <EllipsisVerticalIcon size={18} aria-hidden="true" />
-        </button>
+      {/* Stops clicks from the ⋮ and its dialogs (portals, which React still
+          bubbles) reaching the row and opening it. */}
+      <td className={listStyles.actions} onClick={(event) => event.stopPropagation()}>
+        <DmsUserActions user={user} onRemoved={onRemoved} onStatusError={onStatusError} />
       </td>
     </tr>
   );
-}
-
-/** Their name, or their email while they have none (somebody invited unnamed). */
-function displayName(user: Pick<AppUser, "first_name" | "last_name" | "email">): string {
-  const name = `${user.first_name} ${user.last_name}`.trim();
-  return name || user.email;
-}
-
-function initials(user: Pick<AppUser, "first_name" | "last_name" | "email">): string {
-  const letters = [user.first_name, user.last_name]
-    .map((part) => part.trim()[0])
-    .filter((letter): letter is string => Boolean(letter));
-  return (letters.length > 0 ? letters.join("") : user.email.slice(0, 2)).toUpperCase();
 }
 
 /** Case-insensitive match across the fields somebody would actually type. */

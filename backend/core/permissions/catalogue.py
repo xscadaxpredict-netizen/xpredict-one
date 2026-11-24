@@ -218,6 +218,11 @@ PERMISSIONS: list[tuple[str, str, str, str, str]] = [
     ("dms.user.view", "dms", "users", "Users", "See DMS's users"),
     # Invite User on that page (`permissions/0022`, 2026-11-24). Owner only too.
     ("dms.user.create", "dms", "users", "Users", "Invite somebody into DMS"),
+    # A row's Edit, Deactivate and Delete (`permissions/0023`, 2026-11-24) -- on
+    # the person's DMS, not their account. Owner only too.
+    ("dms.user.update", "dms", "users", "Users", "Edit somebody's details and DMS role"),
+    ("dms.user.deactivate", "dms", "users", "Users", "Switch somebody's DMS off or back on"),
+    ("dms.user.delete", "dms", "users", "Users", "Take DMS away from somebody"),
     # --- CRM ----------------------------------------------------------------
     #
     # ONE PERMISSION, deliberately. CRM is built after DMS ships, and designing
@@ -254,7 +259,13 @@ _ADMIN_PEOPLE = [
 # HELD BY NO ROLE: the owner has them by rule, and nobody else yet. Kept out of
 # the "every DMS read" group below, which would otherwise hand DMS's settings to
 # the Fleet viewer just because the code ends in `.view`.
-_OWNER_ONLY = ["dms.user.view", "dms.user.create"]
+_OWNER_ONLY = [
+    "dms.user.view",
+    "dms.user.create",
+    "dms.user.update",
+    "dms.user.deactivate",
+    "dms.user.delete",
+]
 
 _DMS_READS = [
     code

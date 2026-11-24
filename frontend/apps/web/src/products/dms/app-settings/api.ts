@@ -24,6 +24,12 @@ export interface AppUser {
   /** Where DMS places them. Empty for the owner (everywhere) and the pending. */
   territories: string[];
   status: AppUserStatus;
+  /**
+   * Their DMS access itself, which Deactivate / Activate switch: `disabled`
+   * after Deactivate. Null for the owner and the pending, who have none to
+   * switch. `status` is also `inactive` when their whole ACCOUNT is off.
+   */
+  access_status: "active" | "disabled" | null;
 }
 
 export async function fetchDmsUsers(orgSlug: string): Promise<AppUser[]> {
@@ -55,5 +61,48 @@ export async function inviteDmsUser(orgSlug: string, body: NewDmsInvitation): Pr
   return request<AppUser>(`/api/v1/orgs/${orgSlug}/dms/settings/users/`, {
     method: "POST",
     body: JSON.stringify(body),
+  });
+}
+
+/** What Edit sends: their details and their DMS role. */
+export interface DmsUserEdit {
+  first_name: string;
+  last_name: string;
+  email: string;
+  role: string;
+}
+
+/** Edit: details and DMS role. Answers with their row. */
+export async function updateDmsUser(
+  orgSlug: string,
+  userId: string,
+  body: DmsUserEdit,
+): Promise<AppUser> {
+  return request<AppUser>(`/api/v1/orgs/${orgSlug}/dms/settings/users/${userId}/`, {
+    method: "PUT",
+    body: JSON.stringify(body),
+  });
+}
+
+/** The roles Edit may give this person: DMS's roles at the level they are placed. */
+export async function fetchPersonRoles(orgSlug: string, userId: string): Promise<InvitableRole[]> {
+  return request<InvitableRole[]>(`/api/v1/orgs/${orgSlug}/dms/settings/users/${userId}/roles/`);
+}
+
+/** Deactivate or Activate their DMS (not their account). Answers with their row. */
+export async function setDmsUserStatus(
+  orgSlug: string,
+  userId: string,
+  action: "activate" | "deactivate",
+): Promise<AppUser> {
+  return request<AppUser>(`/api/v1/orgs/${orgSlug}/dms/settings/users/${userId}/${action}/`, {
+    method: "POST",
+  });
+}
+
+/** Delete: take DMS away. They stay in the organisation; an only-DMS invitation is cancelled. */
+export async function removeDmsUser(orgSlug: string, userId: string): Promise<void> {
+  await request<void>(`/api/v1/orgs/${orgSlug}/dms/settings/users/${userId}/`, {
+    method: "DELETE",
   });
 }

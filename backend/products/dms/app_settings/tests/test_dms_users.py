@@ -124,6 +124,7 @@ class TestTheList:
             "role",
             "territories",
             "status",
+            "access_status",
         }
 
     def test_the_owner_first_then_people_in_the_order_they_arrived(self, client):
@@ -488,3 +489,324 @@ class TestInvitingIsItsOwnPermission:
 
         assert response.status_code == 403
         assert not Invitation.objects.exists()
+
+
+# --- A row's Edit, Deactivate and Delete (the owner, 2026-11-24) ------------------
+#
+# ALL ON THE PERSON'S DMS, not their account: Edit = details + DMS role,
+# Deactivate = DMS off (the app tile's Disable), Delete = DMS taken away.
+
+
+def person_url(result, person_id, rest=""):
+    return f"/api/v1/orgs/{result.organization.slug}/dms/settings/users/{person_id}/{rest}"
+
+
+def an_edit(**overrides):
+    return {
+        "first_name": "Nish",
+        "last_name": "Kumar",
+        "email": "nish@acme.test",
+        "role": "dms.technician",
+        **overrides,
+    }
+
+
+def as_owner(client, result):
+    client.force_authenticate(user=result.user)
+    return client
+
+
+class TestEdit:
+    def test_a_member_s_names_and_dms_role_change_and_their_place_stays(self, client):
+        result = found()
+        place = dealer(result, name="Chennai")
+        person = member(result, email="nish@acme.test", role_code="dms.manager", place=place)
+
+        response = as_owner(client, result).put(
+            person_url(result, person.pk), an_edit(), format="json"
+        )
+
+        assert response.status_code == 200, response.content
+        row = response.json()
+        assert (row["first_name"], row["last_name"]) == ("Nish", "Kumar")
+        assert row["role"] == {"code": "dms.technician", "name": "Technician"}
+        assert row["territories"] == ["Chennai"]
+
+    def test_a_member_s_sign_in_address_cannot_change_and_nothing_is_saved(self, client):
+        result = found()
+        person = member(result, email="nish@acme.test", role_code="dms.manager")
+
+        response = as_owner(client, result).put(
+            person_url(result, person.pk), an_edit(email="other@acme.test"), format="json"
+        )
+
+        assert response.status_code == 409
+        person.user.refresh_from_db()
+        assert person.user.first_name == ""  # the name was not saved either: one transaction
+
+    def test_a_pending_person_s_address_and_role_can_change(self, client):
+        result = found()
+        invitation = invite(result, email="soon@acme.test", role_code="dms.group_operations")
+
+        response = as_owner(client, result).put(
+            person_url(result, invitation.pk),
+            an_edit(email="later@acme.test", role="dms.fleet_viewer"),
+            format="json",
+        )
+
+        assert response.status_code == 200, response.content
+        assert response.json()["email"] == "later@acme.test"
+        assert response.json()["role"]["code"] == "dms.fleet_viewer"
+
+    def test_a_role_that_does_not_fit_their_place_is_refused_and_nothing_is_saved(self, client):
+        result = found()
+        person = member(result, email="nish@acme.test", role_code="dms.manager")
+
+        response = as_owner(client, result).put(
+            person_url(result, person.pk), an_edit(role="dms.group_operations"), format="json"
+        )
+
+        assert response.status_code == 409
+        person.user.refresh_from_db()
+        assert person.user.first_name == ""
+
+    def test_never_the_owner(self, client):
+        result = found()
+        owner = Membership.objects.get(organization=result.organization, is_owner=True)
+
+        response = as_owner(client, result).put(
+            person_url(result, owner.pk), an_edit(email="owner@acme.test"), format="json"
+        )
+
+        assert response.status_code == 409
+
+    def test_somebody_without_dms_is_not_found(self, client):
+        result = found()
+        person = member(
+            result,
+            email="crm@acme.test",
+            app=AppCode.CRM,
+            role_code="crm.member",
+            place=root(result),
+        )
+
+        response = as_owner(client, result).put(
+            person_url(result, person.pk), an_edit(email="crm@acme.test"), format="json"
+        )
+
+        assert response.status_code == 404
+
+    def test_refuses_fields_it_does_not_take(self, client):
+        result = found()
+        person = member(result, email="nish@acme.test")
+
+        response = as_owner(client, result).put(
+            person_url(result, person.pk), {**an_edit(), "territories": ["x"]}, format="json"
+        )
+
+        assert response.status_code == 422
+
+
+class TestTheRolesEditOffers:
+    def test_somebody_at_a_dealership_is_offered_dealership_roles(self, client):
+        result = found()
+        person = member(result, email="nish@acme.test", role_code="dms.manager")
+
+        response = as_owner(client, result).get(person_url(result, person.pk, "roles/"))
+
+        assert response.status_code == 200
+        codes = {role["code"] for role in response.json()}
+        assert codes == set(
+            Role.objects.filter(
+                app_id=AppCode.DMS, level="unit", organization_id__isnull=True
+            ).values_list("code", flat=True)
+        )
+
+    def test_somebody_at_the_root_and_somebody_pending_are_offered_organisation_roles(self, client):
+        result = found()
+        at_root = member(
+            result, email="hq@acme.test", role_code="dms.fleet_viewer", place=root(result)
+        )
+        pending = invite(result, email="soon@acme.test", role_code="dms.group_operations")
+        owner_client = as_owner(client, result)
+
+        for person_id in (at_root.pk, pending.pk):
+            response = owner_client.get(person_url(result, person_id, "roles/"))
+            assert {role["code"] for role in response.json()} == {
+                "dms.group_operations",
+                "dms.fleet_viewer",
+            }
+
+    def test_the_owner_another_org_s_person_and_nonsense_are_not_found(self, client):
+        result = found()
+        theirs = found(name="Other Co", email="boss@other.test", code="CODE-OTHER")
+        their_person = member(theirs, email="theirs@other.test")
+        owner = Membership.objects.get(organization=result.organization, is_owner=True)
+        owner_client = as_owner(client, result)
+
+        for person_id in (owner.pk, their_person.pk, "not-a-uuid"):
+            response = owner_client.get(person_url(result, person_id, "roles/"))
+            assert response.status_code == 404, person_id
+
+
+class TestDeactivate:
+    def test_switches_their_dms_off_and_back_on_keeping_role_and_place(self, client):
+        result = found()
+        place = dealer(result, name="Chennai")
+        person = member(result, email="nish@acme.test", role_code="dms.manager", place=place)
+        owner_client = as_owner(client, result)
+
+        off = owner_client.post(person_url(result, person.pk, "deactivate/")).json()
+        assert (off["status"], off["access_status"]) == ("inactive", "disabled")
+        assert off["role"]["code"] == "dms.manager"
+        assert off["territories"] == ["Chennai"]
+        # Their ACCOUNT is untouched: only DMS is off.
+        person.refresh_from_db()
+        assert person.status == MembershipStatus.ACTIVE
+
+        on = owner_client.post(person_url(result, person.pk, "activate/")).json()
+        assert (on["status"], on["access_status"]) == ("active", "active")
+
+    def test_a_pending_person_has_nothing_to_switch_off(self, client):
+        result = found()
+        invitation = invite(result, email="soon@acme.test", role_code="dms.group_operations")
+
+        response = as_owner(client, result).post(person_url(result, invitation.pk, "deactivate/"))
+
+        assert response.status_code == 409
+
+    def test_never_the_owner(self, client):
+        result = found()
+        owner = Membership.objects.get(organization=result.organization, is_owner=True)
+
+        response = as_owner(client, result).post(person_url(result, owner.pk, "deactivate/"))
+
+        assert response.status_code == 409
+
+    def test_an_unknown_action_is_not_found(self, client):
+        result = found()
+        person = member(result, email="nish@acme.test")
+
+        response = as_owner(client, result).post(person_url(result, person.pk, "explode/"))
+
+        assert response.status_code == 404
+
+
+class TestDelete:
+    def test_takes_dms_away_and_they_stay_in_the_organisation(self, client):
+        result = found()
+        person = member(result, email="nish@acme.test")
+
+        response = as_owner(client, result).delete(person_url(result, person.pk))
+
+        assert response.status_code == 204
+        assert Membership.objects.filter(pk=person.pk).exists()
+        assert not MembershipAppAccess.objects.filter(membership=person, app=AppCode.DMS).exists()
+        assert "nish@acme.test" not in [row["email"] for row in listing(client, result)]
+
+    def test_their_other_apps_stay(self, client):
+        result = found()
+        person = member(
+            result, email="hq@acme.test", role_code="dms.fleet_viewer", place=root(result)
+        )
+        grant_app_access(
+            membership=person,
+            app=AppCode.CRM,
+            role=Role.objects.get(code="crm.member"),
+            territories=[root(result)],
+        )
+
+        as_owner(client, result).delete(person_url(result, person.pk))
+
+        assert list(person.grants.values_list("app_id", flat=True)) == [AppCode.CRM]
+
+    def test_a_pending_person_holding_only_dms_is_cancelled(self, client):
+        result = found()
+        invitation = invite(result, email="soon@acme.test", role_code="dms.group_operations")
+
+        response = as_owner(client, result).delete(person_url(result, invitation.pk))
+
+        assert response.status_code == 204
+        assert not Invitation.objects.filter(pk=invitation.pk).exists()
+
+    def test_a_pending_person_holding_another_app_keeps_their_invitation(self, client):
+        result = found()
+        invitation = invite(result, email="soon@acme.test", role_code="dms.group_operations")
+        invitation.app_grants.create(app_id=AppCode.CRM, role=Role.objects.get(code="crm.member"))
+
+        as_owner(client, result).delete(person_url(result, invitation.pk))
+
+        invitation.refresh_from_db()
+        assert list(invitation.app_grants.values_list("app_id", flat=True)) == [AppCode.CRM]
+
+    def test_never_the_owner(self, client):
+        result = found()
+        owner = Membership.objects.get(organization=result.organization, is_owner=True)
+
+        response = as_owner(client, result).delete(person_url(result, owner.pk))
+
+        assert response.status_code == 409
+        assert MembershipAppAccess.objects.filter(membership=owner, app=AppCode.DMS).exists()
+
+
+class TestEachActIsItsOwnPermission:
+    """
+    Nobody but the owner holds these today, so a role is made that may SEE the
+    list and nothing else -- each act must still be refused, by its own
+    permission rather than borrowing the list's.
+    """
+
+    @pytest.fixture
+    def looker(self, client):
+        result = found()
+        role = Role.objects.create(
+            code="dms.looker",
+            name="Looker",
+            app_id=AppCode.DMS,
+            level="org",
+            summary="Sees DMS's users.",
+            organization_id=result.organization.pk,
+        )
+        RolePermission.objects.create(
+            role=role, permission=Permission.objects.get(code="dms.user.view")
+        )
+        person = member(
+            result, email="looker@acme.test", role_code="dms.looker", place=root(result)
+        )
+        target = member(result, email="nish@acme.test")
+        client.force_authenticate(user=person.user)
+        return result, target
+
+    def test_edit(self, client, looker):
+        result, target = looker
+        assert (
+            client.put(person_url(result, target.pk), an_edit(), format="json").status_code == 403
+        )
+        assert client.get(person_url(result, target.pk, "roles/")).status_code == 403
+
+    def test_deactivate(self, client, looker):
+        result, target = looker
+        assert client.post(person_url(result, target.pk, "deactivate/")).status_code == 403
+
+    def test_delete(self, client, looker):
+        result, target = looker
+        assert client.delete(person_url(result, target.pk)).status_code == 403
+        assert MembershipAppAccess.objects.filter(membership=target, app=AppCode.DMS).exists()
+
+    def test_an_organisation_admin_is_refused_every_act(self, client):
+        result = found()
+        admin = member(
+            result,
+            email="admin@acme.test",
+            app=AppCode.ADMIN,
+            role_code="admin.org_admin",
+            place=root(result),
+        )
+        target = member(result, email="nish@acme.test")
+        client.force_authenticate(user=admin.user)
+
+        assert (
+            client.put(person_url(result, target.pk), an_edit(), format="json").status_code == 403
+        )
+        assert client.post(person_url(result, target.pk, "deactivate/")).status_code == 403
+        assert client.delete(person_url(result, target.pk)).status_code == 403

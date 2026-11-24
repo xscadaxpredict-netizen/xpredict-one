@@ -50,6 +50,8 @@ export default function DmsSettingsRoutes() {
           element={BUILT[page.path] ?? <SettingsPlaceholderScreen title={page.label} />}
         />
       ))}
+      {/* One person opened beside the list (the Admin panel's Users does the same). */}
+      <Route path="users/:userId" element={<DmsUsersScreen />} />
       <Route path="*" element={<NotFoundScreen />} />
     </Routes>
   );

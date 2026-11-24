@@ -12,7 +12,11 @@ import type * as authApi from "../api/auth";
 import {
   fetchDmsUsers,
   fetchInviteRoles,
+  fetchPersonRoles,
   inviteDmsUser,
+  removeDmsUser,
+  setDmsUserStatus,
+  updateDmsUser,
   type AppUser,
 } from "../../products/dms/app-settings/api";
 import DmsSettingsRoutes from "../../products/dms/app-settings/routes";
@@ -31,6 +35,10 @@ vi.mock("../../products/dms/app-settings/api", () => ({
   fetchDmsUsers: vi.fn(),
   fetchInviteRoles: vi.fn(),
   inviteDmsUser: vi.fn(),
+  fetchPersonRoles: vi.fn(),
+  updateDmsUser: vi.fn(),
+  setDmsUserStatus: vi.fn(),
+  removeDmsUser: vi.fn(),
 }));
 
 // The link the dialog ends on comes from the person's record, as in Add User.
@@ -56,6 +64,10 @@ const mockFetchMe = vi.mocked(fetchMe);
 const mockFetchDmsUsers = vi.mocked(fetchDmsUsers);
 const mockFetchInviteRoles = vi.mocked(fetchInviteRoles);
 const mockInviteDmsUser = vi.mocked(inviteDmsUser);
+const mockFetchPersonRoles = vi.mocked(fetchPersonRoles);
+const mockUpdateDmsUser = vi.mocked(updateDmsUser);
+const mockSetDmsUserStatus = vi.mocked(setDmsUserStatus);
+const mockRemoveDmsUser = vi.mocked(removeDmsUser);
 
 /**
  * The owner as `/me` really sends them: every DMS permission by rule (C72),
@@ -67,7 +79,17 @@ function realOwner() {
     ...owner,
     apps: owner.apps.map((app) =>
       app.key === "dms"
-        ? { ...app, permissions: [...app.permissions, "dms.user.view", "dms.user.create"] }
+        ? {
+            ...app,
+            permissions: [
+              ...app.permissions,
+              "dms.user.view",
+              "dms.user.create",
+              "dms.user.update",
+              "dms.user.deactivate",
+              "dms.user.delete",
+            ],
+          }
         : app,
     ),
   };
@@ -95,6 +117,7 @@ function person(overrides: Partial<AppUser>): AppUser {
     role: { code: "dms.manager", name: "Manager" },
     territories: [],
     status: "active",
+    access_status: "active",
     ...overrides,
   };
 }
@@ -107,6 +130,7 @@ const PEOPLE: AppUser[] = [
     email: "asha@acme.test",
     is_owner: true,
     role: null,
+    access_status: null,
   }),
   person({
     id: "nish",
@@ -123,6 +147,7 @@ const PEOPLE: AppUser[] = [
     email: "ravi@acme.test",
     territories: ["Delhi East"],
     status: "inactive",
+    access_status: "disabled",
   }),
   person({
     id: "inv",
@@ -131,6 +156,7 @@ const PEOPLE: AppUser[] = [
     email: "priya@acme.test",
     role: { code: "dms.technician", name: "Technician" },
     status: "pending",
+    access_status: null,
   }),
 ];
 
@@ -150,6 +176,10 @@ beforeEach(() => {
   mockFetchDmsUsers.mockReset();
   mockFetchInviteRoles.mockReset();
   mockInviteDmsUser.mockReset();
+  mockFetchPersonRoles.mockReset();
+  mockUpdateDmsUser.mockReset();
+  mockSetDmsUserStatus.mockReset();
+  mockRemoveDmsUser.mockReset();
   mockFetchInviteRoles.mockResolvedValue(ROLES);
   window.localStorage.clear();
   useUiStore.setState({ openSettingsModule: {}, isSidebarCollapsed: false });
@@ -210,17 +240,6 @@ describe("DMS users", () => {
     expect(screen.getByText("No users match “nobody”.")).toBeInTheDocument();
   });
 
-  it("draws each row's ⋮ greyed out, for now", async () => {
-    mockFetchDmsUsers.mockResolvedValue(PEOPLE);
-
-    renderRoute({ path: PAGE, children: screens });
-    await screen.findByText("Asha Rao");
-
-    expect(screen.getByRole("button", { name: "More actions for Asha Rao" })).toHaveAttribute(
-      "aria-disabled",
-      "true",
-    );
-  });
 
   it("says so, with a retry, when the list cannot load", async () => {
     mockFetchDmsUsers.mockRejectedValue(new Error("boom"));
@@ -277,6 +296,7 @@ describe("Add User", () => {
       role: { code: "dms.fleet_viewer", name: "Fleet viewer" },
       territories: [],
       status: "pending",
+      access_status: null,
     });
     const dialog = await openDialog();
     await within(dialog).findByRole("option", { name: "Fleet viewer" });
@@ -352,5 +372,254 @@ describe("Add User", () => {
       "aria-disabled",
       "true",
     );
+  });
+});
+
+/* ---- A row's ⋮ and the person's panel (2026-11-24) ---------------------------- */
+
+const DEALER_ROLES = [
+  { code: "dms.manager", name: "Manager", summary: "Runs one dealership." },
+  { code: "dms.technician", name: "Technician", summary: "Does the service work." },
+];
+
+/** The ⋮ menu's items for one person, as Radix draws them once it opens. */
+async function openMenu(name: string) {
+  // Enter, as the Admin panel's Users tests open it: jsdom has no pointer events
+  // for Radix's menu to listen to.
+  fireEvent.keyDown(screen.getByRole("button", { name: `More actions for ${name}` }), {
+    key: "Enter",
+  });
+  return screen.findByRole("menu");
+}
+
+function item(menu: HTMLElement, label: string) {
+  return within(menu).getByRole("menuitem", { name: label });
+}
+
+async function showList() {
+  mockFetchDmsUsers.mockResolvedValue(PEOPLE);
+  const rendered = renderRoute({ path: PAGE, children: screens });
+  await screen.findByText("Asha Rao");
+  return rendered;
+}
+
+describe("a row's ⋮", () => {
+  it("offers Edit, Deactivate and Delete on somebody who holds DMS", async () => {
+    await showList();
+
+    const menu = await openMenu("Nishanth K");
+
+    expect(item(menu, "Edit")).not.toHaveAttribute("aria-disabled");
+    expect(item(menu, "Deactivate")).not.toHaveAttribute("aria-disabled");
+    expect(item(menu, "Delete")).not.toHaveAttribute("aria-disabled");
+  });
+
+  it("offers Activate on somebody whose DMS is switched off", async () => {
+    await showList();
+
+    const menu = await openMenu("Ravi S");
+
+    expect(item(menu, "Activate")).toBeInTheDocument();
+  });
+
+  it("greys out everything on the owner, and says why", async () => {
+    await showList();
+
+    const menu = await openMenu("Asha Rao");
+
+    for (const label of ["Edit", "Deactivate", "Delete"]) {
+      expect(item(menu, label)).toHaveAttribute("aria-disabled", "true");
+    }
+    expect(within(menu).getByText(/holds every app by default/)).toBeInTheDocument();
+  });
+
+  it("greys out Deactivate on somebody pending, who has no DMS yet", async () => {
+    await showList();
+
+    const menu = await openMenu("Priya M");
+
+    expect(item(menu, "Deactivate")).toHaveAttribute("aria-disabled", "true");
+    expect(item(menu, "Edit")).not.toHaveAttribute("aria-disabled");
+    expect(item(menu, "Delete")).not.toHaveAttribute("aria-disabled");
+  });
+
+  it("greys out each act this person may not do", async () => {
+    mockFetchMe.mockResolvedValue(
+      me({
+        memberships: [
+          membership({
+            role: "owner",
+            apps: [appAccess("dms", { permissions: ["dms.user.view"] })],
+          }),
+        ],
+      }),
+    );
+    await showList();
+
+    const menu = await openMenu("Nishanth K");
+
+    for (const label of ["Edit", "Deactivate", "Delete"]) {
+      expect(item(menu, label)).toHaveAttribute("aria-disabled", "true");
+    }
+  });
+
+  it("Deactivate switches their DMS off", async () => {
+    mockSetDmsUserStatus.mockResolvedValue({
+      ...PEOPLE[1]!,
+      status: "inactive",
+      access_status: "disabled",
+    });
+    await showList();
+
+    fireEvent.click(item(await openMenu("Nishanth K"), "Deactivate"));
+
+    await waitFor(() =>
+      expect(mockSetDmsUserStatus).toHaveBeenCalledWith("acme-motors", "nish", "deactivate"),
+    );
+  });
+
+  it("says so when the server refuses a Deactivate", async () => {
+    mockSetDmsUserStatus.mockRejectedValue(
+      new ApiError({
+        type: "about:blank",
+        title: "Conflict",
+        status: 409,
+        detail: "That cannot be done right now.",
+        code: "conflict",
+        trace_id: "t-1",
+      }),
+    );
+    await showList();
+
+    fireEvent.click(item(await openMenu("Nishanth K"), "Deactivate"));
+
+    expect(await screen.findByText("That cannot be done right now.")).toBeInTheDocument();
+  });
+
+  it("Delete asks first, then takes DMS away", async () => {
+    mockRemoveDmsUser.mockResolvedValue(undefined);
+    await showList();
+
+    fireEvent.click(item(await openMenu("Nishanth K"), "Delete"));
+    const dialog = await screen.findByRole("dialog", { name: "Remove Nishanth K from DMS?" });
+    expect(within(dialog).getByText(/They stay in the organisation/)).toBeInTheDocument();
+    expect(mockRemoveDmsUser).not.toHaveBeenCalled();
+
+    fireEvent.click(within(dialog).getByRole("button", { name: "Remove from DMS" }));
+
+    await waitFor(() => expect(mockRemoveDmsUser).toHaveBeenCalledWith("acme-motors", "nish"));
+  });
+});
+
+describe("Edit", () => {
+  async function openEdit(name = "Nishanth K") {
+    await showList();
+    fireEvent.click(item(await openMenu(name), "Edit"));
+    return screen.findByRole("dialog", { name: "Edit user" });
+  }
+
+  it("starts from what is saved, and offers the roles that fit them", async () => {
+    // Their role LAST: while the list loaded, the box once fell back to the
+    // first option and showed a role they do not hold (found in the browser).
+    mockFetchPersonRoles.mockResolvedValue([
+      ...DEALER_ROLES,
+      { code: "dms.sales_representative", name: "Sales representative", summary: "Sells." },
+    ]);
+    const dialog = await openEdit();
+
+    expect(within(dialog).getByLabelText(/First name/)).toHaveValue("Nishanth");
+    expect(within(dialog).getByLabelText(/Email/)).toHaveAttribute("readonly");
+    await within(dialog).findByRole("option", { name: "Manager" });
+    expect(within(dialog).getByLabelText("Role in DMS")).toHaveValue("dms.sales_representative");
+    expect(mockFetchPersonRoles).toHaveBeenCalledWith("acme-motors", "nish");
+  });
+
+  it("sends their details and the new role", async () => {
+    mockFetchPersonRoles.mockResolvedValue([
+      { code: "dms.sales_representative", name: "Sales representative", summary: "Sells." },
+      ...DEALER_ROLES,
+    ]);
+    mockUpdateDmsUser.mockResolvedValue(PEOPLE[1]!);
+    const dialog = await openEdit();
+    await within(dialog).findByRole("option", { name: "Manager" });
+
+    fireEvent.change(within(dialog).getByLabelText(/Last name/), { target: { value: "Kumar" } });
+    fireEvent.change(within(dialog).getByLabelText("Role in DMS"), {
+      target: { value: "dms.manager" },
+    });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Save changes" }));
+
+    await waitFor(() =>
+      expect(mockUpdateDmsUser).toHaveBeenCalledWith("acme-motors", "nish", {
+        first_name: "Nishanth",
+        last_name: "Kumar",
+        email: "nish@acme.test",
+        role: "dms.manager",
+      }),
+    );
+  });
+
+  it("saves their current role when only their name changes", async () => {
+    mockFetchPersonRoles.mockResolvedValue([
+      ...DEALER_ROLES,
+      { code: "dms.sales_representative", name: "Sales representative", summary: "Sells." },
+    ]);
+    mockUpdateDmsUser.mockResolvedValue(PEOPLE[1]!);
+    const dialog = await openEdit();
+    await within(dialog).findByRole("option", { name: "Manager" });
+
+    fireEvent.change(within(dialog).getByLabelText(/Last name/), { target: { value: "Kumar" } });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Save changes" }));
+
+    await waitFor(() =>
+      expect(mockUpdateDmsUser).toHaveBeenCalledWith(
+        "acme-motors",
+        "nish",
+        expect.objectContaining({ role: "dms.sales_representative" }),
+      ),
+    );
+  });
+
+  it("lets a pending person's address be corrected", async () => {
+    mockFetchPersonRoles.mockResolvedValue(ROLES);
+    const dialog = await openEdit("Priya M");
+
+    expect(within(dialog).getByLabelText(/Email/)).not.toHaveAttribute("readonly");
+  });
+});
+
+describe("the person's panel", () => {
+  it("opens beside the list with one tab, Basic Info", async () => {
+    const { router } = await showList();
+
+    fireEvent.click(screen.getByText("Nishanth K"));
+
+    const panel = await screen.findByRole("complementary", { name: "Nishanth K" });
+    expect(router.state.location.pathname).toBe("/acme-motors/dms/settings/users/nish");
+    expect(within(panel).getAllByRole("tab").map((tab) => tab.textContent)).toEqual([
+      "Basic Info",
+    ]);
+    const facts = within(panel).getByRole("tabpanel");
+    expect(within(facts).getByText("Sales representative")).toBeInTheDocument();
+    expect(within(facts).getByText("Chennai — Guindy")).toBeInTheDocument();
+    expect(within(facts).getByText("Active")).toBeInTheDocument();
+    expect(within(facts).getByText("nish@acme.test")).toBeInTheDocument();
+  });
+
+  it("shows the owner as Owner, everywhere", async () => {
+    mockFetchDmsUsers.mockResolvedValue(PEOPLE);
+    renderRoute({ path: `${PAGE}/owner`, children: screens });
+
+    const panel = await screen.findByRole("complementary", { name: "Asha Rao" });
+    const facts = within(panel).getByRole("tabpanel");
+    expect(within(facts).getByText("Owner")).toBeInTheDocument();
+    expect(within(facts).getByText("All")).toBeInTheDocument();
+  });
+
+  it("says so when the address names somebody who no longer holds DMS", async () => {
+    mockFetchDmsUsers.mockResolvedValue(PEOPLE);
+    renderRoute({ path: `${PAGE}/gone`, children: screens });
+
+    expect(await screen.findByText(/no longer holds DMS/)).toBeInTheDocument();
   });
 });

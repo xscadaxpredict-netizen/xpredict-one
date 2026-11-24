@@ -24,6 +24,7 @@ class AppUserSerializer(serializers.Serializer):
     role = AppRoleSerializer(read_only=True, allow_null=True)
     territories = serializers.ListField(child=serializers.CharField(), read_only=True)
     status = serializers.CharField(read_only=True)
+    access_status = serializers.CharField(read_only=True, allow_null=True)
 
 
 class DmsInviteSerializer(serializers.Serializer):
@@ -57,3 +58,26 @@ class InvitableRoleSerializer(serializers.Serializer):
     code = serializers.CharField(read_only=True)
     name = serializers.CharField(read_only=True)
     summary = serializers.CharField(read_only=True)
+
+
+class DmsEditSerializer(serializers.Serializer):
+    """
+    Edit in DMS settings (the owner, 2026-11-24): basic information AND their
+    DMS role -- the Admin panel's Edit plus the app tile's role change.
+
+    REFUSED, NOT IGNORED: a request naming `app`, `status` or `territories`
+    must not believe it set them.
+    """
+
+    first_name = serializers.CharField(max_length=150)
+    last_name = serializers.CharField(max_length=150, allow_blank=True)
+    email = serializers.EmailField()
+    role = serializers.CharField(max_length=80)
+
+    def validate(self, attrs: dict) -> dict:
+        unexpected = sorted(set(self.initial_data) - set(self.fields))
+        if unexpected:
+            raise serializers.ValidationError(
+                dict.fromkeys(unexpected, "Edit takes first name, last name, email and role only.")
+            )
+        return attrs

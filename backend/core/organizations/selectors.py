@@ -1441,6 +1441,14 @@ class AppUserData:
     leave them unable to open the app, which is what this list is about.
     """
 
+    access_status: str | None
+    """
+    Their GRANT for this app, `active` or `disabled` -- what the app's own
+    Deactivate / Activate switch (`set_app_status()`). None for the owner and
+    the pending, who have nothing to switch. Separate from `status`, which is
+    also `inactive` when their whole account is deactivated in the Admin panel.
+    """
+
     created_at: datetime
     """Not displayed: the order, as the Admin panel's Users list (arrival, oldest first)."""
 
@@ -1523,6 +1531,7 @@ def app_users(organization: Organization, app_code: str) -> list[AppUserData]:
                     placement.territory.display_name for placement in grant.territories.all()
                 ),
                 status=APP_USER_ACTIVE if can_open else APP_USER_INACTIVE,
+                access_status=str(grant.status),
                 created_at=membership.created_at,
             )
         )
@@ -1539,6 +1548,7 @@ def app_users(organization: Organization, app_code: str) -> list[AppUserData]:
                 # AN INVITATION SITS NOWHERE (C83): placed when they join.
                 territories=[],
                 status=APP_USER_PENDING,
+                access_status=None,
                 created_at=invitation.created_at,
             )
         )
@@ -1558,6 +1568,7 @@ def app_users(organization: Organization, app_code: str) -> list[AppUserData]:
         role=None,
         territories=[],
         status=APP_USER_ACTIVE,
+        access_status=None,
         created_at=owner.created_at,
     )
     return [owner_row, *people]
@@ -1585,6 +1596,58 @@ def invitable_roles(organization: Organization, app_code: str) -> list[Invitable
         .order_by("display_order", "name")
     )
     return [InvitableRoleData(code=r.code, name=r.name, summary=r.summary) for r in roles]
+
+
+def roles_for_app_person(
+    organization: Organization, app_code: str, person_id
+) -> list[InvitableRoleData]:
+    """
+    The roles an app's own Edit may give THIS person (2026-11-24): the app's
+    roles at the level where they are placed -- organisation-level for somebody
+    at the root or still pending (C83), dealership-level for somebody at a
+    dealership. The same rule `change_app_role()` enforces, so the picker never
+    offers a role the save would refuse.
+
+    404, like every person lookup, for an id that is not somebody in this
+    organisation holding the app -- the owner included, who is not edited here.
+    """
+    level = None
+    membership = (
+        Membership.objects.filter(organization=organization, is_owner__isnull=True)
+        .filter(pk=_as_uuid(person_id))
+        .first()
+        if _as_uuid(person_id)
+        else None
+    )
+    if membership is not None:
+        grant = MembershipAppAccess.objects.filter(membership=membership, app_id=app_code).first()
+        if grant is not None:
+            at_the_root = grant.territories.filter(territory__is_root=True).exists()
+            level = RoleLevel.ORG if at_the_root else RoleLevel.UNIT
+    elif _as_uuid(person_id) and InvitationAppGrant.objects.filter(
+        invitation__organization=organization,
+        invitation__pk=_as_uuid(person_id),
+        invitation__accepted_at__isnull=True,
+        app_id=app_code,
+    ).exists():
+        level = RoleLevel.ORG
+    if level is None:
+        raise not_found("User")
+
+    roles = (
+        roles_for_organization(organization.id)
+        .filter(app_id=app_code, level=level)
+        .order_by("display_order", "name")
+    )
+    return [InvitableRoleData(code=r.code, name=r.name, summary=r.summary) for r in roles]
+
+
+def _as_uuid(value) -> uuid.UUID | None:
+    """A UUID, or None for anything that is not one -- which then finds nobody (404)."""
+    try:
+        return value if isinstance(value, uuid.UUID) else uuid.UUID(str(value))
+    except ValueError:
+        return None
 
 
 # --- The Admin panel's roles (C78, Admins and Roles -> Roles) ---------------

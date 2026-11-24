@@ -1,7 +1,7 @@
 /*
  * What DMS settings' Users list adds to the shared list format
  * (`shell/admin/screens/ListPage.module.css`): the owner's tag, the status
- * pills and a greyed-out ⋮.
+ * pills.
  */
 
 /* Beside the owner's name: every app has the owner by default. */
@@ -39,24 +39,4 @@
 .status[data-status="inactive"] {
   background: var(--color-surface-alt);
   color: var(--color-text-2);
-}
-
-/* The row's ⋮, the same size as `RowMenu`'s -- greyed while it is drawn only. */
-.menuTrigger {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 36px;
-  height: 36px;
-  padding: 0;
-  border: 1px solid transparent;
-  border-radius: var(--radius-pill);
-  background: transparent;
-  color: var(--color-text-disabled);
-  cursor: not-allowed;
-}
-
-.menuTrigger:focus-visible {
-  outline: 2px solid var(--color-primary);
-  outline-offset: 2px;
 }

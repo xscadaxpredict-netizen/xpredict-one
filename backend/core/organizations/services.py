@@ -1625,6 +1625,67 @@ def unassign_app(
 
 
 @transaction.atomic
+def update_app_user(
+    *,
+    actor: Membership,
+    organization: Organization,
+    app: str,
+    person_id: uuid.UUID,
+    first_name: str,
+    last_name: str,
+    email: str,
+    role: str,
+) -> Membership | Invitation:
+    """
+    AN APP'S OWN EDIT (the owner, 2026-11-24: DMS settings -> Users -> Edit):
+    the person's basic information AND their role in this app, in one save.
+
+    EXACTLY TWO EXISTING ACTS in one transaction, so their rules hold and
+    cannot drift: `update_person_details()` (the Admin panel's Edit -- a
+    member's email is how they sign in and is refused if changed, C25) and
+    `change_app_role()` (the app tile's Edit -- the role must fit where they
+    are placed). Never the owner, who holds every app by rule
+    (`OwnerHoldsEveryAppError`); 404 for somebody not holding the app.
+    """
+    person = _person_for_app_action(actor, organization, person_id, app)
+    if isinstance(person, Membership):
+        _held_grant(person, app)
+    elif not person.app_grants.filter(app_id=app).exists():
+        raise not_found("App")
+
+    update_person_details(
+        actor=actor,
+        organization=organization,
+        person_id=person_id,
+        first_name=first_name,
+        last_name=last_name,
+        email=email,
+    )
+    return change_app_role(
+        actor=actor, organization=organization, person_id=person_id, app=app, role=role
+    )
+
+
+@transaction.atomic
+def remove_from_app(
+    *, actor: Membership, organization: Organization, person_id: uuid.UUID, app: str
+) -> None:
+    """
+    AN APP'S OWN DELETE (the owner, 2026-11-24: DMS settings -> Users ->
+    Delete): take the app away -- `unassign_app()`, the app tile's Unassign --
+    and nothing else. A member stays in the organisation with their other apps.
+
+    A PENDING PERSON LEFT HOLDING NO APP IS CANCELLED: somebody added from the
+    app and removed from it again has nothing left to be invited to, and an
+    empty invitation would sit in the Admin panel's Users as a person nobody
+    meant to add. One holding another app keeps their invitation.
+    """
+    person = unassign_app(actor=actor, organization=organization, person_id=person_id, app=app)
+    if isinstance(person, Invitation) and not person.app_grants.exists():
+        person.delete()
+
+
+@transaction.atomic
 def remove_person(*, actor: Membership, organization: Organization, person_id: uuid.UUID) -> None:
     """
     Take somebody out of this organization.
