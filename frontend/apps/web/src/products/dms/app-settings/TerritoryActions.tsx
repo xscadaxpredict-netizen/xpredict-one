@@ -21,23 +21,29 @@ import { useAccess } from "../../../shell/access";
 import { useShellContext } from "../../../shell/context";
 import { RowMenu } from "../../../shell/admin/components/RowMenu";
 import { CloseTerritoryDialog } from "./CloseTerritoryDialog";
-import type { DmsTerritory } from "./territories";
+import { DeleteTerritoryDialog } from "./DeleteTerritoryDialog";
+import type { Tree, TreeNode } from "./territoryTree";
 import { useSetTerritoryStatus } from "./useTerritories";
 
 interface TerritoryActionsProps {
-  territory: DmsTerritory;
+  node: TreeNode;
+  /** The whole tree, for Delete's Transfer to. */
+  tree: Tree;
   /** Where a refused Reopen is said (null clears it). */
   onStatusError: (message: string | null) => void;
 }
 
-export function TerritoryActions({ territory, onStatusError }: TerritoryActionsProps) {
+export function TerritoryActions({ node, tree, onStatusError }: TerritoryActionsProps) {
+  const { territory } = node;
   const { membership } = useShellContext();
   const navigate = useNavigate();
-  const [closing, setClosing] = useState(false);
+  const [opened, setOpened] = useState<"close" | "delete" | null>(null);
   const { mutate: setStatus, isPending } = useSetTerritoryStatus();
   const access = useAccess();
   const canEdit = access.can("dms.territory.update");
   const canSetStatus = access.can("dms.territory.set_status");
+  const canDelete = access.can("dms.territory.delete");
+  const hasChildren = node.children.length > 0;
 
   const isClosed = territory.status === "disabled";
   const isRoot = territory.is_root;
@@ -72,23 +78,41 @@ export function TerritoryActions({ territory, onStatusError }: TerritoryActionsP
                 label: "Close territory",
                 danger: true,
                 disabled: !canSetStatus || isRoot,
-                onSelect: () => setClosing(true),
+                onSelect: () => setOpened("close"),
               },
+          {
+            label: "Delete territory",
+            danger: true,
+            // Refused while territories sit under it (the owner, 2026-11-24).
+            disabled: !canDelete || isRoot || hasChildren,
+            onSelect: () => setOpened("delete"),
+          },
         ]}
         note={
           isRoot
             ? "This is the organisation itself. It shows the organisation's name and is not changed here."
-            : !canEdit && !canSetStatus
-              ? "Your role lets you see territories, not change them."
-              : undefined
+            : hasChildren && canDelete
+              ? "To delete it, first move or delete the territories under it (Edit → Parent territory)."
+              : !canEdit && !canSetStatus
+                ? "Your role lets you see territories, not change them."
+                : undefined
         }
       />
 
-      {closing && (
+      {opened === "close" && (
         <CloseTerritoryDialog
           territory={territory}
           open
-          onOpenChange={(open) => !open && setClosing(false)}
+          onOpenChange={(open) => !open && setOpened(null)}
+        />
+      )}
+      {opened === "delete" && (
+        <DeleteTerritoryDialog
+          territory={territory}
+          tree={tree}
+          open
+          onOpenChange={(open) => !open && setOpened(null)}
+          onDeleted={() => void navigate(`/${membership.org_slug}/dms/settings/territories`)}
         />
       )}
     </>

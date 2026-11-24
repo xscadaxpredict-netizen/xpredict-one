@@ -201,3 +201,32 @@ export async function movePerson(
     { method: "POST", body: JSON.stringify({ to }) },
   );
 }
+
+/** What Delete would move -- the counts its dialog says (2026-11-24). */
+export interface DeletePreview {
+  records: number;
+  people: number;
+  /** Territories under it: Delete is refused while there are any. */
+  children: number;
+}
+
+export async function fetchDeletePreview(
+  orgSlug: string,
+  territoryId: string,
+): Promise<DeletePreview> {
+  return request<DeletePreview>(
+    `/api/v1/orgs/${orgSlug}/dms/settings/territories/${territoryId}/delete-preview/`,
+  );
+}
+
+/** Delete: its records and people go to `transferTo`, then it is gone. */
+export async function deleteTerritory(
+  orgSlug: string,
+  territoryId: string,
+  transferTo: string,
+): Promise<void> {
+  await request<void>(`/api/v1/orgs/${orgSlug}/dms/settings/territories/${territoryId}/`, {
+    method: "DELETE",
+    body: JSON.stringify({ transfer_to: transferTo }),
+  });
+}

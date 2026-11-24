@@ -3,6 +3,7 @@ from django.urls import path
 from .views import (
     DmsInviteRolesView,
     DmsTerritoriesView,
+    DmsTerritoryDeletePreviewView,
     DmsTerritoryDetailView,
     DmsTerritoryPeopleView,
     DmsTerritoryPersonMoveView,
@@ -34,6 +35,12 @@ urlpatterns = [
         "territories/<str:territory_id>/",
         DmsTerritoryDetailView.as_view(),
         name="dms-settings-territory",
+    ),
+    # Delete territory's summary (2026-11-24), before the generic `<action>/`.
+    path(
+        "territories/<str:territory_id>/delete-preview/",
+        DmsTerritoryDeletePreviewView.as_view(),
+        name="dms-settings-territory-delete-preview",
     ),
     # A territory's People tab (2026-11-24), before the generic `<action>/`.
     path(

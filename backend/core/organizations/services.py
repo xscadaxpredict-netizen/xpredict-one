@@ -75,11 +75,13 @@ from core.organizations.exceptions import (
     TerritoryAlreadyOpenError,
     TerritoryCodeTakenError,
     TerritoryGstinRequiredError,
+    TerritoryHasChildrenError,
     TerritoryIsTheOrganisationError,
     TerritoryMoveIntoItselfError,
     TerritoryNameTakenError,
     TerritoryOfAnotherAppError,
     TerritoryPlacementError,
+    TransferToItselfError,
 )
 from core.organizations.identifiers import extract_pan
 from core.organizations.models import (
@@ -767,6 +769,100 @@ def reopen_territory(*, territory: Territory) -> Territory:
     territory.status = UnitStatus.ACTIVE
     territory.save(update_fields=["status", "updated_at"])
     return territory
+
+
+# ---------------------------------------------------------------------------
+# DELETING A TERRITORY (the owner, 2026-11-24; C82 amended). Before it goes,
+# everything at it goes somewhere else: its DMS RECORDS are transferred (the
+# tenant database -- `products/dms/app_settings/services.py`, the view runs it
+# first) and its PEOPLE move to the same territory (here). Refused while it has
+# territories under it, and never the organisation.
+#
+# CHECKED BEFORE ANYTHING MOVES: `check_territory_deletion()` runs first, so a
+# delete the control plane would refuse never transfers a single record. The
+# two databases cannot share one transaction; records first, then people and
+# the box, so a failure part-way leaves records at the target -- never lost.
+# ---------------------------------------------------------------------------
+
+
+def territories_under(territory: Territory) -> int:
+    """How many territories sit directly under this one (a path query, not the per-box API)."""
+    return Territory.objects.filter(
+        organization_id=territory.organization_id,
+        path__startswith=territory.path,
+        depth=territory.depth + 1,
+    ).count()
+
+
+def _people_at(territory: Territory):
+    return MembershipAppAccess.objects.filter(
+        app_id=territory.app_id, territories__territory=territory
+    ).select_related("membership__user").distinct()
+
+
+def check_territory_deletion(
+    *, territory: Territory, transfer_to_id: uuid.UUID
+) -> Territory:
+    """
+    May this territory be deleted, its records and people going to
+    `transfer_to_id`? Answers the target, or refuses -- writing nothing.
+    """
+    _assert_not_the_root(territory)
+    if territories_under(territory):
+        raise TerritoryHasChildrenError
+    try:
+        target = Territory.objects.of(territory.organization, territory.app_id).get(
+            pk=transfer_to_id
+        )
+    except (Territory.DoesNotExist, DjangoValidationError, ValueError):
+        raise not_found("Territory") from None
+    if target.pk == territory.pk:
+        raise TransferToItselfError
+
+    # THE DMS-ONLY RULE, before anything moves: its people go to the target,
+    # and below the organisation nobody holds an app that ignores territories.
+    if _is_below_the_organisation(target):
+        for grant in _people_at(territory):
+            held = [
+                g.app
+                for g in MembershipAppAccess.objects.filter(
+                    membership=grant.membership, app__unit_aware=False
+                ).select_related("app")
+            ]
+            if held:
+                user = grant.membership.user
+                who = f"{user.first_name} {user.last_name}".strip() or user.email
+                raise OtherAppsHeldError(
+                    f"{who} works here and also holds {_app_names(held)}, so cannot move to "
+                    f"{target.display_name}. Remove the other apps first, or transfer to the "
+                    "organisation."
+                )
+    return target
+
+
+def people_placed_at(territory: Territory) -> int:
+    """How many people work AT this territory -- for Delete's summary."""
+    return _people_at(territory).count()
+
+
+@transaction.atomic
+def delete_territory(
+    *, actor: Membership, territory: Territory, transfer_to_id: uuid.UUID
+) -> None:
+    """
+    Its people move to the target (keeping their other places and their
+    role), then the box is deleted. The view has already transferred its DMS
+    records; every rule is checked again here, inside the transaction.
+    """
+    target = check_territory_deletion(territory=territory, transfer_to_id=transfer_to_id)
+    for grant in list(_people_at(territory)):
+        places = [p for p in _current_places(grant) if p.pk != territory.pk]
+        if not any(p.pk == target.pk for p in places):
+            places.append(target)
+        _write_places(actor, grant.membership, grant, places)
+    # Through the tree manager's queryset, which keeps the parent's
+    # `numchild` right.
+    Territory.objects.filter(pk=territory.pk).delete()
 
 
 # ---------------------------------------------------------------------------

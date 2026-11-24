@@ -22,7 +22,7 @@ pytestmark = pytest.mark.django_db
 
 
 class TestPermissions:
-    def test_there_are_83(self):
+    def test_there_are_84(self):
         """
         C42 settled on 48, C67 added seven, and C72 piece 1 added three
         (`admin.territory.view/create/update`, `permissions/0009`), and C78 one
@@ -33,13 +33,14 @@ class TestPermissions:
         page one (`dms.user.view`, `0021`, 2026-11-23, held by no role), and its
         Invite User one (`dms.user.create`, `0022`, 2026-11-24), and its rows'
         Edit, Deactivate and Delete three (`0023`, 2026-11-24), and Territory
-        Management's four (`dms.territory.*`, `0024`, 2026-11-24). A number
+        Management's four (`dms.territory.*`, `0024`, 2026-11-24), and its Delete
+        (`dms.territory.delete`, `0025`). A number
         that drifts is a decision nobody made -- which is exactly what this
         assertion is for, and it did its job: the seven codes were added with a
         comment saying the catalogue had grown and this test was not updated
         with them.
         """
-        assert Permission.objects.count() == 83
+        assert Permission.objects.count() == 84
 
     def test_split_by_app_as_decided(self):
         """
@@ -52,11 +53,11 @@ class TestPermissions:
         to 44 with `dms.user.view` (DMS settings' Users page, `0021`) and 45 with
         `dms.user.create` (its Invite User, `0022`), and 48 with its rows' Edit,
         Deactivate and Delete (`0023`), and 52 with Territory Management's four
-        (`0024`). Each app
+        (`0024`), 53 with its Delete (`0025`). Each app
         is asserted separately so a change to one cannot quietly reach another.
         """
         assert Permission.objects.filter(app_id=AppCode.ADMIN).count() == 30
-        assert Permission.objects.filter(app_id=AppCode.DMS).count() == 52
+        assert Permission.objects.filter(app_id=AppCode.DMS).count() == 53
         assert Permission.objects.filter(app_id=AppCode.CRM).count() == 1
 
     def test_every_code_is_app_resource_action(self):

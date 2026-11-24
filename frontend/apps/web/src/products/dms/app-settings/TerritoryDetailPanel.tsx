@@ -61,7 +61,7 @@ export function TerritoryDetailPanel({ node, tree, onClose }: TerritoryDetailPan
             <h2 className={panel.name}>{territory.name}</h2>
             <p className={panel.description}>{where}</p>
           </div>
-          <TerritoryActions territory={territory} onStatusError={setStatusError} />
+          <TerritoryActions node={node} tree={tree} onStatusError={setStatusError} />
         </>
       }
     >

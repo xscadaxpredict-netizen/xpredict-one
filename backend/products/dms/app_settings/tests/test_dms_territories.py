@@ -51,6 +51,7 @@ PERMISSIONS = [
     "dms.territory.create",
     "dms.territory.update",
     "dms.territory.set_status",
+    "dms.territory.delete",
 ]
 
 
@@ -234,7 +235,7 @@ class TestWhoMayAsk:
     """THE OWNER ALONE, for now (Q63): no role holds `dms.territory.*`."""
 
     def test_no_role_holds_any_of_the_permissions(self):
-        assert Permission.objects.filter(code__in=PERMISSIONS).count() == 4
+        assert Permission.objects.filter(code__in=PERMISSIONS).count() == 5
         assert not Role.objects.filter(permissions__code__in=PERMISSIONS).exists()
 
     def test_an_organisation_admin_is_refused(self, client):

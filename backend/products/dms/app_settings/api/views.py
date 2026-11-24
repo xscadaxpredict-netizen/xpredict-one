@@ -24,22 +24,28 @@ from core.organizations.selectors import (
 from core.organizations.services import (
     add_territory,
     assign_to_territory,
+    check_territory_deletion,
     close_territory,
+    delete_territory,
     edit_territory,
     invite_to_app,
     move_to_territory,
+    people_placed_at,
     remove_from_app,
     remove_from_territory,
     reopen_territory,
     set_app_status,
+    territories_under,
     update_app_user,
 )
 from core.permissions.models import AppCode
 from shared.exceptions import not_found
 
+from ..services import count_territory_records, transfer_territory_records
 from .serializers import (
     AppUserSerializer,
     AssignPeopleSerializer,
+    DeleteTerritorySerializer,
     DmsEditSerializer,
     DmsInviteSerializer,
     DmsTerritoryEditSerializer,
@@ -279,7 +285,25 @@ class DmsTerritoryDetailView(OrgScopedAPIView):
     required_permissions: ClassVar[list[str]] = ["dms.territory.view"]
     method_permissions: ClassVar[dict[str, list[str]]] = {
         "PUT": ["dms.territory.update"],
+        "DELETE": ["dms.territory.delete"],
     }
+
+    def delete(self, request: Request, org_slug: str, territory_id: str) -> Response:
+        """
+        Delete territory (2026-11-24) `{transfer_to}`: its DMS records are
+        transferred, its people move to the same territory, then it goes.
+        Checked FIRST, so a refused delete transfers nothing. 204.
+        """
+        territory = _territory(self.organization, territory_id)
+        payload = DeleteTerritorySerializer(data=request.data)
+        payload.is_valid(raise_exception=True)
+        target = check_territory_deletion(
+            territory=territory, transfer_to_id=payload.validated_data["transfer_to"]
+        )
+
+        transfer_territory_records(from_id=territory.pk, to_id=target.pk)
+        delete_territory(actor=self.membership, territory=territory, transfer_to_id=target.pk)
+        return Response(status=status.HTTP_204_NO_CONTENT)
 
     def put(self, request: Request, org_slug: str, territory_id: str) -> Response:
         territory = _territory(self.organization, territory_id)
@@ -293,6 +317,25 @@ class DmsTerritoryDetailView(OrgScopedAPIView):
         else:
             edit_territory(territory=territory, **data)
         return Response(_territory_row(self.organization, territory.pk))
+
+
+class DmsTerritoryDeletePreviewView(OrgScopedAPIView):
+    """
+    `GET .../territories/<id>/delete-preview/` -- what Delete would move: its
+    DMS records, its people, and the territories under it (which refuse it).
+    """
+
+    required_permissions: ClassVar[list[str]] = ["dms.territory.view", "dms.territory.delete"]
+
+    def get(self, request: Request, org_slug: str, territory_id: str) -> Response:
+        territory = _territory(self.organization, territory_id)
+        return Response(
+            {
+                "records": count_territory_records(territory.pk),
+                "people": people_placed_at(territory),
+                "children": territories_under(territory),
+            }
+        )
 
 
 class DmsTerritoryStatusView(OrgScopedAPIView):

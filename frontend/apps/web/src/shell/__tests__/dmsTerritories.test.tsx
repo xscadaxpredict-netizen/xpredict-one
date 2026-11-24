@@ -13,6 +13,8 @@ import type * as authApi from "../api/auth";
 import {
   assignPeople,
   createTerritory,
+  deleteTerritory,
+  fetchDeletePreview,
   fetchTerritories,
   fetchTerritoryPeople,
   movePerson,
@@ -46,6 +48,8 @@ vi.mock("../../products/dms/app-settings/territories", async (importOriginal) =>
   assignPeople: vi.fn(),
   removePerson: vi.fn(),
   movePerson: vi.fn(),
+  fetchDeletePreview: vi.fn(),
+  deleteTerritory: vi.fn(),
 }));
 
 // Assign users lists DMS's users.
@@ -73,6 +77,8 @@ const mockAssignPeople = vi.mocked(assignPeople);
 const mockRemovePerson = vi.mocked(removePerson);
 const mockMovePerson = vi.mocked(movePerson);
 const mockFetchDmsUsers = vi.mocked(fetchDmsUsers);
+const mockFetchDeletePreview = vi.mocked(fetchDeletePreview);
+const mockDeleteTerritory = vi.mocked(deleteTerritory);
 
 const GSTIN = "27AAPFU0939F1ZV";
 const GSTIN_PAN = "AAPFU0939F";
@@ -92,6 +98,7 @@ function realOwner() {
               "dms.territory.create",
               "dms.territory.update",
               "dms.territory.set_status",
+              "dms.territory.delete",
               "dms.user.view",
               "dms.user.update",
             ],
@@ -725,5 +732,54 @@ describe("a territory's people hold DMS only", () => {
 
     expect(within(dialog).getByRole("option", { name: /North \(Region\)/ })).toBeDisabled();
     expect(within(dialog).getByText(/can be placed only at the organisation/)).toBeInTheDocument();
+  });
+});
+
+describe("Delete territory", () => {
+  it("is greyed while territories sit under it, and says why", async () => {
+    await showTree(`${PAGE}/north`);
+
+    fireEvent.keyDown(screen.getByRole("button", { name: "More actions for North" }), {
+      key: "Enter",
+    });
+    const menu = await screen.findByRole("menu");
+
+    expect(within(menu).getByRole("menuitem", { name: "Delete territory" })).toHaveAttribute(
+      "aria-disabled",
+      "true",
+    );
+    expect(within(menu).getByText(/first move or delete the territories under it/)).toBeInTheDocument();
+  });
+
+  it("transfers its records and people to the chosen territory, then goes back to the tree", async () => {
+    mockFetchDeletePreview.mockResolvedValue({ records: 12, people: 2, children: 0 });
+    mockDeleteTerritory.mockResolvedValue(undefined);
+    const { router } = await showTree(`${PAGE}/noida`);
+
+    fireEvent.keyDown(screen.getByRole("button", { name: "More actions for Noida" }), {
+      key: "Enter",
+    });
+    fireEvent.click(
+      within(await screen.findByRole("menu")).getByRole("menuitem", { name: "Delete territory" }),
+    );
+    const dialog = await screen.findByRole("dialog", { name: "Delete Noida?" });
+
+    expect(
+      await within(dialog).findByText(/12 DMS records and 2 people work at Noida/),
+    ).toBeInTheDocument();
+    // Nothing chosen yet: nothing to confirm.
+    expect(within(dialog).getByRole("button", { name: "Delete territory" })).toBeDisabled();
+    // Anywhere but itself; no dashes.
+    expect(within(dialog).getByRole("option", { name: "Delhi Motors (Dealer)" })).toBeInTheDocument();
+    expect(within(dialog).queryByRole("option", { name: /^Noida/ })).not.toBeInTheDocument();
+
+    fireEvent.change(within(dialog).getByLabelText("Transfer to"), { target: { value: "delhi" } });
+    expect(within(dialog).getByText(/This cannot be undone/)).toBeInTheDocument();
+    fireEvent.click(within(dialog).getByRole("button", { name: "Delete territory" }));
+
+    await waitFor(() =>
+      expect(mockDeleteTerritory).toHaveBeenCalledWith("acme-motors", "noida", "delhi"),
+    );
+    await waitFor(() => expect(router.state.location.pathname).toBe(PAGE));
   });
 });

@@ -4,6 +4,8 @@ import { dealerKeys } from "../../../shell/admin/hooks/useDealers";
 import {
   assignPeople,
   createTerritory,
+  deleteTerritory,
+  fetchDeletePreview,
   fetchTerritories,
   fetchTerritoryPeople,
   movePerson,
@@ -19,6 +21,8 @@ export const territoryKeys = {
   all: () => ["dms", "settings", "territories"] as const,
   people: (territoryId: string) =>
     ["dms", "settings", "territories", territoryId, "people"] as const,
+  deletePreview: (territoryId: string) =>
+    ["dms", "settings", "territories", territoryId, "delete-preview"] as const,
 };
 
 /*
@@ -101,6 +105,23 @@ export function useMovePerson() {
   return useOrgMutation({
     mutationFn: (orgSlug, variables: { territoryId: string; personId: string; to: string }) =>
       movePerson(orgSlug, variables.territoryId, variables.personId, variables.to),
+    invalidates: TERRITORIES_CHANGED,
+  });
+}
+
+/** What Delete would move: records, people, territories under it. */
+export function useDeletePreview(territoryId: string) {
+  return useOrgQuery({
+    key: territoryKeys.deletePreview(territoryId),
+    queryFn: (orgSlug) => fetchDeletePreview(orgSlug, territoryId),
+  });
+}
+
+/** Delete a territory, its records and people going to another. */
+export function useDeleteTerritory() {
+  return useOrgMutation({
+    mutationFn: (orgSlug, variables: { territoryId: string; transferTo: string }) =>
+      deleteTerritory(orgSlug, variables.territoryId, variables.transferTo),
     invalidates: TERRITORIES_CHANGED,
   });
 }

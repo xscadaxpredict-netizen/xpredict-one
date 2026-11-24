@@ -235,6 +235,14 @@ PERMISSIONS: list[tuple[str, str, str, str, str]] = [
         "Territories",
         "Close a territory, or reopen it",
     ),
+    # Delete territory (`permissions/0025`, 2026-11-24): records and people move first.
+    (
+        "dms.territory.delete",
+        "dms",
+        "territories",
+        "Territories",
+        "Delete a territory, moving its records and people",
+    ),
     # --- CRM ----------------------------------------------------------------
     #
     # ONE PERMISSION, deliberately. CRM is built after DMS ships, and designing
@@ -281,6 +289,7 @@ _OWNER_ONLY = [
     "dms.territory.create",
     "dms.territory.update",
     "dms.territory.set_status",
+    "dms.territory.delete",
 ]
 
 _DMS_READS = [

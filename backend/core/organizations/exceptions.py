@@ -332,6 +332,24 @@ class OtherAppsHeldError(ConflictError):
     message = "People placed at a territory hold DMS only. Remove their other apps first."
 
 
+class TerritoryHasChildrenError(ConflictError):
+    """
+    DELETE REFUSES A TERRITORY WITH TERRITORIES UNDER IT (the owner,
+    2026-11-24): move or delete them first (Edit -> Parent territory). Nothing
+    moves that the admin did not move themselves.
+    """
+
+    code = "territory_has_children"
+    message = "Move or delete the territories under it first (Edit -> Parent territory)."
+
+
+class TransferToItselfError(ConflictError):
+    """Delete's records and people must go to ANOTHER territory."""
+
+    code = "transfer_to_itself"
+    message = "Choose another territory to transfer its records and people to."
+
+
 class AlreadyInTerritoryError(ConflictError):
     """They already work at this territory -- assigning only adds a place."""
 

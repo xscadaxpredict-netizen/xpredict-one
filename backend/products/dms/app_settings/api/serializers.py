@@ -240,3 +240,9 @@ class MovePersonSerializer(serializers.Serializer):
     """Move: to which territory."""
 
     to = serializers.UUIDField()
+
+
+class DeleteTerritorySerializer(serializers.Serializer):
+    """Delete territory: where its records and people go."""
+
+    transfer_to = serializers.UUIDField()
