@@ -63,7 +63,7 @@ def add_with_role(organization, role_code, unit=None, email="person@acme.test"):
         membership=membership,
         app=AppCode.DMS,
         role=Role.objects.get(app_id=AppCode.DMS, code=role_code),
-        territories=[unit or Territory.objects.root_for(organization)],
+        territories=[unit or Territory.objects.root_for(organization, AppCode.DMS)],
     )
     return user
 

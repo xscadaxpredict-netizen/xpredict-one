@@ -197,7 +197,7 @@ class TestThePersonSitsWhereTheirGrantsSay:
         delhi = create_dealer(organization=result.organization, name="Delhi Motors")
         wide = dms_at(
             person(result, "wide@apex.test"),
-            [Territory.objects.root_for(result.organization)],
+            [Territory.objects.root_for(result.organization, AppCode.DMS)],
             "dms.fleet_viewer",
         )
 

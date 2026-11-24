@@ -65,17 +65,25 @@ class TerritoryManager(MP_NodeManager):
     Treebeard's manager -- which since treebeard 6.0 a tree model's default
     manager MUST be -- plus the organisation's root.
 
-    `root_for(organization)` IS THE ORGANISATION'S BOX, created on first use.
-    Sign-up creates it; the lazy path exists for organisations made any other
-    way (tests, the shell) and is serialised by a lock on the organisation row,
-    so two first uses cannot make two roots -- and the database refuses a
-    second one anyway (`territory_one_root_per_org`).
+    EVERY APP HAS ITS OWN TREE (the owner, 2026-11-24, amending C72's "one
+    tree per organisation"): each territory belongs to one app, and each app
+    has its own root in each organisation. DMS's is the tree that existed before
+    (`organizations/0025` marked it); the Admin panel and CRM have a root each,
+    where their organisation-wide people are placed.
 
-    `create()` ADDS A TERRITORY DIRECTLY UNDER THE ORGANISATION. A box in a
-    materialised-path tree cannot simply be inserted: it needs a `path` saying
-    where it sits. So `create()` goes through treebeard's `add_child()` on the
-    root, and a territory under any other parent goes through
-    `add_child(parent, {...})`. Every existing caller -- `create_dealer()` and
+    `root_for(organization, app)` IS THAT APP'S TOP BOX, created on first use.
+    Sign-up creates DMS's; the lazy path covers every other app and anything
+    made another way (tests, the shell), serialised by a lock on the
+    organisation row, so two first uses cannot make two roots -- and the
+    database refuses a second one anyway (`territory_one_root_per_org_app`).
+
+    `create()` ADDS A TERRITORY DIRECTLY UNDER AN APP'S ROOT -- DMS'S, unless
+    `app` says otherwise: only DMS draws territories below the root today
+    (C82). A box in a materialised-path tree cannot simply be inserted: it
+    needs a `path` saying where it sits. So `create()` goes through
+    treebeard's `add_child()` on the root, and a territory under any other
+    parent goes through `add_child(parent, {...})`, which takes the parent's
+    app (`Territory.save()`). Every existing caller -- `create_dealer()` and
     roughly a hundred test lines that make a dealership -- meant "a dealership
     with nothing above it but the organisation", which is exactly that.
 
@@ -84,8 +92,12 @@ class TerritoryManager(MP_NodeManager):
     by this manager and must not be relied on.
     """
 
-    def root_for(self, organization) -> Territory:
-        root = self.filter(organization=organization, is_root=True).first()
+    def root_for(self, organization, app: str) -> Territory:
+        """
+        `app`'s top box in this organisation. NO DEFAULT APP: a root asked for
+        without saying whose tree is exactly the ambiguity per-app trees end.
+        """
+        root = self.filter(organization=organization, app_id=app, is_root=True).first()
         if root is not None:
             return root
 
@@ -93,20 +105,30 @@ class TerritoryManager(MP_NodeManager):
             # Lock the organisation, then look again: whoever waited behind the
             # lock finds the root the first caller made.
             type(organization).objects.select_for_update().get(pk=organization.pk)
-            root = self.filter(organization=organization, is_root=True).first()
+            root = self.filter(organization=organization, app_id=app, is_root=True).first()
             if root is not None:
                 return root
             return self._add_root_with_retry(
                 {
                     "organization": organization,
+                    "app_id": app,
                     "kind": TerritoryKind.ORGANISATION,
                     "name": "",
                     "is_root": True,
                 }
             )
 
+    def of(self, organization, app: str):
+        """One app's tree in one organisation -- what every tree question asks."""
+        return self.filter(organization=organization, app_id=app)
+
     def create(self, **kwargs):
-        return self.add_child(self.root_for(kwargs["organization"]), kwargs)
+        # DMS's unless said otherwise: only DMS draws territories below a root
+        # (C82). The code as a literal: `AppCode` lives in `core.permissions`,
+        # which this models module does not import.
+        app = kwargs.pop("app", None) or kwargs.pop("app_id", None) or "dms"
+        kwargs["app_id"] = app
+        return self.add_child(self.root_for(kwargs["organization"], app), kwargs)
 
     def _add_root_with_retry(self, create_kwargs: dict) -> Territory:
         """
@@ -343,6 +365,21 @@ class Territory(MP_Node, BaseModel):
         Organization, on_delete=models.CASCADE, related_name="territories"
     )
 
+    app = models.ForeignKey(
+        "permissions.App",
+        to_field="code",
+        db_column="app",
+        on_delete=models.PROTECT,
+        related_name="+",
+        help_text="Whose tree this is: every app has its own (2026-11-24).",
+    )
+    """
+    THE APP WHOSE TREE THIS BOX IS IN (the owner, 2026-11-24). A box and its
+    parent are always in the same app's tree -- `save()` takes the parent's
+    app when none is given and refuses a different one -- and a person's
+    places in an app are always in that app's tree (`grant_app_access()`).
+    """
+
     name = models.CharField(max_length=200)
     # NULL, not the empty string, and ruff DJ001 is wrong about this one.
     # The unique constraint below is (organization, code). MySQL treats every
@@ -412,11 +449,12 @@ class Territory(MP_Node, BaseModel):
         # that reads `_meta` (the admin, `latest()`). Order by name explicitly.
         ordering = ["name"]
         constraints = [
-            # EXACTLY ONE ROOT PER ORGANISATION -- "at most one" here, and "at
-            # least one" because sign-up creates it and `root_for()` creates
-            # it on first use for anything made another way.
+            # EXACTLY ONE ROOT PER ORGANISATION AND APP -- every app has its
+            # own tree (2026-11-24). "At most one" here, and "at least one"
+            # because `root_for()` creates it on first use.
             models.UniqueConstraint(
-                fields=["organization", "is_root"], name="territory_one_root_per_org"
+                fields=["organization", "app", "is_root"],
+                name="territory_one_root_per_org_app",
             ),
             # THE ROOT IS THE ORGANISATION, AT THE TOP, AND NOTHING ELSE IS.
             # A root that is not kind `organisation`, an `organisation` box
@@ -437,8 +475,9 @@ class Territory(MP_Node, BaseModel):
             models.UniqueConstraint(
                 fields=["organization", "is_head_office"], name="unit_one_head_office"
             ),
+            # Per app's tree (2026-11-24): two apps may each have a "CBE-01".
             models.UniqueConstraint(
-                fields=["organization", "code"], name="territory_unique_org_code"
+                fields=["organization", "app", "code"], name="territory_unique_org_app_code"
             ),
             # NAME IS UNIQUE TOO, and case-insensitively, which costs nothing
             # here: MySQL's `utf8mb4_0900_ai_ci` collation compares that way, so
@@ -448,8 +487,12 @@ class Territory(MP_Node, BaseModel):
             #
             # Unlike `code` this is NOT nullable, so there is no NULL-is-distinct
             # subtlety -- every dealership has a name and every name is checked.
+            #
+            # PER APP'S TREE (2026-11-24) -- and it has to be: every root is
+            # named "" (it shows the organisation's name), so a second app's
+            # root would collide with the first's on an organisation-wide rule.
             models.UniqueConstraint(
-                fields=["organization", "name"], name="territory_unique_org_name"
+                fields=["organization", "app", "name"], name="territory_unique_org_app_name"
             ),
         ]
 
@@ -482,7 +525,33 @@ class Territory(MP_Node, BaseModel):
                 "Territory.objects.create() (directly under the organisation) or "
                 "Territory.objects.add_child(parent, {...})."
             )
+        if not self.is_root:
+            self._take_or_check_parent_app()
         super().save(*args, **kwargs)
+
+    def _take_or_check_parent_app(self) -> None:
+        """
+        A BOX IS IN ITS PARENT'S APP'S TREE (2026-11-24). Given none, it takes
+        the parent's; given a different one, it is refused -- loudly, at the
+        line that tried, rather than a DMS dealership quietly hanging off the
+        Admin panel's root.
+        """
+        parent_path = self.path[: -self.steplen]
+        parent_app = (
+            type(self)
+            .objects.filter(path=parent_path)
+            .values_list("app_id", flat=True)
+            .first()
+        )
+        if parent_app is None:
+            return  # No parent yet (treebeard is writing it): nothing to compare.
+        if self.app_id is None:
+            self.app_id = parent_app
+        elif self.app_id != parent_app:
+            raise ValueError(
+                f"A territory in {self.app_id!r}'s tree cannot sit under "
+                f"{parent_app!r}'s: every app has its own tree."
+            )
 
 
 class Membership(BaseModel):

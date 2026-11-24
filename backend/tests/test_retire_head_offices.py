@@ -19,6 +19,7 @@ from config.routers import current_tenant_db
 from conftest import TEST_TENANT_ALIAS
 from core.organizations.models import Organization, Territory, TerritoryKind
 from core.organizations.selectors import dealers_for
+from core.permissions.models import AppCode
 from products.dms.sales.models import Customer
 from shared.base_models import territory_scope
 from tests.test_subtrees import build_tree, found, person
@@ -66,7 +67,7 @@ def file_customer(name, territory_id) -> None:
 def test_the_head_offices_records_move_to_the_root_and_nothing_else_moves(acme):
     tree = build_tree(acme)
     head = head_office(acme)
-    root = Territory.objects.root_for(acme)
+    root = Territory.objects.root_for(acme, AppCode.DMS)
     file_customer("Head office customer", head.id)
     file_customer("Delhi customer", tree.delhi.id)
 

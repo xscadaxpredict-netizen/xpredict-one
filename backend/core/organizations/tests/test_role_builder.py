@@ -73,7 +73,7 @@ def holder_of(result, permissions, email="actor@acme.test", code="dms.test_holde
         membership=membership,
         app=AppCode.DMS,
         role=role,
-        territories=[Territory.objects.root_for(result.organization)],
+        territories=[Territory.objects.root_for(result.organization, AppCode.DMS)],
     )
     return membership
 

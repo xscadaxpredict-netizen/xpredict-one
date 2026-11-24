@@ -152,13 +152,13 @@ class TestEverybodyElseIsUnchanged:
             membership=admin,
             app=AppCode.ADMIN,
             role=Role.objects.get(code="admin.org_admin"),
-            territories=[Territory.objects.root_for(result.organization)],
+            territories=[Territory.objects.root_for(result.organization, AppCode.ADMIN)],
         )
         grant_app_access(
             membership=admin,
             app=AppCode.DMS,
             role=Role.objects.get(code="dms.fleet_viewer"),
-            territories=[Territory.objects.root_for(result.organization)],
+            territories=[Territory.objects.root_for(result.organization, AppCode.DMS)],
         )
         fleet_viewer = set(
             Role.objects.get(code="dms.fleet_viewer").permissions.values_list("code", flat=True)

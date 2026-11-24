@@ -216,5 +216,5 @@ class TestOwnersAndAdminsAreOrganisationWide:
 
         assert reach(admin) is None
         assert administration_grant(admin).territories.get().territory == (
-            Territory.objects.root_for(result.organization)
+            Territory.objects.root_for(result.organization, AppCode.ADMIN)
         )

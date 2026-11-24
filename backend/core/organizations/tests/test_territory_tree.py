@@ -26,6 +26,7 @@ from django.db import IntegrityError
 
 from core.organizations.models import Organization, Territory, TerritoryKind
 from core.organizations.selectors import dealers_for
+from core.permissions.models import AppCode
 
 pytestmark = pytest.mark.django_db
 
@@ -69,16 +70,16 @@ class TestTheOrganisationIsTheRoot:
     def test_root_for_makes_one_root_of_kind_organisation_and_reuses_it(self):
         org = make_org()
 
-        root = Territory.objects.root_for(org)
+        root = Territory.objects.root_for(org, AppCode.DMS)
 
         assert (root.kind, root.depth, root.is_root) == (TerritoryKind.ORGANISATION, 1, True)
-        assert Territory.objects.root_for(org).pk == root.pk
+        assert Territory.objects.root_for(org, AppCode.DMS).pk == root.pk
         assert Territory.objects.filter(organization=org).count() == 1
 
     def test_the_root_shows_the_organisations_name_and_stores_none(self):
         """One copy of the name, so renaming the organisation cannot leave the tree behind."""
         org = make_org()
-        root = Territory.objects.root_for(org)
+        root = Territory.objects.root_for(org, AppCode.DMS)
 
         org.name = "Apex Motors Ltd"
         org.save()
@@ -91,22 +92,25 @@ class TestTheOrganisationIsTheRoot:
         THE SECOND ROOT HAS A NAME, AND THE ASSERTION NAMES THE RULE. The first
         version gave it `name=""` like the real root -- and the unique-name rule
         refused it, so the test passed with the one-root rule deleted. A revert
-        check caught that. Now only `territory_one_root_per_org` can refuse it.
+        check caught that. Now only the one-root rule can refuse it -- PER APP
+        since 2026-11-24 (`territory_one_root_per_org_app`): a second root in
+        the SAME app's tree.
         """
         org = make_org()
-        Territory.objects.root_for(org)
+        Territory.objects.root_for(org, AppCode.DMS)
 
         with pytest.raises(IntegrityError) as caught:
             Territory.objects.add_root(
                 {
                     "organization": org,
+                    "app_id": AppCode.DMS,
                     "kind": TerritoryKind.ORGANISATION,
                     "name": "A second top",
                     "is_root": True,
                 }
             )
 
-        assert "territory_one_root_per_org" in str(caught.value)
+        assert "territory_one_root_per_org_app" in str(caught.value)
 
     def test_the_database_refuses_anything_else_at_the_top(self):
         """
@@ -115,11 +119,16 @@ class TestTheOrganisationIsTheRoot:
         services, refuses it.
         """
         org = make_org()
-        Territory.objects.root_for(org)
+        Territory.objects.root_for(org, AppCode.DMS)
 
         with pytest.raises(IntegrityError) as caught:
             Territory.objects.add_root(
-                {"organization": org, "kind": TerritoryKind.REGION, "name": "North"}
+                {
+                    "organization": org,
+                    "app_id": AppCode.DMS,
+                    "kind": TerritoryKind.REGION,
+                    "name": "North",
+                }
             )
 
         assert "territory_root_is_the_organisation" in str(caught.value)
@@ -130,8 +139,8 @@ class TestTheOrganisationIsTheRoot:
         a = Territory.objects.create(organization=apex, name="Delhi Motors")
         b = Territory.objects.create(organization=bharat, name="Delhi Motors")
 
-        assert a.path[:5] == Territory.objects.root_for(apex).path
-        assert b.path[:5] == Territory.objects.root_for(bharat).path
+        assert a.path[:5] == Territory.objects.root_for(apex, AppCode.DMS).path
+        assert b.path[:5] == Territory.objects.root_for(bharat, AppCode.DMS).path
         assert a.path[:5] != b.path[:5]
 
 
@@ -142,7 +151,7 @@ class TestBuildingTheTree:
         first = Territory.objects.create(organization=org, name="Delhi Motors")
         second = Territory.objects.create(organization=org, name="Jaipur Auto")
 
-        root = Territory.objects.root_for(org)
+        root = Territory.objects.root_for(org, AppCode.DMS)
         assert (first.depth, second.depth) == (2, 2)
         assert first.path.startswith(root.path) and second.path.startswith(root.path)
         assert first.path != second.path
@@ -202,8 +211,8 @@ class TestTwoOrganisationsSigningUpAtOnce:
         never prints (it names the index, not the column), so the retry could
         never fire while the mocked test below passed happily.
         """
-        a = Territory.objects.root_for(make_org("apex"))
-        b = Territory.objects.root_for(make_org("bharat"))
+        a = Territory.objects.root_for(make_org("apex"), AppCode.DMS)
+        b = Territory.objects.root_for(make_org("bharat"), AppCode.DMS)
 
         with pytest.raises(IntegrityError) as caught:
             Territory.objects.filter(pk=b.pk).update(path=a.path)
@@ -225,7 +234,7 @@ class TestTwoOrganisationsSigningUpAtOnce:
             return real_add_root(create_kwargs, **kwargs)
 
         with patch.object(Territory.objects, "add_root", side_effect=collide_once):
-            root = Territory.objects.root_for(make_org())
+            root = Territory.objects.root_for(make_org(), AppCode.DMS)
 
         assert len(calls) == 2
         assert fresh(root).is_root is True
@@ -237,12 +246,12 @@ class TestTwoOrganisationsSigningUpAtOnce:
             calls.append(1)
             raise IntegrityError(
                 "(1062, \"Duplicate entry 'x' for key "
-                "'organizations_territory.territory_one_root_per_org'\")"
+                "'organizations_territory.territory_one_root_per_org_app'\")"
             )
 
         with patch.object(Territory.objects, "add_root", side_effect=other_clash):
             with pytest.raises(IntegrityError):
-                Territory.objects.root_for(make_org())
+                Territory.objects.root_for(make_org(), AppCode.DMS)
 
         assert len(calls) == 1
 

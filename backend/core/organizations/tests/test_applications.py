@@ -183,7 +183,7 @@ class TestWhoMayAsk:
             result,
             app=AppCode.ADMIN,
             role_code="admin.org_admin",
-            place=Territory.objects.root_for(result.organization),
+            place=Territory.objects.root_for(result.organization, AppCode.ADMIN),
             email="admin@acme.test",
         )
         client.force_authenticate(user=admin.user)
@@ -369,7 +369,7 @@ class TestAnAppsMembers:
             membership=membership,
             app=AppCode.ADMIN,
             role=lister,
-            territories=[Territory.objects.root_for(result.organization)],
+            territories=[Territory.objects.root_for(result.organization, AppCode.ADMIN)],
         )
         client.force_authenticate(user=user)
 

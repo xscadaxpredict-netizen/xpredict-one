@@ -78,15 +78,19 @@ def admin_holding(result, role: Role, email="ravi@acme.test", with_dms=False) ->
     """A member holding `role` in the Admin panel, at the root (and DMS too, if asked)."""
     user = User.objects.create_user(email=email, password="x", first_name=email.split("@")[0])
     membership = Membership.objects.create(user=user, organization=result.organization)
-    root = Territory.objects.root_for(result.organization)
     if with_dms:
         grant_app_access(
             membership=membership,
             app=AppCode.DMS,
             role=Role.objects.get(code="dms.group_operations"),
-            territories=[root],
+            territories=[Territory.objects.root_for(result.organization, AppCode.DMS)],
         )
-    grant_app_access(membership=membership, app=AppCode.ADMIN, role=role, territories=[root])
+    grant_app_access(
+        membership=membership,
+        app=AppCode.ADMIN,
+        role=role,
+        territories=[Territory.objects.root_for(result.organization, AppCode.ADMIN)],
+    )
     return membership
 
 

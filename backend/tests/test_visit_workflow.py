@@ -74,7 +74,7 @@ def world():
         status=OrganizationStatus.ACTIVE,
     )
     # THE HEAD OFFICE IS THE ROOT (C82 amended; translated in the merge).
-    head_office = Territory.objects.root_for(org)
+    head_office = Territory.objects.root_for(org, AppCode.DMS)
     dealer_a = org_services.create_dealer(organization=org, name="Dealer A")
     dealer_b = org_services.create_dealer(organization=org, name="Dealer B")
     def person(email, unit, *, dms=True):

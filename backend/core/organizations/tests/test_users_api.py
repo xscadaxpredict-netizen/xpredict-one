@@ -98,7 +98,7 @@ def add_person(
             membership=membership,
             app=AppCode.DMS,
             role=dms_role(role_code),
-            territories=[unit or Territory.objects.root_for(organization)],
+            territories=[unit or Territory.objects.root_for(organization, AppCode.DMS)],
         )
     return membership
 

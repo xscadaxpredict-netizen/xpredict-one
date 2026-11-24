@@ -62,7 +62,7 @@ def person(result, *, app, role_code, place=None, email, status=MembershipStatus
         membership=membership,
         app=app,
         role=Role.objects.get(code=role_code),
-        territories=[place or Territory.objects.root_for(result.organization)],
+        territories=[place or Territory.objects.root_for(result.organization, app)],
     )
     return membership
 
@@ -169,7 +169,7 @@ class TestUsers:
             membership=owner,
             app=AppCode.ADMIN,
             role=Role.objects.get(code="admin.org_admin"),
-            territories=[Territory.objects.root_for(result.organization)],
+            territories=[Territory.objects.root_for(result.organization, AppCode.ADMIN)],
         )
 
         assert users_of(client, result) == {"Organization Owner": 1, "Organization Admin": 0}

@@ -189,7 +189,7 @@ def add_plain_member(organization, unit=None, email="sales@acme.test"):
         membership=membership,
         app=AppCode.DMS,
         role=Role.objects.get(app_id=AppCode.DMS, code="dms.sales_representative"),
-        territories=[unit or Territory.objects.root_for(organization)],
+        territories=[unit or Territory.objects.root_for(organization, AppCode.DMS)],
     )
     return user, membership
 

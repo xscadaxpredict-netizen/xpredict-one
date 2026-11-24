@@ -147,6 +147,21 @@ class TerritoryNameTakenError(ConflictError):
     message = "Another territory already uses that name."
 
 
+class TerritoryOfAnotherAppError(ConflictError):
+    """
+    A place in another app's territory tree (the owner, 2026-11-24: every app
+    has its own tree). A person's places in an app are always in THAT app's
+    tree -- a DMS grant cannot sit at the Admin panel's root, nor a CRM grant
+    at a DMS dealership.
+
+    409, the state answer, like `TerritoryPlacementError`: the request names a
+    real territory of this organisation; it is in the wrong tree.
+    """
+
+    code = "territory_of_another_app"
+    message = "That place is in another app's territory tree."
+
+
 class TerritoryPlacementError(ConflictError):
     """
     That kind of territory cannot sit there (C72).

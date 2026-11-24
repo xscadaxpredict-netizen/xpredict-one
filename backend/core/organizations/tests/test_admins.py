@@ -64,7 +64,7 @@ def person(result, *, app, role, place=None, email, first="", status=MembershipS
         membership=membership,
         app=app,
         role=role,
-        territories=[place or Territory.objects.root_for(result.organization)],
+        territories=[place or Territory.objects.root_for(result.organization, app)],
     )
     return membership
 
@@ -169,7 +169,7 @@ class TestWhoIsListed:
             membership=result.membership,
             app=AppCode.ADMIN,
             role=Role.objects.get(code="admin.org_admin"),
-            territories=[Territory.objects.root_for(result.organization)],
+            territories=[Territory.objects.root_for(result.organization, AppCode.ADMIN)],
         )
 
         listed = rows(client, result)

@@ -91,7 +91,7 @@ def administration(membership) -> tuple[str, frozenset] | None:
 
 
 def root(result):
-    return frozenset({Territory.objects.root_for(result.organization).pk})
+    return frozenset({Territory.objects.root_for(result.organization, AppCode.ADMIN).pk})
 
 
 class TestTheRole:

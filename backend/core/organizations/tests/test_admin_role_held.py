@@ -77,7 +77,7 @@ def holding(result, code, email) -> Membership:
         membership=membership,
         app=AppCode.ADMIN,
         role=Role.objects.get(code=code),
-        territories=[Territory.objects.root_for(result.organization)],
+        territories=[Territory.objects.root_for(result.organization, AppCode.ADMIN)],
     )
     return Membership.objects.get(pk=membership.pk)
 

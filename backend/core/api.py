@@ -162,7 +162,8 @@ def home_for(
     kinds = model.home_kinds
 
     allowed = resolve_allowed_territories(membership, app)
-    places = Territory.objects.filter(organization=organization, kind__in=kinds)
+    # `app`'s own tree (every app has its own, 2026-11-24).
+    places = Territory.objects.of(organization, app).filter(kind__in=kinds)
     if allowed is not None:
         places = places.filter(id__in=allowed)
 
@@ -174,7 +175,7 @@ def home_for(
     # The owner holds every app by rule with no grant (C72 2c): their place is
     # the root.
     own = (
-        [Territory.objects.root_for(organization)]
+        [Territory.objects.root_for(organization, app)]
         if membership.is_owner
         else placements_for(membership, app)
     )

@@ -71,6 +71,7 @@ from core.organizations.exceptions import (
     TerritoryIsTheOrganisationError,
     TerritoryMoveIntoItselfError,
     TerritoryNameTakenError,
+    TerritoryOfAnotherAppError,
     TerritoryPlacementError,
 )
 from core.organizations.identifiers import extract_pan
@@ -201,10 +202,10 @@ def sign_up(
         db_port=int(settings.DATABASES["default"]["PORT"] or 3306),
     )
 
-    # THE ORGANISATION'S TERRITORY TREE STARTS HERE (C72): its root box, kind
-    # `organisation`. Created with the organisation, in the same transaction,
-    # so no organisation ever exists without one.
-    Territory.objects.root_for(organization)
+    # DMS'S TERRITORY TREE STARTS HERE (C72; per app since 2026-11-24): its
+    # root box, kind `organisation`, created with the organisation in the same
+    # transaction. Every other app's root is made on first use (`root_for`).
+    Territory.objects.root_for(organization, AppCode.DMS)
 
     membership = Membership.objects.create(
         user=user,
@@ -393,7 +394,7 @@ def _subscribe_and_grant(
         membership=membership,
         app=app,
         role=role,
-        territories=[Territory.objects.root_for(organization)],
+        territories=[Territory.objects.root_for(organization, app)],
         actor_id=actor_id,
     )
 
@@ -467,9 +468,11 @@ def _resolve_parent(organization: Organization, parent_id: uuid.UUID | None) -> 
     customer's tree.
     """
     if parent_id is None:
-        return Territory.objects.root_for(organization)
+        return Territory.objects.root_for(organization, AppCode.DMS)
     try:
-        return Territory.objects.get(id=parent_id, organization=organization)
+        # DMS'S TREE: territories are drawn in DMS only (C82); a box in another
+        # app's tree is "no such territory" here, the same 404.
+        return Territory.objects.get(id=parent_id, organization=organization, app_id=AppCode.DMS)
     except (Territory.DoesNotExist, DjangoValidationError, ValueError):
         raise not_found("Territory") from None
 
@@ -498,7 +501,7 @@ def _add_territory(organization: Organization, parent: Territory, fields: dict) 
 def _assert_territory_name_free(
     organization: Organization, name: str, excluding: uuid.UUID | None = None
 ) -> None:
-    existing = Territory.objects.filter(organization=organization, name=name)
+    existing = Territory.objects.of(organization, AppCode.DMS).filter(name=name)
     if excluding is not None:
         existing = existing.exclude(pk=excluding)
     if existing.exists():
@@ -624,7 +627,6 @@ def grant_app_access(
     if any(t.organization_id != membership.organization_id for t in territories):
         # Another organisation's territory is one the caller cannot see (C49).
         raise not_found("Territory")
-
     app_uses_territories = App.objects.filter(code=app, unit_aware=True).exists()
     placed_at_a_dealership = any(_is_dealership_place(t) for t in territories)
 
@@ -643,6 +645,12 @@ def grant_app_access(
         ).select_related("territory")
     ):
         raise DealerScopedAppError
+    if any(t.app_id != app for t in territories):
+        # EVERY APP HAS ITS OWN TREE (2026-11-24): a DMS grant placed at the
+        # Admin panel's root, say, is refused -- here, the one place every
+        # placement is written, so nothing gets round it. After C27, so a CRM
+        # grant at a dealership is still refused by the dealership rule.
+        raise TerritoryOfAnotherAppError
 
     grant, _ = MembershipAppAccess.objects.get_or_create(
         membership=membership, app_id=app, defaults={"created_by_user_id": actor_id}
@@ -668,10 +676,12 @@ def revoke_app_access(*, membership: Membership, app: str) -> None:
     MembershipAppAccess.objects.filter(membership=membership, app_id=app).delete()
 
 
-def _placement(organization: Organization, unit: Territory | None) -> list[Territory]:
+def _placement(
+    organization: Organization, app: str, unit: Territory | None
+) -> list[Territory]:
     """
-    Where the FORM puts this person: the dealership it names, or the
-    organisation's root when it names none.
+    Where the FORM puts this person in `app`: the dealership it names, or that
+    app's root when it names none (every app has its own tree, 2026-11-24).
 
     FROM THE FORM, NOT FROM `Membership.unit` (C72 step 2d-2). Until this step
     the services saved the dealership on the membership and then read it back
@@ -681,7 +691,7 @@ def _placement(organization: Organization, unit: Territory | None) -> list[Terri
     """
     if unit is not None:
         return [unit]
-    return [Territory.objects.root_for(organization)]
+    return [Territory.objects.root_for(organization, app)]
 
 
 def _assert_organisation_wide(standing: str, unit_id: uuid.UUID | None) -> None:
@@ -726,7 +736,7 @@ def _grant_administration_if_admin(
             membership=membership,
             app=AppCode.ADMIN,
             role=Role.objects.get(app_id=AppCode.ADMIN, code=ORGANISATION_ADMIN_ROLE),
-            territories=[Territory.objects.root_for(membership.organization)],
+            territories=[Territory.objects.root_for(membership.organization, AppCode.ADMIN)],
             actor_id=actor_id,
         )
 
@@ -896,7 +906,7 @@ def reopen_dealer(*, dealer: Territory) -> Territory:
 def _assert_dealer_name_free(
     organization: Organization, name: str, excluding: uuid.UUID | None = None
 ) -> None:
-    existing = Territory.objects.filter(organization=organization, name=name)
+    existing = Territory.objects.of(organization, AppCode.DMS).filter(name=name)
     # EXCLUDE THE ROW BEING EDITED, or saving a dealership without touching its
     # name collides with itself -- the bug the frontend fake had to fix twice.
     if excluding is not None:
@@ -914,7 +924,7 @@ def _assert_dealer_code_free(
     if not code:
         return
 
-    existing = Territory.objects.filter(organization=organization, code=code)
+    existing = Territory.objects.of(organization, AppCode.DMS).filter(code=code)
     if excluding is not None:
         existing = existing.exclude(pk=excluding)
 
@@ -1044,6 +1054,7 @@ def _resolve_unit(organization: Organization, unit_id: uuid.UUID | None) -> Terr
         return Territory.objects.get(
             id=unit_id,
             organization=organization,
+            app_id=AppCode.DMS,
             kind=TerritoryKind.DEALER,
             is_head_office__isnull=True,
         )
@@ -1287,7 +1298,7 @@ def _update_membership(
             membership=membership,
             app=app,
             role=granted_role,
-            territories=_placement(membership.organization, unit),
+            territories=_placement(membership.organization, app, unit),
         )
     # The delete above took any Administration grant with it, so the form
     # decides afresh whether there is one (a demotion ends here).
@@ -1449,7 +1460,7 @@ def assign_apps(
                 membership=person,
                 app=app,
                 role=role,
-                territories=_placement(organization, None),
+                territories=_placement(organization, app, None),
                 actor_id=actor.user_id,
             )
         else:
@@ -1987,7 +1998,7 @@ def accept_invitation(
             membership=membership,
             app=app,
             role=role,
-            territories=_placement(organization, None),
+            territories=_placement(organization, app, None),
             actor_id=invitation.invited_by_id,
         )
     # NO ADMINISTRATION FROM AN INVITATION (C83): an invitation is a person,
@@ -2336,7 +2347,7 @@ def assign_admin_role(
             "You cannot give a role with permissions you do not hold yourself."
         )
 
-    root = Territory.objects.root_for(organization)
+    root = Territory.objects.root_for(organization, AppCode.ADMIN)
     for person_id in person_ids:
         person = find_person(organization, person_id)
         _assert_can_manage_person(actor, person)
@@ -2441,7 +2452,7 @@ def change_admin_role(
         membership=person,
         app=AppCode.ADMIN,
         role=role,
-        territories=[Territory.objects.root_for(organization)],
+        territories=[Territory.objects.root_for(organization, AppCode.ADMIN)],
         actor_id=actor.user_id,
     )
     return person

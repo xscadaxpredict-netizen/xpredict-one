@@ -93,7 +93,7 @@ def member(result, email="meena@acme.test", place=None) -> Membership:
         membership=membership,
         app=AppCode.DMS,
         role=Role.objects.get(code="dms.sales_representative" if place else "dms.group_operations"),
-        territories=[place or Territory.objects.root_for(result.organization)],
+        territories=[place or Territory.objects.root_for(result.organization, AppCode.DMS)],
     )
     return membership
 
@@ -126,7 +126,7 @@ def giver_holding(result, permissions, email="giver@acme.test") -> Membership:
         membership=membership,
         app=AppCode.ADMIN,
         role=role,
-        territories=[Territory.objects.root_for(result.organization)],
+        territories=[Territory.objects.root_for(result.organization, AppCode.ADMIN)],
     )
     return membership
 

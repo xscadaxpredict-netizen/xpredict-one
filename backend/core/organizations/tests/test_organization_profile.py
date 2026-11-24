@@ -54,7 +54,7 @@ def member(result, *, app, role_code, place, email):
 
 
 def org_admin(result, email="admin@acme.test"):
-    root = Territory.objects.root_for(result.organization)
+    root = Territory.objects.root_for(result.organization, AppCode.ADMIN)
     return member(result, app=AppCode.ADMIN, role_code="admin.org_admin", place=root, email=email)
 
 

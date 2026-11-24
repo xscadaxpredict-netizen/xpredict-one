@@ -43,17 +43,17 @@ def filed_at(result, membership=None, requested=None):
 
 def test_the_head_office_is_the_root_named_after_the_organisation_and_there_is_one():
     result = found(name="Sirish Motors")
-    root = Territory.objects.root_for(result.organization)
+    root = Territory.objects.root_for(result.organization, AppCode.DMS)
 
     assert root.is_root is True
     assert root.display_name == "Sirish Motors"
-    assert Territory.objects.root_for(result.organization).id == root.id
+    assert Territory.objects.root_for(result.organization, AppCode.DMS).id == root.id
 
 
 def test_the_database_refuses_a_second_head_office():
     """(organization, is_root) is unique: one root, so one head office."""
     result = found()
-    root = Territory.objects.root_for(result.organization)
+    root = Territory.objects.root_for(result.organization, AppCode.DMS)
 
     with pytest.raises(IntegrityError), transaction.atomic():
         Territory.objects.bulk_create(
@@ -73,14 +73,14 @@ def test_the_database_refuses_a_second_head_office():
 def test_org_level_work_lands_in_the_head_office_even_with_no_dealers():
     result = found()
 
-    assert filed_at(result) == Territory.objects.root_for(result.organization).id
+    assert filed_at(result) == Territory.objects.root_for(result.organization, AppCode.DMS).id
 
 
 def test_org_level_work_does_not_fall_into_the_oldest_dealer():
     result = found()
     create_dealer(organization=result.organization, name="Chennai - Guindy")
 
-    assert filed_at(result) == Territory.objects.root_for(result.organization).id
+    assert filed_at(result) == Territory.objects.root_for(result.organization, AppCode.DMS).id
 
 
 def test_an_org_level_person_may_choose_a_dealer_of_their_own_org_only():
@@ -88,7 +88,7 @@ def test_an_org_level_person_may_choose_a_dealer_of_their_own_org_only():
     other = found(code="CODE-OTHER", name="Other", email="owner@other.test")
     mine = create_dealer(organization=result.organization, name="Guindy")
     theirs = create_dealer(organization=other.organization, name="Foreign")
-    root = Territory.objects.root_for(result.organization).id
+    root = Territory.objects.root_for(result.organization, AppCode.DMS).id
 
     assert filed_at(result, requested=str(mine.id)) == mine.id
     assert filed_at(result, requested=str(theirs.id)) == root
@@ -105,7 +105,7 @@ def test_a_dealer_user_always_works_in_their_own_dealer():
 
 def test_the_head_office_is_not_a_dealer():
     result = found()
-    root = Territory.objects.root_for(result.organization)
+    root = Territory.objects.root_for(result.organization, AppCode.DMS)
     create_dealer(organization=result.organization, name="Guindy")
 
     assert [dealer.name for dealer in dealers_for(result.organization)] == ["Guindy"]

@@ -101,7 +101,7 @@ def holder_of(result, permissions, email="actor@acme.test", code="dms.test_holde
         membership=membership,
         app=AppCode.DMS,
         role=role,
-        territories=[Territory.objects.root_for(result.organization)],
+        territories=[Territory.objects.root_for(result.organization, AppCode.DMS)],
     )
     return membership
 
@@ -114,7 +114,7 @@ def give_to_member(result, code, email="priya@acme.test") -> Membership:
         membership=membership,
         app=AppCode.ADMIN,
         role=Role.objects.get(code=code),
-        territories=[Territory.objects.root_for(result.organization)],
+        territories=[Territory.objects.root_for(result.organization, AppCode.ADMIN)],
     )
     return membership
 

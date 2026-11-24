@@ -84,6 +84,7 @@ from core.organizations.services import (
     update_dealer,
     update_person_details,
 )
+from core.permissions.models import AppCode
 from shared.exceptions import not_found
 
 
@@ -203,6 +204,7 @@ class DealerDetailView(OrgScopedAPIView):
             return Territory.objects.get(
                 id=dealer_id,
                 organization=self.organization,
+                app_id=AppCode.DMS,
                 kind=TerritoryKind.DEALER,
                 is_head_office__isnull=True,
             )
@@ -277,6 +279,7 @@ class DealerStatusView(OrgScopedAPIView):
             return Territory.objects.get(
                 id=dealer_id,
                 organization=self.organization,
+                app_id=AppCode.DMS,
                 kind=TerritoryKind.DEALER,
                 is_head_office__isnull=True,
             )
@@ -291,7 +294,11 @@ class _TerritoryLookup:
         # The same isolation as `_get_dealer`: paths are unique across every
         # organisation, so an id alone would reach another customer's tree.
         try:
-            return Territory.objects.get(id=territory_id, organization=self.organization)
+            # DMS'S TREE (every app has its own, 2026-11-24): another app's root
+            # is "no such territory" here, the same 404.
+            return Territory.objects.get(
+                id=territory_id, organization=self.organization, app_id=AppCode.DMS
+            )
         except (Territory.DoesNotExist, ValidationError, ValueError):
             raise not_found("Territory") from None
 

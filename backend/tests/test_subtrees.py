@@ -89,7 +89,7 @@ def build_tree(organization) -> SimpleNamespace:
     south = add(TerritoryKind.REGION, "South")
     chennai = add(TerritoryKind.DEALER, "Chennai Cars", south)
     return SimpleNamespace(
-        root=Territory.objects.root_for(organization),
+        root=Territory.objects.root_for(organization, AppCode.DMS),
         north=north,
         delhi=delhi,
         delhi_east=delhi_east,

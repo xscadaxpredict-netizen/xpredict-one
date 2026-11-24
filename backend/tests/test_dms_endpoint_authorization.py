@@ -109,7 +109,7 @@ def add_member(org, role_code, email, unit=None):
         membership=membership,
         app=AppCode.DMS,
         role=Role.objects.get(app_id=AppCode.DMS, code=role_code),
-        territories=[unit or Territory.objects.root_for(org)],
+        territories=[unit or Territory.objects.root_for(org, AppCode.DMS)],
     )
     return user
 

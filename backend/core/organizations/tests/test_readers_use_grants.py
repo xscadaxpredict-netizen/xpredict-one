@@ -77,7 +77,7 @@ class TestTheNewTablesAloneOpenTheApp:
             membership=member,
             app=AppCode.DMS,
             role=Role.objects.get(code="dms.fleet_viewer"),
-            territories=[Territory.objects.root_for(result.organization)],
+            territories=[Territory.objects.root_for(result.organization, AppCode.DMS)],
         )
 
         assert dms(me(member.user)).accessible is True
@@ -90,7 +90,7 @@ class TestTheNewTablesAloneOpenTheApp:
             membership=member,
             app=AppCode.DMS,
             role=Role.objects.get(code="dms.fleet_viewer"),
-            territories=[Territory.objects.root_for(result.organization)],
+            territories=[Territory.objects.root_for(result.organization, AppCode.DMS)],
         )
 
         row = next(

@@ -57,8 +57,8 @@ def dealer(result, name="Delhi East"):
     )
 
 
-def root(result):
-    return Territory.objects.root_for(result.organization)
+def root(result, app=AppCode.DMS):
+    return Territory.objects.root_for(result.organization, app)
 
 
 def member(
@@ -168,7 +168,7 @@ class TestWhoIsListed:
             email="crm@acme.test",
             app=AppCode.CRM,
             role_code="crm.member",
-            place=root(result),
+            place=root(result, AppCode.CRM),
         )
         invite(result, email="crm-invite@acme.test", app=AppCode.CRM, role_code="crm.member")
 
@@ -240,7 +240,7 @@ class TestWhoMayAsk:
             email="admin@acme.test",
             app=AppCode.ADMIN,
             role_code="admin.org_admin",
-            place=root(result),
+            place=root(result, AppCode.ADMIN),
         )
 
         client.force_authenticate(user=admin.user)
@@ -404,7 +404,7 @@ class TestInviteUser:
             email="admin@acme.test",
             app=AppCode.ADMIN,
             role_code="admin.org_admin",
-            place=root(result),
+            place=root(result, AppCode.ADMIN),
         )
 
         response = post_invite(client, result, an_invite(), user=admin.user)
@@ -446,7 +446,7 @@ class TestTheRolesItOffers:
             email="admin@acme.test",
             app=AppCode.ADMIN,
             role_code="admin.org_admin",
-            place=root(result),
+            place=root(result, AppCode.ADMIN),
         )
         client.force_authenticate(user=admin.user)
 
@@ -587,7 +587,7 @@ class TestEdit:
             email="crm@acme.test",
             app=AppCode.CRM,
             role_code="crm.member",
-            place=root(result),
+            place=root(result, AppCode.CRM),
         )
 
         response = as_owner(client, result).put(
@@ -713,7 +713,7 @@ class TestDelete:
             membership=person,
             app=AppCode.CRM,
             role=Role.objects.get(code="crm.member"),
-            territories=[root(result)],
+            territories=[root(result, AppCode.CRM)],
         )
 
         as_owner(client, result).delete(person_url(result, person.pk))
@@ -800,7 +800,7 @@ class TestEachActIsItsOwnPermission:
             email="admin@acme.test",
             app=AppCode.ADMIN,
             role_code="admin.org_admin",
-            place=root(result),
+            place=root(result, AppCode.ADMIN),
         )
         target = member(result, email="nish@acme.test")
         client.force_authenticate(user=admin.user)

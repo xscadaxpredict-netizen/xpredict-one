@@ -668,7 +668,7 @@ class TestTheLinkAnAdminCopies:
             membership=viewer_membership,
             app=AppCode.DMS,
             role=dms_role("dms.fleet_viewer"),
-            territories=[Territory.objects.root_for(result.organization)],
+            territories=[Territory.objects.root_for(result.organization, AppCode.DMS)],
         )
         client.force_authenticate(user=viewer)
 

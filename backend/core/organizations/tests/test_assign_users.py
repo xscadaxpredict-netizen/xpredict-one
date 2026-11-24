@@ -128,7 +128,7 @@ class TestAllOrNothing:
         already = holding_dms(
             result,
             "dms.fleet_viewer",
-            Territory.objects.root_for(result.organization),
+            Territory.objects.root_for(result.organization, AppCode.DMS),
             "already@acme.test",
         )
 
@@ -215,7 +215,7 @@ class TestPermissions:
         return holding_dms(
             result,
             "dms.test_assigner",
-            Territory.objects.root_for(result.organization),
+            Territory.objects.root_for(result.organization, AppCode.DMS),
             "actor@acme.test",
         )
 

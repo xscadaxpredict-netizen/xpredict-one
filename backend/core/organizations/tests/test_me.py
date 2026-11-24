@@ -632,7 +632,7 @@ def add_org_admin(organization, email="orgadmin@acme.test"):
         membership=membership,
         app=AppCode.ADMIN,
         role=Role.objects.get(app_id=AppCode.ADMIN, code="admin.org_admin"),
-        territories=[Territory.objects.root_for(organization)],
+        territories=[Territory.objects.root_for(organization, AppCode.ADMIN)],
     )
     return user
 
@@ -658,7 +658,7 @@ def holding_only(organization, *codes, email="someone@acme.test"):
         membership=membership,
         app=AppCode.DMS,
         role=role,
-        territories=[Territory.objects.root_for(organization)],
+        territories=[Territory.objects.root_for(organization, AppCode.DMS)],
     )
     return user
 

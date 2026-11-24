@@ -70,7 +70,7 @@ def org_admin_grant(result, membership) -> None:
         membership=membership,
         app=AppCode.ADMIN,
         role=Role.objects.get(code="admin.org_admin"),
-        territories=[Territory.objects.root_for(result.organization)],
+        territories=[Territory.objects.root_for(result.organization, AppCode.ADMIN)],
     )
 
 
@@ -197,7 +197,11 @@ class TestWhoseAdministratorTheyAre:
         result = found()
         jaipur = create_dealer(organization=result.organization, name="Jaipur Auto")
         wide = person(result, "wide@apex.test")
-        dms_at(wide, [Territory.objects.root_for(result.organization)], code="dms.fleet_viewer")
+        dms_at(
+            wide,
+            [Territory.objects.root_for(result.organization, AppCode.DMS)],
+            code="dms.fleet_viewer",
+        )
         wide = fresh(wide)
 
         assert reach(wide) is None
@@ -254,7 +258,11 @@ class TestAClosure:
         result = found()
         delhi = create_dealer(organization=result.organization, name="Delhi Motors")
         wide = person(result, "wide@apex.test")
-        dms_at(wide, [Territory.objects.root_for(result.organization)], code="dms.fleet_viewer")
+        dms_at(
+            wide,
+            [Territory.objects.root_for(result.organization, AppCode.DMS)],
+            code="dms.fleet_viewer",
+        )
         self.close(delhi)
         client.force_authenticate(user=wide.user)
 

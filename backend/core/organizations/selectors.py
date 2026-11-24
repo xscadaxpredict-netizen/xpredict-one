@@ -751,6 +751,7 @@ def _summary(app: str, membership: Membership) -> str | None:
     # `main`'s head offices until they are retired (`is_head_office`).
     count = Territory.objects.filter(
         organization_id=membership.organization_id,
+        app_id=AppCode.DMS,
         kind=TerritoryKind.DEALER,
         is_head_office__isnull=True,
         status=UnitStatus.ACTIVE,
@@ -917,8 +918,8 @@ def dealers_for(organization: Organization) -> list[Territory]:
     # to be asked for. DEALERS ONLY -- the dealers screen lists dealerships, and
     # the rest of the tree has its own endpoint (C72).
     return list(
-        Territory.objects.filter(
-            organization=organization, kind=TerritoryKind.DEALER, is_head_office__isnull=True
+        Territory.objects.of(organization, AppCode.DMS).filter(
+            kind=TerritoryKind.DEALER, is_head_office__isnull=True
         )
         .annotate(
             user_count=Coalesce(Subquery(memberships, output_field=IntegerField()), Value(0))
@@ -936,7 +937,9 @@ def territories_for(organization: Organization) -> list[Territory]:
     treebeard manager's own ordering (`path`), asked for explicitly anyway so
     the contract does not rest on a default.
     """
-    territories = list(Territory.objects.filter(organization=organization).order_by("path"))
+    # DMS'S TREE (every app has its own, 2026-11-24): territories are drawn in
+    # DMS only (C82); the Admin panel's and CRM's roots hold people, not places.
+    territories = list(Territory.objects.of(organization, AppCode.DMS).order_by("path"))
     return _with_parent_ids(organization, territories)
 
 
@@ -2103,7 +2106,9 @@ def dms_people_for_territory(
     if territory_id is None:
         return []
     try:
-        territory = Territory.objects.filter(id=territory_id, organization=organization).first()
+        territory = (
+            Territory.objects.of(organization, AppCode.DMS).filter(id=territory_id).first()
+        )
     except (DjangoValidationError, ValueError):
         return []
     if territory is None:

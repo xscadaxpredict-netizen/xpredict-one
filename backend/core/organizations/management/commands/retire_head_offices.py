@@ -36,6 +36,7 @@ from django.db import transaction
 
 from core.organizations.models import MembershipAppTerritory, Organization, Territory
 from core.organizations.tenancy import register_tenant_connection
+from core.permissions.models import AppCode
 
 
 def _dms_models_with_territory() -> list:
@@ -71,7 +72,8 @@ class Command(BaseCommand):
             if head is None:
                 self.stdout.write(f"  {organization.slug}: no head office -- nothing to do")
                 continue
-            root = Territory.objects.root_for(organization)
+            # DMS's root: head offices were DMS's, and so is the tree they fold into.
+            root = Territory.objects.root_for(organization, AppCode.DMS)
 
             placed = MembershipAppTerritory.objects.filter(territory=head).count()
             children = Territory.objects.get_descendants(head).count()

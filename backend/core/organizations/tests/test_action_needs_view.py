@@ -72,7 +72,7 @@ def holding(result, *codes):
         membership=membership,
         app=AppCode.DMS,
         role=role,
-        territories=[Territory.objects.root_for(result.organization)],
+        territories=[Territory.objects.root_for(result.organization, AppCode.DMS)],
     )
     return user
 

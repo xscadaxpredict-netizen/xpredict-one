@@ -73,7 +73,7 @@ def holding(result, role_code="dms.group_operations", place=None, email="ravi@ac
         membership=membership,
         app=AppCode.DMS,
         role=Role.objects.get(code=role_code),
-        territories=[place or Territory.objects.root_for(result.organization)],
+        territories=[place or Territory.objects.root_for(result.organization, AppCode.DMS)],
     )
     return membership
 

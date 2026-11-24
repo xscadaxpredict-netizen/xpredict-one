@@ -138,7 +138,7 @@ class TestTheRoot:
 
     def test_the_root_cannot_be_moved(self):
         result = found()
-        root = Territory.objects.root_for(result.organization)
+        root = Territory.objects.root_for(result.organization, AppCode.DMS)
         north = create_territory(organization=result.organization, kind=REGION, name="North")
 
         with pytest.raises(TerritoryIsTheOrganisationError):
@@ -146,7 +146,7 @@ class TestTheRoot:
 
     def test_the_root_cannot_be_renamed_here(self):
         """It shows the organisation's name; renaming the organisation renames it."""
-        root = Territory.objects.root_for(found().organization)
+        root = Territory.objects.root_for(found().organization, AppCode.DMS)
 
         with pytest.raises(TerritoryIsTheOrganisationError):
             rename_territory(territory=root, name="Something else")
@@ -159,7 +159,7 @@ class TestTheRoot:
         north = create_territory(organization=org, kind=REGION, name="North")
 
         assert fresh(north).depth == 2
-        assert fresh(north).path.startswith(Territory.objects.root_for(org).path)
+        assert fresh(north).path.startswith(Territory.objects.root_for(org, AppCode.DMS).path)
 
 
 class TestCreating:
@@ -253,7 +253,7 @@ class TestRenamingAndMoving:
         moved = move_territory(territory=fresh(delhi), parent_id=None)
 
         assert moved.depth == 2
-        assert moved.path.startswith(Territory.objects.root_for(org).path)
+        assert moved.path.startswith(Territory.objects.root_for(org, AppCode.DMS).path)
         assert fresh(north).numchild == 0
         assert Territory.objects.find_problems() == ([], [], [], [], [])
 
@@ -354,7 +354,7 @@ class TestARegionIsNeverTakenForADealership:
         store = create_territory(
             organization=result.organization, kind=WAREHOUSE, name="Store", parent_id=north.pk
         )
-        root = Territory.objects.root_for(result.organization)
+        root = Territory.objects.root_for(result.organization, AppCode.DMS)
 
         def filed_at(place):
             return home_for(

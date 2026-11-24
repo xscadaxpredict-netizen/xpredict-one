@@ -101,7 +101,7 @@ class TestTheTree:
         response = signed_in(result.user).get(LIST_URL.format(slug=org.slug))
 
         assert response.status_code == 200
-        root = Territory.objects.root_for(org)
+        root = Territory.objects.root_for(org, AppCode.DMS)
         # The organisation is the root, shown under its own name (it stores none).
         assert [(t["name"], t["kind"], t["parent_id"], t["depth"]) for t in response.json()] == [
             ("Apex Motors", "organisation", None, 1),
@@ -173,7 +173,7 @@ class TestTheTree:
 
         assert (renamed.json()["name"], moved.json()["parent_id"]) == ("North India", str(north.pk))
         # "No parent" means directly under the organisation -- its root.
-        root_id = str(Territory.objects.root_for(org).pk)
+        root_id = str(Territory.objects.root_for(org, AppCode.DMS).pk)
         assert (back.status_code, back.json()["parent_id"], back.json()["depth"]) == (
             200,
             root_id,
@@ -267,7 +267,7 @@ class TestTheRootOverTheAPI:
     def test_the_root_cannot_be_moved_or_renamed(self):
         result = found()
         org = result.organization
-        root = Territory.objects.root_for(org)
+        root = Territory.objects.root_for(org, AppCode.DMS)
         north = create_territory(organization=org, kind=TerritoryKind.REGION, name="North")
         client = signed_in(result.user)
 

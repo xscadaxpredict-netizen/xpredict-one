@@ -140,7 +140,7 @@ class TestTheRules:
 
     def test_the_role_must_belong_to_the_app(self):
         result = found()
-        root = Territory.objects.root_for(result.organization)
+        root = Territory.objects.root_for(result.organization, AppCode.DMS)
 
         with pytest.raises(RoleNotInAppError):
             grant_app_access(
@@ -219,7 +219,7 @@ class TestADealershipsPeopleGetDmsOnly:
         result = found()
         delhi = create_dealer(organization=result.organization, name="Delhi Motors")
         member = join(result, email="meera@apex.test", unit=delhi)
-        root = Territory.objects.root_for(result.organization)
+        root = Territory.objects.root_for(result.organization, AppCode.CRM)
 
         with pytest.raises(DealerScopedAppError):
             grant_app_access(
@@ -229,7 +229,7 @@ class TestADealershipsPeopleGetDmsOnly:
     def test_crm_first_then_dms_at_a_dealer_is_refused(self):
         result = found()
         delhi = create_dealer(organization=result.organization, name="Delhi Motors")
-        root = Territory.objects.root_for(result.organization)
+        root = Territory.objects.root_for(result.organization, AppCode.CRM)
         grant_app_access(
             membership=result.membership, app="crm", role=role("crm.member"), territories=[root]
         )
@@ -243,9 +243,16 @@ class TestADealershipsPeopleGetDmsOnly:
             )
 
     def test_head_office_people_may_hold_both(self):
+        """
+        Somebody not at a dealership may hold DMS and CRM (C27). Each grant in
+        its own app's tree since 2026-11-24: CRM's region is CRM's.
+        """
         result = found()
-        north = create_territory(
-            organization=result.organization, kind=TerritoryKind.REGION, name="North"
+        north = Territory.objects.create(
+            organization=result.organization,
+            app=AppCode.CRM,
+            kind=TerritoryKind.REGION,
+            name="North",
         )
 
         grant_app_access(
@@ -264,7 +271,7 @@ class TestTheGrantsAreTheWholeRecord:
 
     def test_sign_up_places_the_owner_at_the_root(self):
         result = found()
-        root = Territory.objects.root_for(result.organization)
+        root = Territory.objects.root_for(result.organization, AppCode.DMS)
 
         assert granted(result.membership) == {
             ("dms", role("dms.group_operations").pk, frozenset({root.pk}))
@@ -284,7 +291,7 @@ class TestTheGrantsAreTheWholeRecord:
         member = join(
             result, email="anita@apex.test", apps=[{"app": "dms", "role": "dms.fleet_viewer"}]
         )
-        root = Territory.objects.root_for(result.organization)
+        root = Territory.objects.root_for(result.organization, AppCode.DMS)
 
         assert granted(member) == {("dms", role("dms.fleet_viewer").pk, frozenset({root.pk}))}
 
