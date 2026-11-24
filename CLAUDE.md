@@ -135,8 +135,9 @@ every write in `method_permissions`, and a write-only view needs the page's `vie
 beside the action (C81).** **Add User invites a PERSON -- first name, last name, email,
 nothing else -- and a person may hold no app (C83, C73 retired); apps come from Assign
 applications (`POST /admin/users/<id>/apps/`).** `Invitation.role` and `Invitation.unit`
-are GONE (`organizations/0022`). **Territories will be per app (C82) -- decided in
-principle, NOT designed: build on neither model.** Read C78-C88 before touching any of it.
+are GONE (`organizations/0022`). **EVERY APP HAS ITS OWN TERRITORY TREE (C82 amended,
+built 2026-11-24 on `feat/dms-settings`)** -- see the Territory paragraph below. Read
+C78-C89 before touching any of it.
 
 **Session 26 added (C84-C88):** Edit user is BASIC INFORMATION ONLY -- other fields refused
 (422), so a save cannot touch apps or standing; `update_person()` has no endpoint until
@@ -215,11 +216,17 @@ the shared library (`permissions/0008` took it back). A change to roles or permi
 is a NEW migration carrying its own data, plus the same edit to `catalogue.py` so people
 can read it. `tests/test_migration_history.py` enforces it.
 
-**`Territory` IS A django-treebeard TREE WITH THE ORGANISATION AT ITS ROOT** (C72, Q56).
-Each organisation has exactly one root box of kind `organisation` — the database refuses
-a second, and refuses anything else at the top — and the root shows the organisation's
-name, storing none of its own. Use the MANAGER: `root_for(org)` is the root,
-`Territory.objects.create(...)` adds directly under it, `.add_child(parent, {...})`,
+**`Territory` IS A django-treebeard TREE WITH THE ORGANISATION AT ITS ROOT** (C72, Q56) --
+**ONE TREE PER APP since 2026-11-24 (C82 amended; `organizations/0024`-`0026`)**:
+`Territory.app` says whose tree a box is in, each app has its own root per organisation,
+a box is in its parent's app's tree (`save()` refuses otherwise), and a person's places in
+an app are in THAT app's tree (`grant_app_access()` raises `TerritoryOfAnotherAppError`).
+Only DMS draws territories; the Admin panel's and CRM's roots hold people. Each root is
+of kind `organisation` — the database refuses a second per app, and anything else at the
+top — and shows the organisation's name, storing none of its own. Use the MANAGER:
+`root_for(org, app)` is that app's root (NO default app), `.of(org, app)` is one app's
+tree, `Territory.objects.create(...)` adds directly under DMS's root unless told,
+`.add_child(parent, {...})`,
 `.move(...)`, `.get_descendants(...)` — never the per-node methods treebeard 8 removes.
 `save()` refuses a territory with no `path`. The manager sorts by `path`, so ask for
 `.order_by("name")` when you want names. **Every tree query filters by `organization`**:
