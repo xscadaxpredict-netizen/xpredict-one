@@ -15,8 +15,8 @@ import { Button } from "../../../shell/components/Button";
 import { FormBanner } from "../../../shell/components/FormBanner";
 import confirm from "../../../shell/admin/components/RemoveUserDialog.module.css";
 import pickerStyles from "../../../shell/admin/components/RolePicker.module.css";
-import { KIND_LABEL, namesOf, type DmsTerritory, type TerritoryPerson } from "./territories";
-import { ancestorsOf, type Tree } from "./territoryTree";
+import { namesOf, type DmsTerritory, type TerritoryPerson } from "./territories";
+import { territoryLabel, type Tree } from "./territoryTree";
 import { useMovePerson, useRemovePerson } from "./useTerritories";
 
 export function personName(person: Pick<TerritoryPerson, "first_name" | "last_name" | "email">) {
@@ -151,9 +151,7 @@ export function MovePersonDialog({
                   // A territory's people hold DMS only (2026-11-24).
                   disabled={heldElsewhere && !node.territory.is_root}
                 >
-                  {`${"— ".repeat(ancestorsOf(node).length)}${node.territory.name} (${
-                    KIND_LABEL[node.territory.kind]
-                  }${node.territory.status === "disabled" ? ", closed" : ""})`}
+                  {territoryLabel(node)}
                 </option>
               ))}
             </select>

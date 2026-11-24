@@ -42,7 +42,7 @@ export interface DmsTerritory {
   people_count: number;
 }
 
-/** What Edit sends: the details. Never the kind, the place or the status. */
+/** What Edit sends: the details, and optionally a new parent. Never the kind or status. */
 export interface TerritoryDetails {
   name: string;
   code: string | null;
@@ -87,12 +87,12 @@ export const ALLOWED_PARENTS: Record<NewTerritoryKind, TerritoryKind[]> = {
   warehouse: ["organisation", "region", "dealer", "branch"],
 };
 
-/** Said under the "Sits under" box, so a short list is not a mystery. */
+/** Said under the "Parent territory" box, so a short list is not a mystery. */
 export const PARENT_HINT: Record<NewTerritoryKind, string> = {
-  region: "A region sits under the organisation or another region.",
-  dealer: "A dealer sits under the organisation or a region.",
-  branch: "A branch sits inside a dealer.",
-  warehouse: "A warehouse sits under the organisation, a region, a dealer or a branch.",
+  region: "A region's parent is the organisation or another region.",
+  dealer: "A dealer's parent is the organisation or a region.",
+  branch: "A branch's parent is a dealer.",
+  warehouse: "A warehouse's parent is the organisation, a region, a dealer or a branch.",
 };
 
 export async function fetchTerritories(orgSlug: string): Promise<DmsTerritory[]> {
@@ -111,7 +111,8 @@ export async function createTerritory(orgSlug: string, body: NewTerritory): Prom
 export async function updateTerritory(
   orgSlug: string,
   territoryId: string,
-  body: TerritoryDetails,
+  /** `parent_id`: a new parent moves it and everything under it (no separate Move). */
+  body: TerritoryDetails & { parent_id?: string | null },
 ): Promise<DmsTerritory> {
   return request<DmsTerritory>(`/api/v1/orgs/${orgSlug}/dms/settings/territories/${territoryId}/`, {
     method: "PUT",

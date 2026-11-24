@@ -42,7 +42,7 @@ import {
   type NewTerritoryKind,
   type TerritoryDetails,
 } from "./territories";
-import { ancestorsOf, buildTree, type Tree, type TreeNode } from "./territoryTree";
+import { buildTree, territoryLabel, type Tree, type TreeNode } from "./territoryTree";
 import { useCreateTerritory, useDmsTerritories, useUpdateTerritory } from "./useTerritories";
 import styles from "./TerritoryForm.module.css";
 
@@ -179,6 +179,7 @@ function TerritoryForm({ tree, editing, treePath, backPath }: TerritoryFormProps
     return NEW_KINDS.includes(asked as NewTerritoryKind) ? (asked as NewTerritoryKind) : "dealer";
   });
   const [parentId, setParentId] = useState<string>(() => {
+    if (editing) return editing.parent?.territory.id ?? "";
     const asked = searchParams.get("parent");
     return asked && tree.byId.has(asked) ? asked : (tree.root?.territory.id ?? "");
   });
@@ -195,16 +196,22 @@ function TerritoryForm({ tree, editing, treePath, backPath }: TerritoryFormProps
   const theKind = editing ? editing.territory.kind : kind;
   const isDealer = theKind === "dealer";
 
-  // Only the places this kind may sit, in tree order, indented by depth.
-  const parentOptions = useMemo(
-    () =>
-      editing
-        ? []
-        : [...tree.byId.values()].filter((option) =>
-            ALLOWED_PARENTS[kind].includes(option.territory.kind),
-          ),
-    [tree, kind, editing],
-  );
+  // Only the places this kind may sit, in tree order, indented by depth. When
+  // editing, never itself or anything under it: that would cut it off the tree.
+  const parentOptions = useMemo(() => {
+    const own = new Set<string>();
+    if (editing) {
+      const stack = [editing];
+      for (let node = stack.pop(); node; node = stack.pop()) {
+        own.add(node.territory.id);
+        stack.push(...node.children);
+      }
+    }
+    const allowed = ALLOWED_PARENTS[theKind as NewTerritoryKind] ?? [];
+    return [...tree.byId.values()].filter(
+      (option) => allowed.includes(option.territory.kind) && !own.has(option.territory.id),
+    );
+  }, [tree, theKind, editing]);
 
   function set<K extends keyof Fields>(field: K, value: Fields[K]) {
     setValues((current) => {
@@ -273,7 +280,11 @@ function TerritoryForm({ tree, editing, treePath, backPath }: TerritoryFormProps
 
     try {
       if (editing) {
-        await update({ territoryId: editing.territory.id, body: details });
+        // THE PARENT GOES WITH THE SAVE: a new one moves it (no separate Move).
+        await update({
+          territoryId: editing.territory.id,
+          body: { ...details, parent_id: parentId },
+        });
         void navigate(backPath);
       } else {
         const created = await create({ ...details, kind, parent_id: parentId });
@@ -357,26 +368,17 @@ function TerritoryForm({ tree, editing, treePath, backPath }: TerritoryFormProps
                 </Field>
               )}
 
-              {editing ? (
                 <Field
                   id="territory-parent"
-                  label="Sits under"
-                  hint="Moving a territory comes in the next step."
-                >
-                  <span id="territory-parent" className={styles.readOnly}>
-                    {editing.parent?.territory.name ?? "—"}
-                  </span>
-                </Field>
-              ) : (
-                <Field
-                  id="territory-parent"
-                  label="Sits under"
+                  label="Parent territory"
                   required
                   error={errors.parent_id}
                   hint={
-                    parentOptions.length > 0
-                      ? PARENT_HINT[kind]
-                      : `${PARENT_HINT[kind]} Add one first.`
+                    editing
+                      ? `${PARENT_HINT[editing.territory.kind as NewTerritoryKind]} Changing it moves ${editing.territory.name} and everything under it; people keep their places.`
+                      : parentOptions.length > 0
+                        ? PARENT_HINT[kind]
+                        : `${PARENT_HINT[kind]} Add one first.`
                   }
                 >
                   <select
@@ -395,12 +397,11 @@ function TerritoryForm({ tree, editing, treePath, backPath }: TerritoryFormProps
                     {parentOptions.length === 0 && <option value="">Nothing to choose yet</option>}
                     {parentOptions.map((option) => (
                       <option key={option.territory.id} value={option.territory.id}>
-                        {optionLabel(option)}
+                        {territoryLabel(option)}
                       </option>
                     ))}
                   </select>
                 </Field>
-              )}
 
               <Field
                 id="territory-code"
@@ -519,12 +520,6 @@ function TerritoryForm({ tree, editing, treePath, backPath }: TerritoryFormProps
   );
 }
 
-/** "— — North (Region)": indented by depth, its kind, and closed if it is. */
-function optionLabel(node: TreeNode): string {
-  const indent = "— ".repeat(ancestorsOf(node).length);
-  const closed = node.territory.status === "disabled" ? ", closed" : "";
-  return `${indent}${node.territory.name} (${KIND_LABEL[node.territory.kind]}${closed})`;
-}
 
 function invalid(id: string, error: string | undefined) {
   return error ? { "aria-invalid": true as const, "aria-describedby": `${id}-error` } : {};

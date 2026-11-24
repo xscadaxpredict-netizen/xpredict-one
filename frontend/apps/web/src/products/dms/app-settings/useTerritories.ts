@@ -17,7 +17,8 @@ import { dmsSettingsKeys } from "./useDmsUsers";
 
 export const territoryKeys = {
   all: () => ["dms", "settings", "territories"] as const,
-  people: (territoryId: string) => ["dms", "settings", "territories", territoryId, "people"] as const,
+  people: (territoryId: string) =>
+    ["dms", "settings", "territories", territoryId, "people"] as const,
 };
 
 /*
@@ -46,8 +47,10 @@ export function useCreateTerritory() {
 /** Edit a box's details. */
 export function useUpdateTerritory() {
   return useOrgMutation({
-    mutationFn: (orgSlug, variables: { territoryId: string; body: TerritoryDetails }) =>
-      updateTerritory(orgSlug, variables.territoryId, variables.body),
+    mutationFn: (
+      orgSlug,
+      variables: { territoryId: string; body: TerritoryDetails & { parent_id?: string | null } },
+    ) => updateTerritory(orgSlug, variables.territoryId, variables.body),
     invalidates: TERRITORIES_CHANGED,
   });
 }
@@ -96,10 +99,8 @@ export function useRemovePerson() {
 /** Move somebody from this territory to another. */
 export function useMovePerson() {
   return useOrgMutation({
-    mutationFn: (
-      orgSlug,
-      variables: { territoryId: string; personId: string; to: string },
-    ) => movePerson(orgSlug, variables.territoryId, variables.personId, variables.to),
+    mutationFn: (orgSlug, variables: { territoryId: string; personId: string; to: string }) =>
+      movePerson(orgSlug, variables.territoryId, variables.personId, variables.to),
     invalidates: TERRITORIES_CHANGED,
   });
 }

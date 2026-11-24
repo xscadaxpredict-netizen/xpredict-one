@@ -3,7 +3,7 @@
  * list comes in tree order, every box after its parent. No React here.
  */
 
-import type { DmsTerritory } from "./territories";
+import { KIND_LABEL, type DmsTerritory } from "./territories";
 
 export interface TreeNode {
   territory: DmsTerritory;
@@ -81,4 +81,13 @@ export function initialsOf(name: string): string {
           .join("")
       : name.trim().slice(0, 2);
   return letters.toUpperCase();
+}
+
+/**
+ * How a territory reads in every picker: its name, kind, and "closed" when it
+ * is. NO DASHES in front (the owner, 2026-11-24) -- the list is in tree order.
+ */
+export function territoryLabel(node: TreeNode): string {
+  const closed = node.territory.status === "disabled" ? ", closed" : "";
+  return `${node.territory.name} (${KIND_LABEL[node.territory.kind]}${closed})`;
 }

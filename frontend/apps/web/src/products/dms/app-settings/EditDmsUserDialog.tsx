@@ -27,8 +27,8 @@ import { TextField } from "../../../shell/components/TextField";
 import styles from "../../../shell/admin/components/EditUserDialog.module.css";
 import pickerStyles from "../../../shell/admin/components/RolePicker.module.css";
 import type { AppUser } from "./api";
-import { KIND_LABEL, namesOf } from "./territories";
-import { ancestorsOf, buildTree } from "./territoryTree";
+import { namesOf } from "./territories";
+import { buildTree, territoryLabel } from "./territoryTree";
 import { useDmsPersonRoles, useUpdateDmsUser } from "./useDmsUsers";
 import { useDmsTerritories } from "./useTerritories";
 import own from "./TerritoryPeople.module.css";
@@ -253,9 +253,7 @@ function EditForm({ user, onDone }: { user: AppUser; onDone: () => void }) {
                       // A territory's people hold DMS only (2026-11-24).
                       disabled={user.other_apps.length > 0 && !node.territory.is_root}
                     >
-                      {`${"— ".repeat(ancestorsOf(node).length)}${node.territory.name} (${
-                        KIND_LABEL[node.territory.kind]
-                      })`}
+                      {territoryLabel(node)}
                     </option>
                   ))}
                 </select>

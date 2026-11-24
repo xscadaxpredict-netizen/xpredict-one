@@ -694,6 +694,46 @@ def update_territory(*, territory: Territory, **fields: str | None) -> Territory
     return territory
 
 
+_PARENT_UNCHANGED = object()
+
+
+@transaction.atomic
+def edit_territory(
+    *,
+    territory: Territory,
+    parent_id: uuid.UUID | object | None = _PARENT_UNCHANGED,
+    **fields: str | None,
+) -> Territory:
+    """
+    Territory Management's Edit (the owner, 2026-11-24: "don't need a separate
+    move, we do that in Edit"): its details AND its PARENT TERRITORY, in one
+    save. A new parent moves it and everything under it (`move_territory()`,
+    every placement rule); people keep their places and records their
+    territory -- only who sees them changes, with the tree.
+
+    DETAILS FIRST, THEN THE MOVE: `update_territory()` saves the whole row it
+    was given, so it goes before the paths change. (Measured: the other order
+    also works today, because the tree manager's move updates the box it is
+    handed -- the order is the safe one, not a fix.) One transaction: a refused
+    move saves nothing at all.
+
+    `parent_id` None is the organisation; left out, the parent stays.
+    """
+    update_territory(territory=territory, **fields)
+    if parent_id is not _PARENT_UNCHANGED:
+        current = Territory.objects.filter(
+            organization=territory.organization,
+            app_id=territory.app_id,
+            path=territory.path[: -Territory.steplen],
+        ).first()
+        wanted = parent_id
+        if wanted is None:
+            wanted = Territory.objects.root_for(territory.organization, territory.app_id).pk
+        if current is None or current.pk != wanted:
+            move_territory(territory=territory, parent_id=parent_id)
+    return Territory.objects.get(pk=territory.pk)
+
+
 @transaction.atomic
 def close_territory(*, territory: Territory) -> Territory:
     """

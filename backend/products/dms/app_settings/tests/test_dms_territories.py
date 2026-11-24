@@ -524,7 +524,7 @@ class TestEdit:
         assert body["parent_id"] == str(north.pk)
         assert body["status"] == "active"
 
-    @pytest.mark.parametrize("field", ["kind", "parent_id", "status"])
+    @pytest.mark.parametrize("field", ["kind", "status"])
     def test_refuses_what_it_does_not_change(self, client, field):
         result = found()
         north = box(result, "North")
@@ -536,6 +536,113 @@ class TestEdit:
         )
 
         assert response.status_code == 422
+
+    # --- the PARENT TERRITORY: moving is done in Edit (the owner, 2026-11-24) ---
+
+    def test_a_new_parent_moves_it_and_everything_under_it(self, client):
+        result = found()
+        north = box(result, "North")
+        south = box(result, "South")
+        delhi = box(result, "Delhi Motors", TerritoryKind.DEALER, north)
+        noida = box(result, "Noida", TerritoryKind.BRANCH, delhi)
+
+        response = as_owner(client, result).put(
+            url(result, f"{delhi.pk}/"),
+            {**an_edit(code="DLM-01"), "parent_id": str(south.pk)},
+            format="json",
+        )
+
+        assert response.status_code == 200, response.content
+        assert response.json()["parent_id"] == str(south.pk)
+        rows = {row["name"]: row for row in tree(client, result)}
+        assert rows["Delhi Motors"]["parent_id"] == str(south.pk)
+        # Its branch went with it, still inside it.
+        assert rows["Noida"]["parent_id"] == str(delhi.pk)
+        noida.refresh_from_db()
+        assert noida.path.startswith(Territory.objects.get(pk=south.pk).path)
+
+    def test_null_is_the_organisation_and_left_out_keeps_the_parent(self, client):
+        result = found()
+        north = box(result, "North")
+        delhi = box(result, "Delhi Motors", TerritoryKind.DEALER, north)
+        owner = as_owner(client, result)
+
+        kept = owner.put(url(result, f"{delhi.pk}/"), an_edit(), format="json")
+        assert kept.json()["parent_id"] == str(north.pk)
+
+        up = owner.put(
+            url(result, f"{delhi.pk}/"), {**an_edit(), "parent_id": None}, format="json"
+        )
+        assert up.status_code == 200, up.content
+        assert up.json()["parent_id"] == str(root(result).pk)
+
+    def test_a_parent_its_kind_may_not_sit_under_is_refused_and_nothing_is_saved(self, client):
+        result = found()
+        delhi = box(result, "Delhi Motors", TerritoryKind.DEALER)
+        jaipur = box(result, "Jaipur Motors", TerritoryKind.DEALER)
+
+        response = as_owner(client, result).put(
+            url(result, f"{delhi.pk}/"),
+            {**an_edit(name="Renamed"), "parent_id": str(jaipur.pk)},
+            format="json",
+        )
+
+        assert response.status_code == 409
+        assert response.json()["code"] == "territory_placement_not_allowed"
+        delhi.refresh_from_db()
+        assert delhi.name == "Delhi Motors"
+
+    def test_never_inside_itself(self, client):
+        result = found()
+        north = box(result, "North")
+        inner = box(result, "Inner", TerritoryKind.REGION, north)
+
+        response = as_owner(client, result).put(
+            url(result, f"{north.pk}/"),
+            {**an_edit(name="North", gstin="", code=""), "parent_id": str(inner.pk)},
+            format="json",
+        )
+
+        assert response.status_code == 409
+        assert response.json()["code"] == "territory_move_into_itself"
+
+    def test_a_parent_in_another_organisation_is_not_found_and_nothing_is_saved(self, client):
+        ours = found()
+        theirs = found(name="Other Co", email="boss@other.test", code="CODE-OTHER")
+        delhi = box(ours, "Delhi Motors", TerritoryKind.DEALER)
+
+        response = as_owner(client, ours).put(
+            url(ours, f"{delhi.pk}/"),
+            {**an_edit(name="Renamed"), "parent_id": str(box(theirs, "Theirs").pk)},
+            format="json",
+        )
+
+        assert response.status_code == 404
+        delhi.refresh_from_db()
+        assert delhi.name == "Delhi Motors"
+
+    def test_people_keep_their_places_when_it_moves(self, client):
+        result = found()
+        north = box(result, "North")
+        south = box(result, "South")
+        delhi = box(result, "Delhi Motors", TerritoryKind.DEALER, north)
+        person = Membership.objects.create(
+            user=User.objects.create_user(email="p@acme.test", password="x"),
+            organization=result.organization,
+        )
+        grant_app_access(
+            membership=person,
+            app=AppCode.DMS,
+            role=Role.objects.get(code="dms.manager"),
+            territories=[delhi],
+        )
+
+        as_owner(client, result).put(
+            url(result, f"{delhi.pk}/"), {**an_edit(), "parent_id": str(south.pk)}, format="json"
+        )
+
+        grant = person.grants.get(app_id=AppCode.DMS)
+        assert [p.territory_id for p in grant.territories.all()] == [delhi.pk]
 
     def test_a_dealer_cannot_lose_its_gstin(self, client):
         result = found()

@@ -25,6 +25,7 @@ from core.organizations.services import (
     add_territory,
     assign_to_territory,
     close_territory,
+    edit_territory,
     invite_to_app,
     move_to_territory,
     remove_from_app,
@@ -32,7 +33,6 @@ from core.organizations.services import (
     reopen_territory,
     set_app_status,
     update_app_user,
-    update_territory,
 )
 from core.permissions.models import AppCode
 from shared.exceptions import not_found
@@ -269,9 +269,11 @@ class DmsTerritoriesView(OrgScopedAPIView):
 
 class DmsTerritoryDetailView(OrgScopedAPIView):
     """
-    `PUT .../territories/<id>/` -- Edit: name, code, GSTIN, PAN, contact and
-    address (`update_territory()`). Not the kind, the place or the status, and
-    never the root (409: it is the organisation). Answers with the box.
+    `PUT .../territories/<id>/` -- Edit: name, code, GSTIN, PAN, contact,
+    address AND its parent territory (`edit_territory()`; a new parent moves it
+    and everything under it -- no separate Move, the owner 2026-11-24). Not the
+    kind or the status, and never the root (409: it is the organisation).
+    Answers with the box.
     """
 
     required_permissions: ClassVar[list[str]] = ["dms.territory.view"]
@@ -285,7 +287,11 @@ class DmsTerritoryDetailView(OrgScopedAPIView):
         payload = DmsTerritoryEditSerializer(data=request.data)
         payload.is_valid(raise_exception=True)
 
-        update_territory(territory=territory, **payload.validated_data)
+        data = dict(payload.validated_data)
+        if "parent_id" in data:
+            edit_territory(territory=territory, parent_id=data.pop("parent_id"), **data)
+        else:
+            edit_territory(territory=territory, **data)
         return Response(_territory_row(self.organization, territory.pk))
 
 

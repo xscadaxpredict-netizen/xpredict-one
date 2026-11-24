@@ -120,7 +120,7 @@ export function TerritoryDetailPanel({ node, tree, onClose }: TerritoryDetailPan
                 <span>{KIND_LABEL[territory.kind]}</span>
               </Fact>
               {!territory.is_root && (
-                <Fact icon={<GitForkIcon size={18} />} label="Sits under">
+                <Fact icon={<GitForkIcon size={18} />} label="Parent territory">
                   <Value text={node.parent?.territory.name} />
                 </Fact>
               )}

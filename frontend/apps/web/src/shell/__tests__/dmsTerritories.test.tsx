@@ -339,7 +339,7 @@ describe("New Territory", () => {
   }
 
   function parentOptions() {
-    return within(screen.getByLabelText(/Sits under/))
+    return within(screen.getByLabelText(/Parent territory/))
       .getAllByRole("option")
       .map((option) => option.textContent);
   }
@@ -350,16 +350,16 @@ describe("New Territory", () => {
     // A dealer: the organisation or a region.
     expect(parentOptions()).toEqual([
       "Acme Motors (Organisation)",
-      "— North (Region)",
-      "— South (Region)",
+      "North (Region)",
+      "South (Region)",
     ]);
 
     fireEvent.change(screen.getByLabelText(/Kind/), { target: { value: "branch" } });
 
     // A branch: inside a dealer only -- the closed one says so.
     expect(parentOptions()).toEqual([
-      "— — Delhi Motors (Dealer)",
-      "— — Jaipur Motors (Dealer, closed)",
+      "Delhi Motors (Dealer)",
+      "Jaipur Motors (Dealer, closed)",
     ]);
   });
 
@@ -388,7 +388,7 @@ describe("New Territory", () => {
     const { router } = await openNew();
 
     fireEvent.change(screen.getByLabelText(/Name/), { target: { value: " Chandigarh Auto " } });
-    fireEvent.change(screen.getByLabelText(/Sits under/), { target: { value: "north" } });
+    fireEvent.change(screen.getByLabelText(/Parent territory/), { target: { value: "north" } });
     fireEvent.change(screen.getByLabelText(/Code/), { target: { value: "CHA-01" } });
     fireEvent.change(screen.getByLabelText(/GSTIN/), { target: { value: GSTIN } });
     fireEvent.change(screen.getByLabelText("City"), { target: { value: "Chandigarh" } });
@@ -454,16 +454,16 @@ describe("New Territory", () => {
 });
 
 describe("Edit territory", () => {
-  it("fills the form, shows kind and place without changing them, and saves the details", async () => {
+  it("fills the form, shows the kind without changing it, and saves the details", async () => {
     mockUpdateTerritory.mockResolvedValue({ ...TREE[2]!, name: "Delhi Motors Ltd" });
     const { router } = renderRoute({ path: `${PAGE}/delhi/edit`, children: screens });
 
     const name = await screen.findByLabelText(/Name/);
     expect(name).toHaveValue("Delhi Motors");
     expect(screen.getByLabelText(/GSTIN/)).toHaveValue(GSTIN);
-    // Shown, not offered: no Kind or Sits-under box to change.
-    expect(screen.queryByRole("combobox")).not.toBeInTheDocument();
-    expect(screen.getByText("North")).toBeInTheDocument();
+    // The kind is shown, not offered: the only box is the parent territory.
+    expect(screen.getAllByRole("combobox")).toHaveLength(1);
+    expect(screen.getByLabelText(/Parent territory/)).toHaveValue("north");
 
     fireEvent.change(name, { target: { value: "Delhi Motors Ltd" } });
     fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
@@ -480,9 +480,35 @@ describe("Edit territory", () => {
         city: "New Delhi",
         state: "",
         postal_code: "",
+        parent_id: "north",
       }),
     );
     await waitFor(() => expect(router.state.location.pathname).toBe(`${PAGE}/delhi`));
+  });
+
+  it("moves it by choosing another parent territory, never itself or below it", async () => {
+    mockUpdateTerritory.mockResolvedValue({ ...TREE[2]!, parent_id: "root" });
+    renderRoute({ path: `${PAGE}/delhi/edit`, children: screens });
+    const parent = await screen.findByLabelText(/Parent territory/);
+
+    // A dealer's parent: the organisation or a region -- not Delhi or Noida.
+    expect(
+      within(parent)
+        .getAllByRole("option")
+        .map((option) => option.textContent),
+    ).toEqual(["Acme Motors (Organisation)", "North (Region)", "South (Region)"]);
+    expect(screen.getByText(/Changing it moves Delhi Motors and everything under it/)).toBeInTheDocument();
+
+    fireEvent.change(parent, { target: { value: "south" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
+
+    await waitFor(() =>
+      expect(mockUpdateTerritory).toHaveBeenCalledWith(
+        "acme-motors",
+        "delhi",
+        expect.objectContaining({ parent_id: "south" }),
+      ),
+    );
   });
 
   it("does not edit the organisation itself", async () => {
@@ -646,7 +672,7 @@ describe("a territory's People tab", () => {
     );
     const dialog = await screen.findByRole("dialog", { name: "Move Priya Mehta" });
     // Anywhere but here.
-    expect(within(dialog).queryByRole("option", { name: /^— — Delhi Motors/ })).not.toBeInTheDocument();
+    expect(within(dialog).queryByRole("option", { name: /^Delhi Motors/ })).not.toBeInTheDocument();
 
     fireEvent.change(within(dialog).getByLabelText("Move to"), { target: { value: "south" } });
     fireEvent.click(within(dialog).getByRole("button", { name: "Move" }));

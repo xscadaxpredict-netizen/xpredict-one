@@ -143,10 +143,13 @@ class DmsTerritorySerializer(serializers.Serializer):
 
 class DmsTerritoryEditSerializer(serializers.Serializer):
     """
-    Edit: the details. Not the kind, the place or the status -- the payload
-    has none of them, so an edit cannot move or close anything. Every field is
-    sent, as the form shows them all.
+    Edit: the details and its PARENT TERRITORY (2026-11-24: moving is done in
+    Edit). Not the kind or the status -- the payload has neither, so an edit
+    cannot change a kind or close anything.
     """
+
+    # Left out, the parent stays; null is the organisation. A new one moves it.
+    parent_id = serializers.UUIDField(required=False, allow_null=True)
 
     name = serializers.CharField(max_length=200)
     # `allow_blank`: the form sends "" for an empty code; the service stores NULL.
