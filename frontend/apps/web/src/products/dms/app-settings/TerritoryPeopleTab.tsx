@@ -158,7 +158,7 @@ function PersonRow({ node, tree, person, canPlace }: PersonRowProps) {
         items={[
           { label: "Move to another territory", disabled: !canPlace, onSelect: () => setOpened("move") },
           {
-            label: `Remove from ${territory.name}`,
+            label: "Remove from territory",
             danger: true,
             disabled: !canPlace,
             onSelect: () => setOpened("remove"),

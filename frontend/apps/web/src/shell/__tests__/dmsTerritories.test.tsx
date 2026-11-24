@@ -282,7 +282,7 @@ describe("a box's panel", () => {
       "aria-disabled",
       "true",
     );
-    expect(within(menu).getByRole("menuitem", { name: "Close territory" })).toHaveAttribute(
+    expect(within(menu).getByRole("menuitem", { name: "Close" })).toHaveAttribute(
       "aria-disabled",
       "true",
     );
@@ -296,12 +296,12 @@ describe("a box's panel", () => {
       key: "Enter",
     });
     fireEvent.click(
-      within(await screen.findByRole("menu")).getByRole("menuitem", { name: "Close territory" }),
+      within(await screen.findByRole("menu")).getByRole("menuitem", { name: "Close" }),
     );
     const dialog = await screen.findByRole("dialog", { name: "Close North?" });
     expect(mockSetTerritoryStatus).not.toHaveBeenCalled();
 
-    fireEvent.click(within(dialog).getByRole("button", { name: "Close territory" }));
+    fireEvent.click(within(dialog).getByRole("button", { name: "Close" }));
 
     await waitFor(() =>
       expect(mockSetTerritoryStatus).toHaveBeenCalledWith("acme-motors", "north", "close"),
@@ -316,7 +316,7 @@ describe("a box's panel", () => {
       key: "Enter",
     });
     fireEvent.click(
-      within(await screen.findByRole("menu")).getByRole("menuitem", { name: "Reopen territory" }),
+      within(await screen.findByRole("menu")).getByRole("menuitem", { name: "Reopen" }),
     );
 
     await waitFor(() =>
@@ -650,7 +650,7 @@ describe("a territory's People tab", () => {
     });
     fireEvent.click(
       within(await screen.findByRole("menu")).getByRole("menuitem", {
-        name: "Remove from Delhi Motors",
+        name: "Remove from territory",
       }),
     );
     const dialog = await screen.findByRole("dialog", {
@@ -744,7 +744,7 @@ describe("Delete territory", () => {
     });
     const menu = await screen.findByRole("menu");
 
-    expect(within(menu).getByRole("menuitem", { name: "Delete territory" })).toHaveAttribute(
+    expect(within(menu).getByRole("menuitem", { name: "Delete" })).toHaveAttribute(
       "aria-disabled",
       "true",
     );
@@ -760,7 +760,7 @@ describe("Delete territory", () => {
       key: "Enter",
     });
     fireEvent.click(
-      within(await screen.findByRole("menu")).getByRole("menuitem", { name: "Delete territory" }),
+      within(await screen.findByRole("menu")).getByRole("menuitem", { name: "Delete" }),
     );
     const dialog = await screen.findByRole("dialog", { name: "Delete Noida?" });
 
@@ -768,14 +768,14 @@ describe("Delete territory", () => {
       await within(dialog).findByText(/12 DMS records and 2 people work at Noida/),
     ).toBeInTheDocument();
     // Nothing chosen yet: nothing to confirm.
-    expect(within(dialog).getByRole("button", { name: "Delete territory" })).toBeDisabled();
+    expect(within(dialog).getByRole("button", { name: "Delete" })).toBeDisabled();
     // Anywhere but itself; no dashes.
     expect(within(dialog).getByRole("option", { name: "Delhi Motors (Dealer)" })).toBeInTheDocument();
     expect(within(dialog).queryByRole("option", { name: /^Noida/ })).not.toBeInTheDocument();
 
     fireEvent.change(within(dialog).getByLabelText("Transfer to"), { target: { value: "delhi" } });
     expect(within(dialog).getByText(/This cannot be undone/)).toBeInTheDocument();
-    fireEvent.click(within(dialog).getByRole("button", { name: "Delete territory" }));
+    fireEvent.click(within(dialog).getByRole("button", { name: "Delete" }));
 
     await waitFor(() =>
       expect(mockDeleteTerritory).toHaveBeenCalledWith("acme-motors", "noida", "delhi"),

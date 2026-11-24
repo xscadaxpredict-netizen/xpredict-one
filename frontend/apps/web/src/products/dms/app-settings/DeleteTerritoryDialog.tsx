@@ -108,7 +108,7 @@ export function DeleteTerritoryDialog({
               Records and people move from <strong>{territory.name}</strong> to{" "}
               <strong>{target.territory.name}</strong>. Who sees them follows the tree.{" "}
               <strong>This cannot be undone.</strong> To stop using it without deleting, use{" "}
-              <strong>Close territory</strong> instead.
+              <strong>Close</strong> instead.
             </p>
           )}
 
@@ -126,7 +126,7 @@ export function DeleteTerritoryDialog({
               disabled={!to || isPending}
               onClick={() => void onConfirm()}
             >
-              {isPending ? "Deleting…" : "Delete territory"}
+              {isPending ? "Deleting…" : "Delete"}
             </button>
           </div>
         </Dialog.Content>

@@ -63,7 +63,7 @@ export function TerritoryActions({ node, tree, onStatusError }: TerritoryActions
           },
           isClosed
             ? {
-                label: "Reopen territory",
+                label: "Reopen",
                 disabled: !canSetStatus || isPending,
                 onSelect: () =>
                   setStatus(
@@ -75,13 +75,13 @@ export function TerritoryActions({ node, tree, onStatusError }: TerritoryActions
                   ),
               }
             : {
-                label: "Close territory",
+                label: "Close",
                 danger: true,
                 disabled: !canSetStatus || isRoot,
                 onSelect: () => setOpened("close"),
               },
           {
-            label: "Delete territory",
+            label: "Delete",
             danger: true,
             // Refused while territories sit under it (the owner, 2026-11-24).
             disabled: !canDelete || isRoot || hasChildren,

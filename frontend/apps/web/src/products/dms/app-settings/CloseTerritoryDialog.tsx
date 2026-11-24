@@ -53,7 +53,7 @@ export function CloseTerritoryDialog({ territory, open, onOpenChange }: CloseTer
           </Dialog.Description>
 
           <p className={styles.alternative}>
-            Nothing else changes, so <strong>Reopen territory</strong> gives everything back.
+            Nothing else changes, so <strong>Reopen</strong> gives everything back.
           </p>
 
           {error && <FormBanner>{error}</FormBanner>}
@@ -70,7 +70,7 @@ export function CloseTerritoryDialog({ territory, open, onOpenChange }: CloseTer
               disabled={isPending}
               onClick={() => void onConfirm()}
             >
-              {isPending ? "Closing…" : "Close territory"}
+              {isPending ? "Closing…" : "Close"}
             </button>
           </div>
         </Dialog.Content>
