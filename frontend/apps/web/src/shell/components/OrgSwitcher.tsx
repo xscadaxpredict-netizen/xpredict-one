@@ -25,6 +25,7 @@ import type { Membership } from "../api/auth";
 import { visibleApps } from "../navigation";
 import { DrawerClose, DrawerTitle, TopbarDrawer } from "./TopbarDrawer";
 import styles from "./OrgSwitcher.module.css";
+import { adminPanelRole } from "../appRole";
 
 interface OrgSwitcherProps {
   memberships: Membership[];
@@ -215,7 +216,8 @@ function standingLabel(membership: Membership): string | null {
   if (membership.role === "owner") return "Owner";
   if (membership.role === "admin") return "Admin";
   // One of the organisation's own Admin panel roles, by its name (C89).
-  if (membership.admin_role) return membership.admin_role.name;
+  const panelRole = adminPanelRole(membership);
+  if (panelRole) return panelRole.name;
   return null;
 }
 

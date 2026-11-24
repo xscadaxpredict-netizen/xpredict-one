@@ -18,6 +18,8 @@ export function appAccess(key: AppKey, overrides: Partial<AppAccess> = {}): AppA
     summary: null,
     modules: [],
     permissions: [],
+    role: null,
+    places: [],
     ...overrides,
   };
 }
@@ -67,7 +69,7 @@ export function adminRoleFor(role: Membership["role"]): AdminRole | null {
 }
 
 export function membership(overrides: Partial<Membership> = {}): Membership {
-  return {
+  const built: Membership = {
     org_id: "org-1",
     org_name: "Acme Motors",
     org_slug: "acme-motors",
@@ -83,6 +85,14 @@ export function membership(overrides: Partial<Membership> = {}): Membership {
     unit_closed: false,
     apps: [],
     ...overrides,
+  };
+  // AS THE REAL `/me` DOES (2026-11-24): the admin app's role IS the Admin
+  // panel role. A test that sets the app's role itself keeps it.
+  return {
+    ...built,
+    apps: built.apps.map((app) =>
+      app.key === "admin" && app.role === null ? { ...app, role: built.admin_role } : app,
+    ),
   };
 }
 

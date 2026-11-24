@@ -36,6 +36,7 @@ from core.organizations.models import (
     MembershipStatus,
     Organization,
     Territory,
+    TerritoryKind,
     UnitStatus,
 )
 from core.organizations.selectors import me, permissions_for, resolve_allowed_territories
@@ -795,7 +796,10 @@ class TestTheMeEndpoint:
             "summary",
             "modules",
             "permissions",
+            "role",
+            "places",
         }
+        assert set(apps["admin"]["role"]) == {"code", "name"}
         assert apps["admin"]["modules"] == WHOLE_ADMIN_PANEL
         assert apps["dms"]["modules"][0] == {"code": "ecommerce", "sub_modules": []}
 
@@ -818,3 +822,89 @@ class TestSomebodyWithNoApp:
         apps = payload.memberships[0].apps
         assert [app.key for app in apps if app.accessible] == []
         assert all(app.modules == [] and app.permissions == [] for app in apps)
+
+
+
+class TestEachAppCarriesItsOwnRole:
+    """
+    Each app entry names the role held IN THAT APP, and where it places them
+    (the owner, 2026-11-24: "each app will have their own role"). The admin
+    app's is the Admin panel role -- what `admin_role` says, which it replaces.
+    """
+
+    def test_the_owner_is_owner_in_every_app_and_everywhere(self):
+        result = found()
+
+        payload = me(result.user)
+
+        admin = app_of(payload, "acme-motors", AppCode.ADMIN)
+        dms = app_of(payload, "acme-motors", AppCode.DMS)
+        assert (admin.role.code, admin.role.name) == ("owner", "Organization Owner")
+        assert (dms.role.code, dms.role.name) == ("owner", "Owner")
+        assert dms.places == []
+
+    def test_the_admin_app_s_role_is_exactly_admin_role(self):
+        result = found()
+        add_org_admin(result.organization)
+
+        for user in (result.user, User.objects.get(email="orgadmin@acme.test")):
+            membership = me(user).memberships[0]
+            admin = next(app for app in membership.apps if app.key == AppCode.ADMIN)
+            assert (admin.role.code, admin.role.name) == (
+                membership.admin_role.code,
+                membership.admin_role.name,
+            )
+
+    def test_somebody_at_a_dealership_carries_their_dms_role_and_place(self):
+        result = found()
+        unit = Territory.objects.create(
+            organization=result.organization, kind=TerritoryKind.DEALER, name="Delhi East"
+        )
+        user, _ = add_dealer_admin(result.organization, unit)
+
+        payload = me(user)
+
+        dms = app_of(payload, "acme-motors", AppCode.DMS)
+        assert (dms.role.code, dms.role.name) == ("dms.system_admin", "System administrator")
+        assert dms.places == ["Delhi East"]
+        # They reach the Admin panel through that DMS role, holding no Admin
+        # panel role of their own -- so the admin app names none.
+        admin = app_of(payload, "acme-motors", AppCode.ADMIN)
+        assert admin.accessible is True
+        assert admin.role is None
+
+    def test_the_root_is_named_after_the_organisation(self):
+        result = found()
+        holding_only(result.organization, "dms.enquiry.view")
+
+        dms = app_of(me(User.objects.get(email="someone@acme.test")), "acme-motors", AppCode.DMS)
+
+        assert dms.role.name == "Test role"
+        assert dms.places == ["Acme Motors"]
+
+    def test_an_app_they_cannot_open_names_no_role(self):
+        result = found()
+        unit = Territory.objects.create(
+            organization=result.organization, kind=TerritoryKind.DEALER, name="Delhi East"
+        )
+        user, membership = add_dealer_admin(result.organization, unit)
+        membership.grants.filter(app_id=AppCode.DMS).update(status="disabled")
+
+        dms = app_of(me(user), "acme-motors", AppCode.DMS)
+
+        assert dms.accessible is False
+        assert dms.role is None
+        assert dms.places == []
+
+    def test_the_endpoint_sends_them(self):
+        result = found()
+        client = APIClient()
+        client.force_authenticate(user=result.user)
+
+        apps = {
+            app["key"]: app for app in client.get("/api/v1/me/").json()["memberships"][0]["apps"]
+        }
+
+        assert apps["dms"]["role"] == {"code": "owner", "name": "Owner"}
+        assert apps["dms"]["places"] == []
+        assert apps["admin"]["role"] == {"code": "owner", "name": "Organization Owner"}

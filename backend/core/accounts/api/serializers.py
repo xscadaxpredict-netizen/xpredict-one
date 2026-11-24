@@ -137,6 +137,16 @@ class ModuleSerializer(serializers.Serializer):
     sub_modules = SubModuleSerializer(many=True, read_only=True)
 
 
+class _AdminRoleSerializer(serializers.Serializer):
+    """
+    A role, by code and name: the Admin panel role they hold (C89), and since
+    2026-11-24 each app's own role on its entry. Mirrors `AdminRole` in auth.ts.
+    """
+
+    code = serializers.CharField(read_only=True)
+    name = serializers.CharField(read_only=True)
+
+
 class AppAccessSerializer(serializers.Serializer):
     """
     One app's availability inside one organization.
@@ -156,13 +166,10 @@ class AppAccessSerializer(serializers.Serializer):
     # see it (C79, the owner 2026-11-19). DMS's modules have no sub-modules yet.
     modules = ModuleSerializer(many=True, read_only=True)
     permissions = serializers.ListField(child=serializers.CharField(), read_only=True)
-
-
-class _AdminRoleSerializer(serializers.Serializer):
-    """The Admin panel role they hold (C89). Mirrors `AdminRole` in auth.ts."""
-
-    code = serializers.CharField(read_only=True)
-    name = serializers.CharField(read_only=True)
+    # The role they hold IN THIS APP, and where it places them (2026-11-24).
+    # The admin app's is their Admin panel role -- what `admin_role` below said.
+    role = _AdminRoleSerializer(read_only=True, allow_null=True)
+    places = serializers.ListField(child=serializers.CharField(), read_only=True)
 
 
 class MembershipSerializer(serializers.Serializer):

@@ -355,6 +355,24 @@ class AppAccessData:
 
     permissions: list[str]
 
+    role: AppRoleData | None
+    """
+    THE ROLE THEY HOLD IN THIS APP (the owner, 2026-11-24: "each app will have
+    their own role"). The admin app's is their Admin panel role -- exactly
+    `MembershipData.admin_role`, which this replaces (step 3 removes it). Any
+    other app's is their grant's role; the owner's is "Owner" in every app,
+    held by rule. None where they hold no role -- a dealer admin reaches the
+    Admin panel through a DMS role, not an Admin panel one -- and for an app
+    they cannot open, which reports nothing about itself (C22).
+    """
+
+    places: list[str]
+    """
+    Where this app places them, by name (the root shows the organisation's).
+    Empty for the owner (everywhere), for the Admin panel (organisation-wide
+    by nature) and for an app they cannot open.
+    """
+
 
 @dataclass(frozen=True)
 class MembershipData:
@@ -562,6 +580,8 @@ def _app_data(
             summary=None,
             modules=[],
             permissions=[],
+            role=None,
+            places=[],
         )
 
     if app == AppCode.ADMIN:
@@ -589,8 +609,13 @@ def _app_data(
             summary=None,
             modules=[],
             permissions=[],
+            role=None,
+            places=[],
         )
 
+    # ONLY FOR `/me`, like the tree: `permissions_for()` (sections None) runs on
+    # every request and never reads a role, so it is not made to look them up.
+    role, places = _role_in_app(app, membership) if sections is not None else (None, [])
     return AppAccessData(
         key=app,
         subscribed=subscribed,
@@ -599,7 +624,45 @@ def _app_data(
         # None from `permissions_for()`, which never reads the tree (see there).
         modules=module_tree(app, permissions, sections) if sections is not None else [],
         permissions=sorted(permission.code for permission in permissions),
+        role=role,
+        places=places,
     )
+
+
+OWNER_APP_ROLE = ("owner", "Owner")
+
+
+def _role_in_app(app: str, membership: Membership) -> tuple[AppRoleData | None, list[str]]:
+    """
+    The role this person holds in `app`, and where it places them (2026-11-24).
+
+    THE ADMIN APP'S IS `admin_role_of()` -- the same answer `admin_role` gives,
+    so the two cannot disagree while both exist. Every other app's comes from
+    its ACTIVE grant (a disabled one opens nothing, so it never gets here); the
+    owner's is "Owner" everywhere, by rule (C72 step 2c).
+
+    Walks prefetched grants (`GRANTS_PREFETCH`): no query per app. The root's
+    name is the organisation's (`Territory.display_name`), read from the
+    membership's own organisation rather than once more per place.
+    """
+    if app == AppCode.ADMIN:
+        admin = admin_role_of(membership)
+        return (AppRoleData(code=admin.code, name=admin.name) if admin else None), []
+    if membership.is_owner:
+        return AppRoleData(*OWNER_APP_ROLE), []
+
+    for grant in membership.grants.all():
+        if grant.app_id != app or not grant.is_active:
+            continue
+        held = next(iter(grant.roles.all()), None)
+        places = sorted(
+            membership.organization.name
+            if placement.territory.is_root
+            else placement.territory.name
+            for placement in grant.territories.all()
+        )
+        return (AppRoleData(code=held.role.code, name=held.role.name) if held else None), places
+    return None, []
 
 
 def module_tree(

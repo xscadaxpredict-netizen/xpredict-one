@@ -31,6 +31,7 @@ import { EmptyState, ErrorState, InfoHint, TableSkeleton } from "@xpredict/ui";
 
 import { usePageSearch } from "../../../stores/pageSearchStore";
 import { useAccess } from "../../access";
+import { adminPanelRole } from "../../appRole";
 import { useShellContext } from "../../context";
 import type { OrgUser } from "../api/users";
 import { InviteUserDialog } from "../components/InviteUserDialog";
@@ -116,10 +117,10 @@ export function UsersScreen() {
    * ANY ADMIN PANEL ROLE IS ORGANISATION-WIDE (C89): the owner, an
    * Organization Admin, or somebody holding one of the organisation's own
    * roles -- their Administration grant sits at the root. A dealer admin holds
-   * none (their administering is a DMS role), so `admin_role` is null for them.
+   * none (their administering is a DMS role), so `adminPanelRole()` is null for them.
    */
   const access = useAccess();
-  const canAddUsers = membership.admin_role !== null && access.can("admin.user.create");
+  const canAddUsers = adminPanelRole(membership) !== null && access.can("admin.user.create");
 
   const showsOtherDealersPeople =
     callerIsOrgWide && (users?.some((user) => user.unit_name !== null) ?? false);

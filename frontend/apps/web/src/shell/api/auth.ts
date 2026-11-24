@@ -48,6 +48,24 @@ export interface AppAccess {
   summary: string | null;
 
   /**
+   * THE ROLE THEY HOLD IN THIS APP (the owner, 2026-11-24: "each app will have
+   * their own role"), or null. The ADMIN app's is their Admin panel role --
+   * what `Membership.admin_role` said, which this replaces (read it through
+   * `appRole()` / `adminPanelRole()` in `shell/appRole.ts`). Any other app's
+   * is their role there; the owner's is "Owner" in every app. Null for an app
+   * they cannot open, and for a dealer admin's Admin panel (they reach it
+   * through a DMS role, not an Admin panel one).
+   */
+  role: AdminRole | null;
+
+  /**
+   * Where this app places them, by name; the organisation's own name for its
+   * top. Empty for the owner (everywhere), the Admin panel, and an app they
+   * cannot open.
+   */
+  places: string[];
+
+  /**
    * WHAT THIS PERSON MAY SEE, AS THE APP'S OWN TREE (C79, the owner
    * 2026-11-19): modules, each with its sub-modules, each with its tabs, in
    * menu order. Anything they may not see is simply absent — a tab is here if
@@ -124,6 +142,10 @@ export interface Membership {
   role: "owner" | "admin" | "member";
 
   /**
+   * BEING REPLACED (2026-11-24) by the admin app's own `role` in `apps` --
+   * read `adminPanelRole()` instead; nothing in the screens reads this any
+   * more, and it goes in the next step.
+   *
    * THE ADMIN PANEL ROLE THEY HOLD, by the name the Roles tab gives it, or
    * null (C89). `role` above says "admin" ONLY for the built-in Organization
    * Admin: somebody holding one of the organisation's own Admin panel roles is
@@ -285,6 +307,8 @@ const FAKE_ME: Me = {
           key: "dms",
           subscribed: true,
           accessible: true,
+          role: { code: "owner", name: "Owner" },
+          places: [],
           summary: "Sales · Service · Tech support · E-commerce · Tools across 12 dealers",
           modules: [
             { code: "sales", sub_modules: [] },
@@ -303,6 +327,8 @@ const FAKE_ME: Me = {
           key: "crm",
           subscribed: true,
           accessible: true,
+          role: { code: "owner", name: "Owner" },
+          places: [],
           summary: "Organisation-wide — no dealer split",
           modules: [],
           permissions: [],
@@ -312,6 +338,8 @@ const FAKE_ME: Me = {
           key: "ecommerce",
           subscribed: false,
           accessible: false,
+          role: null,
+          places: [],
           summary: null,
           modules: [],
           permissions: [],
@@ -322,6 +350,8 @@ const FAKE_ME: Me = {
           key: "admin",
           subscribed: true,
           accessible: true,
+          role: { code: "owner", name: "Organization Owner" },
+          places: [],
           summary: "Organisation admins only",
           /*
            * NOT IN THE FIRST RELEASE: `billing` and `audit` (C38). Their
@@ -415,6 +445,8 @@ const FAKE_ME: Me = {
           key: "dms",
           subscribed: true,
           accessible: true,
+          role: null,
+          places: [],
           summary: "Sales · Service across 3 dealers",
           modules: [
             { code: "sales", sub_modules: [] },
@@ -422,8 +454,8 @@ const FAKE_ME: Me = {
           ],
           permissions: ["dms.enquiry.create"],
         },
-        { key: "crm", subscribed: false, accessible: false, summary: null, modules: [], permissions: [] },
-        { key: "ecommerce", subscribed: false, accessible: false, summary: null, modules: [], permissions: [] },
+        { key: "crm", subscribed: false, accessible: false, summary: null, modules: [], permissions: [], role: null, places: [] },
+        { key: "ecommerce", subscribed: false, accessible: false, summary: null, modules: [], permissions: [], role: null, places: [] },
         /*
          * A DEALER ADMIN, and the reason this second organisation is worth
          * having in the fake. Administration is open to them, but with one
@@ -434,6 +466,8 @@ const FAKE_ME: Me = {
           key: "admin",
           subscribed: true,
           accessible: true,
+          role: null,
+          places: [],
           summary: "Your dealer’s people",
           // Users only, under User Management (C79): what `/me` sends a dealer admin.
           modules: [{ code: "user_management", sub_modules: [{ code: "user", tabs: [] }] }],
