@@ -231,6 +231,13 @@ PERMISSIONS: list[tuple[str, str, str, str, str]] = [
         "Territories",
         "Delete a territory, moving its records and people",
     ),
+    # Security & Controls -> Position and Sharing -> Position (`permissions/0027`,
+    # 2026-11-25): DMS's reporting chart. Owner only too. Placing people at a
+    # position is `dms.user.update`.
+    ("dms.position.view", "dms", "positions", "Positions", "See DMS's position chart"),
+    ("dms.position.create", "dms", "positions", "Positions", "Add a position to DMS's chart"),
+    ("dms.position.update", "dms", "positions", "Positions", "Edit or move a position"),
+    ("dms.position.delete", "dms", "positions", "Positions", "Delete a position"),
     # --- CRM ----------------------------------------------------------------
     #
     # ONE PERMISSION, deliberately. CRM is built after DMS ships, and designing
@@ -278,6 +285,10 @@ _OWNER_ONLY = [
     "dms.territory.update",
     "dms.territory.set_status",
     "dms.territory.delete",
+    "dms.position.view",
+    "dms.position.create",
+    "dms.position.update",
+    "dms.position.delete",
 ]
 
 _DMS_READS = [

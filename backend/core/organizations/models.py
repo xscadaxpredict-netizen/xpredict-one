@@ -60,7 +60,89 @@ class TerritoryKind(models.TextChoices):
 _ROOT_PATH_ATTEMPTS = 3
 
 
-class TerritoryManager(MP_NodeManager):
+class AppTreeManager(MP_NodeManager):
+    """
+    A tree per organisation PER APP, with the organisation at each root: what
+    the territory tree (WHERE) and the position chart (WHOSE) share. Born in
+    `TerritoryManager`; lifted here when `PositionManager` became its second
+    user (2026-11-25). Every method is the territory tree's, unchanged -- the
+    explanation is on `TerritoryManager` below.
+
+    A subclass says what else a root holds (`_root_fields`): a territory root
+    is of kind `organisation`, a position root holds nothing more.
+    """
+
+    def _root_fields(self) -> dict:
+        return {}
+
+    def root_for(self, organization, app: str):
+        """
+        `app`'s top box in this organisation. NO DEFAULT APP: a root asked for
+        without saying whose tree is exactly the ambiguity per-app trees end.
+        """
+        root = self.filter(organization=organization, app_id=app, is_root=True).first()
+        if root is not None:
+            return root
+
+        with transaction.atomic():
+            # Lock the organisation, then look again: whoever waited behind the
+            # lock finds the root the first caller made.
+            type(organization).objects.select_for_update().get(pk=organization.pk)
+            root = self.filter(organization=organization, app_id=app, is_root=True).first()
+            if root is not None:
+                return root
+            return self._add_root_with_retry(
+                {
+                    "organization": organization,
+                    "app_id": app,
+                    "name": "",
+                    "is_root": True,
+                    **self._root_fields(),
+                }
+            )
+
+    def of(self, organization, app: str):
+        """One app's tree in one organisation -- what every tree question asks."""
+        return self.filter(organization=organization, app_id=app)
+
+    def create(self, **kwargs):
+        # DMS's unless said otherwise: only DMS draws trees below a root today
+        # (C82). The code as a literal: `AppCode` lives in `core.permissions`,
+        # which this models module does not import.
+        app = kwargs.pop("app", None) or kwargs.pop("app_id", None) or "dms"
+        kwargs["app_id"] = app
+        return self.add_child(self.root_for(kwargs["organization"], app), kwargs)
+
+    def _add_root_with_retry(self, create_kwargs: dict):
+        """
+        Add a root, retrying a collision on `path` in a savepoint.
+
+        RECOGNISED BY THE INDEX NAME, which is what MySQL reports -- and the
+        name is NOT THE SAME ON EVERY TABLE:
+          - territory: "'organizations_territory.organizations_territory_path_
+            <hash>_uniq'" -- Django's `<table>_<column>_<hash>_uniq`, kept from
+            the table's life as `BusinessUnit`;
+          - position (created fresh, 2026-11-25): "'organizations_position.path'"
+            -- MySQL's own name for an inline UNIQUE column, the column itself.
+        Both are matched. Tests pin each against the real server, because each
+        form was once missed: the first version looked only for `.path'` and
+        could never fire on territories; the shared version looked only for
+        `_path_` and could never fire on positions.
+        """
+        table = self.model._meta.db_table
+        path_indexes = (f"{table}_path_", f"'{table}.path'")
+        for attempt in range(_ROOT_PATH_ATTEMPTS):
+            try:
+                with transaction.atomic():
+                    return self.add_root(create_kwargs)
+            except IntegrityError as exc:
+                is_path_clash = any(name in str(exc) for name in path_indexes)
+                if not is_path_clash or attempt == _ROOT_PATH_ATTEMPTS - 1:
+                    raise
+        raise AssertionError("unreachable")  # pragma: no cover
+
+
+class TerritoryManager(AppTreeManager):
     """
     Treebeard's manager -- which since treebeard 6.0 a tree model's default
     manager MUST be -- plus the organisation's root.
@@ -89,66 +171,23 @@ class TerritoryManager(MP_NodeManager):
     TREEBEARD SORTS BY `path`, NOT BY NAME. Anything that needs alphabetical
     order says `.order_by("name")`; the model's `Meta.ordering` is overridden
     by this manager and must not be relied on.
+
+    The methods themselves are `AppTreeManager`'s, shared with the position
+    chart since 2026-11-25; a territory root is additionally of kind
+    `organisation`.
     """
 
-    def root_for(self, organization, app: str) -> Territory:
-        """
-        `app`'s top box in this organisation. NO DEFAULT APP: a root asked for
-        without saying whose tree is exactly the ambiguity per-app trees end.
-        """
-        root = self.filter(organization=organization, app_id=app, is_root=True).first()
-        if root is not None:
-            return root
+    def _root_fields(self) -> dict:
+        return {"kind": TerritoryKind.ORGANISATION}
 
-        with transaction.atomic():
-            # Lock the organisation, then look again: whoever waited behind the
-            # lock finds the root the first caller made.
-            type(organization).objects.select_for_update().get(pk=organization.pk)
-            root = self.filter(organization=organization, app_id=app, is_root=True).first()
-            if root is not None:
-                return root
-            return self._add_root_with_retry(
-                {
-                    "organization": organization,
-                    "app_id": app,
-                    "kind": TerritoryKind.ORGANISATION,
-                    "name": "",
-                    "is_root": True,
-                }
-            )
 
-    def of(self, organization, app: str):
-        """One app's tree in one organisation -- what every tree question asks."""
-        return self.filter(organization=organization, app_id=app)
-
-    def create(self, **kwargs):
-        # DMS's unless said otherwise: only DMS draws territories below a root
-        # (C82). The code as a literal: `AppCode` lives in `core.permissions`,
-        # which this models module does not import.
-        app = kwargs.pop("app", None) or kwargs.pop("app_id", None) or "dms"
-        kwargs["app_id"] = app
-        return self.add_child(self.root_for(kwargs["organization"], app), kwargs)
-
-    def _add_root_with_retry(self, create_kwargs: dict) -> Territory:
-        """
-        Add a root, retrying a collision on `path` in a savepoint.
-
-        RECOGNISED BY THE INDEX NAME, which is what MySQL reports -- "for key
-        'organizations_territory.organizations_territory_path_<hash>_uniq'",
-        never the column. Django names a `unique=True` field's index
-        `<table>_<column>_<hash>_uniq`, so the prefix is stable; a test pins it
-        against the real server, because the first version looked for `.path'`
-        and could never have fired.
-        """
-        path_index = f"{self.model._meta.db_table}_path_"
-        for attempt in range(_ROOT_PATH_ATTEMPTS):
-            try:
-                with transaction.atomic():
-                    return self.add_root(create_kwargs)
-            except IntegrityError as exc:
-                if path_index not in str(exc) or attempt == _ROOT_PATH_ATTEMPTS - 1:
-                    raise
-        raise AssertionError("unreachable")  # pragma: no cover
+class PositionManager(AppTreeManager):
+    """
+    The position chart's manager: `AppTreeManager` as it is. `root_for(org,
+    app)` is the top of that app's chart -- the organisation, where the owner
+    sits by rule -- created on first use, so no migration or sign-up step makes
+    it. Nobody is placed AT the root (services, step 2).
+    """
 
 
 class MembershipRole(models.TextChoices):
@@ -553,6 +592,137 @@ class Territory(MP_Node, BaseModel):
             )
 
 
+class Position(MP_Node, BaseModel):
+    """
+    One position on an app's REPORTING CHART (C72's WHOSE; C77; the owner's
+    answers of 2026-11-25): "Sales Manager", with "Sales Executive" under it.
+    Somebody sees their own records and those of everybody in the positions
+    below theirs, inside their territories -- the people test, built later
+    (C72 piece 4). This step is the chart itself.
+
+    SHAPED LIKE `Territory`, on purpose: a django-treebeard materialised-path
+    tree, ONE PER ORGANISATION PER APP (only DMS uses one today), with the
+    organisation at the root -- where the owner sits by rule, and nobody is
+    placed. "Reports to" is simply the parent; moving a position moves
+    everything under it. Use the manager (`Position.objects.add_child(parent,
+    {...})`, `.move(...)`), never treebeard's per-node methods.
+
+    ONE POSITION PER PERSON PER APP: it is a field on the grant
+    (`MembershipAppAccess.position`), not a table of placements. REQUIRED
+    whenever somebody holds DMS (the owner) -- enforced by the services in step
+    2, because the grant exists for apps without a chart too.
+
+    Every tree query filters by `organization` (and `app`): all organisations'
+    roots share one path sequence, so an unfiltered question leaks across
+    tenants -- the same rule as the territory tree.
+    """
+
+    # Five characters per level, as the territory tree (see `Territory.steplen`).
+    steplen = 5
+
+    organization = models.ForeignKey(
+        Organization, on_delete=models.CASCADE, related_name="positions"
+    )
+    app = models.ForeignKey(
+        "permissions.App",
+        to_field="code",
+        db_column="app",
+        on_delete=models.PROTECT,
+        related_name="+",
+        help_text="Whose chart this is: every app that uses one has its own.",
+    )
+    name = models.CharField(max_length=200)
+    description = models.TextField(blank=True)
+
+    share_with_peers = models.BooleanField(
+        default=False,
+        help_text="People in this position see each other's records (the owner, 2026-11-25).",
+    )
+    """
+    "SHARE RECORDS WITH PEERS", per position, OFF by default (the owner,
+    2026-11-25, as Zoho does it). Off: two Sales Executives each see only their
+    own records, and the positions above see both. Read by the people test.
+    """
+
+    is_root = models.BooleanField(
+        null=True,
+        blank=True,
+        editable=False,
+        help_text="True for the chart's top (the organisation), NULL otherwise. Never set by hand.",
+    )
+    """True or NULL, never False: MySQL has no partial unique index (C39)."""
+
+    objects = PositionManager()
+
+    class Meta:
+        # Overridden by the manager, which sorts by `path` (see `Territory`).
+        ordering = ["name"]
+        constraints = [
+            # EXACTLY ONE TOP PER ORGANISATION AND APP; `root_for()` makes it.
+            models.UniqueConstraint(
+                fields=["organization", "app", "is_root"],
+                name="position_one_root_per_org_app",
+            ),
+            # THE ROOT IS AT THE TOP AND NOTHING ELSE IS: no second position
+            # left at the top level beside the organisation.
+            #
+            # `is_root__isnull=False` FIRST, AND IT IS LOAD-BEARING. MySQL lets a
+            # CHECK through when it comes out NULL, and `is_root = TRUE` on a NULL
+            # is NULL -- so the plain `Q(is_root=True, depth=1) | ...` passed a
+            # stray top (NULL OR FALSE = NULL). Its test failed first time; the
+            # territory tree escapes it only because its `kind` test is never NULL.
+            models.CheckConstraint(
+                condition=(
+                    models.Q(is_root__isnull=False, is_root=True, depth=1)
+                    | models.Q(is_root__isnull=True, depth__gte=2)
+                ),
+                name="position_root_is_the_top",
+            ),
+            # One "Sales Manager" per chart, case-insensitively (the collation,
+            # as for territory names). The root's "" is per app's chart too.
+            models.UniqueConstraint(
+                fields=["organization", "app", "name"], name="position_unique_org_app_name"
+            ),
+        ]
+
+    def __str__(self) -> str:
+        return self.display_name
+
+    @property
+    def display_name(self) -> str:
+        """The top shows the organisation's name; it stores none of its own."""
+        return self.organization.name if self.is_root else self.name
+
+    def save(self, *args, **kwargs) -> None:
+        """
+        REFUSE A POSITION WITH NO PLACE ON THE CHART, and one hung off another
+        app's chart -- the territory tree's two rules (`Territory.save()`), for
+        the same reasons.
+        """
+        if not self.path:
+            raise ValueError(
+                "A Position needs a place on the chart: create it with "
+                "Position.objects.create() (directly under the organisation) or "
+                "Position.objects.add_child(parent, {...})."
+            )
+        if not self.is_root:
+            parent_app = (
+                type(self)
+                .objects.filter(path=self.path[: -self.steplen])
+                .values_list("app_id", flat=True)
+                .first()
+            )
+            if parent_app is not None:
+                if self.app_id is None:
+                    self.app_id = parent_app
+                elif self.app_id != parent_app:
+                    raise ValueError(
+                        f"A position on {self.app_id!r}'s chart cannot report to one on "
+                        f"{parent_app!r}'s: every app has its own chart."
+                    )
+        super().save(*args, **kwargs)
+
+
 class Membership(BaseModel):
     """
     One person inside one organization: that they belong, and whether they own it.
@@ -689,6 +859,12 @@ class InvitationAppGrant(BaseModel):
         related_name="+",
     )
     role = models.ForeignKey("permissions.Role", on_delete=models.PROTECT, related_name="+")
+    # WHERE ON THE APP'S CHART the person joins (2026-11-25): copied onto the
+    # grant at accept time, so an invited person arrives already placed.
+    # Nullable because apps without a chart have none; DMS requires one (services).
+    position = models.ForeignKey(
+        Position, null=True, blank=True, on_delete=models.PROTECT, related_name="+"
+    )
 
     class Meta:
         constraints = [
@@ -757,6 +933,21 @@ class MembershipAppAccess(BaseModel):
     status = models.CharField(
         max_length=10, choices=GrantStatus.choices, default=GrantStatus.ACTIVE
     )
+    position = models.ForeignKey(
+        Position, null=True, blank=True, on_delete=models.PROTECT, related_name="holders"
+    )
+    """
+    THE PERSON'S PLACE ON THIS APP'S REPORTING CHART (WHOSE; 2026-11-25). One
+    per grant -- one position per person per app (the owner). A field, not a
+    table, because there is only ever one.
+
+    NULLABLE IN THE DATABASE, REQUIRED FOR DMS BY THE SERVICES: the grant
+    exists for apps with no chart (the Admin panel, CRM), and the database
+    cannot say "required when app is dms". The position must be on THIS app's
+    chart in THIS organisation, and never the chart's top -- also the services.
+
+    PROTECT: a position people hold cannot be deleted out from under them.
+    """
 
     @property
     def is_active(self) -> bool:

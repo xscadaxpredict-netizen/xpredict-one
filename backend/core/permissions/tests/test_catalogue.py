@@ -22,7 +22,7 @@ pytestmark = pytest.mark.django_db
 
 
 class TestPermissions:
-    def test_there_are_77(self):
+    def test_there_are_81(self):
         """
         C42 settled on 48, C67 added seven, and C72 piece 1 added three
         (`admin.territory.view/create/update`, `permissions/0009`), and C78 one
@@ -35,13 +35,14 @@ class TestPermissions:
         Edit, Deactivate and Delete three (`0023`, 2026-11-24), and Territory
         Management's four (`dms.territory.*`, `0024`, 2026-11-24), and its Delete
         (`dms.territory.delete`, `0025`) -- then the Dealers screen's seven went
-        (`admin.dealer.*`, `admin.territory.*`, `0026`, 2026-11-25). A number
+        (`admin.dealer.*`, `admin.territory.*`, `0026`, 2026-11-25), and the position
+        chart's four came (`dms.position.*`, `0027`, 2026-11-25). A number
         that drifts is a decision nobody made -- which is exactly what this
         assertion is for, and it did its job: the seven codes were added with a
         comment saying the catalogue had grown and this test was not updated
         with them.
         """
-        assert Permission.objects.count() == 77
+        assert Permission.objects.count() == 81
 
     def test_split_by_app_as_decided(self):
         """
@@ -54,11 +55,12 @@ class TestPermissions:
         to 44 with `dms.user.view` (DMS settings' Users page, `0021`) and 45 with
         `dms.user.create` (its Invite User, `0022`), and 48 with its rows' Edit,
         Deactivate and Delete (`0023`), and 52 with Territory Management's four
-        (`0024`), 53 with its Delete (`0025`). Each app
+        (`0024`), 53 with its Delete (`0025`), 57 with the position chart's four
+        (`0027`). Each app
         is asserted separately so a change to one cannot quietly reach another.
         """
         assert Permission.objects.filter(app_id=AppCode.ADMIN).count() == 23
-        assert Permission.objects.filter(app_id=AppCode.DMS).count() == 53
+        assert Permission.objects.filter(app_id=AppCode.DMS).count() == 57
         assert Permission.objects.filter(app_id=AppCode.CRM).count() == 1
 
     def test_every_code_is_app_resource_action(self):
@@ -301,7 +303,7 @@ class TestModulesAreDerived:
         # app-admin role is designed (Q63). Named, not derived, so a module
         # nobody can reach still fails here unless somebody decides it is the
         # owner's alone. (`users` is also the Admin panel's module name.)
-        by_owner_alone = {"territories"}
+        by_owner_alone = {"territories", "positions"}
 
         assert all_modules == by_role | by_standing | by_owner_alone
 
