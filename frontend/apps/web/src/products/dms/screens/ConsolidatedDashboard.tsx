@@ -62,7 +62,8 @@ export function ConsolidatedDashboard() {
   return (
     <section className={styles.section} aria-labelledby="dms-dashboard-title">
       <div className={styles.header}>
-        <h2 id="dms-dashboard-title" className={styles.title}>Dashboard</h2>
+        {/* Read, not shown: Home's "Dashboard" tab already names it (2026-11-25). */}
+        <h2 id="dms-dashboard-title" className={styles.visuallyHidden}>Dashboard</h2>
         {visible.length > 1 && (
           <div className={styles.filters} role="tablist" aria-label="Filter dashboard by module">
             {[{ view: ALL, label: "All" }, ...visible].map((f) => (

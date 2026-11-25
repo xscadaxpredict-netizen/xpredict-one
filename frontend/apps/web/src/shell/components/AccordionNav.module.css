@@ -35,6 +35,24 @@
   background: var(--color-surface-alt);
 }
 
+/* A single-page module (DMS's Home) is a link drawn as a row, with a line
+   under it separating it from the modules that open and close. */
+a.module {
+  box-sizing: border-box;
+  text-decoration: none;
+}
+
+.singleItem {
+  padding-bottom: var(--space-2);
+  margin-bottom: var(--space-2);
+  border-bottom: 1px solid var(--color-border);
+}
+
+a.module[data-current] {
+  color: var(--color-primary-800);
+  font-weight: 600;
+}
+
 /* The module holding the page you are on, even while it is closed. */
 .module[data-current] {
   background: var(--color-primary-050);

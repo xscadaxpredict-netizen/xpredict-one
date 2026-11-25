@@ -1,0 +1,7 @@
+/* The tab's content scrolls under the fixed title and tab row. */
+.body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding-bottom: var(--space-6);
+}

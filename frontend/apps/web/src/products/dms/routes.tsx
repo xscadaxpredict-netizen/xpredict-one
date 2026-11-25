@@ -1,11 +1,11 @@
 import { ModuleRoutes, type ModuleRoute } from "../../shell/routing";
-import { DmsWelcomeScreen } from "./screens/DmsWelcomeScreen";
+import { HomeScreen } from "./screens/HomeScreen";
 import SalesRoutes from "./sales/routes";
 import SiteServicesRoutes from "./site-services/routes";
 import TechSupportRoutes from "./tech-support/routes";
 import EcommerceRoutes from "./ecommerce/routes";
 import ToolsRoutes from "./tools/routes";
-import { Navigate } from "react-router-dom";
+import { Navigate, useLocation } from "react-router-dom";
 
 import { useShellContext } from "../../shell/context";
 import DmsSettingsRoutes from "./app-settings/routes";
@@ -21,9 +21,22 @@ function MasterDataMoved() {
   return <Navigate to={`/${membership.org_slug}/dms/settings/bank-accounts`} replace />;
 }
 
+/**
+ * DMS's own address, and the Welcome Hub's old one, open Home's Dashboard
+ * (the owner, 2026-11-25). The query string comes along, so an old
+ * `/dms?view=sales` still lands on the Sales dashboard.
+ */
+function ToHome() {
+  const { membership } = useShellContext();
+  const { search } = useLocation();
+  return <Navigate to={`/${membership.org_slug}/dms/home${search}`} replace />;
+}
+
 const routes: ModuleRoute[] = [
-  { path: "", module: null, element: <DmsWelcomeScreen /> },
-  { path: "welcome", module: null, element: <DmsWelcomeScreen /> },
+  { path: "", module: null, element: <ToHome /> },
+  { path: "welcome", module: null, element: <ToHome /> },
+  { path: "home", module: null, element: <HomeScreen tab="dashboard" /> },
+  { path: "home/getting-started", module: null, element: <HomeScreen tab="getting-started" /> },
   { path: "sales/*", module: "sales", element: <SalesRoutes /> },
   { path: "site-services/*", module: "service", element: <SiteServicesRoutes /> },
   { path: "tech-support/*", module: "tech-support", element: <TechSupportRoutes /> },

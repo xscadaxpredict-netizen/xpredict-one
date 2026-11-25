@@ -4,10 +4,10 @@ import { EcommerceLayout } from "./screens/EcommerceLayout";
 import { StoreCatalogScreen } from "./screens/StoreCatalogScreen";
 import { MyOrdersScreen } from "./screens/MyOrdersScreen";
 
-/** Old bookmarks and links: the per-module dashboard now lives in the Welcome Hub. */
+/** Old bookmarks and links: the per-module dashboard now lives in Home -> Dashboard. */
 function ToConsolidatedDashboard({ view }: { view: string }) {
   const { membership } = useShellContext();
-  return <Navigate to={`/${membership.org_slug}/dms?view=${view}`} replace />;
+  return <Navigate to={`/${membership.org_slug}/dms/home?view=${view}`} replace />;
 }
 
 export default function EcommerceRoutes() {

@@ -63,7 +63,8 @@ export function AccordionNav({
   );
 
   // Nothing stored yet: the module of the page you are on.
-  const open = stored === undefined ? (current?.label ?? null) : stored;
+  const open =
+    stored === undefined ? (current && !current.single ? (current.label ?? null) : null) : stored;
 
   /*
    * A NEW PAGE opens its module. Not on the first render — that is a refresh
@@ -75,7 +76,9 @@ export function AccordionNav({
    * first-run flag would let the second run overwrite the stored choice.
    */
   const lastPathname = useRef(pathname);
-  const currentLabel = current?.label ?? null;
+  // A single-page module (Home) has nothing to open, so going there leaves the
+  // accordion as it was.
+  const currentLabel = current && !current.single ? (current.label ?? null) : null;
   useEffect(() => {
     if (lastPathname.current === pathname) return;
     lastPathname.current = pathname;
@@ -109,6 +112,27 @@ export function AccordionNav({
                 <span className={styles.label}>{label}</span>
                 <span className={styles.soonTag}>Soon</span>
               </div>
+            </li>
+          );
+        }
+
+        // A module with one page (DMS's Home): a plain link with the module's
+        // icon, and a line under it separating it from the accordion.
+        const onlyItem = group.items[0];
+        if (group.single && onlyItem) {
+          return (
+            <li key={label} className={styles.singleItem}>
+              <NavLink
+                to={hrefOf(onlyItem.path)}
+                className={styles.module}
+                data-current={group === current || undefined}
+                aria-current={group === current ? "page" : undefined}
+                title={label}
+                onClick={onNavigate}
+              >
+                <span className={styles.icon}>{icon}</span>
+                <span className={styles.label}>{label}</span>
+              </NavLink>
             </li>
           );
         }

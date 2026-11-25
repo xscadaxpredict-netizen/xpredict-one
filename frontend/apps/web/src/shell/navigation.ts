@@ -107,6 +107,12 @@ export interface NavGroup {
    * items, so the plan is visible.
    */
   comingSoon?: boolean;
+  /**
+   * A module with exactly one page (DMS's Home): drawn as a plain link to that
+   * page with the module's icon and name, not a row that opens and closes. It
+   * counts as "here" on the page and everything below it (its tabs).
+   */
+  single?: boolean;
   items: NavItem[];
 }
 
@@ -193,13 +199,13 @@ export const APP_CATALOG: AppDefinition[] = [
        * backend's answer, never hidden by a check written here.
        */
       {
-        label: "Overview",
-        icon: "grid",
-        items: [
-          // The one dashboard: each module's panel, shown only to people whose role
-          // holds that module (the same rule as the links below), filterable by name.
-          { label: "Welcome Hub", path: "", icon: "grid", module: null },
-        ],
+        // HOME (the owner, 2026-11-25; was "Overview" -> Welcome Hub): a module
+        // with one page, so a plain link, not an accordion row. Its page has two
+        // tabs, Dashboard (`home`) and Getting Started (`home/getting-started`).
+        label: "Home",
+        icon: "home",
+        single: true,
+        items: [{ label: "Home", path: "home", icon: "home", module: null }],
       },
       // No "Configuration" group: Load Master Data moved behind the gear as
       // DMS settings -> Masters (the owner, 2026-11-25).

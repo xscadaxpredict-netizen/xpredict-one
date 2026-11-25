@@ -162,14 +162,16 @@ describe("DMS's own sidebar", () => {
     await screen.findByText("DMS home");
     let sidebar = screen.getByRole("navigation", { name: "DMS navigation" });
 
-    // Nothing stored yet: the module of the page you are on (the Welcome Hub's).
-    expect(within(sidebar).getByRole("button", { name: "Overview" })).toHaveAttribute("aria-expanded", "true");
-    expect(within(sidebar).getByRole("link", { name: "Welcome Hub" })).toHaveAttribute("href", "/acme-motors/dms");
+    // Home is a plain link at the top (one page, nothing to open); "Overview" is gone.
+    expect(within(sidebar).getByRole("link", { name: "Home" })).toHaveAttribute("href", "/acme-motors/dms/home");
+    expect(within(sidebar).queryByRole("button", { name: "Home" })).not.toBeInTheDocument();
+    expect(within(sidebar).queryByText("Overview")).not.toBeInTheDocument();
 
-    // Open Tools: one module at a time, so Overview closes.
+    // Open Sales, then Tools: one module at a time, so Sales closes.
+    fireEvent.click(within(sidebar).getByRole("button", { name: "Sales" }));
     fireEvent.click(within(sidebar).getByRole("button", { name: "Tools" }));
     expect(within(sidebar).getByRole("button", { name: "Tools" })).toHaveAttribute("aria-expanded", "true");
-    expect(within(sidebar).getByRole("button", { name: "Overview" })).toHaveAttribute("aria-expanded", "false");
+    expect(within(sidebar).getByRole("button", { name: "Sales" })).toHaveAttribute("aria-expanded", "false");
     expect(within(sidebar).getByRole("link", { name: "Marketing Kit" })).toBeInTheDocument();
 
     // A reload: a fresh page, the same browser storage.

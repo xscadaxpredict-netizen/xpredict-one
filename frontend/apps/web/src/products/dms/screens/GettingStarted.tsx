@@ -6,15 +6,12 @@ import {
   ShoppingCart,
   Calculator,
   ArrowRight,
-  Sparkles,
   Layers,
-  ShieldCheck,
   Compass,
 } from "lucide-react";
 import { useShellContext } from "../../../shell/context";
 import { useAccess } from "../../../shell/access";
-import { ConsolidatedDashboard } from "./ConsolidatedDashboard";
-import styles from "./DmsWelcomeScreen.module.css";
+import styles from "./GettingStarted.module.css";
 
 interface ModuleCardConfig {
   id: string;
@@ -29,7 +26,7 @@ interface ModuleCardConfig {
   screens: Array<{ label: string; path: string }>;
 }
 
-export function DmsWelcomeScreen() {
+export function GettingStarted() {
   const { membership } = useShellContext();
   const access = useAccess();
   const basePath = `/${membership.org_slug}/dms`;
@@ -43,10 +40,10 @@ export function DmsWelcomeScreen() {
         "Commercial workflow from initial lead capture and RFQs to quotation generation, margin calculations, and confirmed sales orders.",
       icon: TrendingUp,
       iconBg: "linear-gradient(135deg, #2563eb, #1d4ed8)",
-      primaryPath: `${basePath}?view=sales`,
+      primaryPath: `${basePath}/home?view=sales`,
       primaryActionLabel: "Open Sales Dashboard",
       screens: [
-        { label: "Sales Dashboard", path: `${basePath}?view=sales` },
+        { label: "Sales Dashboard", path: `${basePath}/home?view=sales` },
         { label: "Enquiries & Leads", path: `${basePath}/sales/enquiries` },
         { label: "Confirmed Orders", path: `${basePath}/sales/orders` },
         { label: "Quotations", path: `${basePath}/sales/quotations` },
@@ -60,10 +57,10 @@ export function DmsWelcomeScreen() {
         "Complete after-sales operations: Annual Maintenance Contracts (AMC), scheduled engineer visits, water quality test reports, and customer complaint tracking.",
       icon: Wrench,
       iconBg: "linear-gradient(135deg, #059669, #047857)",
-      primaryPath: `${basePath}?view=service`,
+      primaryPath: `${basePath}/home?view=service`,
       primaryActionLabel: "Open Services Hub",
       screens: [
-        { label: "Service Dashboard", path: `${basePath}?view=service` },
+        { label: "Service Dashboard", path: `${basePath}/home?view=service` },
         { label: "AMC Contracts", path: `${basePath}/site-services/amc` },
         { label: "Scheduled Services", path: `${basePath}/site-services/scheduling` },
         { label: "Service Reports", path: `${basePath}/site-services/reports` },
@@ -99,7 +96,7 @@ export function DmsWelcomeScreen() {
       primaryPath: `${basePath}/ecommerce/catalog`,
       primaryActionLabel: "Go to Parts Store",
       screens: [
-        { label: "Store Dashboard", path: `${basePath}?view=ecommerce` },
+        { label: "Store Dashboard", path: `${basePath}/home?view=ecommerce` },
         { label: "Store Catalog", path: `${basePath}/ecommerce/catalog` },
         { label: "My Orders", path: `${basePath}/ecommerce/orders` },
       ],
@@ -162,30 +159,14 @@ export function DmsWelcomeScreen() {
 
   return (
     <div className={styles.container}>
-      {/* Hero Welcome Banner */}
-      <section className={styles.hero}>
-        <div className={styles.heroGlow} />
-        <div className={styles.heroContent}>
-          <div className={styles.badge}>
-            <span className={styles.pulseDot} />
-            <Sparkles size={13} />
-            <span>Dealership Operations Hub · {membership.org_name}</span>
-          </div>
-
-          <h1 className={styles.heroTitle}>
-            Welcome to Dealer Management System (DMS)
-          </h1>
-
-          <p className={styles.heroSubtitle}>
-            Your unified operations platform handling everything from sales and production
-            to ongoing maintenance, engineering calculations, and spare parts procurement.
-            All tools and workflows are ready for use.
-          </p>
-        </div>
+      <section className={styles.welcome}>
+        <h2 className={styles.welcomeTitle}>Welcome to Dealer Management System (DMS)</h2>
+        <p className={styles.welcomeText}>
+          Your unified operations platform for {membership.org_name}, handling everything from
+          sales and production to ongoing maintenance, engineering calculations, and spare parts
+          procurement.
+        </p>
       </section>
-
-      {/* One dashboard for every module this role holds, filterable by module */}
-      <ConsolidatedDashboard />
 
       {/* End-to-End Lifecycle Journey */}
       <section className={styles.lifecycleSection}>
@@ -271,37 +252,6 @@ export function DmsWelcomeScreen() {
           })}
         </div>
       </section>
-
-      {/* Bottom Highlights Banner */}
-      <footer className={styles.valueBanner}>
-        <div className={styles.valueText}>
-          <div className={styles.valueTitle}>
-            <ShieldCheck size={18} color="var(--color-primary)" style={{ verticalAlign: "middle", marginRight: 6 }} />
-            Enterprise Multi-Tenant Architecture
-          </div>
-          <p className={styles.valueSubtitle}>
-            All modules operate in real-time isolation for <strong>{membership.org_name}</strong>.
-            Data, reports, quotes, and service histories remain secure, traceable, and available anytime.
-          </p>
-        </div>
-
-        <div className={styles.metricsRow}>
-          <div className={styles.metricBox}>
-            <span className={styles.metricValue}>6</span>
-            <span className={styles.metricLabel}>Core Modules</span>
-          </div>
-          <div className={styles.metricBox}>
-            <span className={styles.metricValue}>100%</span>
-            <span className={styles.metricLabel}>Process Coverage</span>
-          </div>
-          <div className={styles.metricBox}>
-            <span className={styles.metricValue}>24/7</span>
-            <span className={styles.metricLabel}>Support Ready</span>
-          </div>
-        </div>
-      </footer>
     </div>
   );
 }
-
-export default DmsWelcomeScreen;

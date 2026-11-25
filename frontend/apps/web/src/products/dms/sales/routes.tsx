@@ -7,10 +7,10 @@ import { TechnoCommercialScreen } from "./screens/TechnoCommercialScreen";
 import { CommissionsScreen } from "./screens/CommissionsScreen";
 import { SalesLayout } from "./screens/SalesLayout";
 
-/** Old bookmarks and links: the per-module dashboard now lives in the Welcome Hub. */
+/** Old bookmarks and links: the per-module dashboard now lives in Home -> Dashboard. */
 function ToConsolidatedDashboard({ view }: { view: string }) {
   const { membership } = useShellContext();
-  return <Navigate to={`/${membership.org_slug}/dms?view=${view}`} replace />;
+  return <Navigate to={`/${membership.org_slug}/dms/home?view=${view}`} replace />;
 }
 
 export default function SalesRoutes() {
