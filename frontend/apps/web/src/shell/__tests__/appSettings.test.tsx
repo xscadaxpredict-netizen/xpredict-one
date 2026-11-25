@@ -212,12 +212,22 @@ describe("DMS settings", () => {
   it("opens Security & Controls on its pages", async () => {
     mockFetchMe.mockResolvedValue(me({ memberships: [ownerMembership()] }));
 
-    // Position Hierarchy: still drawn only. (Territory Management is built --
-    // `dmsTerritories.test.tsx`.)
-    renderRoute({ path: "/acme-motors/dms/settings/position-hierarchy", children: screens });
+    // Position and Sharing (2026-11-25, was Position Hierarchy): its Sharing
+    // tab. (Territory Management is built -- `dmsTerritories.test.tsx`.)
+    renderRoute({ path: "/acme-motors/dms/settings/position-sharing/sharing", children: screens });
 
-    expect(await screen.findByRole("heading", { name: "Position Hierarchy" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { level: 1, name: "Position and Sharing" })).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "Sharing" })).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByRole("tab", { name: "Position" })).toHaveAttribute(
+      "href",
+      "/acme-motors/dms/settings/position-sharing",
+    );
     const sidebar = settingsSidebar();
+    // The sub-module stays "here" on its second tab.
+    expect(within(sidebar).getByRole("link", { name: "Position and Sharing" })).toHaveAttribute(
+      "aria-current",
+      "page",
+    );
     expect(within(sidebar).getByRole("button", { name: "Security & Controls" })).toHaveAttribute(
       "aria-expanded",
       "true",

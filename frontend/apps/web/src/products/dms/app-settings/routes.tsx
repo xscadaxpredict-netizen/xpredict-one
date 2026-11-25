@@ -27,6 +27,7 @@ import { LibraryPage } from "../settings/LibraryPage";
 import { MarketingKitPage } from "../settings/MarketingKitPage";
 import { ProductCatalogPage } from "../settings/ProductCatalogPage";
 import { DmsUsersScreen } from "./DmsUsersScreen";
+import { PositionSharingScreen } from "./PositionSharingScreen";
 import { TerritoryFormScreen } from "./TerritoryFormScreen";
 import { TerritoryManagementScreen } from "./TerritoryManagementScreen";
 
@@ -45,6 +46,8 @@ const BUILT: Record<string, ReactElement> = {
   "machine-videos": <LibraryPage kind="video" />,
   "marketing-kit": <MarketingKitPage />,
   "calculator-constants": <CalculatorConstantsPage />,
+  // Position and Sharing (2026-11-25): two tabs, Position here, Sharing below.
+  "position-sharing": <PositionSharingScreen tab="position" />,
 };
 
 export default function DmsSettingsRoutes() {
@@ -71,6 +74,7 @@ export default function DmsSettingsRoutes() {
       <Route path="users/:userId" element={<DmsUsersScreen />} />
       {/* A product opens beside the catalog, at its own address. */}
       <Route path="product-catalog/:productId" element={<ProductCatalogPage />} />
+      <Route path="position-sharing/sharing" element={<PositionSharingScreen tab="sharing" />} />
       {/* Territory Management (2026-11-24): New and Edit are their own pages
           (Q78); a box opens beside the tree. `new` is a fixed segment, so it
           wins over `:territoryId`. */}

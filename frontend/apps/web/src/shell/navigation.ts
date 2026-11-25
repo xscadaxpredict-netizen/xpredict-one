@@ -297,7 +297,10 @@ export const APP_CATALOG: AppDefinition[] = [
             module: null,
             search: "territories",
           },
-          { label: "Position Hierarchy", path: "position-hierarchy", icon: "user", module: null },
+          // C72's reporting chart (WHOSE) and sharing, one sub-module with two tabs:
+          // Position (`position-sharing`) and Sharing (`position-sharing/sharing`).
+          // The owner, 2026-11-25; was "Position Hierarchy".
+          { label: "Position and Sharing", path: "position-sharing", icon: "user", module: null },
         ],
       },
       {
