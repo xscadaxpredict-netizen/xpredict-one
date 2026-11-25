@@ -20,7 +20,7 @@ import { ErrorState, InfoHint } from "@xpredict/ui";
 
 import { useAccess } from "../../../shell/access";
 import { useShellContext } from "../../../shell/context";
-import listStyles from "../../../shell/admin/screens/ListPage.module.css";
+import { listPageStyles as listStyles } from "@xpredict/ui";
 import { usePageSearch } from "../../../stores/pageSearchStore";
 import { KIND_LABEL } from "./territories";
 import { TerritoryDetailPanel } from "./TerritoryDetailPanel";

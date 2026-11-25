@@ -15,7 +15,7 @@ import { Link } from "react-router-dom";
 
 import type { Membership } from "../../api/auth";
 import type { OrgUser } from "../api/users";
-import styles from "../screens/ListPage.module.css";
+import { listPageStyles as styles } from "@xpredict/ui";
 import { UserActions, displayName } from "./UserActions";
 
 interface UserTableProps {

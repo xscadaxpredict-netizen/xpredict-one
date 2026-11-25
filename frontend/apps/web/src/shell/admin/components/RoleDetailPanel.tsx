@@ -41,9 +41,9 @@ import { useAdmins } from "../hooks/useAdmins";
 import { useDeletePanelRole, useRoleBuilder } from "../hooks/useRoles";
 import { roleInitials } from "../screens/RolesScreen";
 import { ConfirmAppDialog } from "./ConfirmAppDialog";
-import panel from "./RecordPanel.module.css";
+import { recordPanelStyles as panel } from "@xpredict/ui";
 import styles from "./RoleDetailPanel.module.css";
-import { RowMenu, type RowMenuItem } from "./RowMenu";
+import { RowMenu, type RowMenuItem } from "@xpredict/ui";
 import { displayName } from "./UserActions";
 
 /**

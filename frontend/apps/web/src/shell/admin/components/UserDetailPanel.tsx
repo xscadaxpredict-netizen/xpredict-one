@@ -37,7 +37,7 @@ import { AssignAppsDialog } from "./AssignAppsDialog";
 import { ConfirmAppDialog } from "./ConfirmAppDialog";
 import { EditAppDialog } from "./EditAppDialog";
 import { InviteLinkPanel } from "./InviteLinkPanel";
-import panel from "./RecordPanel.module.css";
+import { recordPanelStyles as panel } from "@xpredict/ui";
 import { UserActions, displayName } from "./UserActions";
 import styles from "./UserDetailPanel.module.css";
 import { initials } from "./UserTable";

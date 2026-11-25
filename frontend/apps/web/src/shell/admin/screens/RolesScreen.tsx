@@ -27,10 +27,10 @@ import { useAccess } from "../../access";
 import { useShellContext } from "../../context";
 import { usePageSearch } from "../../../stores/pageSearchStore";
 import type { PanelRole } from "../api/roles";
-import { ListFilter } from "../components/ListFilter";
+import { ListFilter } from "@xpredict/ui";
 import { RoleDetailPanel, RoleRowActions } from "../components/RoleDetailPanel";
 import { usePanelRoles } from "../hooks/useRoles";
-import styles from "./ListPage.module.css";
+import { listPageStyles as styles } from "@xpredict/ui";
 
 type RoleFilter = "all" | "built_in" | "custom";
 

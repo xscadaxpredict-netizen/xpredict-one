@@ -17,7 +17,7 @@ import { useState } from "react";
 import { asProblem } from "@xpredict/api-client";
 
 import { useAccess } from "../../../shell/access";
-import { RowMenu } from "../../../shell/admin/components/RowMenu";
+import { RowMenu } from "@xpredict/ui";
 import type { AppUser } from "./api";
 import { EditDmsUserDialog } from "./EditDmsUserDialog";
 import { RemoveDmsUserDialog } from "./RemoveDmsUserDialog";

@@ -1,12 +1,12 @@
 /**
- * The filter at the left of an Admin panel list page's toolbar (C78):
+ * The filter at the left of a list page's toolbar (C78; Admin panel and DMS settings):
  * "Active apps", "Active users". One component so every list page's filter
  * looks and behaves the same.
  */
 
 import { ChevronDownIcon } from "lucide-react";
 
-import styles from "../screens/ListPage.module.css";
+import styles from "./ListPage.module.css";
 
 interface ListFilterProps<T extends string> {
   id: string;

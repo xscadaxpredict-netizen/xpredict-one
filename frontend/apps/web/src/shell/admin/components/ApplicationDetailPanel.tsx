@@ -29,7 +29,7 @@ import { findApp } from "../../navigation";
 import type { Application, ApplicationMember } from "../api/applications";
 import { useApplicationMembers } from "../hooks/useApplications";
 import { ApplicationActions } from "./ApplicationActions";
-import styles from "./RecordPanel.module.css";
+import { recordPanelStyles as styles } from "@xpredict/ui";
 
 interface ApplicationDetailPanelProps {
   app: Application;

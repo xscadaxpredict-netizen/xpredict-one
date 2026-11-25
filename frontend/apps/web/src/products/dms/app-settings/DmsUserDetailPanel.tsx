@@ -19,7 +19,7 @@ import {
   UserRoundIcon,
 } from "lucide-react";
 
-import panel from "../../../shell/admin/components/RecordPanel.module.css";
+import { recordPanelStyles as panel } from "@xpredict/ui";
 import styles from "../../../shell/admin/components/UserDetailPanel.module.css";
 import type { AppUser } from "./api";
 import { DmsUserActions, displayName } from "./DmsUserActions";

@@ -20,3 +20,14 @@ export { InfoHint } from "./InfoHint";
 export type { InfoHintProps } from "./InfoHint";
 export { ConfirmDialog } from "./ConfirmDialog";
 export type { ConfirmDialogProps } from "./ConfirmDialog";
+
+// THE LIST-PAGE FORMAT (C78): every list page and side panel looks the same.
+// Born in the Admin panel; moved here when DMS settings became its second
+// user (2026-11-25), so a product can use it without crossing the shell's
+// boundary (Q81). The two style sheets are exported as objects: a page
+// composes its own markup from their classes.
+export { ListFilter } from "./ListFilter";
+export { RowMenu } from "./RowMenu";
+export type { RowMenuItem } from "./RowMenu";
+export { default as listPageStyles } from "./ListPage.module.css";
+export { default as recordPanelStyles } from "./RecordPanel.module.css";

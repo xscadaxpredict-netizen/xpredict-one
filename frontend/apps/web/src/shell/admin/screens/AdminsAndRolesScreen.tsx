@@ -38,11 +38,11 @@ import { useAccess } from "../../access";
 import { useShellContext } from "../../context";
 import { tabsOf } from "../../navigation";
 import { AdminActions, AdminDetailPanel } from "../components/AdminDetailPanel";
-import { ListFilter } from "../components/ListFilter";
+import { ListFilter } from "@xpredict/ui";
 import { displayName } from "../components/UserActions";
 import { initials } from "../components/UserTable";
 import { useAdmins } from "../hooks/useAdmins";
-import styles from "./ListPage.module.css";
+import { listPageStyles as styles } from "@xpredict/ui";
 import { RolesTab } from "./RolesScreen";
 
 /** The tabs, from the catalogue (C79): written once, beside the sub-module. */

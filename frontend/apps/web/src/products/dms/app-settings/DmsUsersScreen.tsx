@@ -25,8 +25,8 @@ import { ErrorState, InfoHint, TableSkeleton } from "@xpredict/ui";
 
 import { useAccess } from "../../../shell/access";
 import { useShellContext } from "../../../shell/context";
-import { ListFilter } from "../../../shell/admin/components/ListFilter";
-import listStyles from "../../../shell/admin/screens/ListPage.module.css";
+import { ListFilter } from "@xpredict/ui";
+import { listPageStyles as listStyles } from "@xpredict/ui";
 import { usePageSearch } from "../../../stores/pageSearchStore";
 import type { AppUser, AppUserStatus } from "./api";
 import { AddDmsUserDialog } from "./AddDmsUserDialog";

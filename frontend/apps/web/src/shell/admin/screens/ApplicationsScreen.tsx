@@ -26,9 +26,9 @@ import { findApp } from "../../navigation";
 import type { Application } from "../api/applications";
 import { ApplicationActions } from "../components/ApplicationActions";
 import { ApplicationDetailPanel } from "../components/ApplicationDetailPanel";
-import { ListFilter } from "../components/ListFilter";
+import { ListFilter } from "@xpredict/ui";
 import { useApplications } from "../hooks/useApplications";
-import styles from "./ListPage.module.css";
+import { listPageStyles as styles } from "@xpredict/ui";
 
 type Filter = "active" | "inactive" | "all";
 

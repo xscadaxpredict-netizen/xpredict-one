@@ -15,7 +15,7 @@ import { ErrorState } from "@xpredict/ui";
 import { SearchIcon } from "lucide-react";
 
 import { useAccess } from "../../../shell/access";
-import { RowMenu } from "../../../shell/admin/components/RowMenu";
+import { RowMenu } from "@xpredict/ui";
 import { AssignPeopleDialog } from "./AssignPeopleDialog";
 import { MovePersonDialog, personName, RemovePersonDialog } from "./PersonPlaceDialogs";
 import type { TerritoryPerson } from "./territories";

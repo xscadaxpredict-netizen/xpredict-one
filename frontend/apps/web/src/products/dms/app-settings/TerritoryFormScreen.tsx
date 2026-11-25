@@ -29,7 +29,7 @@ import {
   normaliseIdentifier,
 } from "../../../shell/admin/gstin";
 import page from "../../../shell/admin/screens/NewRoleScreen.module.css";
-import listStyles from "../../../shell/admin/screens/ListPage.module.css";
+import { listPageStyles as listStyles } from "@xpredict/ui";
 import { Button } from "../../../shell/components/Button";
 import { FormBanner } from "../../../shell/components/FormBanner";
 import { useShellContext } from "../../../shell/context";

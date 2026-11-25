@@ -33,7 +33,7 @@ import type { OrgUser } from "../api/users";
 import { useSetUserStatus } from "../hooks/useUsers";
 import { EditUserDialog } from "./EditUserDialog";
 import { RemoveUserDialog } from "./RemoveUserDialog";
-import { RowMenu } from "./RowMenu";
+import { RowMenu } from "@xpredict/ui";
 
 interface UserActionsProps {
   user: OrgUser;

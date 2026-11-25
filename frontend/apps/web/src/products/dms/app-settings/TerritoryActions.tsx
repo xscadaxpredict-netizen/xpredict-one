@@ -19,7 +19,7 @@ import { asProblem } from "@xpredict/api-client";
 
 import { useAccess } from "../../../shell/access";
 import { useShellContext } from "../../../shell/context";
-import { RowMenu } from "../../../shell/admin/components/RowMenu";
+import { RowMenu } from "@xpredict/ui";
 import { CloseTerritoryDialog } from "./CloseTerritoryDialog";
 import { DeleteTerritoryDialog } from "./DeleteTerritoryDialog";
 import type { Tree, TreeNode } from "./territoryTree";

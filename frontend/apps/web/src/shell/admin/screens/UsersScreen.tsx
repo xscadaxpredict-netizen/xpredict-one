@@ -35,11 +35,11 @@ import { adminPanelRole } from "../../appRole";
 import { useShellContext } from "../../context";
 import type { OrgUser } from "../api/users";
 import { InviteUserDialog } from "../components/InviteUserDialog";
-import { ListFilter } from "../components/ListFilter";
+import { ListFilter } from "@xpredict/ui";
 import { UserDetailPanel } from "../components/UserDetailPanel";
 import { UserTable } from "../components/UserTable";
 import { useUsers } from "../hooks/useUsers";
-import styles from "./ListPage.module.css";
+import { listPageStyles as styles } from "@xpredict/ui";
 
 type Filter = "active" | "all" | "inactive" | "pending" | "confirmed";
 

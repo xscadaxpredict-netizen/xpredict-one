@@ -29,7 +29,7 @@ import { TextField } from "../../../shell/components/TextField";
 import { InviteLinkPanel } from "../../../shell/admin/components/InviteLinkPanel";
 import dialogStyles from "../../../shell/admin/components/InviteUserDialog.module.css";
 import pickerStyles from "../../../shell/admin/components/RolePicker.module.css";
-import listStyles from "../../../shell/admin/screens/ListPage.module.css";
+import { listPageStyles as listStyles } from "@xpredict/ui";
 import { useDmsInviteRoles, useInviteDmsUser } from "./useDmsUsers";
 
 const inviteSchema = z.object({

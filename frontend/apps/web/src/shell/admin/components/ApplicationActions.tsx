@@ -17,7 +17,7 @@ import { useState } from "react";
 import { useAccess } from "../../access";
 import type { Application } from "../api/applications";
 import { AssignUsersDialog } from "./AssignUsersDialog";
-import { RowMenu } from "./RowMenu";
+import { RowMenu } from "@xpredict/ui";
 
 export function ApplicationActions({ app }: { app: Application }) {
   const access = useAccess();

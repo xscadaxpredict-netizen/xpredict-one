@@ -22,7 +22,7 @@ import {
   UsersIcon,
 } from "lucide-react";
 
-import panel from "../../../shell/admin/components/RecordPanel.module.css";
+import { recordPanelStyles as panel } from "@xpredict/ui";
 import styles from "../../../shell/admin/components/UserDetailPanel.module.css";
 import { KIND_LABEL } from "./territories";
 import own from "./TerritoryManagement.module.css";

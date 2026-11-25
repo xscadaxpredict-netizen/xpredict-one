@@ -21,7 +21,11 @@ import { useShellContext } from "../../../shell/context";
 import { canOpenAppSettings } from "../../../shell/navigation";
 import { NotFoundScreen } from "../../../shell/screens/NotFoundScreen";
 import { SettingsPlaceholderScreen } from "../../../shell/screens/SettingsPlaceholderScreen";
-import { MastersPage } from "../settings/MastersPage";
+import { BankAccountsPage } from "../settings/BankAccountsPage";
+import { CalculatorConstantsPage } from "../settings/CalculatorConstantsPage";
+import { LibraryPage } from "../settings/LibraryPage";
+import { MarketingKitPage } from "../settings/MarketingKitPage";
+import { ProductCatalogPage } from "../settings/ProductCatalogPage";
 import { DmsUsersScreen } from "./DmsUsersScreen";
 import { TerritoryFormScreen } from "./TerritoryFormScreen";
 import { TerritoryManagementScreen } from "./TerritoryManagementScreen";
@@ -33,13 +37,14 @@ import { TerritoryManagementScreen } from "./TerritoryManagementScreen";
 const BUILT: Record<string, ReactElement> = {
   users: <DmsUsersScreen />,
   territories: <TerritoryManagementScreen />,
-  // Masters (2026-11-25): each sub-module is one of Load Master Data's old tabs.
-  "bank-accounts": <MastersPage tab="bank-accounts" />,
-  "product-catalog": <MastersPage tab="product-catalog" />,
-  "user-manuals": <MastersPage tab="user-manuals" />,
-  "machine-videos": <MastersPage tab="machine-videos" />,
-  "marketing-kit": <MastersPage tab="marketing-kit" />,
-  "calculator-constants": <MastersPage tab="calculator-constants" />,
+  // Masters (2026-11-25): Load Master Data's old tabs, one page each, in the
+  // shared list format.
+  "bank-accounts": <BankAccountsPage />,
+  "product-catalog": <ProductCatalogPage />,
+  "user-manuals": <LibraryPage kind="manual" />,
+  "machine-videos": <LibraryPage kind="video" />,
+  "marketing-kit": <MarketingKitPage />,
+  "calculator-constants": <CalculatorConstantsPage />,
 };
 
 export default function DmsSettingsRoutes() {
@@ -64,6 +69,8 @@ export default function DmsSettingsRoutes() {
       ))}
       {/* One person opened beside the list (the Admin panel's Users does the same). */}
       <Route path="users/:userId" element={<DmsUsersScreen />} />
+      {/* A product opens beside the catalog, at its own address. */}
+      <Route path="product-catalog/:productId" element={<ProductCatalogPage />} />
       {/* Territory Management (2026-11-24): New and Edit are their own pages
           (Q78); a box opens beside the tree. `new` is a fixed segment, so it
           wins over `:territoryId`. */}
