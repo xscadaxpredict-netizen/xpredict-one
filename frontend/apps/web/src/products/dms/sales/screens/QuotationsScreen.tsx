@@ -14,7 +14,6 @@ import { QuotationPreviewDialog } from "../components/QuotationPreviewDialog";
 import type { Enquiry, Quotation, QuoteType } from "../api/types";
 import { StatusBadge } from "../components/StatusBadge";
 import { RecordPayoutModal, type PayoutTargetRecord } from "../components/RecordPayoutModal";
-import { useDmsPermissions } from "../../shared/hooks/useDmsPermissions";
 import styles from "./QuotationsScreen.module.css";
 import { formatDate } from "../../shared/format/date";
 import { planQuotationDelete } from "../../shared/deleteChecks";
@@ -53,7 +52,6 @@ export function QuotationsScreen() {
   const deleteQuote = useDeleteQuotation();
   const quotationDependencies = useQuotationDependencies();
   const confirmOrder = useConfirmOrder();
-  const { canCreateQuote, canEditQuote, canConfirmOrder, canDeleteQuote } = useDmsPermissions();
 
   const [editingQuote, setEditingQuote] = useState<{
     enquiryId?: string;
@@ -90,7 +88,7 @@ export function QuotationsScreen() {
   );
 
   const filtered = allQuotes.filter((item) => {
-    const matchesSearch = matches(item.quote.title, item.quote.quote_no, item.enquiry.customer_name, searchQuery);
+    const matchesSearch = matches(item.quote.title, item.quote.quote_no, `${item.enquiry.customer_name} ${item.enquiry.enquiry_no}`, searchQuery);
     const matchesType = filterType === "ALL" || item.quote.type === filterType;
     const matchesEnquiry = filterEnquiryId === "ALL" || item.enquiry.id === filterEnquiryId;
     return matchesSearch && matchesType && matchesEnquiry;
@@ -186,7 +184,7 @@ export function QuotationsScreen() {
                 title="Filter by Quote Type"
               >
                 <option value="ALL">All Types</option>
-                <option value="NORMAL">Machine Quotes</option>
+                <option value="NORMAL">Quotations</option>
                 <option value="AMC">AMC Quotes</option>
                 <option value="SPARES">Spares Quotes</option>
               </select>
@@ -205,15 +203,13 @@ export function QuotationsScreen() {
             </>
           )}
 
-          {canCreateQuote && (
-            <button
-              type="button"
-              className={styles.btnPrimary}
-              onClick={() => setEditingQuote({})}
-            >
-              <PlusCircleIcon /> Create Quote
-            </button>
-          )}
+          <button
+            type="button"
+            className={styles.btnPrimary}
+            onClick={() => setEditingQuote({})}
+          >
+            <PlusCircleIcon /> Create Quote
+          </button>
         </div>
       </header>
 
@@ -279,7 +275,7 @@ export function QuotationsScreen() {
                         <div className={styles.quoteNo}>{quote.quote_no}</div>
                       </td>
                       <td className={styles.td}>
-                        <span className={styles.quoteTypeBadge}>{quote.type === "NORMAL" ? "MACHINE" : quote.type}</span>
+                        <span className={styles.quoteTypeBadge}>{quote.type === "NORMAL" ? "QUOTATION" : quote.type}</span>
                       </td>
                       <td className={styles.td}>
                         <div className={styles.customerName}>{enquiry.customer_name}</div>
@@ -375,17 +371,15 @@ export function QuotationsScreen() {
                           >
                             <EyeIcon />
                           </button>
-                          {canEditQuote && (
-                            <button
-                              type="button"
-                              className={styles.iconBtn}
-                              title="Edit Quote"
-                              onClick={(e) => { e.stopPropagation(); setEditingQuote({ enquiryId: enquiry.id, quoteId: quote.id }); }}
-                            >
-                              <PencilIcon />
-                            </button>
-                          )}
-                          {!isConfirmed && enquiry.status !== "CONFIRMED" && canConfirmOrder && (
+                          <button
+                            type="button"
+                            className={styles.iconBtn}
+                            title="Edit Quote"
+                            onClick={(e) => { e.stopPropagation(); setEditingQuote({ enquiryId: enquiry.id, quoteId: quote.id }); }}
+                          >
+                            <PencilIcon />
+                          </button>
+                          {!isConfirmed && enquiry.status !== "CONFIRMED" && (
                             <button
                               type="button"
                               className={`${styles.iconBtn} ${styles.iconBtnSuccess}`}
@@ -395,16 +389,14 @@ export function QuotationsScreen() {
                               <CheckIcon />
                             </button>
                           )}
-                          {canDeleteQuote && (
-                            <button
-                              type="button"
-                              className={`${styles.iconBtn} ${styles.iconBtnDanger}`}
-                              title="Delete Quote"
-                              onClick={(e) => { e.stopPropagation(); void handleDelete(enquiry.id, quote.id); }}
-                            >
-                              <TrashIcon />
-                            </button>
-                          )}
+                          <button
+                            type="button"
+                            className={`${styles.iconBtn} ${styles.iconBtnDanger}`}
+                            title="Delete Quote"
+                            onClick={(e) => { e.stopPropagation(); void handleDelete(enquiry.id, quote.id); }}
+                          >
+                            <TrashIcon />
+                          </button>
                           <button
                             type="button"
                             className={styles.expandBtn}
@@ -442,17 +434,15 @@ export function QuotationsScreen() {
                               >
                                 <EyeIcon />
                               </button>
-                              {canEditQuote && (
-                                <button
-                                  type="button"
-                                  className={styles.iconBtn}
-                                  title="Edit Quote"
-                                  onClick={(e) => { e.stopPropagation(); setEditingQuote({ enquiryId: enquiry.id, quoteId: quote.id }); }}
-                                >
-                                  <PencilIcon />
-                                </button>
-                              )}
-                              {!isConfirmed && enquiry.status !== "CONFIRMED" && canConfirmOrder && (
+                              <button
+                                type="button"
+                                className={styles.iconBtn}
+                                title="Edit Quote"
+                                onClick={(e) => { e.stopPropagation(); setEditingQuote({ enquiryId: enquiry.id, quoteId: quote.id }); }}
+                              >
+                                <PencilIcon />
+                              </button>
+                              {!isConfirmed && enquiry.status !== "CONFIRMED" && (
                                 <button
                                   type="button"
                                   className={`${styles.iconBtn} ${styles.iconBtnSuccess}`}
@@ -462,16 +452,14 @@ export function QuotationsScreen() {
                                   <CheckIcon />
                                 </button>
                               )}
-                              {canDeleteQuote && (
-                                <button
-                                  type="button"
-                                  className={`${styles.iconBtn} ${styles.iconBtnDanger}`}
-                                  title="Delete Quote"
-                                  onClick={(e) => { e.stopPropagation(); void handleDelete(enquiry.id, quote.id); }}
-                                >
-                                  <TrashIcon />
-                                </button>
-                              )}
+                              <button
+                                type="button"
+                                className={`${styles.iconBtn} ${styles.iconBtnDanger}`}
+                                title="Delete Quote"
+                                onClick={(e) => { e.stopPropagation(); void handleDelete(enquiry.id, quote.id); }}
+                              >
+                                <TrashIcon />
+                              </button>
                             </div>
 
                             <div className={styles.detailGrid}>
@@ -493,7 +481,13 @@ export function QuotationsScreen() {
                                   <strong>Quote No:</strong> {quote.quote_no}
                                 </div>
                                 <div className={styles.infoRow}>
-                                  <strong>Quote Type:</strong> {quote.type === "NORMAL" ? "MACHINE" : quote.type}
+                                  <strong>Quote Type:</strong> {quote.type === "NORMAL" ? "QUOTATION" : quote.type}
+                                </div>
+                                <div className={styles.infoRow}>
+                                  <strong>For:</strong>{" "}
+                                  {quote.oc_number
+                                    ? `${quote.oc_number}${quote.site_name ? ` · ${quote.site_name}` : ""}`
+                                    : `${enquiry.enquiry_no} · ${enquiry.customer_name}`}
                                 </div>
                                 <div className={styles.infoRow}>
                                   <strong>Date:</strong> {formatDate(quote.date)}
@@ -562,9 +556,7 @@ export function QuotationsScreen() {
           quotation={viewingQuote.quote}
           enquiry={viewingQuote.enquiry}
           onEdit={
-            canEditQuote
-              ? () => setEditingQuote({ enquiryId: viewingQuote.enquiry.id, quoteId: viewingQuote.quote.id })
-              : undefined
+            () => setEditingQuote({ enquiryId: viewingQuote.enquiry.id, quoteId: viewingQuote.quote.id })
           }
         />
       )}

@@ -24,7 +24,6 @@ import {
 import { EnquiryTable } from "../components/EnquiryTable";
 import { NewEnquiryDialog } from "../components/NewEnquiryDialog";
 import { FollowupDialog } from "../components/FollowupDialog";
-import { useDmsPermissions } from "../../shared/hooks/useDmsPermissions";
 import { QuoteBuilderDialog } from "../components/QuoteBuilderDialog";
 import { QuotationPreviewDialog } from "../components/QuotationPreviewDialog";
 import type { NewEnquiry, NewFollowup, Enquiry, Quotation, Followup } from "../api/types";
@@ -55,7 +54,6 @@ export function EnquiryListScreen() {
   const quotationDependencies = useQuotationDependencies();
   const deleteEnquiry = useDeleteEnquiry();
   const updateEnquiry = useUpdateEnquiry();
-  const { canCreateEnquiry, canEditQuote } = useDmsPermissions();
 
   const [editingQuote, setEditingQuote] = useState<{
     enquiryId: string;
@@ -88,7 +86,7 @@ export function EnquiryListScreen() {
 
   // ---- Filtering -----------------------------------------------------------
   const filtered = enquiries?.filter((enq) =>
-    matches(enq.customer_name, enq.contact_person, searchQuery),
+    matches(`${enq.customer_name} ${enq.enquiry_no}`, enq.contact_person, searchQuery),
   );
 
   // ---- Handlers ------------------------------------------------------------
@@ -261,15 +259,13 @@ export function EnquiryListScreen() {
             </label>
           )}
 
-          {canCreateEnquiry && (
-            <button
-              type="button"
-              className={styles.btnPrimary}
-              onClick={() => setIsNewEnquiryOpen(true)}
-            >
-              <PlusCircleIcon /> New Enquiry
-            </button>
-          )}
+          <button
+            type="button"
+            className={styles.btnPrimary}
+            onClick={() => setIsNewEnquiryOpen(true)}
+          >
+            <PlusCircleIcon /> New Enquiry
+          </button>
         </div>
       </header>
 
@@ -297,7 +293,7 @@ export function EnquiryListScreen() {
           title="No enquiries yet"
           body="Create your first enquiry to start tracking customers and follow-ups."
           action={
-            canCreateEnquiry ? (
+            (
               <button
                 type="button"
                 className={styles.btnPrimary}
@@ -305,7 +301,7 @@ export function EnquiryListScreen() {
               >
                 <PlusCircleIcon /> New Enquiry
               </button>
-            ) : undefined
+            )
           }
         />
       )}
@@ -398,9 +394,7 @@ export function EnquiryListScreen() {
           quotation={viewingQuote.quote}
           enquiry={viewingQuote.enquiry}
           onEdit={
-            canEditQuote
-              ? () => setEditingQuote({ enquiryId: viewingQuote.enquiry.id, quoteId: viewingQuote.quote.id })
-              : undefined
+            () => setEditingQuote({ enquiryId: viewingQuote.enquiry.id, quoteId: viewingQuote.quote.id })
           }
         />
       )}

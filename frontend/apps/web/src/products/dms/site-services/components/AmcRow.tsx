@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { ChevronDownIcon, ChevronUpIcon, MapPinIcon, MessageSquareIcon, EyeIcon, Edit3Icon, Trash2Icon, CheckCircleIcon, PlusIcon } from "lucide-react";
+import { ChevronDownIcon, ChevronUpIcon, MapPinIcon, MessageSquareIcon, EyeIcon, Edit3Icon, Trash2Icon, CheckCircleIcon, PlusIcon, RotateCcwIcon } from "lucide-react";
 import type { Enquiry, Quotation } from "../../sales/api/types";
 import { useDmsPermissions } from "../../shared/hooks/useDmsPermissions";
 import styles from "./AmcRow.module.css";
@@ -16,6 +16,8 @@ interface Props {
   onViewQuote: (quote: Quotation) => void;
   onEditQuote: (quoteId: string) => void;
   onConfirmQuote: (quoteId: string) => void;
+  /** Take the confirmed AMC back to "quote sent" so another can be confirmed. */
+  onUnconfirmQuote: (quoteId: string) => void;
   onDeleteQuote: (quoteId: string) => void;
   onAddFollowup: () => void;
   onEditFollowup?: (followup: any) => void;
@@ -33,6 +35,7 @@ export function AmcRow({
   onViewQuote,
   onEditQuote,
   onConfirmQuote,
+  onUnconfirmQuote,
   onDeleteQuote,
   onAddFollowup,
   onEditFollowup,
@@ -63,7 +66,10 @@ export function AmcRow({
           {latestQuote ? (
             <div>
               <div className={styles.quoteTitle}>
-                {latestQuote.title} ({latestQuote.id})
+                {latestQuote.title}
+              </div>
+              <div className={styles.muted}>
+                {latestQuote.quote_no}
               </div>
               <div className={styles.quoteAmount}>
                 ₹ {latestQuote.amount.toLocaleString("en-IN")}
@@ -107,7 +113,7 @@ export function AmcRow({
         <td className={styles.td}>
           {activeQuote ? (
             <div>
-              <div className={styles.activeAmcId}>{activeQuote.id}</div>
+              <div className={styles.activeAmcId}>{activeQuote.quote_no}</div>
               <div className={styles.muted}>{activeQuote.amc_type}</div>
             </div>
           ) : (
@@ -116,7 +122,8 @@ export function AmcRow({
         </td>
         <td className={styles.tdRight}>
           <div className={styles.actions}>
-            {canCreateQuote && (
+            {/* WHILE AN AMC IS ACTIVE a new quote has no purpose: unconfirm it first. */}
+            {canCreateQuote && !activeQuote && (
               <button
                 type="button"
                 className={styles.btnSecondary}
@@ -147,7 +154,7 @@ export function AmcRow({
           <td colSpan={5} className={styles.expandedCell}>
             <div className={styles.expandedContent}>
               <div className={styles.mobileActionsBar}>
-                {canCreateQuote && (
+                {canCreateQuote && !activeQuote && (
                   <button
                     type="button"
                     className={styles.btnSecondary}
@@ -304,7 +311,7 @@ export function AmcRow({
                         >
                           <div>
                             <div className={styles.historyCardTitle}>
-                              {q.id} - {q.title}
+                              {q.quote_no} · {q.title}
                             </div>
                             <div className={styles.historyCardMeta}>
                               {q.amc_type} • {q.service_interval} • ₹{q.amount.toLocaleString("en-IN")}
@@ -349,7 +356,8 @@ export function AmcRow({
                                 <Trash2Icon size={14} />
                               </button>
                             )}
-                            {canConfirmOrder && q.status !== "CONFIRMED" && (
+                            {/* ONE CONFIRMED AMC PER SITE: confirm another only after unconfirming. */}
+                            {canConfirmOrder && q.status !== "CONFIRMED" && !activeQuote && (
                               <button
                                 type="button"
                                 className={`${styles.iconBtn} ${styles.iconBtnSuccess}`}
@@ -359,14 +367,14 @@ export function AmcRow({
                                 <CheckCircleIcon size={14} />
                               </button>
                             )}
-                            {canDeleteQuote && q.status !== "CONFIRMED" && (
+                            {canConfirmOrder && q.status === "CONFIRMED" && (
                               <button
                                 type="button"
-                                className={`${styles.iconBtn} ${styles.iconBtnDanger}`}
-                                onClick={() => onDeleteQuote(q.id)}
-                                title="Delete Quote"
+                                className={styles.iconBtn}
+                                onClick={() => onUnconfirmQuote(q.id)}
+                                title="Unconfirm AMC"
                               >
-                                <Trash2Icon size={14} />
+                                <RotateCcwIcon size={14} />
                               </button>
                             )}
                           </div>

@@ -128,20 +128,20 @@ export function ComplaintsScreen() {
 
   const MOVE_TITLES: Record<ComplaintMove, string> = {
     IN_PROGRESS: "Work started",
-    RESOLVED: "Complaint resolved",
-    CLOSED: "Complaint closed",
-    OPEN: "Complaint reopened",
+    RESOLVED: "Ticket resolved",
+    CLOSED: "Ticket closed",
+    OPEN: "Ticket reopened",
   };
 
   const handleMove = async (report: any, status: ComplaintMove) => {
     let notes = "";
     if (status === "RESOLVED") {
-      const written = await showPrompt("Resolve complaint", "What was done to resolve it? This is kept with the complaint.");
+      const written = await showPrompt("Resolve ticket", "What was done to resolve it? This is kept with the ticket.");
       if (written === null) return;
       notes = written;
     } else if (status === "CLOSED" || status === "OPEN") {
       const ok = await showConfirm(
-        status === "CLOSED" ? "Close complaint" : "Reopen complaint",
+        status === "CLOSED" ? "Close ticket" : "Reopen ticket",
         status === "CLOSED" ? "Close it as checked and done?" : "Reopen it? It goes back to Open for work.",
       );
       if (!ok) return;
@@ -150,17 +150,17 @@ export function ComplaintsScreen() {
       await setStatus.mutateAsync({ complaintId: report.id, status, notes });
       showAlert("Done", MOVE_TITLES[status]);
     } catch (err) {
-      showAlert("Not changed", apiErrorMessage(err, "The complaint status could not be changed."));
+      showAlert("Not changed", apiErrorMessage(err, "The ticket status could not be changed."));
     }
   };
 
   const handleDelete = async (report: any) => {
-    if (await showConfirm("Delete Complaint", "Are you sure you want to delete this complaint?")) {
+    if (await showConfirm("Delete Ticket", "Are you sure you want to delete this ticket?")) {
       try {
         await deleteComplaintMutation.mutateAsync(report.id);
-        showAlert("Success", "Complaint deleted successfully!");
+        showAlert("Success", "Ticket deleted successfully!");
       } catch (e: any) {
-        showAlert("Error", `Failed to delete complaint: ${e.message}`);
+        showAlert("Error", `Failed to delete ticket: ${e.message}`);
       }
     }
   };
@@ -218,7 +218,7 @@ export function ComplaintsScreen() {
       }
       setIsModalOpen(false);
     } catch (err) {
-      showAlert("Complaint not saved", apiErrorMessage(err, "The complaint could not be saved."));
+      showAlert("Ticket not saved", apiErrorMessage(err, "The ticket could not be saved."));
     }
   };
 
@@ -242,7 +242,7 @@ export function ComplaintsScreen() {
             <SearchIcon size={16} style={{ position: "absolute", left: "10px", top: "50%", transform: "translateY(-50%)", color: "var(--color-text-3)" }} />
             <input 
               type="search" 
-              placeholder="Search complaints..." 
+              placeholder="Search tickets..." 
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               style={{ width: "100%", height: "36px", padding: "0 10px 0 34px", borderRadius: "var(--radius-md)", border: "1px solid var(--color-border)", background: "var(--color-surface)" }}
@@ -251,7 +251,7 @@ export function ComplaintsScreen() {
         </div>
         {canCreateComplaint && (
           <button type="button" className={styles.btnDanger} onClick={openNewModal}>
-            <PlusIcon size={16} /> Log Complaint
+            <PlusIcon size={16} /> Raise Ticket
           </button>
         )}
       </div>

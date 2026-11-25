@@ -2,7 +2,7 @@ import { useState } from "react";
 import { ShieldCheckIcon } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useSites } from "../hooks/useSiteServices";
-import { useConfirmAmcQuote, useAddFollowup, useUpdateFollowup, useDeleteFollowup, useDeleteQuotation, useQuotationDependencies } from "../../sales/hooks/useEnquiries";
+import { useConfirmAmcQuote, useUnconfirmAmcQuote, useAddFollowup, useUpdateFollowup, useDeleteFollowup, useDeleteQuotation, useQuotationDependencies } from "../../sales/hooks/useEnquiries";
 import { planQuotationDelete } from "../../shared/deleteChecks";
 import type { NewFollowup, Followup } from "../../sales/api/types";
 import { QuoteBuilderDialog } from "../../sales/components/QuoteBuilderDialog";
@@ -12,10 +12,13 @@ import { FollowupDialog } from "../../sales/components/FollowupDialog";
 import { AmcRow } from "../components/AmcRow";
 import styles from "./AMCScreen.module.css";
 import { useDialog } from "../../shared/hooks/useDialog";
+import { asProblem } from "@xpredict/api-client";
+import { apiErrorMessage } from "../../shared/api/errorMessage";
 
 export function AMCScreen() {
   const queryClient = useQueryClient();
   const confirmQuoteMutation = useConfirmAmcQuote();
+  const unconfirmQuoteMutation = useUnconfirmAmcQuote();
   const addFollowup = useAddFollowup();
   const deleteQuotation = useDeleteQuotation();
   const quotationDependencies = useQuotationDependencies();
@@ -27,6 +30,8 @@ export function AMCScreen() {
   // Quote Builder State
   const [isQuoteModalOpen, setIsQuoteModalOpen] = useState(false);
   const [editingEnquiryId, setEditingEnquiryId] = useState("");
+  // AN AMC QUOTE IS FOR A CONFIRMED SITE (OC); the builder sends it with the quote.
+  const [editingSiteId, setEditingSiteId] = useState("");
   const [editingQuoteId, setEditingQuoteId] = useState("");
   const [viewingQuote, setViewingQuote] = useState<{
     enquiry: any;
@@ -50,7 +55,8 @@ export function AMCScreen() {
     ? (sites || []).filter((s) => s.id === selectedSiteId)
     : (sites || []);
 
-  const handleOpenQuoteModal = (enquiryId: string, quoteId?: string) => {
+  const handleOpenQuoteModal = (siteId: string, enquiryId: string, quoteId?: string) => {
+    setEditingSiteId(siteId);
     setEditingEnquiryId(enquiryId);
     setEditingQuoteId(quoteId || "");
     setIsQuoteModalOpen(true);
@@ -111,6 +117,33 @@ export function AMCScreen() {
     }
   };
 
+  /**
+   * Unconfirm an AMC, like unconfirming a sales order. The server refuses if
+   * service was already carried out under it; if visits are only scheduled it
+   * says how many will be cancelled and we ask once more before going ahead.
+   */
+  const handleUnconfirmQuote = async (enquiryId: string, quoteId: string) => {
+    if (!(await showConfirm(
+      "Unconfirm AMC",
+      "This AMC goes back to \"Quote sent\". You can then confirm another AMC quote for this site.",
+    ))) return;
+    try {
+      await unconfirmQuoteMutation.mutateAsync({ enquiryId, quoteId, confirm: false });
+    } catch (err) {
+      const problem = asProblem(err);
+      if (problem.code !== "has_dependents") {
+        void showAlert("AMC not unconfirmed", apiErrorMessage(err, "The AMC could not be unconfirmed."));
+        return;
+      }
+      if (!(await showConfirm("Cancel scheduled visits?", `${problem.detail} Continue?`))) return;
+      try {
+        await unconfirmQuoteMutation.mutateAsync({ enquiryId, quoteId, confirm: true });
+      } catch (again) {
+        void showAlert("AMC not unconfirmed", apiErrorMessage(again, "The AMC could not be unconfirmed."));
+      }
+    }
+  };
+
   const handleDeleteQuote = async (enquiryId: string, quoteId: string) => {
     // Ask the backend what depends on this quote (visits, active AMC, documents)
     // and say so in the dialog, instead of a generic "are you sure".
@@ -145,13 +178,15 @@ export function AMCScreen() {
         <SiteSearchSelect sites={sites || []} value={selectedSiteId} onChange={setSelectedSiteId} />
 
         {/* AN AMC IS FOR ONE SITE: the button appears once a site is chosen. */}
-        {selectedSiteId && (
+        {/* One confirmed AMC per site: no new quote while one is active. */}
+        {selectedSiteId &&
+          !sites?.find((s) => s.id === selectedSiteId)?.quotes.some((q) => q.type === "AMC" && q.status === "CONFIRMED") && (
           <button
             type="button"
             className={styles.btnPrimary}
             onClick={() => {
               const site = sites?.find((s) => s.id === selectedSiteId);
-              if (site) handleOpenQuoteModal(site.enquiry_id);
+              if (site) handleOpenQuoteModal(site.id, site.enquiry_id);
             }}
           >
             <ShieldCheckIcon size={16} /> Create AMC Quote
@@ -193,10 +228,11 @@ export function AMCScreen() {
                     activeQuote={activeQuote}
                     isExpanded={expandedRowId === site.id}
                     onToggle={() => setExpandedRowId(expandedRowId === site.id ? null : site.id)}
-                    onNewQuote={() => handleOpenQuoteModal(site.enquiry_id)}
+                    onNewQuote={() => handleOpenQuoteModal(site.id, site.enquiry_id)}
                     onViewQuote={(q) => setViewingQuote({ enquiry: site, quote: q })}
-                    onEditQuote={(quoteId) => handleOpenQuoteModal(site.enquiry_id, quoteId)}
+                    onEditQuote={(quoteId) => handleOpenQuoteModal(site.id, site.enquiry_id, quoteId)}
                     onConfirmQuote={(quoteId) => handleConfirmQuote(site.enquiry_id, quoteId)}
+                    onUnconfirmQuote={(quoteId) => void handleUnconfirmQuote(site.enquiry_id, quoteId)}
                     onDeleteQuote={(quoteId) => handleDeleteQuote(site.enquiry_id, quoteId)}
                     onAddFollowup={() => handleOpenFollowupModal(site.enquiry_id)}
                     onEditFollowup={(f) => setEditingFollowup({ enquiryId: site.enquiry_id, followup: f })}
@@ -218,7 +254,7 @@ export function AMCScreen() {
           onEdit={() => {
             const current = viewingQuote;
             setViewingQuote(null);
-            handleOpenQuoteModal(current.enquiry.enquiry_id, current.quote.id);
+            handleOpenQuoteModal(current.enquiry.id, current.enquiry.enquiry_id, current.quote.id);
           }}
         />
       )}
@@ -228,6 +264,7 @@ export function AMCScreen() {
           open={isQuoteModalOpen}
           onClose={() => setIsQuoteModalOpen(false)}
           enquiryId={editingEnquiryId}
+          siteId={editingSiteId || undefined}
           existingQuoteId={editingQuoteId || undefined}
           allowedTypes={["AMC"]}
         />

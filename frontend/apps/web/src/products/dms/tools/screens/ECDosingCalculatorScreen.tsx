@@ -27,6 +27,7 @@ import {
   checkVoltageFeasibility,
 } from "../api/ecDosingMath";
 import styles from "./ECDosingCalculatorScreen.module.css";
+import tabStyles from "../../shared/components/TabBar.module.css";
 
 export function ECDosingCalculatorScreen() {
   const { orgSlug } = useParams<{ orgSlug: string }>();
@@ -83,6 +84,9 @@ export function ECDosingCalculatorScreen() {
   const [saveTitle, setSaveTitle] = useState("");
   const [saveNotes, setSaveNotes] = useState("");
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+  // SAVED RUNS ARE A TAB, not a table below the calculator, so they are found
+  // without scrolling and the count says whether there is anything to find.
+  const [view, setView] = useState<"calculator" | "saved">("calculator");
 
   // Sync default current when machine changes
   useEffect(() => {
@@ -257,7 +261,7 @@ export function ECDosingCalculatorScreen() {
         notes: saveNotes,
       });
       setIsSaveModalOpen(false);
-      showToast("Calculation saved successfully!");
+      showToast("Calculation saved. See the Saved calculations tab.");
     } catch (err) {
       alert("Failed to save calculation.");
     }
@@ -316,459 +320,488 @@ export function ECDosingCalculatorScreen() {
         </p>
       </div>
 
-      <div className={styles.mainLayout}>
-        {/* Left Column: Inputs & Machine Controls */}
-        <div className={styles.card}>
-          {/* Target Installation Site / Customer */}
-          <div style={{ marginBottom: "var(--space-4)", background: "var(--color-surface-alt, rgba(0,0,0,0.02))", padding: "var(--space-3) var(--space-4)", borderRadius: "var(--radius-md)", border: "1px solid var(--color-border)" }}>
-            <label className={styles.fieldLabel} style={{ marginBottom: "var(--space-2)" }}>
-              <span>Target Installation Site / Customer</span>
-              <span className={styles.fieldHint}>Select confirmed site or enter prospective site</span>
-            </label>
-            <div style={{ display: "flex", gap: "var(--space-2)", flexWrap: "wrap" }}>
+      <div className={tabStyles.container}>
+        <nav className={tabStyles.tabs} aria-label="EC dosing views" role="tablist">
+          <button
+            type="button"
+            role="tab"
+            aria-selected={view === "calculator"}
+            className={`${tabStyles.tab} ${view === "calculator" ? tabStyles.active : ""}`}
+            onClick={() => setView("calculator")}
+          >
+            Calculator
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={view === "saved"}
+            className={`${tabStyles.tab} ${view === "saved" ? tabStyles.active : ""}`}
+            onClick={() => setView("saved")}
+          >
+            Saved calculations ({ecCalculations?.length ?? 0})
+          </button>
+        </nav>
+      </div>
+
+      {view === "calculator" && (
+        <div className={styles.mainLayout}>
+          {/* Left Column: Inputs & Machine Controls */}
+          <div className={styles.card}>
+            {/* Target Installation Site / Customer */}
+            <div style={{ marginBottom: "var(--space-4)", background: "var(--color-surface-alt, rgba(0,0,0,0.02))", padding: "var(--space-3) var(--space-4)", borderRadius: "var(--radius-md)", border: "1px solid var(--color-border)" }}>
+              <label className={styles.fieldLabel} style={{ marginBottom: "var(--space-2)" }}>
+                <span>Target Installation Site / Customer</span>
+                <span className={styles.fieldHint}>Select confirmed site or enter prospective site</span>
+              </label>
+              <div style={{ display: "flex", gap: "var(--space-2)", flexWrap: "wrap" }}>
+                <select
+                  className={styles.select}
+                  style={{ flex: 1, minWidth: "240px" }}
+                  value={isCustomSite ? "__custom__" : selectedSiteId}
+                  onChange={(e) => handleSiteSelect(e.target.value)}
+                >
+                  <option value="">-- General / Bench Evaluation (No Site) --</option>
+                  {sites.map((s) => (
+                    <option key={s.id} value={s.id}>
+                      📍 {s.site_name || "Site"} — {s.customer_name} {s.oc_number ? `(OC: ${s.oc_number})` : ""}
+                    </option>
+                  ))}
+                  <option value="__custom__">+ Enter Custom Site Name</option>
+                </select>
+
+                {(isCustomSite || (!selectedSiteId && siteName)) && (
+                  <input
+                    type="text"
+                    className={styles.input}
+                    style={{ flex: 1, minWidth: "220px" }}
+                    placeholder="Type site name (e.g. Phoenix Mall)..."
+                    value={siteName}
+                    onChange={(e) => setSiteName(e.target.value)}
+                  />
+                )}
+              </div>
+            </div>
+
+            {/* Machine Selection */}
+            <div style={{ marginBottom: "var(--space-4)" }}>
+              <label className={styles.fieldLabel}>
+                <span>Machine Model / Tank Sizing</span>
+                <span className={styles.fieldHint}>Pre-calibrated dimensions & volumes</span>
+              </label>
+              <div className={styles.pillGroup}>
+                {Object.entries(machines).map(([key, m]) => (
+                  <button
+                    key={key}
+                    type="button"
+                    className={`${styles.pillBtn} ${selectedMachineKey === key ? styles.pillBtnActive : ""}`}
+                    onClick={() => setSelectedMachineKey(key)}
+                  >
+                    <LayersIcon size={14} /> {m.name || key.toUpperCase()}
+                  </button>
+                ))}
+                <button
+                  type="button"
+                  className={`${styles.pillBtn} ${selectedMachineKey === "CUSTOM" ? styles.pillBtnActive : ""}`}
+                  onClick={() => setSelectedMachineKey("CUSTOM")}
+                >
+                  + Custom Tank
+                </button>
+              </div>
+            </div>
+
+            {/* Custom Tank Dimensions (Shown only when Custom is chosen) */}
+            {selectedMachineKey === "CUSTOM" && (
+              <div style={{ background: "var(--color-canvas)", padding: "var(--space-4)", borderRadius: "var(--radius-md)", marginBottom: "var(--space-4)", border: "1px solid var(--color-border)" }}>
+                <div style={{ fontSize: "var(--text-xs)", fontWeight: 700, color: "var(--color-text-2)", marginBottom: "var(--space-2)" }}>
+                  CUSTOM TANK DIMENSIONS
+                </div>
+                <div className={styles.grid3} style={{ marginBottom: "var(--space-3)" }}>
+                  <div className={styles.field}>
+                    <label className={styles.fieldLabel}>Length (mm)</label>
+                    <input
+                      type="number"
+                      className={styles.input}
+                      value={customLengthMm}
+                      onChange={(e) => setCustomLengthMm(Number(e.target.value) || 0)}
+                    />
+                  </div>
+                  <div className={styles.field}>
+                    <label className={styles.fieldLabel}>Width (mm)</label>
+                    <input
+                      type="number"
+                      className={styles.input}
+                      value={customWidthMm}
+                      onChange={(e) => setCustomWidthMm(Number(e.target.value) || 0)}
+                    />
+                  </div>
+                  <div className={styles.field}>
+                    <label className={styles.fieldLabel}>Liquid Depth (mm)</label>
+                    <input
+                      type="number"
+                      className={styles.input}
+                      value={customDepthMm}
+                      onChange={(e) => setCustomDepthMm(Number(e.target.value) || 0)}
+                    />
+                  </div>
+                </div>
+                <div className={styles.grid2}>
+                  <div className={styles.field}>
+                    <label className={styles.fieldLabel}>Max Voltage (V)</label>
+                    <input
+                      type="number"
+                      className={styles.input}
+                      value={customMaxVoltage}
+                      onChange={(e) => setCustomMaxVoltage(Number(e.target.value) || 48)}
+                    />
+                  </div>
+                  <div className={styles.field}>
+                    <label className={styles.fieldLabel}>Computed Volume (m³)</label>
+                    <input
+                      readOnly
+                      className={styles.input}
+                      style={{ background: "var(--color-surface-alt)", fontWeight: 700, color: "var(--color-primary)" }}
+                      value={`${activeVolumeM3} m³ (${(activeVolumeM3 * 1000).toLocaleString()} L)`}
+                    />
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Metal Selection */}
+            <div style={{ marginBottom: "var(--space-4)" }}>
+              <label className={styles.fieldLabel}>
+                <span>Sacrificial Metal</span>
+                <span className={styles.fieldHint}>Faraday molar mass (M) & valence (n)</span>
+              </label>
+              <div className={styles.pillGroup}>
+                {Object.entries(metals).map(([key, metal]) => (
+                  <button
+                    key={key}
+                    type="button"
+                    className={`${styles.pillBtn} ${selectedMetalKey === key ? styles.pillBtnActive : ""}`}
+                    onClick={() => setSelectedMetalKey(key)}
+                  >
+                    <FlaskConicalIcon size={14} /> {metal.name} ({metal.molar_mass}g, n={metal.valence_n})
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Wastewater Profile (Optional) */}
+            <div className={styles.field} style={{ marginBottom: "var(--space-5)" }}>
+              <label className={styles.fieldLabel}>
+                <span>Wastewater Type (Optional)</span>
+                <span className={styles.fieldHint}>Auto-sets calibrated bench dosage</span>
+              </label>
               <select
                 className={styles.select}
-                style={{ flex: 1, minWidth: "240px" }}
-                value={isCustomSite ? "__custom__" : selectedSiteId}
-                onChange={(e) => handleSiteSelect(e.target.value)}
+                value={selectedWaterTypeId}
+                onChange={(e) => handleWaterTypeChange(e.target.value)}
               >
-                <option value="">-- General / Bench Evaluation (No Site) --</option>
-                {sites.map((s) => (
-                  <option key={s.id} value={s.id}>
-                    📍 {s.site_name || "Site"} — {s.customer_name} {s.oc_number ? `(OC: ${s.oc_number})` : ""}
+                <option value="">-- Manual Target Dosage --</option>
+                {waterTypes.map((w) => (
+                  <option key={w.id} value={w.id}>
+                    {w.name} (Typical: {w.default_dose} mg/L, {w.settling_time_min} min settling)
                   </option>
                 ))}
-                <option value="__custom__">+ Enter Custom Site Name</option>
               </select>
+            </div>
 
-              {(isCustomSite || (!selectedSiteId && siteName)) && (
-                <input
-                  type="text"
-                  className={styles.input}
-                  style={{ flex: 1, minWidth: "220px" }}
-                  placeholder="Type site name (e.g. Phoenix Mall)..."
-                  value={siteName}
-                  onChange={(e) => setSiteName(e.target.value)}
-                />
+            {/* Calculation Mode Switcher */}
+            <div style={{ marginBottom: "var(--space-2)" }}>
+              <label className={styles.fieldLabel}>
+                <span>Calculation Objective</span>
+              </label>
+              <div className={styles.modeTabs}>
+                <button
+                  type="button"
+                  className={`${styles.modeTabBtn} ${calculationMode === "TIME_FROM_DOSE" ? styles.modeTabBtnActive : ""}`}
+                  onClick={() => setCalculationMode("TIME_FROM_DOSE")}
+                >
+                  <TimerIcon size={14} /> Find Time / HRT
+                </button>
+                <button
+                  type="button"
+                  className={`${styles.modeTabBtn} ${calculationMode === "DOSE_FROM_TIME" ? styles.modeTabBtnActive : ""}`}
+                  onClick={() => setCalculationMode("DOSE_FROM_TIME")}
+                >
+                  <FlaskConicalIcon size={14} /> Find Delivered Dose
+                </button>
+                <button
+                  type="button"
+                  className={`${styles.modeTabBtn} ${calculationMode === "CURRENT_FROM_DOSE" ? styles.modeTabBtnActive : ""}`}
+                  onClick={() => setCalculationMode("CURRENT_FROM_DOSE")}
+                >
+                  <ZapIcon size={14} /> Find Required Current
+                </button>
+              </div>
+            </div>
+
+            {/* Dynamic Enterable Fields */}
+            <div className={styles.fieldGroup}>
+              {/* Current Input (Editable unless in CURRENT_FROM_DOSE mode) */}
+              {calculationMode !== "CURRENT_FROM_DOSE" && (
+                <div className={styles.field}>
+                  <label className={styles.fieldLabel}>
+                    <span>Applied Rectifier Current (Amperes, I)</span>
+                    <span className={styles.fieldHint}>Operating cell current</span>
+                  </label>
+                  <input
+                    type="number"
+                    step="0.5"
+                    min="0.1"
+                    className={styles.input}
+                    value={appliedCurrentAmps}
+                    onChange={(e) => setAppliedCurrentAmps(Math.max(0.1, parseFloat(e.target.value) || 0))}
+                  />
+                </div>
+              )}
+
+              {/* Target Dose Input (Editable in TIME_FROM_DOSE and CURRENT_FROM_DOSE) */}
+              {calculationMode !== "DOSE_FROM_TIME" && (
+                <div className={styles.field}>
+                  <label className={styles.fieldLabel}>
+                    <span>Target Coagulant Dose (mg/L or ppm)</span>
+                    <span className={styles.fieldHint}>Recommended range: 10 - 45 mg/L</span>
+                  </label>
+                  <input
+                    type="number"
+                    step="0.5"
+                    min="0.1"
+                    className={styles.input}
+                    value={targetDoseMgL}
+                    onChange={(e) => setTargetDoseMgL(Math.max(0.1, parseFloat(e.target.value) || 0))}
+                  />
+                </div>
+              )}
+
+              {/* Treatment Time Input (Editable in DOSE_FROM_TIME and CURRENT_FROM_DOSE) */}
+              {calculationMode !== "TIME_FROM_DOSE" && (
+                <div className={styles.field}>
+                  <label className={styles.fieldLabel}>
+                    <span>Treatment Contact Time / HRT (Minutes)</span>
+                    <span className={styles.fieldHint}>Duration water remains in reactor</span>
+                  </label>
+                  <input
+                    type="number"
+                    step="0.1"
+                    min="0.01"
+                    className={styles.input}
+                    value={treatmentTimeMinutes}
+                    onChange={(e) => setTreatmentTimeMinutes(Math.max(0.01, parseFloat(e.target.value) || 0))}
+                  />
+                </div>
               )}
             </div>
-          </div>
 
-          {/* Machine Selection */}
-          <div style={{ marginBottom: "var(--space-4)" }}>
-            <label className={styles.fieldLabel}>
-              <span>Machine Model / Tank Sizing</span>
-              <span className={styles.fieldHint}>Pre-calibrated dimensions & volumes</span>
-            </label>
-            <div className={styles.pillGroup}>
-              {Object.entries(machines).map(([key, m]) => (
-                <button
-                  key={key}
-                  type="button"
-                  className={`${styles.pillBtn} ${selectedMachineKey === key ? styles.pillBtnActive : ""}`}
-                  onClick={() => setSelectedMachineKey(key)}
-                >
-                  <LayersIcon size={14} /> {m.name || key.toUpperCase()}
-                </button>
-              ))}
-              <button
-                type="button"
-                className={`${styles.pillBtn} ${selectedMachineKey === "CUSTOM" ? styles.pillBtnActive : ""}`}
-                onClick={() => setSelectedMachineKey("CUSTOM")}
-              >
-                + Custom Tank
+            <div className={styles.actionRow}>
+              <button type="button" className={styles.btnSecondary} onClick={handleReset}>
+                <RotateCcwIcon size={16} /> Reset
+              </button>
+              <button type="button" className={styles.btnPrimary} onClick={handleOpenSaveModal}>
+                <SaveIcon size={16} /> Calculate
               </button>
             </div>
           </div>
 
-          {/* Custom Tank Dimensions (Shown only when Custom is chosen) */}
-          {selectedMachineKey === "CUSTOM" && (
-            <div style={{ background: "var(--color-canvas)", padding: "var(--space-4)", borderRadius: "var(--radius-md)", marginBottom: "var(--space-4)", border: "1px solid var(--color-border)" }}>
-              <div style={{ fontSize: "var(--text-xs)", fontWeight: 700, color: "var(--color-text-2)", marginBottom: "var(--space-2)" }}>
-                CUSTOM TANK DIMENSIONS
+          {/* Right Column: Reactive Engineering Results & Diagnostics */}
+          <div className={styles.resultCard}>
+            <div className={styles.heroMetric}>
+              {calculationMode === "TIME_FROM_DOSE" && (
+                <>
+                  <div className={styles.heroLabel}>Required Contact Time (HRT)</div>
+                  <div className={styles.heroValue}>{calculationResults.computedTimeFormatted}</div>
+                  <div className={styles.heroSubtitle}>
+                    ({calculationResults.computedTimeMinutes} decimal minutes)
+                  </div>
+                </>
+              )}
+
+              {calculationMode === "DOSE_FROM_TIME" && (
+                <>
+                  <div className={styles.heroLabel}>Delivered Coagulant Dose</div>
+                  <div className={styles.heroValue}>{calculationResults.computedDoseMgL} mg/L</div>
+                  <div className={styles.heroSubtitle}>
+                    (Delivered in {treatmentTimeMinutes} mins at {appliedCurrentAmps}A)
+                  </div>
+                </>
+              )}
+
+              {calculationMode === "CURRENT_FROM_DOSE" && (
+                <>
+                  <div className={styles.heroLabel}>Required Cell Current</div>
+                  <div className={styles.heroValue}>{calculationResults.computedCurrentAmps} A</div>
+                  <div className={styles.heroSubtitle}>
+                    (To achieve {targetDoseMgL} mg/L in {treatmentTimeMinutes} mins)
+                  </div>
+                </>
+              )}
+            </div>
+
+            {/* Secondary Metrics */}
+            <div className={styles.metricsGrid}>
+              <div className={styles.metricBox}>
+                <div className={styles.metricBoxLabel}>Active Chamber Volume</div>
+                <div className={styles.metricBoxValue}>
+                  {(activeVolumeM3 * 1000).toLocaleString()} L ({activeVolumeM3} m³)
+                </div>
               </div>
-              <div className={styles.grid3} style={{ marginBottom: "var(--space-3)" }}>
-                <div className={styles.field}>
-                  <label className={styles.fieldLabel}>Length (mm)</label>
-                  <input
-                    type="number"
-                    className={styles.input}
-                    value={customLengthMm}
-                    onChange={(e) => setCustomLengthMm(Number(e.target.value) || 0)}
-                  />
-                </div>
-                <div className={styles.field}>
-                  <label className={styles.fieldLabel}>Width (mm)</label>
-                  <input
-                    type="number"
-                    className={styles.input}
-                    value={customWidthMm}
-                    onChange={(e) => setCustomWidthMm(Number(e.target.value) || 0)}
-                  />
-                </div>
-                <div className={styles.field}>
-                  <label className={styles.fieldLabel}>Liquid Depth (mm)</label>
-                  <input
-                    type="number"
-                    className={styles.input}
-                    value={customDepthMm}
-                    onChange={(e) => setCustomDepthMm(Number(e.target.value) || 0)}
-                  />
+              <div className={styles.metricBox}>
+                <div className={styles.metricBoxLabel}>Metal Consumed / Batch</div>
+                <div className={styles.metricBoxValue}>
+                  {calculationResults.dissolvedGramsPerBatch} g ({activeMetal.name.split(" ")[0]})
                 </div>
               </div>
-              <div className={styles.grid2}>
-                <div className={styles.field}>
-                  <label className={styles.fieldLabel}>Max Voltage (V)</label>
-                  <input
-                    type="number"
-                    className={styles.input}
-                    value={customMaxVoltage}
-                    onChange={(e) => setCustomMaxVoltage(Number(e.target.value) || 48)}
-                  />
-                </div>
-                <div className={styles.field}>
-                  <label className={styles.fieldLabel}>Computed Volume (m³)</label>
-                  <input
-                    readOnly
-                    className={styles.input}
-                    style={{ background: "var(--color-surface-alt)", fontWeight: 700, color: "var(--color-primary)" }}
-                    value={`${activeVolumeM3} m³ (${(activeVolumeM3 * 1000).toLocaleString()} L)`}
-                  />
+              <div className={styles.metricBox}>
+                <div className={styles.metricBoxLabel}>Operating Resistance</div>
+                <div className={styles.metricBoxValue}>
+                  {calculationResults.feasibility.scaledResistanceOhms} Ω
                 </div>
               </div>
             </div>
-          )}
 
-          {/* Metal Selection */}
-          <div style={{ marginBottom: "var(--space-4)" }}>
-            <label className={styles.fieldLabel}>
-              <span>Sacrificial Metal</span>
-              <span className={styles.fieldHint}>Faraday molar mass (M) & valence (n)</span>
-            </label>
-            <div className={styles.pillGroup}>
-              {Object.entries(metals).map(([key, metal]) => (
-                <button
-                  key={key}
-                  type="button"
-                  className={`${styles.pillBtn} ${selectedMetalKey === key ? styles.pillBtnActive : ""}`}
-                  onClick={() => setSelectedMetalKey(key)}
-                >
-                  <FlaskConicalIcon size={14} /> {metal.name} ({metal.molar_mass}g, n={metal.valence_n})
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {/* Wastewater Profile (Optional) */}
-          <div className={styles.field} style={{ marginBottom: "var(--space-5)" }}>
-            <label className={styles.fieldLabel}>
-              <span>Wastewater Type (Optional)</span>
-              <span className={styles.fieldHint}>Auto-sets calibrated bench dosage</span>
-            </label>
-            <select
-              className={styles.select}
-              value={selectedWaterTypeId}
-              onChange={(e) => handleWaterTypeChange(e.target.value)}
-            >
-              <option value="">-- Manual Target Dosage --</option>
-              {waterTypes.map((w) => (
-                <option key={w.id} value={w.id}>
-                  {w.name} (Typical: {w.default_dose} mg/L, {w.settling_time_min} min settling)
-                </option>
-              ))}
-            </select>
-          </div>
-
-          {/* Calculation Mode Switcher */}
-          <div style={{ marginBottom: "var(--space-2)" }}>
-            <label className={styles.fieldLabel}>
-              <span>Calculation Objective</span>
-            </label>
-            <div className={styles.modeTabs}>
-              <button
-                type="button"
-                className={`${styles.modeTabBtn} ${calculationMode === "TIME_FROM_DOSE" ? styles.modeTabBtnActive : ""}`}
-                onClick={() => setCalculationMode("TIME_FROM_DOSE")}
-              >
-                <TimerIcon size={14} /> Find Time / HRT
-              </button>
-              <button
-                type="button"
-                className={`${styles.modeTabBtn} ${calculationMode === "DOSE_FROM_TIME" ? styles.modeTabBtnActive : ""}`}
-                onClick={() => setCalculationMode("DOSE_FROM_TIME")}
-              >
-                <FlaskConicalIcon size={14} /> Find Delivered Dose
-              </button>
-              <button
-                type="button"
-                className={`${styles.modeTabBtn} ${calculationMode === "CURRENT_FROM_DOSE" ? styles.modeTabBtnActive : ""}`}
-                onClick={() => setCalculationMode("CURRENT_FROM_DOSE")}
-              >
-                <ZapIcon size={14} /> Find Required Current
-              </button>
-            </div>
-          </div>
-
-          {/* Dynamic Enterable Fields */}
-          <div className={styles.fieldGroup}>
-            {/* Current Input (Editable unless in CURRENT_FROM_DOSE mode) */}
-            {calculationMode !== "CURRENT_FROM_DOSE" && (
-              <div className={styles.field}>
-                <label className={styles.fieldLabel}>
-                  <span>Applied Rectifier Current (Amperes, I)</span>
-                  <span className={styles.fieldHint}>Operating cell current</span>
-                </label>
-                <input
-                  type="number"
-                  step="0.5"
-                  min="0.1"
-                  className={styles.input}
-                  value={appliedCurrentAmps}
-                  onChange={(e) => setAppliedCurrentAmps(Math.max(0.1, parseFloat(e.target.value) || 0))}
-                />
-              </div>
-            )}
-
-            {/* Target Dose Input (Editable in TIME_FROM_DOSE and CURRENT_FROM_DOSE) */}
-            {calculationMode !== "DOSE_FROM_TIME" && (
-              <div className={styles.field}>
-                <label className={styles.fieldLabel}>
-                  <span>Target Coagulant Dose (mg/L or ppm)</span>
-                  <span className={styles.fieldHint}>Recommended range: 10 - 45 mg/L</span>
-                </label>
-                <input
-                  type="number"
-                  step="0.5"
-                  min="0.1"
-                  className={styles.input}
-                  value={targetDoseMgL}
-                  onChange={(e) => setTargetDoseMgL(Math.max(0.1, parseFloat(e.target.value) || 0))}
-                />
-              </div>
-            )}
-
-            {/* Treatment Time Input (Editable in DOSE_FROM_TIME and CURRENT_FROM_DOSE) */}
-            {calculationMode !== "TIME_FROM_DOSE" && (
-              <div className={styles.field}>
-                <label className={styles.fieldLabel}>
-                  <span>Treatment Contact Time / HRT (Minutes)</span>
-                  <span className={styles.fieldHint}>Duration water remains in reactor</span>
-                </label>
-                <input
-                  type="number"
-                  step="0.1"
-                  min="0.01"
-                  className={styles.input}
-                  value={treatmentTimeMinutes}
-                  onChange={(e) => setTreatmentTimeMinutes(Math.max(0.01, parseFloat(e.target.value) || 0))}
-                />
-              </div>
-            )}
-          </div>
-
-          <div className={styles.actionRow}>
-            <button type="button" className={styles.btnSecondary} onClick={handleReset}>
-              <RotateCcwIcon size={16} /> Reset
-            </button>
-            <button type="button" className={styles.btnPrimary} onClick={handleOpenSaveModal}>
-              <SaveIcon size={16} /> Calculate
-            </button>
-          </div>
-        </div>
-
-        {/* Right Column: Reactive Engineering Results & Diagnostics */}
-        <div className={styles.resultCard}>
-          <div className={styles.heroMetric}>
-            {calculationMode === "TIME_FROM_DOSE" && (
-              <>
-                <div className={styles.heroLabel}>Required Contact Time (HRT)</div>
-                <div className={styles.heroValue}>{calculationResults.computedTimeFormatted}</div>
-                <div className={styles.heroSubtitle}>
-                  ({calculationResults.computedTimeMinutes} decimal minutes)
-                </div>
-              </>
-            )}
-
-            {calculationMode === "DOSE_FROM_TIME" && (
-              <>
-                <div className={styles.heroLabel}>Delivered Coagulant Dose</div>
-                <div className={styles.heroValue}>{calculationResults.computedDoseMgL} mg/L</div>
-                <div className={styles.heroSubtitle}>
-                  (Delivered in {treatmentTimeMinutes} mins at {appliedCurrentAmps}A)
-                </div>
-              </>
-            )}
-
-            {calculationMode === "CURRENT_FROM_DOSE" && (
-              <>
-                <div className={styles.heroLabel}>Required Cell Current</div>
-                <div className={styles.heroValue}>{calculationResults.computedCurrentAmps} A</div>
-                <div className={styles.heroSubtitle}>
-                  (To achieve {targetDoseMgL} mg/L in {treatmentTimeMinutes} mins)
-                </div>
-              </>
-            )}
-          </div>
-
-          {/* Secondary Metrics */}
-          <div className={styles.metricsGrid}>
-            <div className={styles.metricBox}>
-              <div className={styles.metricBoxLabel}>Active Chamber Volume</div>
-              <div className={styles.metricBoxValue}>
-                {(activeVolumeM3 * 1000).toLocaleString()} L ({activeVolumeM3} m³)
-              </div>
-            </div>
-            <div className={styles.metricBox}>
-              <div className={styles.metricBoxLabel}>Metal Consumed / Batch</div>
-              <div className={styles.metricBoxValue}>
-                {calculationResults.dissolvedGramsPerBatch} g ({activeMetal.name.split(" ")[0]})
-              </div>
-            </div>
-            <div className={styles.metricBox}>
-              <div className={styles.metricBoxLabel}>Operating Resistance</div>
-              <div className={styles.metricBoxValue}>
-                {calculationResults.feasibility.scaledResistanceOhms} Ω
-              </div>
-            </div>
-          </div>
-
-          {/* Power Supply & Saturation Feasibility Check */}
-          <div
-            className={`${styles.feasibilityBanner} ${
-              calculationResults.feasibility.status === "FEASIBLE"
-                ? styles.feasibleOk
-                : calculationResults.feasibility.status === "MARGINAL"
-                ? styles.feasibleMarginal
-                : styles.feasibleExceeds
-            }`}
-          >
-            {calculationResults.feasibility.status === "FEASIBLE" ? (
-              <CheckCircle2Icon size={20} style={{ flexShrink: 0, marginTop: "2px" }} />
-            ) : (
-              <AlertTriangleIcon size={20} style={{ flexShrink: 0, marginTop: "2px" }} />
-            )}
-            <div>
-              <strong>
-                {calculationResults.feasibility.status === "FEASIBLE"
-                  ? "Power Supply Feasible"
+            {/* Power Supply & Saturation Feasibility Check */}
+            <div
+              className={`${styles.feasibilityBanner} ${
+                calculationResults.feasibility.status === "FEASIBLE"
+                  ? styles.feasibleOk
                   : calculationResults.feasibility.status === "MARGINAL"
-                  ? "Near Voltage Ceiling"
-                  : "Power Supply Voltage Warning"}
-              </strong>
-              <div style={{ marginTop: "4px" }}>
-                {calculationResults.feasibility.message}
-              </div>
-              <div style={{ fontSize: "var(--text-xs)", marginTop: "4px", opacity: 0.9 }}>
-                Required: {calculationResults.feasibility.voltageRequiredVolts}V | Limit: {activeSupplyVoltageMax}V
+                  ? styles.feasibleMarginal
+                  : styles.feasibleExceeds
+              }`}
+            >
+              {calculationResults.feasibility.status === "FEASIBLE" ? (
+                <CheckCircle2Icon size={20} style={{ flexShrink: 0, marginTop: "2px" }} />
+              ) : (
+                <AlertTriangleIcon size={20} style={{ flexShrink: 0, marginTop: "2px" }} />
+              )}
+              <div>
+                <strong>
+                  {calculationResults.feasibility.status === "FEASIBLE"
+                    ? "Power Supply Feasible"
+                    : calculationResults.feasibility.status === "MARGINAL"
+                    ? "Near Voltage Ceiling"
+                    : "Power Supply Voltage Warning"}
+                </strong>
+                <div style={{ marginTop: "4px" }}>
+                  {calculationResults.feasibility.message}
+                </div>
+                <div style={{ fontSize: "var(--text-xs)", marginTop: "4px", opacity: 0.9 }}>
+                  Required: {calculationResults.feasibility.voltageRequiredVolts}V | Limit: {activeSupplyVoltageMax}V
+                </div>
               </div>
             </div>
+
+
           </div>
-
-
         </div>
-      </div>
+
+      )}
 
       {/* Saved Calculations History */}
-      <div className={styles.historySection}>
-        <div className={styles.historyHeader}>
-          <div>
-            <h2 style={{ fontSize: "var(--text-lg)", fontWeight: 700, margin: 0, color: "var(--color-text)" }}>
-              Saved Site Calculations
-            </h2>
-            <p style={{ fontSize: "var(--text-sm)", color: "var(--color-text-2)", margin: 0 }}>
-              Logged calculations saved during site evaluations and bench testing.
-            </p>
+      {view === "saved" && (
+        <div className={styles.historySection} style={{ marginTop: 0, borderTop: "none", paddingTop: 0 }}>
+          <div className={styles.historyHeader}>
+            <div>
+              <h2 style={{ fontSize: "var(--text-lg)", fontWeight: 700, margin: 0, color: "var(--color-text)" }}>
+                Saved Site Calculations
+              </h2>
+              <p style={{ fontSize: "var(--text-sm)", color: "var(--color-text-2)", margin: 0 }}>
+                Logged calculations saved during site evaluations and bench testing.
+              </p>
+            </div>
           </div>
+
+          {ecCalculations?.length === 0 ? (
+            <div style={{ padding: "2rem", textAlign: "center", color: "var(--color-text-3)", background: "var(--color-surface)", borderRadius: "var(--radius-md)", border: "1px dashed var(--color-border)" }}>
+              No calculations saved yet. On the Calculator tab, run a calculation and click "Calculate" to save it.
+            </div>
+          ) : (
+            <div className={styles.tableWrapper}>
+              <table className={styles.table}>
+                <thead>
+                  <tr>
+                    <th>Title / Site</th>
+                    <th>Machine Model</th>
+                    <th>Metal</th>
+                    <th>Current (A)</th>
+                    <th>Dose (mg/L)</th>
+                    <th>Residence Time</th>
+                    <th>Voltage Check</th>
+                    <th>Saved Date</th>
+                    <th style={{ width: "40px" }}></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {ecCalculations?.map((calc) => (
+                    <tr key={calc.id}>
+                      <td>
+                        {calc.site_name ? (
+                          <div>
+                            <div style={{ display: "flex", alignItems: "center", gap: "4px" }}>
+                              <span>📍</span>
+                              <strong style={{ color: "var(--color-primary)" }}>{calc.site_name}</strong>
+                            </div>
+                            <div style={{ fontSize: "var(--text-xs)", color: "var(--color-text-2)", marginTop: "2px" }}>
+                              {calc.title}
+                            </div>
+                          </div>
+                        ) : (
+                          <div>
+                            <strong>{calc.title}</strong>
+                          </div>
+                        )}
+                        {calc.notes && (
+                          <div style={{ fontSize: "var(--text-xs)", color: "var(--color-text-3)", marginTop: "2px" }}>
+                            {calc.notes}
+                          </div>
+                        )}
+                      </td>
+                      <td>{calc.machine_model.toUpperCase()}</td>
+                      <td>{calc.metal_type}</td>
+                      <td>{calc.input_params?.current_amps || "-"} A</td>
+                      <td>{calc.output_params?.computedDoseMgL || "-"} mg/L</td>
+                      <td>{calc.output_params?.computedTimeFormatted || "-"}</td>
+                      <td>
+                        <span
+                          style={{
+                            fontSize: "var(--text-xs)",
+                            fontWeight: 700,
+                            padding: "2px 8px",
+                            borderRadius: "4px",
+                            background: calc.output_params?.feasibility?.isFeasible ? "var(--color-success-100)" : "var(--color-danger-100)",
+                            color: calc.output_params?.feasibility?.isFeasible ? "var(--color-success-700)" : "var(--color-danger-700)",
+                          }}
+                        >
+                          {calc.output_params?.feasibility?.voltageRequiredVolts || "-"}V
+                        </span>
+                      </td>
+                      <td style={{ fontSize: "var(--text-xs)", color: "var(--color-text-2)" }}>
+                        {new Date(calc.created_at).toLocaleDateString("en-IN", {
+                          day: "2-digit",
+                          month: "short",
+                          year: "numeric",
+                        })}
+                      </td>
+                      <td>
+                        <button
+                          type="button"
+                          className={styles.deleteIconBtn}
+                          onClick={() => handleDeleteCalculation(calc.id)}
+                          title="Delete calculation"
+                        >
+                          <Trash2Icon size={16} />
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
         </div>
 
-        {ecCalculations?.length === 0 ? (
-          <div style={{ padding: "2rem", textAlign: "center", color: "var(--color-text-3)", background: "var(--color-surface)", borderRadius: "var(--radius-md)", border: "1px dashed var(--color-border)" }}>
-            No calculations saved yet. Run a calculation above and click "Save Calculation to Site".
-          </div>
-        ) : (
-          <div className={styles.tableWrapper}>
-            <table className={styles.table}>
-              <thead>
-                <tr>
-                  <th>Title / Site</th>
-                  <th>Machine Model</th>
-                  <th>Metal</th>
-                  <th>Current (A)</th>
-                  <th>Dose (mg/L)</th>
-                  <th>Residence Time</th>
-                  <th>Voltage Check</th>
-                  <th>Saved Date</th>
-                  <th style={{ width: "40px" }}></th>
-                </tr>
-              </thead>
-              <tbody>
-                {ecCalculations?.map((calc) => (
-                  <tr key={calc.id}>
-                    <td>
-                      {calc.site_name ? (
-                        <div>
-                          <div style={{ display: "flex", alignItems: "center", gap: "4px" }}>
-                            <span>📍</span>
-                            <strong style={{ color: "var(--color-primary)" }}>{calc.site_name}</strong>
-                          </div>
-                          <div style={{ fontSize: "var(--text-xs)", color: "var(--color-text-2)", marginTop: "2px" }}>
-                            {calc.title}
-                          </div>
-                        </div>
-                      ) : (
-                        <div>
-                          <strong>{calc.title}</strong>
-                        </div>
-                      )}
-                      {calc.notes && (
-                        <div style={{ fontSize: "var(--text-xs)", color: "var(--color-text-3)", marginTop: "2px" }}>
-                          {calc.notes}
-                        </div>
-                      )}
-                    </td>
-                    <td>{calc.machine_model.toUpperCase()}</td>
-                    <td>{calc.metal_type}</td>
-                    <td>{calc.input_params?.current_amps || "-"} A</td>
-                    <td>{calc.output_params?.computedDoseMgL || "-"} mg/L</td>
-                    <td>{calc.output_params?.computedTimeFormatted || "-"}</td>
-                    <td>
-                      <span
-                        style={{
-                          fontSize: "var(--text-xs)",
-                          fontWeight: 700,
-                          padding: "2px 8px",
-                          borderRadius: "4px",
-                          background: calc.output_params?.feasibility?.isFeasible ? "var(--color-success-100)" : "var(--color-danger-100)",
-                          color: calc.output_params?.feasibility?.isFeasible ? "var(--color-success-700)" : "var(--color-danger-700)",
-                        }}
-                      >
-                        {calc.output_params?.feasibility?.voltageRequiredVolts || "-"}V
-                      </span>
-                    </td>
-                    <td style={{ fontSize: "var(--text-xs)", color: "var(--color-text-2)" }}>
-                      {new Date(calc.created_at).toLocaleDateString("en-IN", {
-                        day: "2-digit",
-                        month: "short",
-                        year: "numeric",
-                      })}
-                    </td>
-                    <td>
-                      <button
-                        type="button"
-                        className={styles.deleteIconBtn}
-                        onClick={() => handleDeleteCalculation(calc.id)}
-                        title="Delete calculation"
-                      >
-                        <Trash2Icon size={16} />
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </div>
+      )}
 
       {/* Save Modal */}
       {isSaveModalOpen && (

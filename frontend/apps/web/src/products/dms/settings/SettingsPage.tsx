@@ -281,7 +281,6 @@ function ProductsTab() {
                 <div className={styles.cardMeta}>
                   <div>HSN: <span>{product.hsn || "-"}</span></div>
                   <div>Base Price: <span>₹{product.base_price}</span></div>
-                  <div>Margin: <span>{product.margin !== null ? `${product.margin}%` : "Set in Quote"}</span></div>
                   <div>GST: <span>{product.gst_rate}%</span></div>
                 </div>
                 {product.type === "SPARES" && product.specs && product.specs.length > 0 && (

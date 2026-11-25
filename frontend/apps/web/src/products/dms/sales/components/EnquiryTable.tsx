@@ -8,7 +8,6 @@
 import { useState } from "react";
 import type { Enquiry } from "../api/types";
 import { StatusBadge } from "./StatusBadge";
-import { useDmsPermissions } from "../../shared/hooks/useDmsPermissions";
 import styles from "./EnquiryTable.module.css";
 import { formatDate, formatDateTime } from "../../shared/format/date";
 
@@ -124,14 +123,6 @@ function EnquiryRow({
   onEditEnquiry,
   onDeleteEnquiry,
 }: EnquiryRowProps) {
-  const {
-    canEditEnquiry,
-    canDeleteEnquiry,
-    canCreateQuote,
-    canEditQuote,
-    canDeleteQuote,
-    canConfirmOrder,
-  } = useDmsPermissions();
 
   const latestFollowup = enquiry.followups[0] ?? null;
   const latestQuote = enquiry.quotes[enquiry.quotes.length - 1] ?? null;
@@ -153,6 +144,7 @@ function EnquiryRow({
           <div className={styles.customerPhone}>
             <PhoneIcon /> {enquiry.phone}
           </div>
+          <div className={styles.customerPhone}>{enquiry.enquiry_no}</div>
         </td>
 
         {/* Contact */}
@@ -199,19 +191,17 @@ function EnquiryRow({
                 >
                   <EyeIcon />
                 </button>
-                {canEditQuote && (
-                  <button
-                    type="button"
-                    className={styles.iconBtn}
-                    title="Edit Quote"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      onEditQuote(latestQuote.id);
-                    }}
-                  >
-                    <PencilIcon />
-                  </button>
-                )}
+                <button
+                  type="button"
+                  className={styles.iconBtn}
+                  title="Edit Quote"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onEditQuote(latestQuote.id);
+                  }}
+                >
+                  <PencilIcon />
+                </button>
               </div>
             </div>
           ) : (
@@ -222,33 +212,30 @@ function EnquiryRow({
         {/* Actions */}
         <td className={`${styles.td} ${styles.tdRight}`}>
           <div className={styles.actions}>
-            {canEditEnquiry && (
-              <button
-                type="button"
-                className={styles.iconBtn}
-                title="Edit Enquiry"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onEditEnquiry();
-                }}
-              >
-                <PencilIcon />
-              </button>
-            )}
-            {canDeleteEnquiry && (
-              <button
-                type="button"
-                className={`${styles.iconBtn} ${styles.iconBtnDanger}`}
-                title="Delete Enquiry"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onDeleteEnquiry();
-                }}
-              >
-                <TrashIcon />
-              </button>
-            )}
-            {canCreateQuote && (
+            <button
+              type="button"
+              className={styles.iconBtn}
+              title="Edit Enquiry"
+              onClick={(e) => {
+                e.stopPropagation();
+                onEditEnquiry();
+              }}
+            >
+              <PencilIcon />
+            </button>
+            <button
+              type="button"
+              className={`${styles.iconBtn} ${styles.iconBtnDanger}`}
+              title="Delete Enquiry"
+              onClick={(e) => {
+                e.stopPropagation();
+                onDeleteEnquiry();
+              }}
+            >
+              <TrashIcon />
+            </button>
+            {/* A won enquiry takes no new sales quote: a new sale is a new enquiry. */}
+            {enquiry.status !== "CONFIRMED" && (
               <button
                 type="button"
                 className={styles.btnSecondary}
@@ -260,18 +247,16 @@ function EnquiryRow({
                 Create Quote
               </button>
             )}
-            {canEditEnquiry && (
-              <button
-                type="button"
-                className={styles.btnPrimary}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onAddFollowup();
-                }}
-              >
-                <PlusIcon /> Follow-up
-              </button>
-            )}
+            <button
+              type="button"
+              className={styles.btnPrimary}
+              onClick={(e) => {
+                e.stopPropagation();
+                onAddFollowup();
+              }}
+            >
+              <PlusIcon /> Follow-up
+            </button>
             <button
               type="button"
               className={styles.expandBtn}
@@ -289,19 +274,18 @@ function EnquiryRow({
           <td colSpan={5} className={styles.expandedCell}>
             <div className={styles.expandedContent}>
               <div className={styles.mobileActionsBar}>
-                {canEditEnquiry && (
-                  <button
-                    type="button"
-                    className={styles.btnPrimary}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      onAddFollowup();
-                    }}
-                  >
-                    <PlusIcon /> Follow-up
-                  </button>
-                )}
-                {canCreateQuote && (
+                <button
+                  type="button"
+                  className={styles.btnPrimary}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onAddFollowup();
+                  }}
+                >
+                  <PlusIcon /> Follow-up
+                </button>
+                {/* A won enquiry takes no new sales quote: a new sale is a new enquiry. */}
+                {enquiry.status !== "CONFIRMED" && (
                   <button
                     type="button"
                     className={styles.btnSecondary}
@@ -313,32 +297,28 @@ function EnquiryRow({
                     Create Quote
                   </button>
                 )}
-                {canEditEnquiry && (
-                  <button
-                    type="button"
-                    className={styles.iconBtn}
-                    title="Edit Enquiry"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      onEditEnquiry();
-                    }}
-                  >
-                    <PencilIcon />
-                  </button>
-                )}
-                {canDeleteEnquiry && (
-                  <button
-                    type="button"
-                    className={`${styles.iconBtn} ${styles.iconBtnDanger}`}
-                    title="Delete Enquiry"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      onDeleteEnquiry();
-                    }}
-                  >
-                    <TrashIcon />
-                  </button>
-                )}
+                <button
+                  type="button"
+                  className={styles.iconBtn}
+                  title="Edit Enquiry"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onEditEnquiry();
+                  }}
+                >
+                  <PencilIcon />
+                </button>
+                <button
+                  type="button"
+                  className={`${styles.iconBtn} ${styles.iconBtnDanger}`}
+                  title="Delete Enquiry"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onDeleteEnquiry();
+                  }}
+                >
+                  <TrashIcon />
+                </button>
               </div>
 
               <div className={styles.detailGrid}>
@@ -386,7 +366,7 @@ function EnquiryRow({
                             <span className={styles.followupAdded}>
                               Added {formatDateTime(enquiry.followups[0]!.entered_date)}
                             </span>
-                            {onEditFollowup && canEditEnquiry && (
+                            {onEditFollowup && (
                               <button
                                 type="button"
                                 className={styles.iconBtnSm}
@@ -399,7 +379,7 @@ function EnquiryRow({
                                 <PencilIcon />
                               </button>
                             )}
-                            {onDeleteFollowup && canDeleteEnquiry && (
+                            {onDeleteFollowup && (
                               <button
                                 type="button"
                                 className={`${styles.iconBtnSm} ${styles.iconBtnDanger}`}
@@ -452,7 +432,7 @@ function EnquiryRow({
                                       <span className={styles.followupAdded}>
                                         Added {formatDateTime(f.entered_date)}
                                       </span>
-                                      {onEditFollowup && canEditEnquiry && (
+                                      {onEditFollowup && (
                                         <button
                                           type="button"
                                           className={styles.iconBtnSm}
@@ -465,7 +445,7 @@ function EnquiryRow({
                                           <PencilIcon />
                                         </button>
                                       )}
-                                      {onDeleteFollowup && canDeleteEnquiry && (
+                                      {onDeleteFollowup && (
                                         <button
                                           type="button"
                                           className={`${styles.iconBtnSm} ${styles.iconBtnDanger}`}
@@ -533,17 +513,15 @@ function EnquiryRow({
                             >
                               <EyeIcon />
                             </button>
-                            {canEditQuote && (
-                              <button
-                                type="button"
-                                className={styles.iconBtn}
-                                title="Edit Quote"
-                                onClick={() => onEditQuote(quote.id)}
-                              >
-                                <PencilIcon />
-                              </button>
-                            )}
-                            {enquiry.status !== "CONFIRMED" && canConfirmOrder && (
+                            <button
+                              type="button"
+                              className={styles.iconBtn}
+                              title="Edit Quote"
+                              onClick={() => onEditQuote(quote.id)}
+                            >
+                              <PencilIcon />
+                            </button>
+                            {enquiry.status !== "CONFIRMED" && (
                               <button
                                 type="button"
                                 className={`${styles.iconBtn} ${styles.iconBtnSuccess}`}
@@ -553,16 +531,14 @@ function EnquiryRow({
                                 <CheckIcon />
                               </button>
                             )}
-                            {canDeleteQuote && (
-                              <button
-                                type="button"
-                                className={`${styles.iconBtn} ${styles.iconBtnDanger}`}
-                                title="Delete Quote"
-                                onClick={() => onDeleteQuote(quote.id)}
-                              >
-                                <TrashIcon />
-                              </button>
-                            )}
+                            <button
+                              type="button"
+                              className={`${styles.iconBtn} ${styles.iconBtnDanger}`}
+                              title="Delete Quote"
+                              onClick={() => onDeleteQuote(quote.id)}
+                            >
+                              <TrashIcon />
+                            </button>
                           </div>
                         </div>
                       </div>

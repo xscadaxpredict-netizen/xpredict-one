@@ -16,19 +16,16 @@ from ..selectors import (
     get_feasibility_report,
     get_feasibility_reports,
     get_marketing_assets,
-    get_timer_calculations,
 )
 from ..services import (
     create_ec_calculation,
     create_feasibility_attachment,
     create_feasibility_report,
     create_marketing_asset,
-    create_timer_calculation,
     delete_ec_calculation,
     delete_feasibility_attachment,
     delete_feasibility_report,
     delete_marketing_asset,
-    delete_timer_calculation,
     update_feasibility_report,
 )
 from .serializers import (
@@ -37,7 +34,6 @@ from .serializers import (
     FeasibilityAttachmentSerializer,
     FeasibilityReportSerializer,
     MarketingAssetSerializer,
-    TimerCalculationSerializer,
 )
 
 
@@ -81,37 +77,6 @@ class MarketingAssetDetailView(TenantAPIView):
     def delete(self, request, org_slug: str, pk: str):
         delete_marketing_asset(pk)
         return Response(status=status.HTTP_204_NO_CONTENT)
-
-
-class TimerCalculationListView(TenantAPIView):
-    # SAVING A CALCULATION IS USING THE TOOL, so POST needs nothing: the row
-    # inherits `UnitScopedModel` and lands at the caller's own dealership.
-    # Removing somebody's saved work is the Manager's call, below.
-    required_permissions: ClassVar[list[str]] = []
-
-    def get(self, request, org_slug: str):
-        calcs = get_timer_calculations()
-        serializer = TimerCalculationSerializer(calcs, many=True)
-        return Response(serializer.data)
-
-    def post(self, request, org_slug: str):
-        serializer = TimerCalculationSerializer(data=request.data)
-        if serializer.is_valid():
-            calc = create_timer_calculation(
-                site_id=request.data["site"],
-                input_data=serializer.validated_data.get("input_data", {}),
-                output_data=serializer.validated_data.get("output_data", {})
-            )
-            return Response(TimerCalculationSerializer(calc).data, status=status.HTTP_201_CREATED)
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-
-class TimerCalculationDetailView(TenantAPIView):
-    required_permissions: ClassVar[list[str]] = ["dms.timer_calculation.delete"]
-
-    def delete(self, request, org_slug: str, pk: str):
-        delete_timer_calculation(pk)
-        return Response(status=status.HTTP_204_NO_CONTENT)
-
 
 
 DEFAULT_CAPACITY_CONSTANTS = {

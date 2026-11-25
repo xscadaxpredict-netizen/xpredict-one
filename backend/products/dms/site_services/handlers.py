@@ -15,7 +15,12 @@ from typing import Any
 from django.db.models.signals import pre_delete
 from django.dispatch import receiver
 
-from .services import cancel_upcoming_visits_for_amc_quote
+from products.dms.sales.signals import amc_quote_unconfirmed
+
+from .services import (
+    cancel_scheduled_visits_for_unconfirmed_amc,
+    cancel_upcoming_visits_for_amc_quote,
+)
 
 
 # The sender is named as a string, not imported: this module may not import
@@ -34,3 +39,11 @@ def cancel_visits_of_deleted_amc_quote(sender: Any, instance: Any, **kwargs: Any
     """
     if instance.quote_type == "AMC":
         cancel_upcoming_visits_for_amc_quote(quote_id=instance.id)
+
+
+@receiver(amc_quote_unconfirmed, dispatch_uid="site_services.cancel_visits_of_unconfirmed_amc")
+def cancel_visits_of_unconfirmed_amc(
+    sender: Any, quote_id: Any, actor_user_id: Any = None, **kwargs: Any
+) -> None:
+    """An AMC was unconfirmed: cancel its scheduled visits, keeping them as history."""
+    cancel_scheduled_visits_for_unconfirmed_amc(quote_id=quote_id, actor_user_id=actor_user_id)

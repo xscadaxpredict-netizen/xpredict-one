@@ -148,13 +148,24 @@ export function QuotationPreviewDialog({
             </div>
             <div>
               <div className={styles.docTitle}>
-                {quotation?.type === "AMC" ? "AMC QUOTATION" : quotation?.type === "SPARES" ? "SPARES QUOTATION" : "MACHINE QUOTATION"}
+                {quotation?.type === "AMC" ? "AMC QUOTATION" : quotation?.type === "SPARES" ? "SPARES QUOTATION" : "QUOTATION"}
               </div>
               <div className={styles.metaGrid}>
                 <span className={styles.metaLabel}>Quote No:</span>
                 <span>{quotation?.quote_no || quotation?.id || "-"}</span>
                 <span className={styles.metaLabel}>Date:</span>
                 <span>{formatDate(quotation?.date, "-")}</span>
+                {quotation?.oc_number ? (
+                  <>
+                    <span className={styles.metaLabel}>Ref (OC):</span>
+                    <span>{quotation.oc_number}</span>
+                  </>
+                ) : _enquiry?.enquiry_no ? (
+                  <>
+                    <span className={styles.metaLabel}>Ref (Enquiry):</span>
+                    <span>{_enquiry.enquiry_no}</span>
+                  </>
+                ) : null}
                 <span className={styles.metaLabel}>Valid Till:</span>
                 <span>{formatDatePlusDays(quotation?.date, VALIDITY_DAYS, `${VALIDITY_DAYS} days`)}</span>
               </div>

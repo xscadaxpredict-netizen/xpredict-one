@@ -45,7 +45,9 @@ def list_enquiries(
         Prefetch("followups", queryset=Followup.objects.order_by("-created_at")),
         Prefetch(
             "quotations",
-            queryset=Quotation.objects.prefetch_related("items").order_by("-created_at"),
+            queryset=Quotation.objects.select_related("site")
+            .prefetch_related("items")
+            .order_by("-created_at"),
         )
     )
     if not is_manager_or_admin and actor_user_id:

@@ -143,7 +143,6 @@ export const APP_CATALOG: AppDefinition[] = [
           { label: "Scheduled Services", path: "site-services/scheduling", icon: "calendar", module: "service" },
           { label: "Service Reports", path: "site-services/reports", icon: "clipboard-check", module: "service" },
           { label: "Water Reports", path: "site-services/water", icon: "droplet", module: "service" },
-          { label: "Complaint Box", path: "site-services/complaints", icon: "alert-circle", module: "service" },
         ],
       },
 
@@ -153,7 +152,7 @@ export const APP_CATALOG: AppDefinition[] = [
           { label: "User Manuals", path: "tech-support/manuals", icon: "book-open", module: "tech-support" },
           { label: "Machine Videos", path: "tech-support/videos", icon: "video", module: "tech-support" },
           { label: "Request for Call", path: "tech-support/calls", icon: "phone-call", module: "tech-support" },
-          { label: "Timer Calculation", path: "tech-support/timer-calculation", icon: "clock", module: "tech-support" },
+          { label: "Raise Ticket", path: "tech-support/tickets", icon: "alert-circle", module: "tech-support" },
         ],
       },
 

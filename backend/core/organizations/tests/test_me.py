@@ -181,7 +181,9 @@ class TestTheOwner:
 
         assert dms.accessible is True
         assert dms.modules == ["ecommerce", "sales", "service", "tech-support", "tools"]
-        assert len(dms.permissions) == 40
+        # 40 until permissions/0005 withdrew `dms.timer_calculation.delete` with the
+        # Timer Calculation feature (2026-11-25).
+        assert len(dms.permissions) == 39
 
     def test_unbought_apps_are_shown_but_not_accessible(self):
         """
