@@ -7,7 +7,7 @@ fresh clone is simply skipped):
 
 @context/01-PROJECT-STATE.md
 
-**Start a session with `/resume`; end it with `/session-wrap`.** Scope: these rules
+**Start a session with `/session-start` (not `/resume`, which is Claude Code's own command for reopening an old chat); end it with `/session-wrap`.** Scope: these rules
 apply only to work inside this repository — anything outside it is unrelated.
 
 > **`context/` and `.claude/` are local-only and deliberately not in version control.**
