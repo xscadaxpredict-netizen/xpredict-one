@@ -18,13 +18,12 @@ export function ProductModal({ open, onClose, product }: Props) {
   const createProduct = useCreateProductPreset();
   const updateProduct = useUpdateProductPreset();
 
-  const [formData, setFormData] = useState<Omit<NewProductPreset, "base_price" | "margin" | "gst_rate" | "specs"> & { base_price: number | string, margin: number | string, gst_rate: number | string, specs: string }>({
+  const [formData, setFormData] = useState<Omit<NewProductPreset, "base_price" | "gst_rate" | "specs"> & { base_price: number | string, gst_rate: number | string, specs: string }>({
     type: "NORMAL",
     name: "",
     description: "",
     hsn: "",
     base_price: "",
-    margin: "",
     gst_rate: 18,
     category: "",
     specs: "",
@@ -44,7 +43,6 @@ export function ProductModal({ open, onClose, product }: Props) {
         description: "",
         hsn: "",
         base_price: "",
-        margin: "",
         gst_rate: 18,
         category: "",
         specs: "",
@@ -72,7 +70,6 @@ export function ProductModal({ open, onClose, product }: Props) {
     payload.append("description", formData.description || "");
     payload.append("hsn", formData.hsn || "");
     payload.append("base_price", String(typeof formData.base_price === "string" ? parseFloat(formData.base_price) || 0 : formData.base_price));
-    payload.append("margin", String(formData.margin === "" || formData.margin === null ? 0 : (typeof formData.margin === "string" ? parseFloat(formData.margin) || 0 : formData.margin)));
     payload.append("gst_rate", String(typeof formData.gst_rate === "string" ? parseFloat(formData.gst_rate) || 0 : formData.gst_rate));
     payload.append("category", formData.category || "");
     payload.append("specs", formData.specs || "");
@@ -204,16 +201,6 @@ export function ProductModal({ open, onClose, product }: Props) {
           </div>
 
           <div className={styles.row}>
-            <div className={styles.field}>
-              <label className={styles.label}>Margin (%)</label>
-              <input 
-                className={styles.input}
-                type="number"
-                step="0.01"
-                value={formData.margin ?? ""} 
-                onChange={(e) => setFormData(p => ({ ...p, margin: e.target.value }))}
-              />
-            </div>
             <div className={styles.field}>
               <label className={styles.label}>
                               GST Rate (%) <span style={{ color: "red" }}>*</span>

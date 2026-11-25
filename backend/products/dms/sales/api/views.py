@@ -376,6 +376,23 @@ class EnquiryConfirmAmcView(TenantAPIView):
         return Response(EnquiryReadSerializer(enquiry_fetched).data)
 
 
+class EnquiryUnconfirmAmcView(TenantAPIView):
+    """Unconfirm an AMC: back to "quote sent", so another can be confirmed."""
+
+    required_permissions: ClassVar[list[str]] = ["dms.order.confirm"]
+
+    def post(self, request: Request, org_slug: str, pk: str, quote_id: str) -> Response:
+        _get_enquiry_or_404(self, request, pk)
+        enquiry = services.unconfirm_amc_quote(
+            enquiry_id=pk,
+            quote_id=quote_id,
+            actor_user_id=request.user.id,
+            confirmed=bool(request.data.get("confirm")),
+        )
+        enquiry_fetched = selectors.get_enquiry(enquiry_id=enquiry.id, is_manager_or_admin=True)
+        return Response(EnquiryReadSerializer(enquiry_fetched).data)
+
+
 class TechnoCommercialDocumentListCreateView(TenantAPIView):
     required_permissions: ClassVar[list[str]] = ["dms.enquiry.view"]
     method_permissions: ClassVar[dict[str, list[str]]] = {"POST": ["dms.quotation.create"]}

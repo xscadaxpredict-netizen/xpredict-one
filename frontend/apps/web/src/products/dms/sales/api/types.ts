@@ -28,6 +28,8 @@ export interface Customer {
 
 export interface Enquiry {
   id: string;
+  /** The enquiry's own number, e.g. ENQ/26-27/0042 --- unique per dealership. */
+  enquiry_no: string;
   customer_id?: string | null;
   customer_name: string;
   contact_person: string;
@@ -151,6 +153,11 @@ export interface AddressDetails {
 
 export interface Quotation {
   id: string;
+  /** What the quote is for: always the enquiry; AMC quotes also the confirmed site (OC). */
+  enquiry_id?: string;
+  site_id?: string | null;
+  site_name?: string | null;
+  oc_number?: string | null;
   title: string;
   quote_no: string;
   amount: number;
@@ -178,6 +185,8 @@ export interface Quotation {
 }
 
 export interface NewQuotation {
+  /** AMC quotes only: the confirmed site the quote is for. */
+  site_id?: string | null;
   title: string;
   quote_no: string;
   type: QuoteType;
@@ -263,7 +272,6 @@ export interface ProductPreset {
   description: string;
   hsn: string;
   base_price: number;
-  margin: number;
   gst_rate: number;
   category?: string;
   specs?: string[];

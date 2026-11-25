@@ -5,7 +5,7 @@
  */
 
 import { useEffect, useRef, useState } from "react";
-import type { QuotationItem, QuoteType, AmcType } from "../api/types";
+import type { Enquiry, QuotationItem, QuoteType, AmcType } from "../api/types";
 import {
   useBanks,
   useDealerProfile,
@@ -14,20 +14,27 @@ import {
   useSaveQuotation,
 } from "../hooks/useEnquiries";
 import { useDialog } from "../../shared/hooks/useDialog";
+import { useSites } from "../../site-services/hooks/useSiteServices";
 import { useShellContext } from "../../../../shell/context";
 import styles from "./QuoteBuilderDialog.module.css";
 import { fieldLabel, serverFieldErrors, validateQuote, type FieldErrors } from "./quoteValidation";
 import { apiErrorMessage } from "../../shared/api/errorMessage";
+import { formatDate } from "../../shared/format/date";
 
 interface QuoteBuilderDialogProps {
   open: boolean;
   onClose: () => void;
   enquiryId?: string; // Optional: If missing, show enquiry selector
+  /** AMC quotes: the confirmed site (OC) the quote is for. */
+  siteId?: string;
   existingQuoteId?: string; // If provided, we are editing.
   /**
-   * The quote types this screen may create; the first is preselected. The AMC
-   * page passes ["AMC"] and Sales pages pass ["NORMAL"], so the type is fixed there;
-   * only the Quotations page offers all three. Editing keeps the saved type.
+   * The quote types this screen may create; the first is preselected. WHAT A
+   * QUOTE IS FOR follows its type: a sales or spares quote is raised on an open
+   * enquiry (Sales pages: ["NORMAL"]). An AMC quote is for a confirmed site / OC
+   * (AMC page: ["AMC"]) or, from the Quotations page (all three types), for a
+   * confirmed order OR an open enquiry --- the user chooses. The server enforces
+   * the same rules. Editing keeps the saved type and reference.
    */
   allowedTypes?: readonly QuoteType[];
 }
@@ -35,7 +42,7 @@ interface QuoteBuilderDialogProps {
 const ALL_QUOTE_TYPES: readonly QuoteType[] = ["NORMAL", "AMC", "SPARES"];
 
 const QUOTE_TYPE_LABELS: Record<QuoteType, string> = {
-  NORMAL: "Machine Quote",
+  NORMAL: "Quotation",
   AMC: "AMC Quote",
   SPARES: "Spares Quote",
 };
@@ -55,6 +62,7 @@ export function QuoteBuilderDialog({
   open,
   onClose,
   enquiryId,
+  siteId,
   existingQuoteId,
   allowedTypes = ALL_QUOTE_TYPES,
 }: QuoteBuilderDialogProps) {
@@ -68,6 +76,13 @@ export function QuoteBuilderDialog({
   const { membership } = useShellContext();
 
   const [selectedEnquiryId, setSelectedEnquiryId] = useState(enquiryId || "");
+  // AN AMC FROM THE QUOTATIONS PAGE is for either a confirmed order (its site,
+  // referenced by OC number) or an open enquiry (a site we have not sold,
+  // referenced by enquiry number). Sales and spares quotes are always for an
+  // open enquiry.
+  const [amcTarget, setAmcTarget] = useState<"site" | "enquiry">("site");
+  const [selectedSiteId, setSelectedSiteId] = useState(siteId || "");
+  const { data: sites } = useSites();
   const currentEnquiry = enquiries?.find((e) => e.id === selectedEnquiryId);
   const existingQuote = currentEnquiry?.quotes.find((q) => q.id === existingQuoteId);
 
@@ -76,6 +91,26 @@ export function QuoteBuilderDialog({
   // and the form-reset effect below must not re-run (and wipe input) because of it.
   const defaultType: QuoteType = allowedTypes[0] ?? "NORMAL";
   const [quoteType, setQuoteType] = useState<QuoteType>(defaultType);
+  // An AMC quote references a site when the page passed one, the user picked a
+  // confirmed order, or the saved quote already has one.
+  const amcOnSite =
+    quoteType === "AMC" && Boolean(siteId || selectedSiteId || existingQuote?.site_id);
+
+  /** Switching type changes what the quote is for, so a picked target is cleared. */
+  const changeQuoteType = (next: QuoteType) => {
+    setQuoteType(next);
+    if (!enquiryId && !existingQuote) {
+      setSelectedEnquiryId("");
+      setSelectedSiteId("");
+      setAmcTarget("site");
+    }
+  };
+
+  const chooseAmcTarget = (next: "site" | "enquiry") => {
+    setAmcTarget(next);
+    setSelectedEnquiryId("");
+    setSelectedSiteId("");
+  };
   // Agent / channel-partner commission is for machine quotes only --- never AMC
   // or spares. The backend enforces the same rule on save.
   const commissionApplies = quoteType === "NORMAL";
@@ -218,7 +253,7 @@ export function QuoteBuilderDialog({
     if (selectedEnquiryId && !currentEnquiry) return;
 
     setQuoteType(defaultType);
-    setQuoteNo(`QT-${new Date().getFullYear()}-${Math.floor(Math.random() * 10000)}`);
+    setQuoteNo(""); // assigned by the server when the quote is saved
     fillNewQuoteDetails(currentEnquiry);
     setItems([{ ...EMPTY_ITEM, id: window.crypto.randomUUID() }]);
     const defaultBank = banks?.find((b) => b.is_default) || banks?.[0];
@@ -260,7 +295,6 @@ export function QuoteBuilderDialog({
   
   // What we get Before Tax (Base Revenue minus Agent Cut)
   const ourNetBeforeTax = Math.max(0, taxableTotal - activeCommission);
-  const ourNetBeforeTaxPercentage = taxableTotal > 0 ? ((ourNetBeforeTax / taxableTotal) * 100).toFixed(1) : "0";
   
   // Total Cash Customer Pays minus Agent Payout (Cash in Bank before GST remittance)
   const ourCashInflowAfterCommission = Math.max(0, grandTotal - activeCommission);
@@ -290,8 +324,9 @@ export function QuoteBuilderDialog({
       product_id: preset.id,
       description: preset.description,
       hsn: preset.hsn,
+      // Base price comes from the catalogue and is locked; margin is the
+      // quote-maker's, so a row keeps whatever margin was already typed.
       base_price: preset.base_price,
-      margin: preset.margin,
       gst_rate: preset.gst_rate,
     };
     setItems(newItems);
@@ -335,6 +370,7 @@ export function QuoteBuilderDialog({
         enquiryId: selectedEnquiryId,
         existingQuoteId,
         body: {
+          site_id: quoteType === "AMC" ? siteId || selectedSiteId || existingQuote?.site_id || null : null,
           title,
           quote_no: quoteNo,
           type: quoteType,
@@ -412,10 +448,124 @@ export function QuoteBuilderDialog({
               </div>
             )}
           </div>
+          {/* WHAT THIS QUOTE IS FOR, fixed by the page it was opened from. */}
+          {currentEnquiry && (
+            <section className={styles.refCard} aria-label="What this quote is for">
+              <div className={styles.refHeading}>
+                {amcOnSite ? "AMC for confirmed order" : quoteType === "AMC" ? "AMC for enquiry" : "Quotation for enquiry"}
+              </div>
+              <dl className={styles.refGrid}>
+                <div>
+                  <dt>{amcOnSite ? "OC No." : "Enquiry No."}</dt>
+                  <dd className={styles.refStrong}>
+                    {amcOnSite
+                      ? existingQuote?.oc_number || currentEnquiry.oc_number || "—"
+                      : currentEnquiry.enquiry_no || "—"}
+                  </dd>
+                </div>
+                <div>
+                  <dt>Customer</dt>
+                  <dd>{currentEnquiry.customer_name}</dd>
+                </div>
+                {currentEnquiry.contact_person && (
+                  <div>
+                    <dt>Contact</dt>
+                    <dd>{currentEnquiry.contact_person}</dd>
+                  </div>
+                )}
+              </dl>
+            </section>
+          )}
           {/* Top Section */}
           <div className={styles.grid2}>
             {/* If no enquiryId is passed via props, allow selection */}
-            {!enquiryId && !existingQuote && (
+            
+            <div className={styles.field}>
+              <label className={styles.label}>Quote Type</label>
+              <select
+                className={styles.select}
+                value={quoteType}
+                onChange={(e) => changeQuoteType(e.target.value as QuoteType)}
+                disabled={!!existingQuote || typeOptions.length === 1}
+              >
+                {typeOptions.map((t) => (
+                  <option key={t} value={t}>{QUOTE_TYPE_LABELS[t]}</option>
+                ))}
+              </select>
+            </div>
+            <div className={styles.field}>
+              <label className={styles.label}>Quote Number</label>
+              {/* Assigned by the server in sequence (QT/26-27/0001); never typed. */}
+              <input
+                className={styles.input}
+                value={quoteNo || "Assigned when saved"}
+                readOnly
+                disabled
+              />
+            </div>
+            
+            {/* WHAT THE QUOTE IS FOR: chosen here only when the page did not fix it. */}
+            {!enquiryId && !existingQuote && quoteType === "AMC" && (
+              <div className={styles.field} style={{ gridColumn: "1 / -1" }}>
+                <label className={styles.label}>AMC quote for</label>
+                <div style={{ display: "flex", gap: "20px", flexWrap: "wrap" }}>
+                  <label style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                    <input
+                      type="radio"
+                      name="amc-target"
+                      checked={amcTarget === "site"}
+                      onChange={() => chooseAmcTarget("site")}
+                    />
+                    A confirmed order (OC)
+                  </label>
+                  <label style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                    <input
+                      type="radio"
+                      name="amc-target"
+                      checked={amcTarget === "enquiry"}
+                      onChange={() => chooseAmcTarget("enquiry")}
+                    />
+                    An enquiry (site not yet confirmed)
+                  </label>
+                </div>
+              </div>
+            )}
+
+            {!enquiryId && !existingQuote && quoteType === "AMC" && amcTarget === "site" && (
+              <div className={styles.field} style={{ gridColumn: "1 / -1" }}>
+                <label className={styles.label}>
+                  Select Confirmed Order <span style={{ color: "red" }}>*</span>
+                </label>
+                <select
+                  required
+                  className={styles.select}
+                  {...inv("enquiry")}
+                  value={selectedSiteId}
+                  onChange={(e) => {
+                    const site = sites?.find((x) => x.id === e.target.value);
+                    setSelectedSiteId(site?.id ?? "");
+                    setSelectedEnquiryId(site?.enquiry_id ?? "");
+                  }}
+                >
+                  <option value="" disabled>Select a confirmed order...</option>
+                  {/* Confirmed orders with no active AMC: one confirmed AMC per site. */}
+                  {(sites ?? [])
+                    .filter(
+                      (site) =>
+                        site.oc_number &&
+                        !site.quotes.some((q) => q.type === "AMC" && q.status === "CONFIRMED"),
+                    )
+                    .map((site) => (
+                      <option key={site.id} value={site.id}>
+                        {[site.oc_number, site.customer_name, site.site_name].filter(Boolean).join(" · ")}
+                      </option>
+                    ))}
+                </select>
+                {msg("enquiry")}
+              </div>
+            )}
+
+            {!enquiryId && !existingQuote && (quoteType !== "AMC" || amcTarget === "enquiry") && (
               <div className={styles.field} style={{ gridColumn: "1 / -1" }}>
                 <label className={styles.label}>
                                   Select Enquiry <span style={{ color: "red" }}>*</span>
@@ -428,43 +578,28 @@ export function QuoteBuilderDialog({
                   onChange={(e) => setSelectedEnquiryId(e.target.value)}
                 >
                   <option value="" disabled>Select an enquiry...</option>
-                  {enquiries?.map((enq) => (
-                    <option key={enq.id} value={enq.id}>
-                      {enq.customer_name} ({enq.contact_person})
-                    </option>
+                  {/* Only open enquiries (a won one takes no new sales quote), grouped by
+                      customer, newest first. The enquiry number tells a customer's
+                      several enquiries apart; date, contact and remark help recognise them. */}
+                  {groupOpenEnquiries(enquiries ?? []).map(([customer, list]) => (
+                    <optgroup key={customer} label={customer}>
+                      {list.map((enq) => (
+                        <option key={enq.id} value={enq.id}>
+                          {[
+                            enq.enquiry_no,
+                            formatDate(enq.created_at),
+                            enq.contact_person,
+                            enq.remarks ? `"${enq.remarks}"` : "",
+                          ].filter(Boolean).join(" · ")}
+                        </option>
+                      ))}
+                    </optgroup>
                   ))}
                 </select>
                 {msg("enquiry")}
               </div>
             )}
-            
-            <div className={styles.field}>
-              <label className={styles.label}>Quote Type</label>
-              <select
-                className={styles.select}
-                value={quoteType}
-                onChange={(e) => setQuoteType(e.target.value as QuoteType)}
-                disabled={!!existingQuote || typeOptions.length === 1}
-              >
-                {typeOptions.map((t) => (
-                  <option key={t} value={t}>{QUOTE_TYPE_LABELS[t]}</option>
-                ))}
-              </select>
-            </div>
-            <div className={styles.field}>
-              <label className={styles.label}>
-                              Quote Number <span style={{ color: "red" }}>*</span>
-                          </label>
-              <input
-                required
-                className={styles.input}
-                {...inv("quote_no")}
-                value={quoteNo}
-                onChange={(e) => setQuoteNo(e.target.value)}
-              />
-              {msg("quote_no")}
-            </div>
-            
+
             {/* AMC Specific Fields */}
             {quoteType === "AMC" && (
               <>
@@ -703,6 +838,9 @@ export function QuoteBuilderDialog({
                           {...inv(`items.${index}.base_price`)}
                           value={item.base_price === 0 ? "" : item.base_price}
                           placeholder="0"
+                          readOnly={Boolean(item.product_id)}
+                          style={item.product_id ? { background: "var(--color-surface-2, #f1f5f9)", cursor: "not-allowed" } : undefined}
+                          title={item.product_id ? "Base price comes from the product catalogue and cannot be changed here" : undefined}
                           onChange={(e) => handleItemChange(item.id, "base_price", e.target.value === "" ? 0 : parseFloat(e.target.value) || 0)}
                         />
                         {msg(`items.${index}.base_price`)}
@@ -751,40 +889,18 @@ export function QuoteBuilderDialog({
 
             <div className={styles.totals}>
               <div className={styles.totalRow}>
-                <span>Subtotal (Taxable Base):</span>
+                <span>Subtotal (taxable)</span>
                 <span>₹ {taxableTotal.toLocaleString("en-IN", { minimumFractionDigits: 2 })}</span>
               </div>
               <div className={styles.totalRow}>
-                <span>Total Tax (GST):</span>
+                <span>GST</span>
                 <span>₹ {taxTotal.toLocaleString("en-IN", { minimumFractionDigits: 2 })}</span>
               </div>
               <div className={`${styles.totalRow} ${styles.grandTotal}`}>
-                <span>Grand Total (Customer Pays):</span>
+                <span>Grand total</span>
                 <span>₹ {grandTotal.toLocaleString("en-IN", { minimumFractionDigits: 2 })}</span>
               </div>
 
-              {commissionApplies && hasAgentCommission && commissionAmount > 0 && (
-                <div style={{ marginTop: "12px", paddingTop: "10px", borderTop: "2px dashed var(--color-border, #cbd5e1)", display: "flex", flexDirection: "column", gap: "6px" }}>
-                  <div style={{ fontSize: "0.75rem", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em", color: "var(--color-text-3, #64748b)" }}>
-                    Our Realization (Internal Breakdown)
-                  </div>
-                  <div className={styles.totalRow} style={{ color: "#b45309", fontSize: "0.82rem" }}>
-                    <span>− Agent Commission:</span>
-                    <span>− ₹ {commissionAmount.toLocaleString("en-IN", { minimumFractionDigits: 2 })}</span>
-                  </div>
-                  <div className={styles.totalRow} style={{ color: "#047857", fontWeight: 700, fontSize: "0.88rem" }}>
-                    <span>✓ What We Get (Before Tax):</span>
-                    <span>₹ {ourNetBeforeTax.toLocaleString("en-IN", { minimumFractionDigits: 2 })} ({ourNetBeforeTaxPercentage}%)</span>
-                  </div>
-                  <div className={styles.totalRow} style={{ color: "#1e40af", fontWeight: 600, fontSize: "0.85rem" }}>
-                    <span>✓ Net Cash from Customer:</span>
-                    <span>₹ {ourCashInflowAfterCommission.toLocaleString("en-IN", { minimumFractionDigits: 2 })}</span>
-                  </div>
-                  <div style={{ fontSize: "0.72rem", color: "var(--color-text-3, #64748b)", fontStyle: "italic", textAlign: "right", marginTop: "2px" }}>
-                    (Includes ₹{taxTotal.toLocaleString("en-IN", { minimumFractionDigits: 2 })} GST payable to Govt)
-                  </div>
-                </div>
-              )}
             </div>
           </div>
 
@@ -976,4 +1092,19 @@ function TrashIcon() {
       <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
     </svg>
   );
+}
+
+/** Open enquiries grouped by customer name; customers and their enquiries newest first. */
+function groupOpenEnquiries(enquiries: readonly Enquiry[]): [string, Enquiry[]][] {
+  const open = enquiries
+    .filter((e) => e.status !== "CONFIRMED")
+    .slice()
+    .sort((a, b) => b.created_at.localeCompare(a.created_at));
+  const groups = new Map<string, Enquiry[]>();
+  for (const e of open) {
+    const list = groups.get(e.customer_name);
+    if (list) list.push(e);
+    else groups.set(e.customer_name, [e]);
+  }
+  return [...groups.entries()];
 }

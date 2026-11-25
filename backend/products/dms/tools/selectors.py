@@ -8,7 +8,6 @@ from .models import (
     FeasibilityAttachment,
     FeasibilityReport,
     MarketingAsset,
-    TimerCalculation,
 )
 
 
@@ -21,9 +20,6 @@ def get_active_feasibility_template(water_type: str | None = None) -> dict:
 
 def get_marketing_assets() -> QuerySet[MarketingAsset]:
     return MarketingAsset.objects.all().order_by("-created_at")
-
-def get_timer_calculations() -> QuerySet[TimerCalculation]:
-    return TimerCalculation.objects.all().order_by("-created_at")
 
 
 def get_feasibility_reports() -> QuerySet[FeasibilityReport]:

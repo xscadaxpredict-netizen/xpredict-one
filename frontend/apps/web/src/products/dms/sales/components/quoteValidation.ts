@@ -44,7 +44,7 @@ export function validateQuote(q: QuoteDraft): FieldErrors {
 
   if (blank(q.enquiryId)) e.enquiry = "Select the enquiry this quote is for.";
   if (blank(q.title)) e.title = "Enter a quote title.";
-  if (blank(q.quoteNo)) e.quote_no = "Enter a quote number.";
+  // The quote number is assigned by the server, so it is never the user's to fill.
   if (q.isAmc && blank(q.serviceInterval)) e.service_interval = "Choose how often the AMC visits happen.";
 
   if (blank(q.fromName)) e["from_details.company_name"] = "Enter your company name.";

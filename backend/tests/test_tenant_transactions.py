@@ -28,3 +28,27 @@ def test_no_product_code_opens_a_transaction_on_the_control_plane():
     assert not offenders, "Use tenant_atomic instead of transaction.atomic in: " + ", ".join(
         offenders
     )
+
+
+# THESE WRITE SERVICES MUST RUN IN ONE TENANT TRANSACTION. They delete and
+# recreate rows or take row locks (select_for_update, which MySQL refuses
+# outside a transaction). A helper inserted between `@tenant_atomic` and its
+# function once silently moved the decorator off `save_quotation`; nothing
+# failed until a save broke half-way. `tenant_atomic` uses functools.wraps,
+# so a wrapped function carries `__wrapped__`.
+MUST_BE_ATOMIC = [
+    "create_enquiry",
+    "save_quotation",
+    "delete_quotation",
+    "confirm_order",
+    "unconfirm_order",
+    "confirm_amc_quote",
+    "unconfirm_amc_quote",
+]
+
+
+def test_quote_and_order_writes_run_in_a_tenant_transaction():
+    from products.dms.sales import services
+
+    missing = [n for n in MUST_BE_ATOMIC if not hasattr(getattr(services, n), "__wrapped__")]
+    assert not missing, f"not wrapped in @tenant_atomic: {missing}"

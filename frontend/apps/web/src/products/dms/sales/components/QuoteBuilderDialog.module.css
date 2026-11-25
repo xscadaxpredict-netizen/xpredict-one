@@ -200,9 +200,16 @@
 .totalRow {
   display: flex;
   justify-content: space-between;
-  width: 250px;
+  gap: var(--space-6);
+  width: min(100%, 360px);
   font-size: var(--text-sm);
   color: var(--color-text-2);
+  font-variant-numeric: tabular-nums;
+}
+
+.totalRow > span:last-child {
+  text-align: right;
+  white-space: nowrap;
 }
 
 .grandTotal {
@@ -289,4 +296,46 @@
 .formContent [aria-invalid="true"] {
   border-color: #dc2626 !important;
   box-shadow: 0 0 0 1px #dc2626;
+}
+
+/* What this quote is for (enquiry or confirmed order), shown at the top of the builder. */
+.refCard {
+  margin-bottom: 20px;
+  padding: 14px 16px;
+  border: 1px solid var(--color-border, #e2e8f0);
+  border-left: 4px solid var(--color-primary, #1d4ed8);
+  border-radius: var(--radius-md, 8px);
+  background: var(--color-surface, #ffffff);
+}
+
+.refHeading {
+  margin-bottom: 10px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--color-text-3, #64748b);
+}
+
+.refGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 8px 24px;
+  margin: 0;
+}
+
+.refGrid dt {
+  font-size: 0.75rem;
+  color: var(--color-text-3, #64748b);
+}
+
+.refGrid dd {
+  margin: 2px 0 0;
+  font-size: 0.95rem;
+  color: var(--color-text, #0f172a);
+}
+
+.refStrong {
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
 }

@@ -7,7 +7,6 @@ from ..models import (
     FeasibilityLineItem,
     FeasibilityReport,
     MarketingAsset,
-    TimerCalculation,
 )
 
 
@@ -28,14 +27,6 @@ class MarketingAssetSerializer(serializers.ModelSerializer):
             "format",
         ]
         read_only_fields = ["id", "file", "file_name", "file_size"]
-
-class TimerCalculationSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = TimerCalculation
-        fields = ["id", "site", "input_data", "output_data", "created_at"]
-        read_only_fields = ["id", "created_at"]
-
-
 
 class CalculatorSettingsSerializer(serializers.ModelSerializer):
     class Meta:

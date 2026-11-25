@@ -172,6 +172,19 @@ export async function confirmAmcQuote(
   });
 }
 
+/** Take a confirmed AMC back to "quote sent". `confirm` acknowledges that its scheduled visits are cancelled. */
+export async function unconfirmAmcQuote(
+  orgSlug: string,
+  enquiryId: string,
+  quoteId: string,
+  confirm: boolean,
+): Promise<Enquiry> {
+  return request<Enquiry>(`/api/v1/orgs/${orgSlug}/dms/sales/enquiries/${enquiryId}/quotations/${quoteId}/unconfirm-amc/`, {
+    method: "POST",
+    body: JSON.stringify({ confirm }),
+  });
+}
+
 // ---- Master Data (Bank Accounts & Products) --------------------------------
 
 export async function createBank(

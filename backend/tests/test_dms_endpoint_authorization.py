@@ -196,12 +196,6 @@ GATED_WRITES = [
         "dms.marketing_asset.manage",
     ),
     (
-        "delete a saved calculation",
-        "delete",
-        f"dms/tools/calculations/{ROW}/",
-        "dms.timer_calculation.delete",
-    ),
-    (
         "rewrite the calculator constants",
         "put",
         "dms/tools/calculator-settings/",
@@ -284,7 +278,6 @@ class TestTheGrantsMatchTheScopeOfTheData:
     UNIT_LEVEL: ClassVar[list[str]] = [
         "dms.store_order.create",
         "dms.store_order.manage",
-        "dms.timer_calculation.delete",
     ]
     ORG_LEVEL: ClassVar[list[str]] = [
         "dms.manual.manage",

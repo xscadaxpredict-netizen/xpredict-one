@@ -22,14 +22,14 @@ pytestmark = pytest.mark.django_db
 
 
 class TestPermissions:
-    def test_there_are_55(self):
+    def test_there_are_54(self):
         """
         C42 settled on 48 and C67 added seven. A number that drifts is a
         decision nobody made -- which is exactly what this assertion is for,
         and it did its job: the seven codes were added with a comment saying
         the catalogue had grown and this test was not updated with them.
         """
-        assert Permission.objects.count() == 55
+        assert Permission.objects.count() == 54
 
     def test_split_by_app_as_decided(self):
         """
@@ -40,7 +40,7 @@ class TestPermissions:
         them separately -- a DMS change must not quietly reach either.
         """
         assert Permission.objects.filter(app=AppCode.ADMIN).count() == 11
-        assert Permission.objects.filter(app=AppCode.DMS).count() == 43
+        assert Permission.objects.filter(app=AppCode.DMS).count() == 42
         assert Permission.objects.filter(app=AppCode.CRM).count() == 1
 
     def test_every_code_is_app_resource_action(self):

@@ -23,6 +23,7 @@ from .views import (
     EnquiryQuotationDependenciesView,
     EnquiryQuotationDetailView,
     EnquiryQuotationListCreateView,
+    EnquiryUnconfirmAmcView,
     EnquiryUnconfirmView,
     ProductPresetDetailView,
     ProductPresetListView,
@@ -67,6 +68,11 @@ urlpatterns = [
         "enquiries/<uuid:pk>/quotations/<uuid:quote_id>/confirm-amc/",
         EnquiryConfirmAmcView.as_view(),
         name="enquiry-confirm-amc",
+    ),
+    path(
+        "enquiries/<uuid:pk>/quotations/<uuid:quote_id>/unconfirm-amc/",
+        EnquiryUnconfirmAmcView.as_view(),
+        name="enquiry-unconfirm-amc",
     ),
     path(
         "enquiries/<uuid:pk>/unconfirm/",

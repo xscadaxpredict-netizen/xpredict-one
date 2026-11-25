@@ -157,6 +157,13 @@ class Enquiry(UnitScopedModel):
     )
     remarks = models.TextField(blank=True, default="")
 
+    # THE ENQUIRY'S OWN NUMBER, e.g. ENQ/26-27/0042: per dealership, per
+    # financial year, assigned by the server at creation and never changed. It
+    # is what tells a customer's several enquiries apart (a name, a date or a
+    # remark can repeat). Unique per dealership with no condition, because
+    # MySQL does not enforce conditional unique constraints.
+    enquiry_no = models.CharField(max_length=30, editable=False)
+
     # Set when a quote is confirmed.
     confirmed_quote_id = models.UUIDField(null=True, blank=True)
     # Order Confirmation number — generated when status → CONFIRMED.
@@ -175,6 +182,11 @@ class Enquiry(UnitScopedModel):
         indexes = [
             models.Index(fields=["unit_id", "status"]),
             models.Index(fields=["unit_id", "-created_at"]),
+        ]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["unit_id", "enquiry_no"], name="uq_enquiry_unit_enquiry_no"
+            ),
         ]
 
     @property
@@ -263,13 +275,6 @@ class ProductCatalog(BaseModel):
     description = models.TextField(blank=True, default="")
     hsn_code = models.CharField(max_length=20, blank=True, default="")
     base_price = models.DecimalField(max_digits=12, decimal_places=2, default=0)
-    margin_percent = models.DecimalField(
-        max_digits=5,
-        decimal_places=2,
-        null=True,
-        blank=True,
-        default=None,
-    )
     gst_rate = models.DecimalField(max_digits=5, decimal_places=2, default=18)
     image = models.FileField(upload_to="products/images/", blank=True, default="")
     is_active = models.BooleanField(default=True)
@@ -550,7 +555,7 @@ class ConfirmedSite(UnitScopedModel):
     A confirmed installation site — the pivot point of the entire system.
 
     Created when a NORMAL quotation is confirmed. All site-services,
-    AMC quotes, complaints, ecommerce orders, and timer calculations
+    AMC quotes, complaints and ecommerce orders
     point to this table.
 
     Frontend ref: ConfirmedOrdersScreen — customer_name, address, oc_number,

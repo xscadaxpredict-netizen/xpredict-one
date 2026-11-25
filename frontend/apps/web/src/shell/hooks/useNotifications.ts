@@ -178,14 +178,14 @@ export function useNotifications(orgSlug: string) {
         list.push({
           id: `comp-${comp.id}`,
           type: "complaint",
-          title: `Complaint: ${siteName}`,
+          title: `Ticket: ${siteName}`,
           subtitle: comp.description,
           details: comp.assigned_service_person_name
             ? `Assigned: ${comp.assigned_service_person_name}`
             : "Status: Unassigned",
-          dueLabel: isCrit ? `${comp.priority} Priority` : "Open Complaint",
+          dueLabel: isCrit ? `${comp.priority} Priority` : "Open Ticket",
           urgency: isCrit ? "urgent" : "warning",
-          path: `/${orgSlug}/dms/site-services/complaints`,
+          path: `/${orgSlug}/dms/tech-support/tickets`,
         });
       }
     });
