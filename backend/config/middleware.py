@@ -32,7 +32,7 @@ from config.routers import current_tenant_db
 from core.organizations.api.base import REQUEST_ORGANIZATION_ATTR
 from core.organizations.models import Organization, OrganizationStatus
 from core.organizations.tenancy import register_tenant_connection
-from shared.base_models import NOT_SET, allowed_territories
+from shared.base_models import NOT_SET, allowed_territories, closed_territories
 
 # Everything org-scoped lives under /api/v1/orgs/<slug>/. Auth and /me do not,
 # because they are what tell the browser which slugs exist.
@@ -122,6 +122,9 @@ class TenantMiddleware:
         # everybody's records. Leaving a previous request's value in place
         # would be quieter and worse still.
         units_token = allowed_territories.set(NOT_SET)
+        # NOTHING CLOSED until `TenantAPIView` says (C63): a previous request's
+        # list must never decide this one's.
+        closed_token = closed_territories.set(frozenset())
 
         # STOWED UNDER A PRIVATE NAME, not as `request.organization` (C49).
         # Reading it directly would skip the membership check, so the public
@@ -139,6 +142,7 @@ class TenantMiddleware:
             # under load and nothing at all in testing.
             current_tenant_db.reset(token)
             allowed_territories.reset(units_token)
+            closed_territories.reset(closed_token)
 
     def _resolve(self, slug: str) -> Organization | None:
         """

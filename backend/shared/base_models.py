@@ -24,6 +24,9 @@ from contextvars import ContextVar
 from typing import ClassVar, Final
 
 from django.db import models
+from django.db.models.signals import pre_delete, pre_save
+
+from shared.exceptions import ConflictError
 
 
 class _NotSet:
@@ -222,3 +225,48 @@ class TerritoryScopedModel(BaseModel):
         raise HomeMissingError(
             f"{type(self).__name__} takes its home from {self.home_follows}, and none is set."
         )
+
+
+# ---------------------------------------------------------------------------
+# A CLOSED TERRITORY'S RECORDS ARE READ-ONLY (C63, built 2026-11-25 at the
+# owner's word): "the records stay, and stay visible ... what stops is
+# writing". Closing already shuts out the people placed only there; this stops
+# everybody else who can see the records -- the owner too -- from changing
+# them until the territory is reopened. Reading is untouched.
+#
+# PER REQUEST, LIKE `allowed_territories`: `TenantAPIView` sets the ids of the
+# organisation's closed DMS territories; the tenant middleware clears it to
+# "none" around every request, so nothing leaks to the next one. Outside a
+# request (shell, tasks, Delete's record transfer) nothing is closed here.
+#
+# CHECKED ON EVERY SAVE AND DELETE of a territory record, through Django's
+# signals -- so `Model.save()`, `objects.create()`, `instance.delete()` AND
+# `queryset.delete()` are all covered. A queryset's `.update()` fires no
+# signal and is NOT covered: no DMS service changes a record's content that
+# way today (only flags like `is_active`, after a save on its parent that this
+# refuses first).
+# ---------------------------------------------------------------------------
+
+closed_territories: ContextVar[frozenset[uuid.UUID]] = ContextVar(
+    "closed_territories", default=frozenset()
+)
+
+
+class TerritoryClosedError(ConflictError):
+    """A record at a closed territory was created, changed or deleted. 409."""
+
+    code = "territory_closed"
+    message = (
+        "This territory is closed, so its records are read-only. Reopen it to change them."
+    )
+
+
+def _refuse_closed(sender, instance, **kwargs) -> None:
+    if isinstance(instance, TerritoryScopedModel) and (
+        instance.territory_id in closed_territories.get()
+    ):
+        raise TerritoryClosedError
+
+
+pre_save.connect(_refuse_closed, dispatch_uid="territory_closed_refuses_saves")
+pre_delete.connect(_refuse_closed, dispatch_uid="territory_closed_refuses_deletes")

@@ -7,6 +7,7 @@ from core.organizations.models import (
     Organization,
     Territory,
     TerritoryKind,
+    UnitStatus,
 )
 from core.organizations.selectors import (
     permissions_for,
@@ -15,7 +16,7 @@ from core.organizations.selectors import (
     standing,
 )
 from core.permissions.models import AppCode
-from shared.base_models import allowed_territories
+from shared.base_models import allowed_territories, closed_territories
 from shared.exceptions import ConflictError
 
 
@@ -62,6 +63,17 @@ class TenantAPIView(OrgScopedAPIView):
         # etc.)
         allowed = resolve_allowed_territories(self.membership, self.app_code)
         allowed_territories.set(allowed)
+
+        # A CLOSED TERRITORY'S RECORDS ARE READ-ONLY (C63): its records are
+        # read as before and refused on every change (`TerritoryClosedError`,
+        # 409) -- the owner's too, until it is reopened. One query.
+        closed_territories.set(
+            frozenset(
+                Territory.objects.of(self.organization, self.app_code)
+                .filter(status=UnitStatus.DISABLED)
+                .values_list("pk", flat=True)
+            )
+        )
 
         # WHERE THIS PERSON WORKS, for code that asks one place for the whole
         # request -- `main`'s `request.unit_id` (Nishanth's DMS views), kept

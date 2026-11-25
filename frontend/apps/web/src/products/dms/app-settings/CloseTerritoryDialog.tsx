@@ -49,7 +49,8 @@ export function CloseTerritoryDialog({ territory, open, onOpenChange }: CloseTer
 
           <Dialog.Description className={styles.description}>
             People placed only at <strong>{territory.name}</strong> lose access until it is
-            reopened. Its records stay, and the territories under it stay open.
+            reopened. Its records stay readable but nobody can change them — you included —
+            until then. The territories under it stay open.
           </Dialog.Description>
 
           <p className={styles.alternative}>
