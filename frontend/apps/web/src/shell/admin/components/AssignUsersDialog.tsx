@@ -10,7 +10,8 @@
  *      checkbox. Pending people too, tagged. Not the owner, who holds every
  *      app by rule. Somebody at a dealership cannot hold an organisation-wide
  *      app (C27), so for anything but DMS they are shown greyed, with why.
- *   2. ROLE -- one organisation-level role for all of them, then
+ *   2. ROLE -- one role for all of them (any DMS role; for other apps an
+ *      organisation-level one), then
  *      "Assign N users". One request, all or nothing.
  *
  * NONE OF THIS IS SECURITY: the server applies every rule again.

@@ -224,7 +224,7 @@ describe("Edit", () => {
     });
   });
 
-  it("offers dealership roles to somebody at a dealership, and only those", async () => {
+  it("offers every DMS role to somebody at a dealership (only app roles)", async () => {
     const panel = await openApplications("deepa", "Deepa Nair");
 
     fireEvent.click(action(panel, "Edit", "DMS for Deepa Nair"));
@@ -235,7 +235,7 @@ describe("Edit", () => {
       .map((option) => option.getAttribute("value"));
 
     expect(offered).toContain("dms.manager");
-    expect(offered).not.toContain("dms.group_operations");
+    expect(offered).toContain("dms.group_operations");
   });
 });
 

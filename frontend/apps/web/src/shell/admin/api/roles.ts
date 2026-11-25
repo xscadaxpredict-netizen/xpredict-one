@@ -87,16 +87,27 @@ export async function fetchRoles(orgSlug: string): Promise<Role[]> {
 }
 
 /**
+ * The apps that use territories (the backend's `App.unit_aware`): DMS today.
+ * In them ONLY APP ROLES matter (the owner, 2026-11-24) -- a role says WHAT,
+ * the territory WHERE -- so every role of the app may be given, anywhere.
+ */
+const TERRITORY_APPS = new Set(["dms"]);
+
+/**
  * The roles that can actually be given for one app at one scope.
  *
- * `unitScoped` is whether the PERSON belongs to a dealership, not whether the
- * app has dealerships — a person scoped to one can hold only `unit` roles, and
+ * In an app that uses territories (DMS): EVERY role of the app, whatever the
+ * person's place -- the backend accepts any DMS role since 2026-11-24.
+ *
+ * Elsewhere `unitScoped` still decides: whether the PERSON belongs to a
+ * dealership -- a person scoped to one can hold only `unit` roles, and
  * somebody organisation-wide only `org` ones.
  *
  * Returns them in the order the server sent, which is the order they are meant
  * to be read in.
  */
 export function rolesFor(roles: Role[], app: string, unitScoped: boolean): Role[] {
+  if (TERRITORY_APPS.has(app)) return roles.filter((role) => role.app === app);
   return roles.filter((role) => role.app === app && role.level === (unitScoped ? "unit" : "org"));
 }
 

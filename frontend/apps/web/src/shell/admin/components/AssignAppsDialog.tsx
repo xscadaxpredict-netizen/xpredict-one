@@ -16,8 +16,10 @@
  * "Assign N apps" sends them all in ONE request, all or nothing. Adds,
  * never replaces: changing a role is the app tile's Edit.
  *
- * ORGANISATION-WIDE, so only organisation-level roles, until each app has its
- * own territories (C82). A pending person gets the apps on their invitation.
+ * DMS offers EVERY DMS role (2026-11-24: only app roles; the person gets no
+ * territory until assigned one in Territory Management). Other apps are
+ * organisation-wide, so their organisation-level roles. A pending person gets
+ * the apps on their invitation.
  */
 
 import { useState } from "react";

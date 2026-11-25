@@ -154,7 +154,9 @@ it is deleted -- refused while territories sit under it, never the organisation
 save/delete of a record filed there is refused (`TerritoryClosedError`, 409) until it is reopened.
 **THE ADMIN PANEL'S DEALERS SCREEN IS GONE** (Q79, 2026-11-25): no `/admin/dealers/`,
 `/admin/territories/`, `create_dealer()`, `dealers_for()` or `admin.dealer.*` / `admin.territory.*`
-(`permissions/0026`); tests build a dealer with `conftest.add_dealer()`. DMS settings' screens import Admin panel pieces that the
+(`permissions/0026`); tests build a dealer with `conftest.add_dealer()`. **`feat/dms-settings` IS PUSHED to GitHub (2026-11-25, at
+the owner's word) -- not merged, not `main`.** The Admin panel's Assign applications / Assign users /
+app-tile Edit offer every DMS role (`rolesFor()`: territory apps ignore role level). DMS settings' screens import Admin panel pieces that the
 eslint boundary refuses (Q81).
 
 **ASSIGNING PEOPLE TO TERRITORIES (2026-11-24, C82 amended): ONLY APP ROLES, and NO TERRITORY

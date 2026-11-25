@@ -149,14 +149,15 @@ describe("step 1: choosing applications", () => {
 });
 
 describe("step 2: one app's details", () => {
-  it("opens when an app is ticked, offering its organisation-level roles", async () => {
+  it("opens when an app is ticked, offering every DMS role (only app roles)", async () => {
     const dialog = await openDialog("asha", "Asha Pillai");
 
     fireEvent.click(within(dialog).getByRole("checkbox", { name: /DMS/ }));
 
     const picker = await within(dialog).findByLabelText("Role in DMS");
     const options = within(picker).getAllByRole("option").map((o) => o.textContent);
-    expect(options).toEqual(["Select a role…", "Fleet viewer", "Group operations"]);
+    expect(options[0]).toBe("Select a role…");
+    expect(options).toEqual(expect.arrayContaining(["Fleet viewer", "Group operations", "Manager"]));
     expect(within(dialog).getByText("Information needed to assign this app.")).toBeInTheDocument();
     expect(within(dialog).getByRole("button", { name: "Create a new role" })).toHaveAttribute(
       "aria-disabled",
