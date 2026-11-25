@@ -1,7 +1,8 @@
 /**
- * A settings area's sidebar, drawn as an accordion (C78), the way Zoho One's
- * admin panel is: each MODULE is a row you open and close, and its
- * SUB-MODULES are the links underneath.
+ * Every sidebar, drawn as an accordion (C78), the way Zoho One's admin panel
+ * is: each MODULE is a row you open and close, and its SUB-MODULES are the
+ * links underneath. Settings areas first; an app's own sidebar too since
+ * 2026-11-25 (the owner: "our format, collapsible, remember what was open").
  *
  * ONE MODULE OPEN AT A TIME. Opening one closes the others; pressing the open
  * one closes it, which leaves none open.
@@ -49,9 +50,14 @@ export function AccordionNav({
   const setOpen = useUiStore((state) => state.setOpenSettingsModule);
   const setSidebarCollapsed = useUiStore((state) => state.setSidebarCollapsed);
 
-  const hrefOf = (path: string) => `/${orgSlug}/${appKey}/${path}`;
+  // An app's home page has the path "" (DMS's Welcome Hub): its address is the
+  // app's own, with no trailing slash, and only that exact address is "here" --
+  // otherwise every page of the app would count as the home page.
+  const hrefOf = (path: string) => `/${orgSlug}/${appKey}/${path}`.replace(/\/$/, "");
   const isHere = (path: string) =>
-    pathname === hrefOf(path) || pathname.startsWith(`${hrefOf(path)}/`);
+    path === ""
+      ? pathname === hrefOf(path)
+      : pathname === hrefOf(path) || pathname.startsWith(`${hrefOf(path)}/`);
   const current = groups.find((group) =>
     group.items.some((item) => isHere(item.path)),
   );
@@ -118,7 +124,9 @@ export function AccordionNav({
               data-current={group === current || undefined}
               aria-expanded={isOpen}
               aria-controls={isOpen ? listId : undefined}
-              title={isCollapsed ? label : undefined}
+              // Always: on the rail the label is hidden, and a long one
+              // ("Installation & Tech Support") is cut short at full width.
+              title={label}
               onClick={() => toggle(label)}
             >
               <span className={styles.icon}>{icon}</span>
@@ -136,6 +144,7 @@ export function AccordionNav({
                   <li key={item.path}>
                     <NavLink
                       to={hrefOf(item.path)}
+                      end={item.path === ""}
                       className={({ isActive }) =>
                         isActive
                           ? `${styles.subModule} ${styles.subModuleActive}`

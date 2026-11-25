@@ -8,7 +8,7 @@
  */
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { screen } from "@testing-library/react";
+import { fireEvent, screen, within } from "@testing-library/react";
 import { ApiError } from "@xpredict/api-client";
 
 import type * as authApi from "../api/auth";
@@ -248,9 +248,15 @@ describe("module privilege", () => {
 
     await screen.findByRole("heading", { name: "Sales" });
 
-    expect(screen.getByRole("link", { name: "Enquiries" })).toBeInTheDocument();
-    expect(screen.queryByRole("link", { name: "Service" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("link", { name: "Tech support" })).not.toBeInTheDocument();
+    // DMS's sidebar is the accordion (2026-11-25): modules are rows, their
+    // pages appear when a row is opened.
+    const sidebar = screen.getByRole("navigation", { name: "DMS navigation" });
+    fireEvent.click(within(sidebar).getByRole("button", { name: "Sales" }));
+    expect(within(sidebar).getByRole("link", { name: "Enquiries" })).toBeInTheDocument();
+    expect(within(sidebar).queryByRole("button", { name: "Site Services" })).not.toBeInTheDocument();
+    expect(
+      within(sidebar).queryByRole("button", { name: "Installation & Tech Support" }),
+    ).not.toBeInTheDocument();
   });
 
   it("does not name the modules it is hiding", async () => {

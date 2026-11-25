@@ -154,6 +154,33 @@ describe("the gear in the topbar", () => {
   });
 });
 
+describe("DMS's own sidebar", () => {
+  it("is the accordion, and the module left open comes back after a reload", async () => {
+    mockFetchMe.mockResolvedValue(me({ memberships: [ownerMembership()] }));
+
+    const first = renderRoute({ path: "/acme-motors/dms", children: screens });
+    await screen.findByText("DMS home");
+    let sidebar = screen.getByRole("navigation", { name: "DMS navigation" });
+
+    // Nothing stored yet: the module of the page you are on (the Welcome Hub's).
+    expect(within(sidebar).getByRole("button", { name: "Overview" })).toHaveAttribute("aria-expanded", "true");
+    expect(within(sidebar).getByRole("link", { name: "Welcome Hub" })).toHaveAttribute("href", "/acme-motors/dms");
+
+    // Open Tools: one module at a time, so Overview closes.
+    fireEvent.click(within(sidebar).getByRole("button", { name: "Tools" }));
+    expect(within(sidebar).getByRole("button", { name: "Tools" })).toHaveAttribute("aria-expanded", "true");
+    expect(within(sidebar).getByRole("button", { name: "Overview" })).toHaveAttribute("aria-expanded", "false");
+    expect(within(sidebar).getByRole("link", { name: "Marketing Kit" })).toBeInTheDocument();
+
+    // A reload: a fresh page, the same browser storage.
+    first.unmount();
+    renderRoute({ path: "/acme-motors/dms", children: screens });
+    await screen.findByText("DMS home");
+    sidebar = screen.getByRole("navigation", { name: "DMS navigation" });
+    expect(within(sidebar).getByRole("button", { name: "Tools" })).toHaveAttribute("aria-expanded", "true");
+  });
+});
+
 describe("DMS settings", () => {
   function settingsSidebar() {
     return screen.getByRole("navigation", { name: "DMS settings navigation" });

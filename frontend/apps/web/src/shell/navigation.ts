@@ -96,9 +96,9 @@ export interface NavGroup {
   /** Shown above the group. A single unnamed group renders without a heading. */
   label: string | null;
   /**
-   * The MODULE's own icon, drawn on its accordion row. Settings areas only
-   * (C78): there a group is a row you open and close, and its items are the
-   * sub-modules underneath. A product's sidebar ignores it.
+   * The MODULE's own icon, drawn on its accordion row (C78): a group is a row
+   * you open and close, and its items are the sub-modules underneath. Every
+   * sidebar is that accordion since 2026-11-25 (the owner), products included.
    */
   icon?: NavIconName;
   /**
@@ -194,6 +194,7 @@ export const APP_CATALOG: AppDefinition[] = [
        */
       {
         label: "Overview",
+        icon: "grid",
         items: [
           // The one dashboard: each module's panel, shown only to people whose role
           // holds that module (the same rule as the links below), filterable by name.
@@ -204,6 +205,7 @@ export const APP_CATALOG: AppDefinition[] = [
       // DMS settings -> Masters (the owner, 2026-11-25).
       {
         label: "Sales",
+        icon: "tag",
         items: [
           { label: "Enquiries", path: "sales/enquiries", icon: "users", module: "sales" },
           { label: "Confirmed orders", path: "sales/orders", icon: "clipboard-check", module: "sales" },
@@ -214,6 +216,7 @@ export const APP_CATALOG: AppDefinition[] = [
       },
       {
         label: "Site Services",
+        icon: "wrench",
         items: [
           { label: "AMC", path: "site-services/amc", icon: "shield-check", module: "service" },
           { label: "Scheduled Services", path: "site-services/scheduling", icon: "calendar", module: "service" },
@@ -225,6 +228,7 @@ export const APP_CATALOG: AppDefinition[] = [
 
       {
         label: "Installation & Tech Support",
+        icon: "headset",
         items: [
           { label: "User Manuals", path: "tech-support/manuals", icon: "book-open", module: "tech-support" },
           { label: "Machine Videos", path: "tech-support/videos", icon: "video", module: "tech-support" },
@@ -235,6 +239,7 @@ export const APP_CATALOG: AppDefinition[] = [
 
       {
         label: "E-Commerce",
+        icon: "store",
         items: [
           { label: "Store Catalog", path: "ecommerce/catalog", icon: "store", module: "ecommerce" },
           { label: "My Orders", path: "ecommerce/orders", icon: "package", module: "ecommerce" },
@@ -242,6 +247,7 @@ export const APP_CATALOG: AppDefinition[] = [
       },
       {
         label: "Tools",
+        icon: "calculator",
         items: [
           { label: "Marketing Kit", path: "tools/marketing", icon: "tag", module: "tools" },
           { label: "Capacity Calculator", path: "tools/calculator", icon: "calculator", module: "tools" },

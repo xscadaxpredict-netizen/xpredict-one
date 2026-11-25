@@ -2,25 +2,17 @@
  * Navigation within the current app.
  *
  * Two levels, because a module is not a screen: Sales is a module that owns
- * Enquiries, Quotations and the rest. A group with no label renders its items
- * with no heading, which is how DMS looks until those screens exist.
- *
- * `NavLink` rather than `Link` because it knows whether it is the current page
- * and hands us that as `isActive`. Doing it by hand means comparing pathnames
- * in every link, and getting the trailing-slash and nested-route cases wrong.
- *
- * `end` is set on the app-root link only. Without it, a link to `/dms` counts
- * itself active on `/dms/sales` too, because "active" means "the URL starts
- * with this" — and you get two highlighted items at once.
+ * Enquiries, Quotations and the rest. Drawn as the accordion every sidebar
+ * shares (`AccordionNav`, C78): a module is a row that opens and closes, its
+ * sub-modules the links underneath, and the open one is remembered.
  */
 
-import { NavLink, useLocation } from "react-router-dom";
+import { useLocation } from "react-router-dom";
 
 import { APP_SETTINGS_SEGMENT, isInAppSettings, type AppDefinition } from "../navigation";
 import { allows, useAccess } from "../access";
 import { useUiStore } from "../../stores/uiStore";
 import { AccordionNav } from "./AccordionNav";
-import { NavIcon } from "./NavIcon";
 import styles from "./Sidebar.module.css";
 
 interface SidebarProps {
@@ -112,75 +104,31 @@ export function Sidebar({ app, orgSlug, inDrawer = false, onNavigate }: SidebarP
       data-drawer={inDrawer || undefined}
       aria-label={`${app.name} navigation`}
     >
-      {app.kind === "settings" ? (
-        /*
-         * A settings area (the Admin panel, C78) is an accordion of modules.
-         * The permission filter above has already run, so the accordion
-         * only ever draws what this person may open.
-         */
-        <div className={styles.groups}>
-          <AccordionNav
-            appKey={app.key}
-            orgSlug={orgSlug}
-            groups={groups}
-            isCollapsed={isCollapsed}
-            onNavigate={onNavigate}
-          />
-        </div>
-      ) : (
-        <div className={styles.groups}>
-          {groups.map((group, groupIndex) => (
-            <div
-              // Groups have no id of their own and an unlabelled group has no
-              // name either, so the index is the only stable key available. Safe
-              // here because this list is static config, never reordered at runtime.
-              key={group.label ?? `group-${String(groupIndex)}`}
-              className={styles.group}
-            >
-              {group.label && (
-                <div className={styles.groupLabel}>{group.label}</div>
-              )}
+      {/*
+        * EVERY SIDEBAR IS THE ACCORDION (C78; an app's own since 2026-11-25,
+        * the owner): one module open at a time, and the one left open comes
+        * back after a refresh (`uiStore.openSettingsModule`, keyed by app).
+        * The permission filter above has already run, so the accordion only
+        * ever draws what this person may open.
+        */}
+      <div className={styles.groups}>
+        <AccordionNav
+          appKey={app.key}
+          orgSlug={orgSlug}
+          groups={groups}
+          isCollapsed={isCollapsed}
+          onNavigate={onNavigate}
+        />
 
-              <ul className={styles.list}>
-                {group.items.map((item) => (
-                  <li key={item.path}>
-                    <NavLink
-                      to={`/${orgSlug}/${app.key}/${item.path}`.replace(
-                        /\/$/,
-                        "",
-                      )}
-                      end={item.path === ""}
-                      className={({ isActive }) =>
-                        isActive
-                          ? `${styles.link} ${styles.linkActive}`
-                          : styles.link
-                      }
-                      // The label is hidden when collapsed, so the icon-only link
-                      // gets a tooltip as well as its clipped accessible name.
-                      title={isCollapsed ? item.label : undefined}
-                      onClick={onNavigate}
-                    >
-                      <span className={styles.icon}>
-                        <NavIcon name={item.icon} />
-                      </span>
-                      <span className={styles.linkLabel}>{item.label}</span>
-                    </NavLink>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          ))}
-
-          {groups.length === 0 && (
-            <p className={styles.empty}>
-              {/* Covers both "this app has no modules yet" (CRM) and "none of
-                them are yours". Deliberately the same sentence: a different
-                message for the second case would confirm that modules exist. */}
-              No modules yet.
-            </p>
-          )}
-        </div>
-      )}
+        {groups.length === 0 && (
+          <p className={styles.empty}>
+            {/* Covers both "this app has no modules yet" (CRM) and "none of
+              them are yours". Deliberately the same sentence: a different
+              message for the second case would confirm that modules exist. */}
+            No modules yet.
+          </p>
+        )}
+      </div>
 
       {!inDrawer && <CollapseButton isCollapsed={isCollapsed} onToggle={toggleSidebar} />}
     </nav>
