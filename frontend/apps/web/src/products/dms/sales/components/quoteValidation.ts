@@ -63,7 +63,7 @@ export function validateQuote(q: QuoteDraft): FieldErrors {
 
   if (blank(q.bankId)) {
     e.selected_bank_id = q.bankCount === 0
-      ? "No bank account exists yet. Add one in Load Master Data → Bank Accounts, then select it here."
+      ? "No bank account exists yet. The owner adds one in DMS settings → Masters → Bank Accounts; then select it here."
       : "Select the bank account to print on the quote.";
   }
 

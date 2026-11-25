@@ -5,7 +5,6 @@ import {
   Headphones,
   ShoppingCart,
   Calculator,
-  Settings2,
   ArrowRight,
   Sparkles,
   Layers,
@@ -121,20 +120,8 @@ export function DmsWelcomeScreen() {
         { label: "Marketing Kit", path: `${basePath}/tools/marketing` },
       ],
     },
-    {
-      id: "configuration",
-      module: "settings",
-      title: "Master Configuration",
-      description:
-        "Central repository for bulk master data loading, product SKUs, pricing baselines, and organization-wide operational parameters.",
-      icon: Settings2,
-      iconBg: "linear-gradient(135deg, #475569, #334155)",
-      primaryPath: `${basePath}/master-data`,
-      primaryActionLabel: "Configure Master Data",
-      screens: [
-        { label: "Load Master Data", path: `${basePath}/master-data` },
-      ],
-    },
+    // No "Master Configuration" card: Load Master Data moved behind the gear
+    // as DMS settings -> Masters (the owner, 2026-11-25).
   ];
 
   // Only the modules this role can open, same rule as the sidebar.

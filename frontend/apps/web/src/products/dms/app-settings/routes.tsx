@@ -5,8 +5,9 @@
  * the routes cannot disagree about what exists. All of them are drawn only
  * for now ("being built"); each becomes a real screen in turn.
  *
- * NOT "Load Master Data": that DMS page moved to `/<org>/dms/master-data`
- * when this address became the gear's (the owner, 2026-11-23).
+ * MASTERS is here too (the owner, 2026-11-25): what was DMS's "Load Master
+ * Data" page, one sub-module per old tab. Its old address, `/<org>/dms/master-data`,
+ * redirects here.
  *
  * WHO GETS IN is `canOpenAppSettings()` -- the owner, until the app-admin role
  * is designed (Q63). Anybody else gets not-found, the same as for a module
@@ -20,6 +21,7 @@ import { useShellContext } from "../../../shell/context";
 import { canOpenAppSettings } from "../../../shell/navigation";
 import { NotFoundScreen } from "../../../shell/screens/NotFoundScreen";
 import { SettingsPlaceholderScreen } from "../../../shell/screens/SettingsPlaceholderScreen";
+import { MastersPage } from "../settings/MastersPage";
 import { DmsUsersScreen } from "./DmsUsersScreen";
 import { TerritoryFormScreen } from "./TerritoryFormScreen";
 import { TerritoryManagementScreen } from "./TerritoryManagementScreen";
@@ -31,6 +33,13 @@ import { TerritoryManagementScreen } from "./TerritoryManagementScreen";
 const BUILT: Record<string, ReactElement> = {
   users: <DmsUsersScreen />,
   territories: <TerritoryManagementScreen />,
+  // Masters (2026-11-25): each sub-module is one of Load Master Data's old tabs.
+  "bank-accounts": <MastersPage tab="bank-accounts" />,
+  "product-catalog": <MastersPage tab="product-catalog" />,
+  "user-manuals": <MastersPage tab="user-manuals" />,
+  "machine-videos": <MastersPage tab="machine-videos" />,
+  "marketing-kit": <MastersPage tab="marketing-kit" />,
+  "calculator-constants": <MastersPage tab="calculator-constants" />,
 };
 
 export default function DmsSettingsRoutes() {

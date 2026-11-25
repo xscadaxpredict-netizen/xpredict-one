@@ -199,6 +199,44 @@ describe("DMS settings", () => {
     );
   });
 
+  it("draws Masters, one sub-module per old Load Master Data tab", async () => {
+    mockFetchMe.mockResolvedValue(me({ memberships: [ownerMembership()] }));
+
+    renderRoute({ path: "/acme-motors/dms/settings/marketing-kit", children: screens });
+
+    // The page's own heading, above the old tab's screen.
+    expect(await screen.findByRole("heading", { level: 1, name: "Marketing Kit" })).toBeInTheDocument();
+    // A real page, not the "being built" placeholder (which has the same heading).
+    expect(screen.queryByText("This page is being built.")).not.toBeInTheDocument();
+    const sidebar = settingsSidebar();
+    expect(within(sidebar).getByRole("button", { name: "Masters" })).toHaveAttribute(
+      "aria-expanded",
+      "true",
+    );
+    const pages = [
+      ["Bank Accounts", "bank-accounts"],
+      ["Product Catalog", "product-catalog"],
+      ["User Manuals", "user-manuals"],
+      ["Machine Videos", "machine-videos"],
+      ["Marketing Kit", "marketing-kit"],
+      ["Calculator Constants", "calculator-constants"],
+    ];
+    for (const [label, path] of pages) {
+      expect(within(sidebar).getByRole("link", { name: label })).toHaveAttribute(
+        "href",
+        `/acme-motors/dms/settings/${path}`,
+      );
+    }
+  });
+
+  it("keeps Masters from anybody but the owner, even by its address", async () => {
+    mockFetchMe.mockResolvedValue(me({ memberships: [dealerAdminMembership()] }));
+
+    renderRoute({ path: "/acme-motors/dms/settings/bank-accounts", children: screens });
+
+    expect(await screen.findByRole("heading", { name: /not found/i })).toBeInTheDocument();
+  });
+
   it("is not found for anybody but the owner, even by its address", async () => {
     mockFetchMe.mockResolvedValue(me({ memberships: [orgAdminMembership()] }));
 

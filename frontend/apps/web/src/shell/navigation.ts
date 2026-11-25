@@ -200,15 +200,8 @@ export const APP_CATALOG: AppDefinition[] = [
           { label: "Welcome Hub", path: "", icon: "grid", module: null },
         ],
       },
-      {
-        label: "Configuration",
-        items: [
-          // `master-data`, not `settings`: that address is DMS's own settings,
-          // reached from the gear (C78, the owner 2026-11-23). The module is
-          // still the backend's `settings`.
-          { label: "Load Master Data", path: "master-data", icon: "database", module: "settings" },
-        ],
-      },
+      // No "Configuration" group: Load Master Data moved behind the gear as
+      // DMS settings -> Masters (the owner, 2026-11-25).
       {
         label: "Sales",
         items: [
@@ -293,6 +286,20 @@ export const APP_CATALOG: AppDefinition[] = [
             search: "territories",
           },
           { label: "Position Hierarchy", path: "position-hierarchy", icon: "user", module: null },
+        ],
+      },
+      {
+        // What was DMS's "Load Master Data" page; each sub-module is one of its
+        // old tabs (the owner, 2026-11-25). Owner only, like the rest of the gear.
+        label: "Masters",
+        icon: "database",
+        items: [
+          { label: "Bank Accounts", path: "bank-accounts", icon: "card", module: null },
+          { label: "Product Catalog", path: "product-catalog", icon: "package", module: null },
+          { label: "User Manuals", path: "user-manuals", icon: "book-open", module: null },
+          { label: "Machine Videos", path: "machine-videos", icon: "video", module: null },
+          { label: "Marketing Kit", path: "marketing-kit", icon: "tag", module: null },
+          { label: "Calculator Constants", path: "calculator-constants", icon: "calculator", module: null },
         ],
       },
     ],

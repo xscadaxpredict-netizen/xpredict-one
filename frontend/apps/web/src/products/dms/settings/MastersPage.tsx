@@ -1,4 +1,15 @@
-import { useState, useEffect } from "react";
+/**
+ * DMS settings -> MASTERS (C78 amended, the owner 2026-11-25): what was "Load
+ * Master Data", a DMS page with six tabs, is now a module behind the gear whose
+ * six sub-modules are those tabs. Each sub-module renders the tab's screen as
+ * it was; restyling Bank Accounts and Product Catalog into the list format is
+ * the next step (canvas https://claude.ai/artifact/BWAUj1GKJgKLKyhYkwPhFP).
+ *
+ * OWNER ONLY FOR NOW (the owner): the gear is `canOpenAppSettings()`, so a
+ * dealer no longer reaches its own bank accounts and products from here.
+ */
+
+import { useState } from "react";
 import { ConfirmDialog } from "@xpredict/ui";
 import { useBanks, useProductPresets, useDeleteBank, useDeleteProductPreset } from "../sales/hooks/useEnquiries";
 import { BankAccountModal } from "./BankAccountModal";
@@ -13,86 +24,40 @@ import { useAccess } from "../../../shell/access";
 import type { BankAccount, ProductPreset } from "../sales/api/types";
 import styles from "./SettingsPage.module.css";
 
-export default function SettingsPage() {
-  const { membership } = useShellContext();
-  const access = useAccess();
+/** The six sub-modules of Masters, by the path each has in DMS settings. */
+export type MasterTab =
+  | "bank-accounts"
+  | "product-catalog"
+  | "user-manuals"
+  | "machine-videos"
+  | "marketing-kit"
+  | "calculator-constants";
 
-  const isOrgAdmin = !membership.unit_id && (
-    membership.role === "owner" ||
-    membership.role === "admin" ||
-    access.can("dms.manual.manage")
-  );
+const TITLES: Record<MasterTab, string> = {
+  "bank-accounts": "Bank Accounts",
+  "product-catalog": "Product Catalog",
+  "user-manuals": "User Manuals",
+  "machine-videos": "Machine Videos",
+  "marketing-kit": "Marketing Kit",
+  "calculator-constants": "Calculator Constants",
+};
 
-  const [activeTab, setActiveTab] = useState<"banks" | "products" | "manuals" | "videos" | "marketing" | "calculator">("banks");
-
-  useEffect(() => {
-    if (!isOrgAdmin && activeTab !== "banks" && activeTab !== "products") {
-      setActiveTab("banks");
-    }
-  }, [isOrgAdmin, activeTab]);
-
+/** One Masters sub-module: its title, then the screen that was its tab. */
+export function MastersPage({ tab }: { tab: MasterTab }) {
   return (
     <div className={styles.page}>
       <header className={styles.header}>
         <div className={styles.heading}>
-          <h1 className={styles.title}>Configuration & Master Data</h1>
-          <p className={styles.subtitle}>
-            {isOrgAdmin
-              ? "Manage your organization's bank accounts, product catalog, manuals, videos, and constants."
-              : "Manage your dealership's bank accounts and product catalog."}
-          </p>
+          <h1 className={styles.title}>{TITLES[tab]}</h1>
         </div>
       </header>
 
-      <div className={styles.tabs}>
-        <button 
-          className={`${styles.tabBtn} ${activeTab === "banks" ? styles.tabBtnActive : ""}`}
-          onClick={() => setActiveTab("banks")}
-        >
-          Bank Accounts
-        </button>
-        <button 
-          className={`${styles.tabBtn} ${activeTab === "products" ? styles.tabBtnActive : ""}`}
-          onClick={() => setActiveTab("products")}
-        >
-          Product Catalog
-        </button>
-        {isOrgAdmin && (
-          <>
-            <button 
-              className={`${styles.tabBtn} ${activeTab === "manuals" ? styles.tabBtnActive : ""}`}
-              onClick={() => setActiveTab("manuals")}
-            >
-              User Manuals
-            </button>
-            <button 
-              className={`${styles.tabBtn} ${activeTab === "videos" ? styles.tabBtnActive : ""}`}
-              onClick={() => setActiveTab("videos")}
-            >
-              Machine Videos
-            </button>
-            <button 
-              className={`${styles.tabBtn} ${activeTab === "marketing" ? styles.tabBtnActive : ""}`}
-              onClick={() => setActiveTab("marketing")}
-            >
-              Marketing Kit
-            </button>
-            <button 
-              className={`${styles.tabBtn} ${activeTab === "calculator" ? styles.tabBtnActive : ""}`}
-              onClick={() => setActiveTab("calculator")}
-            >
-              Calculator Constants
-            </button>
-          </>
-        )}
-      </div>
-
-      {activeTab === "banks" && <BankAccountsTab />}
-      {activeTab === "products" && <ProductsTab />}
-      {isOrgAdmin && activeTab === "manuals" && <SettingsManualsTab />}
-      {isOrgAdmin && activeTab === "videos" && <SettingsVideosTab />}
-      {isOrgAdmin && activeTab === "marketing" && <SettingsMarketingTab />}
-      {isOrgAdmin && activeTab === "calculator" && <CalculatorSettingsScreen />}
+      {tab === "bank-accounts" && <BankAccountsTab />}
+      {tab === "product-catalog" && <ProductsTab />}
+      {tab === "user-manuals" && <SettingsManualsTab />}
+      {tab === "machine-videos" && <SettingsVideosTab />}
+      {tab === "marketing-kit" && <SettingsMarketingTab />}
+      {tab === "calculator-constants" && <CalculatorSettingsScreen />}
     </div>
   );
 }

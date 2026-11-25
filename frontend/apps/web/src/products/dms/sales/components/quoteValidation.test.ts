@@ -15,7 +15,7 @@ describe("validateQuote", () => {
 
   it("explains a missing bank when none exists yet", () => {
     const e = validateQuote({ ...OK, bankId: "", bankCount: 0 });
-    expect(e.selected_bank_id).toMatch(/Load Master Data/);
+    expect(e.selected_bank_id).toMatch(/DMS settings → Masters → Bank Accounts/);
   });
 
   it("flags a malformed email but not an empty one", () => {
