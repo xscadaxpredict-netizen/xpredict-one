@@ -16,9 +16,8 @@ or created by these services.
 from __future__ import annotations
 
 import pytest
-from rest_framework.test import APIClient
 
-from conftest import TEST_TENANT_ALIAS
+from conftest import TEST_TENANT_ALIAS, add_dealer
 from core.api import home_for
 from core.organizations.exceptions import (
     TerritoryIsTheOrganisationError,
@@ -27,17 +26,16 @@ from core.organizations.exceptions import (
     TerritoryPlacementError,
 )
 from core.organizations.models import ActivationCode, Territory, TerritoryKind
-from core.organizations.selectors import _summary, dealers_for
+from core.organizations.selectors import _summary
 from core.organizations.services import (
     accept_invitation,
+    add_territory,
     assert_placement_allowed,
-    create_dealer,
-    create_territory,
     invite_person,
     move_territory,
-    rename_territory,
     sign_up,
     update_person,
+    update_territory,
 )
 from core.permissions.models import AppCode
 from shared.exceptions import NotFoundError
@@ -139,7 +137,7 @@ class TestTheRoot:
     def test_the_root_cannot_be_moved(self):
         result = found()
         root = Territory.objects.root_for(result.organization, AppCode.DMS)
-        north = create_territory(organization=result.organization, kind=REGION, name="North")
+        north = add_territory(organization=result.organization, kind=REGION, name="North")
 
         with pytest.raises(TerritoryIsTheOrganisationError):
             move_territory(territory=root, parent_id=north.pk)
@@ -149,14 +147,14 @@ class TestTheRoot:
         root = Territory.objects.root_for(found().organization, AppCode.DMS)
 
         with pytest.raises(TerritoryIsTheOrganisationError):
-            rename_territory(territory=root, name="Something else")
+            update_territory(territory=root, name="Something else")
 
         assert fresh(root).name == ""
 
     def test_no_parent_means_directly_under_the_organisation(self):
         org = found().organization
 
-        north = create_territory(organization=org, kind=REGION, name="North")
+        north = add_territory(organization=org, kind=REGION, name="North")
 
         assert fresh(north).depth == 2
         assert fresh(north).path.startswith(Territory.objects.root_for(org, AppCode.DMS).path)
@@ -166,9 +164,9 @@ class TestCreating:
     def test_a_region_a_dealer_in_it_and_a_branch_in_that(self):
         org = found().organization
 
-        north = create_territory(organization=org, kind=REGION, name="North")
-        delhi = create_dealer(organization=org, name="Delhi Motors", parent_id=north.pk)
-        branch = create_territory(
+        north = add_territory(organization=org, kind=REGION, name="North")
+        delhi = add_dealer(organization=org, name="Delhi Motors", parent_id=north.pk)
+        branch = add_territory(
             organization=org, kind=BRANCH, name="Karol Bagh", parent_id=delhi.pk
         )
 
@@ -180,52 +178,52 @@ class TestCreating:
         org = found().organization
 
         with pytest.raises(TerritoryPlacementError):
-            create_territory(organization=org, kind=BRANCH, name="Karol Bagh")
+            add_territory(organization=org, kind=BRANCH, name="Karol Bagh")
 
         assert not Territory.objects.filter(name="Karol Bagh").exists()
 
     def test_a_dealer_inside_a_dealer_is_refused(self):
         org = found().organization
-        delhi = create_dealer(organization=org, name="Delhi Motors")
+        delhi = add_dealer(organization=org, name="Delhi Motors")
 
         with pytest.raises(TerritoryPlacementError):
-            create_dealer(organization=org, name="Sub Dealer", parent_id=delhi.pk)
+            add_dealer(organization=org, name="Sub Dealer", parent_id=delhi.pk)
 
     def test_a_parent_in_another_organization_is_a_404(self):
         apex = found().organization
         bharat = found("Bharat Auto", "owner@bharat.test", "CODE-BHARAT").organization
-        theirs = create_territory(organization=bharat, kind=REGION, name="West")
+        theirs = add_territory(organization=bharat, kind=REGION, name="West")
 
         with pytest.raises(NotFoundError):
-            create_dealer(organization=apex, name="Pune Wheels", parent_id=theirs.pk)
+            add_dealer(organization=apex, name="Pune Wheels", parent_id=theirs.pk)
 
         assert not Territory.objects.filter(name="Pune Wheels").exists()
 
     def test_one_name_per_organization_across_every_kind(self):
         """A region and a dealership both called "Chennai" read identically in every picker."""
         org = found().organization
-        create_dealer(organization=org, name="Chennai")
+        add_dealer(organization=org, name="Chennai")
 
         with pytest.raises(TerritoryNameTakenError):
-            create_territory(organization=org, kind=REGION, name="Chennai")
+            add_territory(organization=org, kind=REGION, name="Chennai")
 
 
 class TestRenamingAndMoving:
     def test_rename(self):
         org = found().organization
-        north = create_territory(organization=org, kind=REGION, name="North")
+        north = add_territory(organization=org, kind=REGION, name="North")
 
-        rename_territory(territory=north, name="North India")
+        update_territory(territory=north, name="North India")
 
         assert fresh(north).name == "North India"
 
     def test_rename_cannot_take_another_territorys_name(self):
         org = found().organization
-        create_dealer(organization=org, name="Delhi Motors")
-        north = create_territory(organization=org, kind=REGION, name="North")
+        add_dealer(organization=org, name="Delhi Motors")
+        north = add_territory(organization=org, kind=REGION, name="North")
 
         with pytest.raises(TerritoryNameTakenError):
-            rename_territory(territory=north, name="Delhi Motors")
+            update_territory(territory=north, name="Delhi Motors")
 
     def test_an_existing_dealership_moves_into_a_new_region_with_its_branches(self):
         """
@@ -234,9 +232,9 @@ class TestRenamingAndMoving:
         them afterwards.
         """
         org = found().organization
-        delhi = create_dealer(organization=org, name="Delhi Motors")
-        create_territory(organization=org, kind=BRANCH, name="Karol Bagh", parent_id=delhi.pk)
-        north = create_territory(organization=org, kind=REGION, name="North")
+        delhi = add_dealer(organization=org, name="Delhi Motors")
+        add_territory(organization=org, kind=BRANCH, name="Karol Bagh", parent_id=delhi.pk)
+        north = add_territory(organization=org, kind=REGION, name="North")
 
         moved = move_territory(territory=fresh(delhi), parent_id=north.pk)
 
@@ -247,8 +245,8 @@ class TestRenamingAndMoving:
 
     def test_and_back_out_to_directly_under_the_organisation(self):
         org = found().organization
-        north = create_territory(organization=org, kind=REGION, name="North")
-        delhi = create_dealer(organization=org, name="Delhi Motors", parent_id=north.pk)
+        north = add_territory(organization=org, kind=REGION, name="North")
+        delhi = add_dealer(organization=org, name="Delhi Motors", parent_id=north.pk)
 
         moved = move_territory(territory=fresh(delhi), parent_id=None)
 
@@ -259,8 +257,8 @@ class TestRenamingAndMoving:
 
     def test_a_territory_cannot_move_inside_itself(self):
         org = found().organization
-        north = create_territory(organization=org, kind=REGION, name="North")
-        punjab = create_territory(organization=org, kind=REGION, name="Punjab", parent_id=north.pk)
+        north = add_territory(organization=org, kind=REGION, name="North")
+        punjab = add_territory(organization=org, kind=REGION, name="Punjab", parent_id=north.pk)
 
         with pytest.raises(TerritoryMoveIntoItselfError):
             move_territory(territory=fresh(north), parent_id=punjab.pk)
@@ -269,8 +267,8 @@ class TestRenamingAndMoving:
 
     def test_a_move_must_still_obey_the_placement_rule(self):
         org = found().organization
-        delhi = create_dealer(organization=org, name="Delhi Motors")
-        jaipur = create_dealer(organization=org, name="Jaipur Auto")
+        delhi = add_dealer(organization=org, name="Delhi Motors")
+        jaipur = add_dealer(organization=org, name="Jaipur Auto")
 
         with pytest.raises(TerritoryPlacementError):
             move_territory(territory=fresh(jaipur), parent_id=delhi.pk)
@@ -278,8 +276,8 @@ class TestRenamingAndMoving:
     def test_a_move_into_another_organizations_tree_is_a_404(self):
         apex = found().organization
         bharat = found("Bharat Auto", "owner@bharat.test", "CODE-BHARAT").organization
-        delhi = create_dealer(organization=apex, name="Delhi Motors")
-        theirs = create_territory(organization=bharat, kind=REGION, name="West")
+        delhi = add_dealer(organization=apex, name="Delhi Motors")
+        theirs = add_territory(organization=bharat, kind=REGION, name="West")
 
         with pytest.raises(NotFoundError):
             move_territory(territory=fresh(delhi), parent_id=theirs.pk)
@@ -294,23 +292,16 @@ class TestARegionIsNeverTakenForADealership:
     plain `filter(organization=...)` before regions existed.
     """
 
-    def test_the_dealers_list_leaves_regions_out(self):
-        org = found().organization
-        north = create_territory(organization=org, kind=REGION, name="North")
-        create_dealer(organization=org, name="Delhi Motors", parent_id=north.pk)
-
-        assert [d.name for d in dealers_for(org)] == ["Delhi Motors"]
-
     def test_the_launcher_counts_dealerships_not_regions(self):
         result = found()
-        north = create_territory(organization=result.organization, kind=REGION, name="North")
-        create_dealer(organization=result.organization, name="Delhi Motors", parent_id=north.pk)
+        north = add_territory(organization=result.organization, kind=REGION, name="North")
+        add_dealer(organization=result.organization, name="Delhi Motors", parent_id=north.pk)
 
         assert _summary(AppCode.DMS, result.membership) == "1 dealership"
 
     def test_a_person_cannot_be_placed_at_a_region(self):
         result = found()
-        north = create_territory(organization=result.organization, kind=REGION, name="North")
+        north = add_territory(organization=result.organization, kind=REGION, name="North")
 
         invitation = invite_person(
             actor=result.membership,
@@ -347,11 +338,11 @@ class TestARegionIsNeverTakenForADealership:
         used to be the first dealership.
         """
         result = found()
-        north = create_territory(organization=result.organization, kind=REGION, name="North")
-        delhi = create_dealer(
+        north = add_territory(organization=result.organization, kind=REGION, name="North")
+        delhi = add_dealer(
             organization=result.organization, name="Delhi Motors", parent_id=north.pk
         )
-        store = create_territory(
+        store = add_territory(
             organization=result.organization, kind=WAREHOUSE, name="Store", parent_id=north.pk
         )
         root = Territory.objects.root_for(result.organization, AppCode.DMS)
@@ -369,16 +360,3 @@ class TestARegionIsNeverTakenForADealership:
         assert filed_at(root) == root.pk
         assert filed_at(store) == root.pk
         assert delhi  # still there: never chosen by default any more
-
-    def test_the_dealer_endpoints_answer_404_for_a_region(self):
-        result = found()
-        north = create_territory(organization=result.organization, kind=REGION, name="North")
-        client = APIClient()
-        client.force_authenticate(user=result.user)
-        slug = result.organization.slug
-
-        edit = client.put(f"/api/v1/orgs/{slug}/admin/dealers/{north.pk}/", {}, format="json")
-        close = client.post(f"/api/v1/orgs/{slug}/admin/dealers/{north.pk}/close/")
-
-        assert (edit.status_code, close.status_code) == (404, 404)
-        assert fresh(north).status == "active"

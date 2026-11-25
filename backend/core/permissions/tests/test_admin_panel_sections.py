@@ -125,22 +125,12 @@ class TestThePermissions:
 
         assert not Permission.objects.filter(code__in=old).exists()
 
-    def test_dealers_and_territories_stay_unlinked(self):
-        unlinked = set(
-            Permission.objects.filter(app_id="admin", section__isnull=True).values_list(
-                "code", flat=True
-            )
-        )
-
-        assert unlinked == {
-            "admin.dealer.view",
-            "admin.dealer.create",
-            "admin.dealer.update",
-            "admin.dealer.set_status",
-            "admin.territory.view",
-            "admin.territory.create",
-            "admin.territory.update",
-        }
+    def test_every_admin_panel_permission_is_on_the_tree(self):
+        """
+        Dealers and Territories were the last unlinked ones; they went with the
+        Dealers screen (`permissions/0026`, 2026-11-25).
+        """
+        assert not Permission.objects.filter(app_id="admin", section__isnull=True).exists()
 
     def test_dms_stays_unlinked(self):
         assert not Permission.objects.filter(app_id="dms", section__isnull=False).exists()

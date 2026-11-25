@@ -9,7 +9,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 
-import type * as dealersApi from "../admin/api/dealers";
 import type * as usersApi from "../admin/api/users";
 import { fetchUsers, removeUser } from "../admin/api/users";
 import { UsersScreen } from "../admin/screens/UsersScreen";
@@ -31,10 +30,6 @@ vi.mock("../admin/api/users", async (importOriginal) => ({
   updateUser: vi.fn(),
 }));
 
-vi.mock("../admin/api/dealers", async (importOriginal) => ({
-  ...(await importOriginal<typeof dealersApi>()),
-  fetchDealers: vi.fn().mockResolvedValue([]),
-}));
 
 const mockFetchMe = vi.mocked(fetchMe);
 const mockFetchUsers = vi.mocked(fetchUsers);

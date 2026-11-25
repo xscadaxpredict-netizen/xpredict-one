@@ -16,11 +16,8 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 
-import type * as dealersApi from "../admin/api/dealers";
-import { fetchDealers } from "../admin/api/dealers";
 import type * as usersApi from "../admin/api/users";
 import { fetchUsers } from "../admin/api/users";
-import { DealersScreen } from "../admin/screens/DealersScreen";
 import { UsersScreen } from "../admin/screens/UsersScreen";
 import type * as authApi from "../api/auth";
 import { fetchMe } from "../api/auth";
@@ -38,21 +35,15 @@ vi.mock("../admin/api/users", async (importOriginal) => ({
   fetchUsers: vi.fn().mockResolvedValue([]),
 }));
 
-vi.mock("../admin/api/dealers", async (importOriginal) => ({
-  ...(await importOriginal<typeof dealersApi>()),
-  fetchDealers: vi.fn().mockResolvedValue([]),
-}));
 
 const routes = [
   { path: "admin/users", element: <UsersScreen /> },
-  { path: "admin/dealers", element: <DealersScreen /> },
 ];
 
 beforeEach(() => {
   vi.clearAllMocks();
   vi.mocked(fetchMe).mockResolvedValue(me({ memberships: [ownerMembership()] }));
   vi.mocked(fetchUsers).mockResolvedValue([]);
-  vi.mocked(fetchDealers).mockResolvedValue([]);
 });
 
 /*
@@ -110,18 +101,5 @@ describe("the invite dialog explains itself", () => {
     await waitFor(() => {
       expect(screen.queryByText(/choose their own password/)).not.toBeInTheDocument();
     });
-  });
-});
-
-describe("the dealer dialog explains itself", () => {
-  it("offers a hint beside the title", async () => {
-    renderRoute({ path: "/acme-motors/admin/dealers", children: routes });
-
-    fireEvent.click(await screen.findByRole("button", { name: "Add dealer" }));
-
-    const dialog = await screen.findByRole("dialog");
-    fireEvent.click(within(dialog).getByRole("button", { name: "About dealerships" }));
-
-    expect(await screen.findByText(/A dealership divides DMS/)).toBeInTheDocument();
   });
 });

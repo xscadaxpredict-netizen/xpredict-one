@@ -17,9 +17,8 @@ from django.core.files.base import ContentFile
 from django.db import models
 
 from config.routers import current_tenant_db
-from conftest import TEST_TENANT_ALIAS
+from conftest import TEST_TENANT_ALIAS, add_dealer
 from core.accounts.models import User
-from core.organizations import services as org_services
 from core.organizations.models import (
     Membership,
     MembershipStatus,
@@ -75,8 +74,8 @@ def world():
     )
     # THE HEAD OFFICE IS THE ROOT (C82 amended; translated in the merge).
     head_office = Territory.objects.root_for(org, AppCode.DMS)
-    dealer_a = org_services.create_dealer(organization=org, name="Dealer A")
-    dealer_b = org_services.create_dealer(organization=org, name="Dealer B")
+    dealer_a = add_dealer(organization=org, name="Dealer A")
+    dealer_b = add_dealer(organization=org, name="Dealer B")
     def person(email, unit, *, dms=True):
         user = User.objects.create_user(
             email=email, password="x-Strong-pass-1", first_name=email[:4]

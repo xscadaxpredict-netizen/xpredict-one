@@ -22,7 +22,7 @@ pytestmark = pytest.mark.django_db
 
 
 class TestPermissions:
-    def test_there_are_84(self):
+    def test_there_are_77(self):
         """
         C42 settled on 48, C67 added seven, and C72 piece 1 added three
         (`admin.territory.view/create/update`, `permissions/0009`), and C78 one
@@ -34,13 +34,14 @@ class TestPermissions:
         Invite User one (`dms.user.create`, `0022`, 2026-11-24), and its rows'
         Edit, Deactivate and Delete three (`0023`, 2026-11-24), and Territory
         Management's four (`dms.territory.*`, `0024`, 2026-11-24), and its Delete
-        (`dms.territory.delete`, `0025`). A number
+        (`dms.territory.delete`, `0025`) -- then the Dealers screen's seven went
+        (`admin.dealer.*`, `admin.territory.*`, `0026`, 2026-11-25). A number
         that drifts is a decision nobody made -- which is exactly what this
         assertion is for, and it did its job: the seven codes were added with a
         comment saying the catalogue had grown and this test was not updated
         with them.
         """
-        assert Permission.objects.count() == 84
+        assert Permission.objects.count() == 77
 
     def test_split_by_app_as_decided(self):
         """
@@ -56,7 +57,7 @@ class TestPermissions:
         (`0024`), 53 with its Delete (`0025`). Each app
         is asserted separately so a change to one cannot quietly reach another.
         """
-        assert Permission.objects.filter(app_id=AppCode.ADMIN).count() == 30
+        assert Permission.objects.filter(app_id=AppCode.ADMIN).count() == 23
         assert Permission.objects.filter(app_id=AppCode.DMS).count() == 53
         assert Permission.objects.filter(app_id=AppCode.CRM).count() == 1
 
@@ -304,11 +305,12 @@ class TestModulesAreDerived:
 
         assert all_modules == by_role | by_standing | by_owner_alone
 
-    def test_dealers_and_roles_belong_to_the_organisation_admin_alone(self):
+    def test_roles_belong_to_the_organisation_admin_alone(self):
         """
         Pinned explicitly, because it is the surprising half of the rule above:
-        no APP role may manage dealerships or read the role catalogue. Those are
-        the organisation's own jobs, and a dealer admin never gets them.
+        no APP role may read the role catalogue. That is the organisation's own
+        job, and a dealer admin never gets it. (Dealerships were here too until
+        the Dealers screen went, 2026-11-25.)
 
         This said "standing alone" until C72 step 2c: the admin standing became
         Administration's "Organisation admin" role (Q60), which is now the one
@@ -317,7 +319,7 @@ class TestModulesAreDerived:
         reaching = {
             role.code
             for role in Role.objects.all()
-            if role.permissions.filter(module__in=["dealers", "roles"]).exists()
+            if role.permissions.filter(module="roles").exists()
         }
 
         assert reaching == {"admin.org_admin"}
@@ -356,7 +358,8 @@ class TestTheSeedCanBeRunAgain:
         panel's people permissions by their old names (renamed by `0017` and
         `0018`, C79), so re-running it writes those names again. Django never
         re-runs an applied migration; this test does, and the codes it may add
-        are exactly those.
+        are exactly those -- and the Dealers screen's four, which `0002` seeded
+        and `0026` removed with the screen (2026-11-25).
         """
         before = set(Permission.objects.values_list("code", flat=True))
         roles = Role.objects.count()
@@ -371,6 +374,10 @@ class TestTheSeedCanBeRunAgain:
             "admin.person.remove",
             "admin.person.set_status",
             "admin.person.resend_invitation",
+            "admin.dealer.view",
+            "admin.dealer.create",
+            "admin.dealer.update",
+            "admin.dealer.set_status",
         }
         assert before <= after
         assert Role.objects.count() == roles

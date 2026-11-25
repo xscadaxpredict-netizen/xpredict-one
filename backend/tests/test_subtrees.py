@@ -33,7 +33,7 @@ import pytest
 from rest_framework.test import APIClient
 
 from config.routers import current_tenant_db
-from conftest import TEST_TENANT_ALIAS
+from conftest import TEST_GSTIN, TEST_TENANT_ALIAS
 from core.accounts.models import User
 from core.organizations.models import (
     ActivationCode,
@@ -49,7 +49,7 @@ from core.organizations.selectors import (
     resolve_allowed_territories,
 )
 from core.organizations.services import (
-    create_territory,
+    add_territory,
     grant_app_access,
     invite_person,
     move_territory,
@@ -75,11 +75,13 @@ def found(code="CODE-APEX", name="Apex Motors", email="owner@apex.test", *, tena
 
 def build_tree(organization) -> SimpleNamespace:
     def add(kind, name, parent=None):
-        return create_territory(
+        return add_territory(
             organization=organization,
             kind=kind,
             name=name,
             parent_id=parent.pk if parent else None,
+            # A dealer needs its GSTIN (Territory Management, 2026-11-24).
+            gstin=TEST_GSTIN if kind == TerritoryKind.DEALER else "",
         )
 
     north = add(TerritoryKind.REGION, "North")

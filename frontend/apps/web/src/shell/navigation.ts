@@ -339,8 +339,8 @@ export const APP_CATALOG: AppDefinition[] = [
      * Users alone; Profile, Applications and Admins and Roles are about the
      * WHOLE organisation.
      *
-     * DEALERS IS NOT IN THE OWNER'S LIST. Its screen and route still exist
-     * (`/admin/dealers`), but nothing in the sidebar leads to it.
+     * NO DEALERS HERE: its screen went on 2026-11-25 (Q79). Dealers are
+     * territories, managed in DMS settings -> Territory Management.
      */
     nav: [
       { label: "Dashboard", icon: "gauge", comingSoon: true, items: [] },

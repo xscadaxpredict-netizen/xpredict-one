@@ -83,9 +83,8 @@ class TerritoryManager(MP_NodeManager):
     needs a `path` saying where it sits. So `create()` goes through
     treebeard's `add_child()` on the root, and a territory under any other
     parent goes through `add_child(parent, {...})`, which takes the parent's
-    app (`Territory.save()`). Every existing caller -- `create_dealer()` and
-    roughly a hundred test lines that make a dealership -- meant "a dealership
-    with nothing above it but the organisation", which is exactly that.
+    app (`Territory.save()`). Tests that make a dealership with nothing above
+    it but the organisation use exactly that.
 
     TREEBEARD SORTS BY `path`, NOT BY NAME. Anything that needs alphabetical
     order says `.order_by("name")`; the model's `Meta.ordering` is overridden
@@ -404,7 +403,7 @@ class Territory(MP_Node, BaseModel):
     # the holder's PAN, so storing it separately is a denormalisation -- taken
     # deliberately, because the owner wants it correctable: a dealership whose
     # GSTIN was issued against a predecessor entity's PAN is a real situation,
-    # and the derivation is a convenience rather than a law. `create_dealer`
+    # and the derivation is a convenience rather than a law. `add_territory`
     # fills it in when a write leaves it out, so the default is always right
     # and nobody has to retype ten characters they already typed.
     pan = models.CharField(max_length=10, blank=True)

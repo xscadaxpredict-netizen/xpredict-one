@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import pytest
 
-from conftest import TEST_TENANT_ALIAS
+from conftest import TEST_TENANT_ALIAS, add_dealer
 from core.accounts.models import User
 from core.api import home_for
 from core.organizations.models import (
@@ -27,7 +27,7 @@ from core.organizations.selectors import (
     permissions_for,
     resolve_allowed_territories,
 )
-from core.organizations.services import create_dealer, grant_app_access, sign_up
+from core.organizations.services import grant_app_access, sign_up
 from core.permissions.models import AppCode, Role
 
 pytestmark = [pytest.mark.django_db(databases=["default", TEST_TENANT_ALIAS])]
@@ -107,7 +107,7 @@ class TestWhichDealershipsADmsRequestSees:
 
     def test_one_dealership(self):
         result = found()
-        delhi = create_dealer(organization=result.organization, name="Delhi Motors")
+        delhi = add_dealer(organization=result.organization, name="Delhi Motors")
         member = bare_member(result.organization)
         grant_app_access(
             membership=member,
@@ -121,9 +121,9 @@ class TestWhichDealershipsADmsRequestSees:
     def test_several_dealerships_see_exactly_those(self):
         """Q10, answered: something `Membership.unit` could never hold."""
         result = found()
-        delhi = create_dealer(organization=result.organization, name="Delhi Motors")
-        jaipur = create_dealer(organization=result.organization, name="Jaipur Auto")
-        create_dealer(organization=result.organization, name="Pune Wheels")
+        delhi = add_dealer(organization=result.organization, name="Delhi Motors")
+        jaipur = add_dealer(organization=result.organization, name="Jaipur Auto")
+        add_dealer(organization=result.organization, name="Pune Wheels")
         member = bare_member(result.organization)
         grant_app_access(
             membership=member,
@@ -145,9 +145,9 @@ class TestWhichDealershipsADmsRequestSees:
 class TestWhichDealershipARequestWritesTo:
     def test_several_dealerships_pick_with_the_header_but_only_among_their_own(self):
         result = found()
-        delhi = create_dealer(organization=result.organization, name="Delhi Motors")
-        jaipur = create_dealer(organization=result.organization, name="Jaipur Auto")
-        pune = create_dealer(organization=result.organization, name="Pune Wheels")
+        delhi = add_dealer(organization=result.organization, name="Delhi Motors")
+        jaipur = add_dealer(organization=result.organization, name="Jaipur Auto")
+        pune = add_dealer(organization=result.organization, name="Pune Wheels")
         member = bare_member(result.organization)
         grant_app_access(
             membership=member,

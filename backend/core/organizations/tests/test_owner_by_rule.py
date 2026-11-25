@@ -21,12 +21,12 @@ from __future__ import annotations
 
 import pytest
 
-from conftest import TEST_TENANT_ALIAS
+from conftest import TEST_TENANT_ALIAS, add_dealer
 from core.accounts.models import User
 from core.billing.models import AppSubscription, SubscriptionStatus
 from core.organizations.models import ActivationCode, Membership, Territory
 from core.organizations.selectors import me, permissions_for, resolve_allowed_territories
-from core.organizations.services import create_dealer, grant_app_access, sign_up
+from core.organizations.services import grant_app_access, sign_up
 from core.permissions.models import AppCode, Permission, Role
 
 pytestmark = [pytest.mark.django_db(databases=["default", TEST_TENANT_ALIAS])]
@@ -116,7 +116,7 @@ class TestTheOwnerIsEverywhere:
 
     def test_even_when_their_grant_says_one_dealership(self):
         result = found()
-        delhi = create_dealer(organization=result.organization, name="Delhi Motors")
+        delhi = add_dealer(organization=result.organization, name="Delhi Motors")
         grant_app_access(
             membership=result.membership,
             app=AppCode.DMS,

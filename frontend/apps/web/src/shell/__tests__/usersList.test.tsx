@@ -29,10 +29,6 @@ vi.mock("../admin/api/users", async (importOriginal) => ({
   setUserStatus: vi.fn(),
 }));
 
-vi.mock("../admin/api/dealers", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("../admin/api/dealers")>()),
-  fetchDealers: vi.fn().mockResolvedValue([]),
-}));
 
 vi.mock("../admin/api/roles", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../admin/api/roles")>()),

@@ -18,7 +18,7 @@ import importlib
 import pytest
 from django.apps import apps as django_apps
 
-from conftest import TEST_TENANT_ALIAS
+from conftest import TEST_TENANT_ALIAS, add_dealer
 from core.accounts.models import User
 from core.organizations.models import (
     ActivationCode,
@@ -29,7 +29,6 @@ from core.organizations.models import (
 )
 from core.organizations.services import (
     accept_invitation,
-    create_dealer,
     invite_person,
     sign_up,
     update_person,
@@ -92,7 +91,7 @@ class TestItLetsAHealthyDatabaseThrough:
         let through.
         """
         result = found()
-        delhi = create_dealer(organization=result.organization, name="Delhi Motors")
+        delhi = add_dealer(organization=result.organization, name="Delhi Motors")
         join(result, "ravi@apex.test", unit=delhi)
         anita = join(result, "anita@apex.test")
         grant = anita.grants.get(app_id="dms")

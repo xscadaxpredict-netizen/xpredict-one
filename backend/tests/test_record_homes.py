@@ -44,7 +44,7 @@ from config.routers import current_tenant_db
 from conftest import TEST_TENANT_ALIAS
 from core.api import home_for
 from core.organizations.models import TerritoryKind
-from core.organizations.services import create_territory
+from core.organizations.services import add_territory
 from core.permissions.models import AppCode
 from products.dms.ecommerce.models import EcommerceOrder, EcommerceOrderItem
 from products.dms.homes import DEALERSHIP_RECORD
@@ -243,7 +243,7 @@ class TestFilingUsesTheRecordTypesOwnKinds:
         """
         result = found(tenant=True)
         t = build_tree(result.organization)
-        store = create_territory(
+        store = add_territory(
             organization=result.organization,
             kind=TerritoryKind.WAREHOUSE,
             name="South store",

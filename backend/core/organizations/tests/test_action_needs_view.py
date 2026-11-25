@@ -37,15 +37,6 @@ ENDPOINTS = [
         "admin.user.view",
     ),
     ("get", f"admin/users/{ANY_ID}/invite-link/", "admin.user.create", "admin.user.view"),
-    ("put", f"admin/dealers/{ANY_ID}/", "admin.dealer.update", "admin.dealer.view"),
-    ("post", f"admin/dealers/{ANY_ID}/close/", "admin.dealer.set_status", "admin.dealer.view"),
-    ("patch", f"admin/territories/{ANY_ID}/", "admin.territory.update", "admin.territory.view"),
-    (
-        "post",
-        f"admin/territories/{ANY_ID}/move/",
-        "admin.territory.update",
-        "admin.territory.view",
-    ),
 ]
 
 

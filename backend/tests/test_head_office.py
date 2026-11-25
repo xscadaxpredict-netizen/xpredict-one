@@ -17,11 +17,11 @@ from __future__ import annotations
 import pytest
 from django.db import IntegrityError, transaction
 
-from conftest import TEST_TENANT_ALIAS
+from conftest import TEST_TENANT_ALIAS, add_dealer
 from core.api import home_for
 from core.organizations.models import Territory, TerritoryKind
-from core.organizations.selectors import dealers_for
-from core.organizations.services import _resolve_unit, create_dealer
+from core.organizations.selectors import territory_tree
+from core.organizations.services import _resolve_unit
 from core.permissions.models import AppCode
 from products.dms.sales.models import Customer
 from shared.exceptions import NotFoundError
@@ -78,7 +78,7 @@ def test_org_level_work_lands_in_the_head_office_even_with_no_dealers():
 
 def test_org_level_work_does_not_fall_into_the_oldest_dealer():
     result = found()
-    create_dealer(organization=result.organization, name="Chennai - Guindy")
+    add_dealer(organization=result.organization, name="Chennai - Guindy")
 
     assert filed_at(result) == Territory.objects.root_for(result.organization, AppCode.DMS).id
 
@@ -86,8 +86,8 @@ def test_org_level_work_does_not_fall_into_the_oldest_dealer():
 def test_an_org_level_person_may_choose_a_dealer_of_their_own_org_only():
     result = found()
     other = found(code="CODE-OTHER", name="Other", email="owner@other.test")
-    mine = create_dealer(organization=result.organization, name="Guindy")
-    theirs = create_dealer(organization=other.organization, name="Foreign")
+    mine = add_dealer(organization=result.organization, name="Guindy")
+    theirs = add_dealer(organization=other.organization, name="Foreign")
     root = Territory.objects.root_for(result.organization, AppCode.DMS).id
 
     assert filed_at(result, requested=str(mine.id)) == mine.id
@@ -97,7 +97,7 @@ def test_an_org_level_person_may_choose_a_dealer_of_their_own_org_only():
 
 def test_a_dealer_user_always_works_in_their_own_dealer():
     result = found()
-    mine = create_dealer(organization=result.organization, name="Guindy")
+    mine = add_dealer(organization=result.organization, name="Guindy")
     clerk = person(result.organization, "clerk@apex.test", [mine], role="dms.sales_representative")
 
     assert filed_at(result, membership=clerk) == mine.id
@@ -106,8 +106,9 @@ def test_a_dealer_user_always_works_in_their_own_dealer():
 def test_the_head_office_is_not_a_dealer():
     result = found()
     root = Territory.objects.root_for(result.organization, AppCode.DMS)
-    create_dealer(organization=result.organization, name="Guindy")
+    add_dealer(organization=result.organization, name="Guindy")
 
-    assert [dealer.name for dealer in dealers_for(result.organization)] == ["Guindy"]
+    dealers = [t.name for t in territory_tree(result.organization) if t.kind == "dealer"]
+    assert dealers == ["Guindy"]
     with pytest.raises(NotFoundError):
         _resolve_unit(result.organization, root.id)

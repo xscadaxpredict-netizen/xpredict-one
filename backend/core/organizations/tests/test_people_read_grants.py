@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import pytest
 
-from conftest import TEST_TENANT_ALIAS
+from conftest import TEST_TENANT_ALIAS, add_dealer
 from core.accounts.models import User
 from core.organizations.models import (
     ActivationCode,
@@ -20,10 +20,9 @@ from core.organizations.models import (
     MembershipRole,
     Territory,
 )
-from core.organizations.selectors import can_manage_person, dealers_for, org_users
+from core.organizations.selectors import can_manage_person, org_users, territory_tree
 from core.organizations.services import (
     accept_invitation,
-    create_dealer,
     grant_app_access,
     invite_person,
     remove_person,
@@ -121,7 +120,7 @@ class TestAPersonMayHoldNoApp:
     def test_only_an_organisation_wide_admin_manages_somebody_with_no_app(self):
         result = found()
         member = accept_invitation(token=invite(result).token, password=PASSWORD).membership
-        delhi = create_dealer(organization=result.organization, name="Delhi")
+        delhi = add_dealer(organization=result.organization, name="Delhi")
 
         assert can_manage_person(result.membership, member)
         assert not can_manage_person(dealer_admin(result, delhi), member)
@@ -145,8 +144,8 @@ class TestAPersonMayHoldNoApp:
 class TestThePersonSitsWhereTheirGrantsSay:
     def test_old_field_says_jaipur_grant_says_delhi(self):
         result = found()
-        delhi = create_dealer(organization=result.organization, name="Delhi Motors")
-        jaipur = create_dealer(organization=result.organization, name="Jaipur Auto")
+        delhi = add_dealer(organization=result.organization, name="Delhi Motors")
+        jaipur = add_dealer(organization=result.organization, name="Jaipur Auto")
         ravi = dms_at(person(result, "ravi@apex.test"), [delhi])
 
         assert can_manage_person(dealer_admin(result, delhi), ravi) is True
@@ -155,8 +154,8 @@ class TestThePersonSitsWhereTheirGrantsSay:
     def test_removing_them_follows_the_grant_not_the_old_field(self):
         """The services, not just the helper: 404 from the wrong dealership."""
         result = found()
-        delhi = create_dealer(organization=result.organization, name="Delhi Motors")
-        jaipur = create_dealer(organization=result.organization, name="Jaipur Auto")
+        delhi = add_dealer(organization=result.organization, name="Delhi Motors")
+        jaipur = add_dealer(organization=result.organization, name="Jaipur Auto")
         ravi = dms_at(person(result, "ravi@apex.test"), [delhi])
 
         with pytest.raises(NotFoundError):
@@ -173,7 +172,7 @@ class TestThePersonSitsWhereTheirGrantsSay:
 
     def test_the_users_list_shows_the_grants_dealership(self):
         result = found()
-        delhi = create_dealer(organization=result.organization, name="Delhi Motors")
+        delhi = add_dealer(organization=result.organization, name="Delhi Motors")
         ravi = dms_at(person(result, "ravi@apex.test"), [delhi])
         da = dealer_admin(result, delhi)
 
@@ -185,8 +184,8 @@ class TestThePersonSitsWhereTheirGrantsSay:
 
     def test_somebody_at_two_dealerships_needs_an_admin_covering_both(self):
         result = found()
-        delhi = create_dealer(organization=result.organization, name="Delhi Motors")
-        jaipur = create_dealer(organization=result.organization, name="Jaipur Auto")
+        delhi = add_dealer(organization=result.organization, name="Delhi Motors")
+        jaipur = add_dealer(organization=result.organization, name="Jaipur Auto")
         both = dms_at(person(result, "both@apex.test"), [delhi, jaipur])
 
         assert can_manage_person(dealer_admin(result, delhi), both) is False
@@ -194,7 +193,7 @@ class TestThePersonSitsWhereTheirGrantsSay:
 
     def test_head_office_people_are_not_a_dealer_admins(self):
         result = found()
-        delhi = create_dealer(organization=result.organization, name="Delhi Motors")
+        delhi = add_dealer(organization=result.organization, name="Delhi Motors")
         wide = dms_at(
             person(result, "wide@apex.test"),
             [Territory.objects.root_for(result.organization, AppCode.DMS)],
@@ -205,20 +204,24 @@ class TestThePersonSitsWhereTheirGrantsSay:
 
     def test_an_older_member_with_no_grants_is_head_offices_alone(self):
         result = found()
-        delhi = create_dealer(organization=result.organization, name="Delhi Motors")
+        delhi = add_dealer(organization=result.organization, name="Delhi Motors")
         stray = person(result, "stray@apex.test")
 
         assert can_manage_person(dealer_admin(result, delhi), stray) is False
         assert can_manage_person(result.membership, stray) is True
 
 
-class TestTheDealersScreenCountsByGrants:
+class TestTheTreeCountsPeopleByGrants:
     def test_a_person_counts_where_their_grant_places_them(self):
         result = found()
-        delhi = create_dealer(organization=result.organization, name="Delhi Motors")
-        create_dealer(organization=result.organization, name="Jaipur Auto")
+        delhi = add_dealer(organization=result.organization, name="Delhi Motors")
+        add_dealer(organization=result.organization, name="Jaipur Auto")
         dms_at(person(result, "ravi@apex.test"), [delhi])
 
-        counts = {d.name: d.user_count for d in dealers_for(result.organization)}
+        counts = {
+            t.name: t.people_count
+            for t in territory_tree(result.organization)
+            if t.kind == "dealer"
+        }
 
         assert counts == {"Delhi Motors": 1, "Jaipur Auto": 0}

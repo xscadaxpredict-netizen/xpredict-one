@@ -18,7 +18,7 @@ from __future__ import annotations
 
 import pytest
 
-from conftest import TEST_TENANT_ALIAS
+from conftest import TEST_TENANT_ALIAS, add_dealer
 from core.organizations.exceptions import RoleScopeMismatchError
 from core.organizations.models import (
     ActivationCode,
@@ -31,7 +31,6 @@ from core.organizations.models import (
 from core.organizations.selectors import reach, standing
 from core.organizations.services import (
     accept_invitation,
-    create_dealer,
     invite_person,
     sign_up,
     update_person,
@@ -107,7 +106,7 @@ class TestNothingLandsInTheOldCopy:
 
     def test_joining_at_a_dealership(self):
         result = found()
-        delhi = create_dealer(organization=result.organization, name="Delhi Motors")
+        delhi = add_dealer(organization=result.organization, name="Delhi Motors")
 
         member = join(result, unit=delhi)
 
@@ -124,8 +123,8 @@ class TestNothingLandsInTheOldCopy:
 
     def test_editing_moves_the_grant_and_nothing_else(self):
         result = found()
-        delhi = create_dealer(organization=result.organization, name="Delhi Motors")
-        jaipur = create_dealer(organization=result.organization, name="Jaipur Auto")
+        delhi = add_dealer(organization=result.organization, name="Delhi Motors")
+        jaipur = add_dealer(organization=result.organization, name="Jaipur Auto")
         member = join(result, unit=delhi)
 
         edit(result, member, unit=jaipur)
@@ -157,7 +156,7 @@ class TestOwnersAndAdminsAreOrganisationWide:
     def test_a_pending_person_is_neither_made_an_admin_nor_placed(self):
         """C83: an invitation is a person -- standing and place wait until they join."""
         result = found()
-        delhi = create_dealer(organization=result.organization, name="Delhi Motors")
+        delhi = add_dealer(organization=result.organization, name="Delhi Motors")
         invitation = invite(result)
 
         for unit, role, field in ((None, MembershipRole.ADMIN, "role"), (delhi, None, "unit_id")):
@@ -177,7 +176,7 @@ class TestOwnersAndAdminsAreOrganisationWide:
 
     def test_editing_somebody_into_an_admin_at_a_dealership_is_refused(self):
         result = found()
-        delhi = create_dealer(organization=result.organization, name="Delhi Motors")
+        delhi = add_dealer(organization=result.organization, name="Delhi Motors")
         member = join(result, unit=delhi)
 
         with pytest.raises(RoleScopeMismatchError):
@@ -185,7 +184,7 @@ class TestOwnersAndAdminsAreOrganisationWide:
 
     def test_placing_the_owner_at_a_dealership_is_refused(self):
         result = found()
-        delhi = create_dealer(organization=result.organization, name="Delhi Motors")
+        delhi = add_dealer(organization=result.organization, name="Delhi Motors")
 
         with pytest.raises(RoleScopeMismatchError):
             edit(result, result.membership, unit=delhi)

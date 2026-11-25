@@ -887,67 +887,11 @@ def can_manage_person(actor: Membership, person: Membership | Invitation) -> boo
     return _person_inside(administers_within(actor), person)
 
 
-def dealers_for(organization: Organization) -> list[Territory]:
-    """
-    Every dealership in this organization, with `user_count` annotated.
-
-    `user_count` IS THE PEOPLE PLACED HERE by a grant. Pending invitations do
-    not count: since C83 an invitation is a person with no place, so none is
-    at a dealership until they have joined and been given an app there.
-
-    DISABLED MEMBERSHIPS COUNT. They are switched off, not gone -- C24 is
-    explicit that removing somebody deletes the membership -- so a dealership
-    with three disabled people has three people, and reopening them changes no
-    count.
-
-    A SUBQUERY RATHER THAN A JOIN, so adding a second count later cannot
-    multiply the rows (the annotate-twice bug this used to guard against).
-    """
-    # PEOPLE PLACED HERE BY A GRANT (C72 step 2d), counted once each however
-    # many of their apps place them here -- not `Membership.unit`.
-    memberships = (
-        MembershipAppTerritory.objects.filter(territory=OuterRef("pk"))
-        .order_by()
-        .values("territory")
-        .annotate(total=Count("app_access__membership", distinct=True))
-        .values("total")
-    )
-
-    # ORDERED BY NAME EXPLICITLY. This used to come from `Meta.ordering`; the
-    # territory manager now sorts by tree position, so alphabetical order has
-    # to be asked for. DEALERS ONLY -- the dealers screen lists dealerships, and
-    # the rest of the tree has its own endpoint (C72).
-    return list(
-        Territory.objects.of(organization, AppCode.DMS).filter(
-            kind=TerritoryKind.DEALER, is_head_office__isnull=True
-        )
-        .annotate(
-            user_count=Coalesce(Subquery(memberships, output_field=IntegerField()), Value(0))
-        )
-        .order_by("name")
-    )
-
-
-def territories_for(organization: Organization) -> list[Territory]:
-    """
-    Every territory in this organization's tree, in tree order (C72).
-
-    TREE ORDER, NOT NAME ORDER: each box comes after its parent, which is what
-    lets a client build the tree in one pass over `parent_id`. That is the
-    treebeard manager's own ordering (`path`), asked for explicitly anyway so
-    the contract does not rest on a default.
-    """
-    # DMS'S TREE (every app has its own, 2026-11-24): territories are drawn in
-    # DMS only (C82); the Admin panel's and CRM's roots hold people, not places.
-    territories = list(Territory.objects.of(organization, AppCode.DMS).order_by("path"))
-    return _with_parent_ids(organization, territories)
-
-
 def territory_tree(organization: Organization) -> list[Territory]:
     """
     DMS settings -> Territory Management (2026-11-24): DMS's whole tree in tree
     order, each box with `parent_id` and `people_count` -- the people placed AT
-    it by a DMS grant, counted once each, the same count as `dealers_for()`'s
+    it by a DMS grant, counted once each, the same count the old Dealers list showed as its
     `user_count`. What is under a box, and the people there, the screen adds up
     from the tree itself.
 

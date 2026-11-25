@@ -23,7 +23,6 @@ import { ModuleRoutes, type ModuleRoute } from "../routing";
 import { AdminsAndRolesScreen } from "./screens/AdminsAndRolesScreen";
 import { AssignAdminScreen } from "./screens/AssignAdminScreen";
 import { ApplicationsScreen } from "./screens/ApplicationsScreen";
-import { DealersScreen } from "./screens/DealersScreen";
 import { EditRoleScreen, NewRoleScreen } from "./screens/NewRoleScreen";
 import { ProfileScreen } from "./screens/ProfileScreen";
 import { UsersScreen } from "./screens/UsersScreen";
@@ -78,8 +77,6 @@ const routes: ModuleRoute[] = [
   { path: "admins-and-roles/admin/:personId", section: "admin", element: <AdminsAndRolesScreen /> },
   // The old Roles address, kept for links and bookmarks: now the Roles tab.
   { path: "roles", section: "role", element: <Navigate to="../admins-and-roles/roles" replace /> },
-  { path: "dealers", permission: "admin.dealer.view", element: <DealersScreen /> },
-  { path: "dealers/:dealerId", permission: "admin.dealer.view", element: <DealersScreen /> },
 ];
 
 export default function AdminRoutes() {

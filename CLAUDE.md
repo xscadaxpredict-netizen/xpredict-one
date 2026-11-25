@@ -150,7 +150,11 @@ its own step (Q79). **A territory MOVES IN EDIT** (its "Parent territory"; `edit
 there is no separate Move. **DELETE TERRITORY transfers first:** every DMS record at it (all
 `TerritoryScopedModel` types, found automatically) and its people go to the chosen territory, then
 it is deleted -- refused while territories sit under it, never the organisation
-(`dms.territory.delete`, owner only). DMS settings' screens import Admin panel pieces that the
+(`dms.territory.delete`, owner only). **A CLOSED TERRITORY'S RECORDS ARE READ-ONLY** (C63): any
+save/delete of a record filed there is refused (`TerritoryClosedError`, 409) until it is reopened.
+**THE ADMIN PANEL'S DEALERS SCREEN IS GONE** (Q79, 2026-11-25): no `/admin/dealers/`,
+`/admin/territories/`, `create_dealer()`, `dealers_for()` or `admin.dealer.*` / `admin.territory.*`
+(`permissions/0026`); tests build a dealer with `conftest.add_dealer()`. DMS settings' screens import Admin panel pieces that the
 eslint boundary refuses (Q81).
 
 **ASSIGNING PEOPLE TO TERRITORIES (2026-11-24, C82 amended): ONLY APP ROLES, and NO TERRITORY
@@ -494,8 +498,8 @@ user row on every request and refuses an inactive one, so **disabling somebody t
 effect on their next request**, not after a token expires. The 15-minute access
 lifetime is how long a STOLEN token survives a logout.
 
-**Gates:** `npm run test -w web` (541), `npm run typecheck -w web`, and in `backend/`:
-`pytest` (1283, 2026-11-25, delete territory), `ruff check .`, `manage.py makemigrations --check`, and
+**Gates:** `npm run test -w web` (516), `npm run typecheck -w web`, and in `backend/`:
+`pytest` (1214, 2026-11-25, Dealers screen removed), `ruff check .`, `manage.py makemigrations --check`, and
 `.venv/Scripts/lint-imports.exe` — **not** `python -m importlinter.cli`, which exits 0
 without running. **Where Windows blocks the `.exe` ("Permission denied"), call the
 function:** `.venv/Scripts/python.exe -c "import sys; from importlinter.cli import

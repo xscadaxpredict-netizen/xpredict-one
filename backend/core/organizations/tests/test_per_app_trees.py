@@ -28,7 +28,7 @@ from core.organizations.models import (
     Territory,
     TerritoryKind,
 )
-from core.organizations.selectors import territories_for
+from core.organizations.selectors import territory_tree
 from core.organizations.services import grant_app_access, sign_up
 from core.permissions.models import AppCode, Role
 
@@ -200,7 +200,7 @@ class TestDmsScreensSeeDmsTree:
             organization=result.organization, kind=TerritoryKind.DEALER, name="Chennai"
         )
 
-        listed = territories_for(result.organization)
+        listed = territory_tree(result.organization)
 
         assert {t.app_id for t in listed} == {AppCode.DMS}
         assert [t.display_name for t in listed] == ["Acme Water", "Chennai"]

@@ -21,7 +21,7 @@ import importlib
 
 import pytest
 
-from conftest import TEST_TENANT_ALIAS
+from conftest import TEST_TENANT_ALIAS, add_dealer
 from core.organizations.exceptions import (
     DealerScopedAppError,
     GrantNeedsTerritoryError,
@@ -39,8 +39,7 @@ from core.organizations.models import (
 )
 from core.organizations.services import (
     accept_invitation,
-    create_dealer,
-    create_territory,
+    add_territory,
     grant_app_access,
     invite_person,
     remove_person,
@@ -111,8 +110,8 @@ def join(result, *, email: str, unit=None, apps=None, role_name="member") -> Mem
 class TestTheRules:
     def test_a_grant_carries_its_role_and_its_territories(self):
         result = found()
-        delhi = create_dealer(organization=result.organization, name="Delhi Motors")
-        jaipur = create_dealer(organization=result.organization, name="Jaipur Auto")
+        delhi = add_dealer(organization=result.organization, name="Delhi Motors")
+        jaipur = add_dealer(organization=result.organization, name="Jaipur Auto")
         member = join(result, email="meera@apex.test")
 
         grant_app_access(
@@ -126,8 +125,8 @@ class TestTheRules:
     def test_granting_again_replaces_never_merges(self):
         """A territory left out is a territory removed; a placement must be able to shrink."""
         result = found()
-        delhi = create_dealer(organization=result.organization, name="Delhi Motors")
-        jaipur = create_dealer(organization=result.organization, name="Jaipur Auto")
+        delhi = add_dealer(organization=result.organization, name="Delhi Motors")
+        jaipur = add_dealer(organization=result.organization, name="Jaipur Auto")
         member = join(result, email="meera@apex.test")
         grant_app_access(
             membership=member, app="dms", role=role("dms.manager"), territories=[delhi, jaipur]
@@ -163,7 +162,7 @@ class TestTheRules:
     def test_another_organisations_territory_is_a_404(self):
         apex = found()
         bharat = found("Bharat Auto", "owner@bharat.test", "CODE-BHARAT")
-        theirs = create_dealer(organization=bharat.organization, name="Pune Wheels")
+        theirs = add_dealer(organization=bharat.organization, name="Pune Wheels")
 
         with pytest.raises(NotFoundError):
             grant_app_access(
@@ -192,7 +191,7 @@ class TestADealershipsPeopleGetDmsOnly:
 
     def test_a_dealer_placement_in_an_app_without_territories_is_refused(self):
         result = found()
-        delhi = create_dealer(organization=result.organization, name="Delhi Motors")
+        delhi = add_dealer(organization=result.organization, name="Delhi Motors")
         member = join(result, email="meera@apex.test")
 
         with pytest.raises(DealerScopedAppError):
@@ -202,8 +201,8 @@ class TestADealershipsPeopleGetDmsOnly:
 
     def test_a_warehouse_inside_a_dealer_counts_as_the_dealership(self):
         result = found()
-        delhi = create_dealer(organization=result.organization, name="Delhi Motors")
-        store = create_territory(
+        delhi = add_dealer(organization=result.organization, name="Delhi Motors")
+        store = add_territory(
             organization=result.organization,
             kind=TerritoryKind.WAREHOUSE,
             name="Delhi Store",
@@ -218,7 +217,7 @@ class TestADealershipsPeopleGetDmsOnly:
 
     def test_dms_at_a_dealer_then_any_crm_is_refused(self):
         result = found()
-        delhi = create_dealer(organization=result.organization, name="Delhi Motors")
+        delhi = add_dealer(organization=result.organization, name="Delhi Motors")
         member = join(result, email="meera@apex.test", unit=delhi)
         root = Territory.objects.root_for(result.organization, AppCode.CRM)
 
@@ -229,7 +228,7 @@ class TestADealershipsPeopleGetDmsOnly:
 
     def test_crm_first_then_dms_at_a_dealer_is_refused(self):
         result = found()
-        delhi = create_dealer(organization=result.organization, name="Delhi Motors")
+        delhi = add_dealer(organization=result.organization, name="Delhi Motors")
         root = Territory.objects.root_for(result.organization, AppCode.CRM)
         grant_app_access(
             membership=result.membership, app="crm", role=role("crm.member"), territories=[root]
@@ -277,7 +276,7 @@ class TestTheGrantsAreTheWholeRecord:
 
     def test_accepting_an_invitation_at_a_dealership(self):
         result = found()
-        delhi = create_dealer(organization=result.organization, name="Delhi Motors")
+        delhi = add_dealer(organization=result.organization, name="Delhi Motors")
 
         member = join(result, email="ravi@apex.test", unit=delhi)
 
@@ -295,8 +294,8 @@ class TestTheGrantsAreTheWholeRecord:
 
     def test_editing_a_person_moves_them_and_changes_their_apps(self):
         result = found()
-        delhi = create_dealer(organization=result.organization, name="Delhi Motors")
-        jaipur = create_dealer(organization=result.organization, name="Jaipur Auto")
+        delhi = add_dealer(organization=result.organization, name="Delhi Motors")
+        jaipur = add_dealer(organization=result.organization, name="Jaipur Auto")
         member = join(result, email="ravi@apex.test", unit=delhi)
 
         update_person(

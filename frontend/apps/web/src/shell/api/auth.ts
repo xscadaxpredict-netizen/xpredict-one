@@ -384,7 +384,7 @@ const FAKE_ME: Me = {
            * promising it is the same shape of bug as the role summary that
            * advertised a password capability the platform forbids.
            */
-          permissions: ["admin.user.create", "admin.dealer.create", "admin.role.view"],
+          permissions: ["admin.user.create", "admin.role.view"],
         },
       ],
     },

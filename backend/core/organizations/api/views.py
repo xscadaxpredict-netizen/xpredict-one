@@ -14,7 +14,6 @@ from __future__ import annotations
 
 from typing import ClassVar
 
-from django.core.exceptions import ValidationError
 from rest_framework import status
 from rest_framework.request import Request
 from rest_framework.response import Response
@@ -29,9 +28,6 @@ from core.organizations.api.serializers import (
     AssignAppsSerializer,
     AssignUsersSerializer,
     ChangeAdminRoleSerializer,
-    DealerCreateSerializer,
-    DealerDetailsSerializer,
-    DealerSerializer,
     InviteLinkSerializer,
     InviteSerializer,
     NewPanelRoleSerializer,
@@ -40,22 +36,16 @@ from core.organizations.api.serializers import (
     PanelRoleSerializer,
     PersonDetailsSerializer,
     RoleBuilderSerializer,
-    TerritoryCreateSerializer,
-    TerritoryMoveSerializer,
-    TerritoryRenameSerializer,
-    TerritorySerializer,
 )
-from core.organizations.models import GrantStatus, MembershipStatus, Territory, TerritoryKind
+from core.organizations.models import GrantStatus, MembershipStatus
 from core.organizations.selectors import (
     admin_panel_roles,
     admins_for,
     application_members,
     applications_for,
-    dealers_for,
     org_users,
     organization_profile,
     role_builder,
-    territories_for,
 )
 from core.organizations.services import (
     assign_admin_role,
@@ -63,28 +53,20 @@ from core.organizations.services import (
     assign_users_to_app,
     change_admin_role,
     change_app_role,
-    close_dealer,
     create_admin_role,
-    create_dealer,
-    create_territory,
     delete_admin_role,
     invitation_for_link,
     invitation_link,
     invite_person,
-    move_territory,
     remove_person,
-    rename_territory,
-    reopen_dealer,
     resend_invitation,
     set_app_status,
     set_person_status,
     unassign_admin_role,
     unassign_app,
     update_admin_role,
-    update_dealer,
     update_person_details,
 )
-from core.permissions.models import AppCode
 from shared.exceptions import not_found
 
 
@@ -118,268 +100,6 @@ class ProvisioningView(OrgScopedAPIView):
     # binding was made from.
     def get(self, request: Request, org_slug: str) -> Response:
         return Response({"is_ready": self.organization.is_ready})
-
-
-class DealersView(OrgScopedAPIView):
-    """
-    List this organization's dealerships, or add one.
-
-    ORG-LEVEL, NOT DEALER-LEVEL (C3, C23). Only org standing grants
-    `admin.dealer.*` -- the DMS System administrator role grants the `users`
-    module and nothing else -- so a dealer admin running one branch cannot
-    invent another, and gets 403 here while managing their own people happily.
-
-    NO SCOPE CHECK, and none is possible: a dealership IS the scope. The
-    organization has been verified by the base class and every dealership
-    returned belongs to it, which is the whole isolation story for this
-    endpoint.
-    """
-
-    required_permissions: ClassVar[list[str]] = ["admin.dealer.view"]
-    # Adding one needs more than reading the list, and the base class checks
-    # this before `post()` is entered rather than inside it.
-    method_permissions: ClassVar[dict[str, list[str]]] = {
-        "POST": ["admin.dealer.create"],
-    }
-
-    def get(self, request: Request, org_slug: str) -> Response:
-        dealers = dealers_for(self.organization)
-        return Response(DealerSerializer(dealers, many=True).data)
-
-    def post(self, request: Request, org_slug: str) -> Response:
-        # CREATE takes an optional `parent_id` -- the region it sits in (C72).
-        # Editing does not: moving is the territories endpoint's job.
-        payload = DealerCreateSerializer(data=request.data)
-        payload.is_valid(raise_exception=True)
-
-        dealer = create_dealer(organization=self.organization, **payload.validated_data)
-
-        # Re-read through the selector so the response carries `user_count`,
-        # which is annotated rather than stored. Returning the created row
-        # directly would answer without the field and the list would gain a
-        # column the create response lacked.
-        created = next(d for d in dealers_for(self.organization) if d.pk == dealer.pk)
-        return Response(DealerSerializer(created).data, status=status.HTTP_201_CREATED)
-
-
-class DealerDetailView(OrgScopedAPIView):
-    """
-    Edit one dealership.
-
-    NO CLOSE OR REOPEN (C52). Q21 has not said what closing does to a
-    dealership's people or its records, and `status` is therefore not writable
-    through any endpoint -- the frontend keeps its fake for those two buttons.
-    """
-
-    # The page's view, then the act: you cannot act on a page you cannot see (C79 rule 5).
-    required_permissions: ClassVar[list[str]] = ["admin.dealer.view", "admin.dealer.update"]
-
-    def put(self, request: Request, org_slug: str, dealer_id: str) -> Response:
-        dealer = self._get_dealer(dealer_id)
-
-        payload = DealerDetailsSerializer(data=request.data)
-        payload.is_valid(raise_exception=True)
-
-        update_dealer(dealer=dealer, **payload.validated_data)
-
-        updated = next(d for d in dealers_for(self.organization) if d.pk == dealer.pk)
-        return Response(DealerSerializer(updated).data)
-
-    def _get_dealer(self, dealer_id: str) -> Territory:
-        """
-        FILTERED BY ORGANIZATION, which is the isolation. A bare
-        `get(pk=dealer_id)` would happily return another customer's dealership
-        to anybody who guessed a UUID, and the only thing standing between
-        those two lines is remembering to write this one.
-
-        404 rather than 403 for a dealership in another organization: a record
-        the caller may not see has to be indistinguishable from one that never
-        existed. A malformed UUID is the same 404 for the same reason -- a 400
-        would confirm that a well-formed id is the thing being looked up.
-        """
-        try:
-            # DEALERS ONLY -- and never one of the head offices `main` created
-            # (C-local-4) while they are folded into the root (C82 amended,
-            # `retire_head_offices`).
-            return Territory.objects.get(
-                id=dealer_id,
-                organization=self.organization,
-                app_id=AppCode.DMS,
-                kind=TerritoryKind.DEALER,
-                is_head_office__isnull=True,
-            )
-        except (Territory.DoesNotExist, ValidationError, ValueError):
-            raise not_found("Dealer") from None
-
-
-class DealerStatusView(OrgScopedAPIView):
-    """
-    Close a dealership, or open it again (C63, answering Q21).
-
-    THE TWO ENDPOINTS C52 DECLINED TO BUILD. They were held back for nine
-    sessions because Q21 had not said what closing DOES -- and shipping the
-    obvious status flag would have answered it by accident, which is a worse
-    outcome than the frontend keeping a fake. The answer is now recorded: its
-    people lose access entirely, its records persist and stay readable to
-    organisation-level people, reopening restores exactly what was there, and
-    there is no delete, ever.
-
-    A SEPARATE PERMISSION FROM EDITING, and it already existed:
-    `admin.dealer.set_status` has been in the catalogue since PR #13, seeded,
-    granted, and used by nothing. Shutting a branch is not the same act as
-    correcting its address, and the catalogue said so before there was anywhere
-    to enforce it.
-
-    ORG-LEVEL ONLY, which needs no check here. Only org standing grants
-    `admin.dealer.*` (C3, C23) -- the DMS System administrator role grants the
-    `users` module and nothing else -- so a dealer admin is refused by the
-    permission layer, and cannot close their own branch to lock out a
-    colleague.
-
-    DEALERSHIP DETAILS STAY EDITABLE WHILE CLOSED (C63). Closing is about
-    access and operations, not about freezing the record: a typo in a closed
-    branch's name should not need reopening to fix. `DealerDetailView` is
-    therefore unchanged, deliberately.
-    """
-
-    # The page's view, then the act (C79 rule 5).
-    required_permissions: ClassVar[list[str]] = ["admin.dealer.view", "admin.dealer.set_status"]
-
-    # The whole vocabulary this route accepts, in the shape `UserStatusView`
-    # established: a bare `else` would turn a typo in a URL into "close", and
-    # closing a branch by misspelling a word is not a mistake worth allowing.
-    _ACTIONS: ClassVar[dict[str, object]] = {
-        "close": close_dealer,
-        "reopen": reopen_dealer,
-    }
-
-    def post(self, request: Request, org_slug: str, dealer_id: str, action: str) -> Response:
-        if action not in self._ACTIONS:
-            # 404, like any other URL that does not exist. The route is generic
-            # enough to match it; the view is what makes it not exist.
-            raise not_found("Dealer")
-
-        dealer = self._get_dealer(dealer_id)
-        self._ACTIONS[action](dealer=dealer)
-
-        # Re-read through the selector so the response carries `user_count`,
-        # which is annotated rather than stored -- the same reason the create
-        # endpoint does it. The count is also what the screen shows beside the
-        # status it has just changed, so answering without it would blank a
-        # column on exactly the row somebody is looking at.
-        updated = next(d for d in dealers_for(self.organization) if d.pk == dealer.pk)
-        return Response(DealerSerializer(updated).data)
-
-    def _get_dealer(self, dealer_id: str) -> Territory:
-        """The same filter-by-organization isolation as `DealerDetailView`."""
-        try:
-            # DEALERS ONLY -- and never one of the head offices `main` created
-            # (C-local-4) while they are folded into the root (C82 amended,
-            # `retire_head_offices`).
-            return Territory.objects.get(
-                id=dealer_id,
-                organization=self.organization,
-                app_id=AppCode.DMS,
-                kind=TerritoryKind.DEALER,
-                is_head_office__isnull=True,
-            )
-        except (Territory.DoesNotExist, ValidationError, ValueError):
-            raise not_found("Dealer") from None
-
-
-class _TerritoryLookup:
-    """The one way a territory view finds its territory: inside this organization, or 404."""
-
-    def _get_territory(self, territory_id: str) -> Territory:
-        # The same isolation as `_get_dealer`: paths are unique across every
-        # organisation, so an id alone would reach another customer's tree.
-        try:
-            # DMS'S TREE (every app has its own, 2026-11-24): another app's root
-            # is "no such territory" here, the same 404.
-            return Territory.objects.get(
-                id=territory_id, organization=self.organization, app_id=AppCode.DMS
-            )
-        except (Territory.DoesNotExist, ValidationError, ValueError):
-            raise not_found("Territory") from None
-
-    def _respond_with(
-        self, territory: Territory, status_code: int = status.HTTP_200_OK
-    ) -> Response:
-        # Re-read through the selector so the response carries `parent_id`,
-        # which is derived from the path rather than stored.
-        fresh = next(t for t in territories_for(self.organization) if t.pk == territory.pk)
-        return Response(TerritorySerializer(fresh).data, status=status_code)
-
-
-class TerritoriesView(_TerritoryLookup, OrgScopedAPIView):
-    """
-    The organisation's territory tree, or a new region, branch or warehouse
-    (C72 piece 1).
-
-    ORGANISATION-LEVEL, like dealerships (C3): only standing grants
-    `admin.territory.*`, so a dealer admin cannot redraw the tree they sit in.
-    Dealerships are added through `/admin/dealers/`, which can place one in a
-    region.
-    """
-
-    required_permissions: ClassVar[list[str]] = ["admin.territory.view"]
-    method_permissions: ClassVar[dict[str, list[str]]] = {
-        "POST": ["admin.territory.create"],
-    }
-
-    def get(self, request: Request, org_slug: str) -> Response:
-        return Response(TerritorySerializer(territories_for(self.organization), many=True).data)
-
-    def post(self, request: Request, org_slug: str) -> Response:
-        payload = TerritoryCreateSerializer(data=request.data)
-        payload.is_valid(raise_exception=True)
-
-        territory = create_territory(organization=self.organization, **payload.validated_data)
-        return self._respond_with(territory, status.HTTP_201_CREATED)
-
-
-class TerritoryDetailView(_TerritoryLookup, OrgScopedAPIView):
-    """Rename a territory -- any kind, dealerships included."""
-
-    # The page's view, then the act (C79 rule 5).
-    required_permissions: ClassVar[list[str]] = [
-        "admin.territory.view",
-        "admin.territory.update",
-    ]
-
-    def patch(self, request: Request, org_slug: str, territory_id: str) -> Response:
-        territory = self._get_territory(territory_id)
-
-        payload = TerritoryRenameSerializer(data=request.data)
-        payload.is_valid(raise_exception=True)
-
-        rename_territory(territory=territory, **payload.validated_data)
-        return self._respond_with(territory)
-
-
-class TerritoryMoveView(_TerritoryLookup, OrgScopedAPIView):
-    """
-    Put a territory, and everything under it, somewhere else in the tree.
-
-    A POST TO ITS OWN URL, not a field on the rename: moving changes what every
-    box underneath sits in, which is a different act from correcting a name,
-    and one request is one user action (CLAUDE.md).
-    """
-
-    # The page's view, then the act (C79 rule 5).
-    required_permissions: ClassVar[list[str]] = [
-        "admin.territory.view",
-        "admin.territory.update",
-    ]
-
-    def post(self, request: Request, org_slug: str, territory_id: str) -> Response:
-        territory = self._get_territory(territory_id)
-
-        payload = TerritoryMoveSerializer(data=request.data)
-        payload.is_valid(raise_exception=True)
-
-        moved = move_territory(territory=territory, **payload.validated_data)
-        return self._respond_with(moved)
 
 
 class UsersView(OrgScopedAPIView):

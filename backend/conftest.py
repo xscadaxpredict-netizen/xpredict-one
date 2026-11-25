@@ -80,3 +80,25 @@ def _declare_test_tenant_database() -> None:
 # collection, after pytest-django has configured settings and before any test
 # class is constructed, which is the window the allowlist is built in.
 _declare_test_tenant_database()
+
+
+# A test GSTIN with a valid check digit: a dealer needs one (Territory Management).
+TEST_GSTIN = "27AAPFU0939F1ZV"
+
+
+def add_dealer(*, organization, name, parent_id=None, gstin=TEST_GSTIN, **details):
+    """
+    A dealership in DMS's tree, for tests. `create_dealer()` went with the
+    Admin panel's Dealers screen (2026-11-25); this is Territory Management's
+    `add_territory()` with the kind filled in and a valid GSTIN by default.
+    """
+    from core.organizations.services import add_territory
+
+    return add_territory(
+        organization=organization,
+        kind="dealer",
+        name=name,
+        parent_id=parent_id,
+        gstin=gstin,
+        **details,
+    )

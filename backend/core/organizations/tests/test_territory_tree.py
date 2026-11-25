@@ -25,7 +25,6 @@ import pytest
 from django.db import IntegrityError
 
 from core.organizations.models import Organization, Territory, TerritoryKind
-from core.organizations.selectors import dealers_for
 from core.permissions.models import AppCode
 
 pytestmark = pytest.mark.django_db
@@ -270,17 +269,3 @@ class TestATerritoryWithoutAPlaceIsRefused:
             Territory.objects.all().create(organization=org, name="Nowhere")
 
         assert not Territory.objects.filter(name="Nowhere").exists()
-
-
-class TestDealershipsAreStillListedByName:
-    def test_dealers_come_back_alphabetically_not_in_tree_order(self):
-        """
-        Created Z to A, so tree order (creation order) and name order are
-        exact opposites. `Meta.ordering` used to give name order for free; the
-        treebeard manager sorts by `path` and overrides it.
-        """
-        org = make_org()
-        for name in ("Zirakpur", "Mohali", "Amritsar"):
-            Territory.objects.create(organization=org, name=name)
-
-        assert [d.name for d in dealers_for(org)] == ["Amritsar", "Mohali", "Zirakpur"]

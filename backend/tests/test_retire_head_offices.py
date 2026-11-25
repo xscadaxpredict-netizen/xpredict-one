@@ -18,7 +18,6 @@ from django.utils import timezone
 from config.routers import current_tenant_db
 from conftest import TEST_TENANT_ALIAS
 from core.organizations.models import Organization, Territory, TerritoryKind
-from core.organizations.selectors import dealers_for
 from core.permissions.models import AppCode
 from products.dms.sales.models import Customer
 from shared.base_models import territory_scope
@@ -109,12 +108,3 @@ def test_it_refuses_when_somebody_is_placed_at_the_head_office(acme):
     assert customers_at(head.id) == ["Head office customer"]
     assert Territory.objects.filter(pk=head.pk).exists()
 
-
-def test_until_retired_the_head_office_is_not_a_dealership(acme):
-    tree = build_tree(acme)
-    head = head_office(acme)
-
-    listed = {dealer.id for dealer in dealers_for(acme)}
-
-    assert head.id not in listed
-    assert tree.delhi.id in listed

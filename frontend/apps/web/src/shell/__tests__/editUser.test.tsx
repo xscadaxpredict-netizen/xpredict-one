@@ -11,11 +11,8 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 
-import type * as dealersApi from "../admin/api/dealers";
-import { fetchDealers } from "../admin/api/dealers";
 import type * as usersApi from "../admin/api/users";
 import { fetchUsers, inviteUser, updateUser } from "../admin/api/users";
-import { DealersScreen } from "../admin/screens/DealersScreen";
 import { UsersScreen } from "../admin/screens/UsersScreen";
 import { fetchMe } from "../api/auth";
 import type * as authApi from "../api/auth";
@@ -39,14 +36,9 @@ vi.mock("../admin/api/users", async (importOriginal) => ({
   updateUser: vi.fn(),
 }));
 
-vi.mock("../admin/api/dealers", async (importOriginal) => ({
-  ...(await importOriginal<typeof dealersApi>()),
-  fetchDealers: vi.fn(),
-}));
 
 const mockFetchMe = vi.mocked(fetchMe);
 const mockFetchUsers = vi.mocked(fetchUsers);
-const mockFetchDealers = vi.mocked(fetchDealers);
 const mockInviteUser = vi.mocked(inviteUser);
 const mockUpdateUser = vi.mocked(updateUser);
 
@@ -62,25 +54,6 @@ function user(overrides: Partial<usersApi.OrgUser> & { id: string }): usersApi.O
     status: "active",
     apps: [{ app: "dms", role_code: "dms.sales_representative", role_name: "Sales representative", status: "active" }],
     administers: null,
-    ...overrides,
-  };
-}
-
-function dealer(overrides: Partial<dealersApi.Dealer> & { id: string }): dealersApi.Dealer {
-  return {
-    name: "Chennai — Guindy",
-    code: null,
-    gstin: "33AAPFU0939F1Z2",
-    pan: "AAPFU0939F",
-    contact_person: "R. Menon",
-    email: "guindy@acmemotors.in",
-    phone: "+91 44 4000 0000",
-    city: "Chennai",
-    state: "Tamil Nadu",
-    postal_code: "600032",
-    status: "active",
-    user_count: 4,
-    created_at: "2026-01-04T09:00:00Z",
     ...overrides,
   };
 }
@@ -110,16 +83,10 @@ const routes = [
   { path: "admin/users/:userId", element: <UsersScreen /> },
 ];
 
-const dealerRoutes = [
-  { path: "admin/dealers", element: <DealersScreen /> },
-  { path: "admin/dealers/:dealerId", element: <DealersScreen /> },
-];
-
 beforeEach(() => {
   vi.clearAllMocks();
   mockFetchMe.mockResolvedValue(me({ memberships: [ownerMembership()] }));
   mockFetchUsers.mockResolvedValue([RAVI, KIRAN]);
-  mockFetchDealers.mockResolvedValue([dealer({ id: "unit-1" })]);
   mockUpdateUser.mockImplementation((_org, userId, body) =>
     Promise.resolve({ ...RAVI, id: userId, ...body }),
   );
@@ -215,23 +182,6 @@ describe("Edit user", () => {
     await waitFor(() => {
       expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     });
-  });
-});
-
-describe("a dealership with nobody in it", () => {
-  /*
-   * IT OFFERS NO INVITE LINK SINCE C83: an invitation names no dealership any
-   * more.
-   */
-  it("says so, and offers no invite link", async () => {
-    mockFetchDealers.mockResolvedValue([dealer({ id: "unit-1", user_count: 0 })]);
-
-    renderRoute({ path: "/acme-motors/admin/dealers/unit-1", children: dealerRoutes });
-
-    const panel = await screen.findByRole("complementary", { name: /Guindy/ });
-
-    expect(panel).toHaveTextContent(/Nobody works here yet/i);
-    expect(within(panel).queryByRole("link", { name: /Invite/i })).not.toBeInTheDocument();
   });
 });
 

@@ -271,7 +271,7 @@ class OrgScopedAPIView(APIView):
         #
         # NOT STORED ANYWHERE. This is computed from the dealership's status on
         # every request, which is why reopening restores exactly what was there
-        # -- see `close_dealer` for why the alternative does not.
+        # -- see `close_territory` for why the alternative does not.
         #
         # AND IT IS NOT REDUNDANT WITH THE PERMISSION LAYER, which was the first
         # thing a revert suggested. `permissions_for()` goes through

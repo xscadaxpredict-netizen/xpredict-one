@@ -17,9 +17,6 @@ from core.organizations.api.views import (
     AdminsView,
     ApplicationMembersView,
     ApplicationsView,
-    DealerDetailView,
-    DealerStatusView,
-    DealersView,
     InviteLinkView,
     OrganizationProfileView,
     PanelRoleDetailView,
@@ -27,9 +24,6 @@ from core.organizations.api.views import (
     ProvisioningView,
     ResendInvitationView,
     RoleBuilderView,
-    TerritoriesView,
-    TerritoryDetailView,
-    TerritoryMoveView,
     UserAppStatusView,
     UserAppsView,
     UserAppView,
@@ -45,7 +39,7 @@ urlpatterns = [
     # ---------------------------------------------------------------------
     # Administration (C17). An app whose modules are owned by different
     # Django apps, so the prefix is assembled here rather than each module
-    # knowing where it is mounted: `users` and `dealers` belong to this app,
+    # knowing where it is mounted: `users` belongs to this app,
     # `roles` to `core.permissions`.
     #
     # EVERY ROUTE ENDS IN A SLASH, and that is not a style preference.
@@ -124,41 +118,5 @@ urlpatterns = [
     # `Invitation`, never a membership -- the person may not have an account at
     # all -- so posting to /users/ would name a row this request does not make.
     path("admin/invitations/", UsersView.as_view(), name="invitations"),
-    path("admin/dealers/", DealersView.as_view(), name="dealers"),
-    # `str`, not `uuid`. A malformed id must answer 404 like any other
-    # dealership the caller cannot see -- with a `uuid` converter the route
-    # simply would not match, and Django's own 404 is an HTML page rather than
-    # the problem+json every other refusal returns.
-    path("admin/dealers/<str:dealer_id>/", DealerDetailView.as_view(), name="dealer-detail"),
-    # CLOSE AND REOPEN (C63, answering Q21). One route, two actions, as the
-    # user-status route does -- the rule is symmetrical today and the view says
-    # what would split them.
-    #
-    # The extra segment is what keeps this from colliding with the detail route
-    # above; there is no generic `<str:action>` sibling here to be swallowed by,
-    # which is the trap the users routes had to be ordered around.
-    #
-    # AND IT ENDS IN A SLASH. `APPEND_SLASH` turns a slashless POST into a
-    # raise, so a frontend calling `/close` without one would 500 on the button
-    # while every read on the screen worked perfectly.
-    path(
-        "admin/dealers/<str:dealer_id>/<str:action>/",
-        DealerStatusView.as_view(),
-        name="dealer-status",
-    ),
-    # THE TERRITORY TREE (C72 piece 1). `move/` is a fixed segment, not a
-    # generic `<str:action>`, so there is no ordering trap with the detail
-    # route; and every route ends in a slash, for the reason above.
-    path("admin/territories/", TerritoriesView.as_view(), name="territories"),
-    path(
-        "admin/territories/<str:territory_id>/",
-        TerritoryDetailView.as_view(),
-        name="territory-detail",
-    ),
-    path(
-        "admin/territories/<str:territory_id>/move/",
-        TerritoryMoveView.as_view(),
-        name="territory-move",
-    ),
     path("admin/", include("core.permissions.api.urls")),
 ]

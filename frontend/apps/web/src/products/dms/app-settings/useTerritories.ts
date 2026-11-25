@@ -1,6 +1,5 @@
 import { useOrgMutation, useOrgQuery } from "@xpredict/api-client";
 
-import { dealerKeys } from "../../../shell/admin/hooks/useDealers";
 import {
   assignPeople,
   createTerritory,
@@ -26,11 +25,10 @@ export const territoryKeys = {
 };
 
 /*
- * A change here is also seen on the Admin panel's Dealers list (the same
- * dealers, until that screen goes -- Q79) and on DMS settings -> Users (each
- * person's territory names), so those refresh with the tree.
+ * A change here is also seen on DMS settings -> Users (each person's
+ * territory names), so that list refreshes with the tree.
  */
-const TERRITORIES_CHANGED = [territoryKeys.all(), dealerKeys.all(), dmsSettingsKeys.users()];
+const TERRITORIES_CHANGED = [territoryKeys.all(), dmsSettingsKeys.users()];
 
 /** DMS's whole territory tree, in tree order. */
 export function useDmsTerritories() {

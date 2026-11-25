@@ -8,8 +8,8 @@ Came from `main` (Nishanth) written for `BusinessUnit` and `Membership.role` /
 
 TERRITORIES ARE READ-ONLY HERE. They are a django-treebeard tree (C72): a row
 saved without its `path` is refused, and a hand-edited path breaks the tree, so
-they are added and moved only through the services (`create_territory`,
-`move_territory`) -- never this screen.
+they are added and moved only through the services (`add_territory`,
+`edit_territory`) -- never this screen.
 """
 
 from django.contrib import admin

@@ -56,7 +56,7 @@ handler_calls: list[str] = []
 
 
 class NeedsDealerCreate(OrgScopedAPIView):
-    required_permissions: ClassVar[list[str]] = ["admin.dealer.create"]
+    required_permissions: ClassVar[list[str]] = ["admin.admin.assign_admin"]
 
     def get(self, request: Request, org_slug: str) -> Response:
         handler_calls.append("dealer-create")
@@ -67,7 +67,7 @@ class NeedsTwoPermissions(OrgScopedAPIView):
     """`required_permissions` is an AND. Holding one of these is not enough."""
 
     required_permissions: ClassVar[list[str]] = [
-        "admin.dealer.create",
+        "admin.admin.assign_admin",
         "admin.user.create",
     ]
 
@@ -117,7 +117,7 @@ class ReadsAndOpensTheWriteOnPurpose(ReadsAndForgetsTheWrite):
 
 
 class ReadsAndGuardsTheWrite(ReadsAndForgetsTheWrite):
-    method_permissions: ClassVar[dict[str, list[str]]] = {"POST": ["admin.dealer.create"]}
+    method_permissions: ClassVar[dict[str, list[str]]] = {"POST": ["admin.admin.assign_admin"]}
 
 
 urlpatterns = [
@@ -207,7 +207,7 @@ class TestPermissionsFor:
 
         held = permissions_for(membership)
 
-        assert "admin.dealer.create" in held
+        assert "admin.admin.assign_admin" in held
         assert "admin.user.create" in held
         assert "admin.role.view" in held
 
@@ -224,8 +224,8 @@ class TestPermissionsFor:
         # ...and cannot create or close a dealership, which is the
         # organization's job (C23). This is the privilege test the plan asks
         # for, at the permission layer.
-        assert "admin.dealer.create" not in held
-        assert "admin.dealer.set_status" not in held
+        assert "admin.admin.assign_admin" not in held
+        assert "admin.application.view" not in held
         # And they do not reach the Roles reference page, which is why the
         # roles endpoint accepts `admin.user.create` as well (Q35).
         assert "admin.role.view" not in held
@@ -321,7 +321,7 @@ class TestTheViewLayer:
     def test_required_permissions_is_an_and_not_an_or(self, client):
         """
         A dealer admin holds `admin.user.create` and not
-        `admin.dealer.create`. If the base class ever loosened to "any of",
+        `admin.admin.assign_admin`. If the base class ever loosened to "any of",
         this is the test that catches it.
         """
         result = found()

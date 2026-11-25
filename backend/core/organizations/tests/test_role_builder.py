@@ -117,8 +117,6 @@ class TestTheGrid:
 
         assert [t["name"] for t in templates] == ["Organization Admin"]
         assert "admin.user.edit_app" in templates[0]["permissions"]
-        # Dealers and territories are not on the tree, so not on the grid.
-        assert "admin.dealer.view" not in templates[0]["permissions"]
 
     def test_it_needs_a_right_to_build_roles(self, client):
         result = found()
@@ -199,7 +197,6 @@ class TestWhatIsRefused:
         "outside",
         [
             "dms.enquiry.view",  # another app's
-            "admin.dealer.view",  # the Admin panel's, but not on the tree
             "admin.made_up.view",  # nothing at all
         ],
     )

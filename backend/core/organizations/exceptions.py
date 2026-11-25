@@ -99,38 +99,6 @@ class OrganizationNameUnusableError(InvalidInputError):
     message = "That organisation name cannot be used."
 
 
-class DealerNameTakenError(ConflictError):
-    """
-    Another dealership in this organization already answers to this name.
-
-    CASE-INSENSITIVE, and not because the service lowercases anything. MySQL's
-    `utf8mb4_0900_ai_ci` collation compares that way, so the unique constraint
-    refuses "Chennai - Guindy" and "chennai - guindy" as the same name without
-    being asked to. The service checks first only so the caller gets this
-    message instead of a 500 from an IntegrityError.
-
-    THE `code` STRING IS THE CONTRACT. `shell/admin/api/dealers.ts` switches on
-    it to choose which field to mark, so renaming it here is a silent fallback
-    to a generic message there.
-    """
-
-    code = "dealer_name_taken"
-    message = "Another dealership already uses that name."
-
-
-class DealerCodeTakenError(ConflictError):
-    """
-    Another dealership in this organization already uses this short code.
-
-    The code is OPTIONAL, so only a given one can collide. It is also the thing
-    that ends up on paperwork, and two branches answering to the same code is a
-    filing problem nobody notices until an invoice goes to the wrong one.
-    """
-
-    code = "dealer_code_taken"
-    message = "Another dealership already uses that code."
-
-
 class TerritoryNameTakenError(ConflictError):
     """
     Another territory in this organization -- of any kind -- has this name.
@@ -139,8 +107,7 @@ class TerritoryNameTakenError(ConflictError):
     is on (organization, name) and the tree is one tree (C72). A region called
     "Chennai" and a dealership called "Chennai" would read identically in every
     picker that lists both, and a person placed at the wrong one sees the wrong
-    records. `DealerNameTakenError` stays for the dealers endpoints, whose
-    frontend switches on its code.
+    records.
     """
 
     code = "territory_name_taken"
@@ -230,31 +197,6 @@ class TerritoryMoveIntoItselfError(ConflictError):
     message = "A territory cannot be moved inside itself."
 
 
-class DealerAlreadyClosedError(ConflictError):
-    """
-    This dealership is already closed.
-
-    A STATE REFUSAL, SO 409 -- not 404 (the caller can see it) and not 403
-    (they are allowed to close dealerships). The three are deliberately not
-    interchangeable: scope is 404, capability is 403, state is 409.
-
-    It also makes closing NOT idempotent on purpose. Two admins acting on the
-    same branch within a minute of each other should find out, because the
-    second one is usually acting on a stale screen and about to be surprised
-    by something else too.
-    """
-
-    code = "dealer_already_closed"
-    message = "That dealership is already closed."
-
-
-class DealerAlreadyOpenError(ConflictError):
-    """The mirror of `DealerAlreadyClosedError`, for reopening."""
-
-    code = "dealer_already_open"
-    message = "That dealership is already open."
-
-
 # ---------------------------------------------------------------------------
 # DMS settings -> Territory Management (the owner, 2026-11-24). Any kind of
 # territory, with the details a dealership has today (C82 amended: every
@@ -290,7 +232,7 @@ class TerritoryGstinRequiredError(InvalidInputError):
 
 
 class TerritoryAlreadyClosedError(ConflictError):
-    """The territory is already closed: the mirror of `DealerAlreadyClosedError`, any kind."""
+    """The territory is already closed (C63). Closing twice is a conflict, not a no-op."""
 
     code = "territory_already_closed"
     message = "That territory is already closed."

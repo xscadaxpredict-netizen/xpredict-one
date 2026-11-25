@@ -17,7 +17,7 @@ from __future__ import annotations
 import pytest
 from rest_framework.test import APIClient
 
-from conftest import TEST_TENANT_ALIAS
+from conftest import TEST_TENANT_ALIAS, add_dealer
 from core.accounts.models import User
 from core.api import TenantAPIView
 from core.organizations.models import (
@@ -37,7 +37,7 @@ from core.organizations.selectors import (
     reach,
     standing,
 )
-from core.organizations.services import create_dealer, grant_app_access, invite_person, sign_up
+from core.organizations.services import grant_app_access, invite_person, sign_up
 from core.permissions.models import AppCode, Permission, Role
 from shared.exceptions import AuthorizationError
 
@@ -139,7 +139,7 @@ class TestWhoseAdministratorTheyAre:
 
     def test_reach_is_the_grants_dealership(self):
         result = found()
-        delhi = create_dealer(organization=result.organization, name="Delhi Motors")
+        delhi = add_dealer(organization=result.organization, name="Delhi Motors")
         da = person(result, "da@apex.test")
         dms_at(da, [delhi])
 
@@ -147,8 +147,8 @@ class TestWhoseAdministratorTheyAre:
 
     def test_they_manage_their_dealership_and_nobody_else(self):
         result = found()
-        delhi = create_dealer(organization=result.organization, name="Delhi Motors")
-        jaipur = create_dealer(organization=result.organization, name="Jaipur Auto")
+        delhi = add_dealer(organization=result.organization, name="Delhi Motors")
+        jaipur = add_dealer(organization=result.organization, name="Jaipur Auto")
         da = person(result, "da@apex.test")
         dms_at(da, [delhi])
         da = fresh(da)
@@ -159,8 +159,8 @@ class TestWhoseAdministratorTheyAre:
 
     def test_the_users_list_shows_them_their_dealership_only(self):
         result = found()
-        delhi = create_dealer(organization=result.organization, name="Delhi Motors")
-        jaipur = create_dealer(organization=result.organization, name="Jaipur Auto")
+        delhi = add_dealer(organization=result.organization, name="Delhi Motors")
+        jaipur = add_dealer(organization=result.organization, name="Jaipur Auto")
         at_delhi = person(result, "a@apex.test")
         dms_at(at_delhi, [delhi], code="dms.manager")
         at_jaipur = person(result, "b@apex.test")
@@ -180,7 +180,7 @@ class TestWhoseAdministratorTheyAre:
         everywhere manages them. Refused until territories are per app (C82).
         """
         result = found()
-        delhi = create_dealer(organization=result.organization, name="Delhi Motors")
+        delhi = add_dealer(organization=result.organization, name="Delhi Motors")
         da = person(result, "da@apex.test")
         dms_at(da, [delhi])
 
@@ -195,7 +195,7 @@ class TestWhoseAdministratorTheyAre:
 
     def test_placed_at_the_root_they_reach_every_dealership(self):
         result = found()
-        jaipur = create_dealer(organization=result.organization, name="Jaipur Auto")
+        jaipur = add_dealer(organization=result.organization, name="Jaipur Auto")
         wide = person(result, "wide@apex.test")
         dms_at(
             wide,
@@ -211,7 +211,7 @@ class TestWhoseAdministratorTheyAre:
 class TestWhatMeSays:
     def test_unit_fields_come_from_the_grant(self):
         result = found()
-        delhi = create_dealer(organization=result.organization, name="Delhi Motors")
+        delhi = add_dealer(organization=result.organization, name="Delhi Motors")
         da = person(result, "da@apex.test")
         dms_at(da, [delhi])
 
@@ -222,8 +222,8 @@ class TestWhatMeSays:
 
     def test_several_dealerships_name_none(self):
         result = found()
-        delhi = create_dealer(organization=result.organization, name="Delhi Motors")
-        jaipur = create_dealer(organization=result.organization, name="Jaipur Auto")
+        delhi = add_dealer(organization=result.organization, name="Delhi Motors")
+        jaipur = add_dealer(organization=result.organization, name="Jaipur Auto")
         rep = person(result, "rep@apex.test")
         dms_at(rep, [delhi, jaipur], code="dms.manager")
 
@@ -240,7 +240,7 @@ class TestAClosure:
     def test_shuts_out_somebody_the_grant_places_there(self, client):
         """Placed at Delhi Motors by their grant, so its closure shuts them out."""
         result = found()
-        delhi = create_dealer(organization=result.organization, name="Delhi Motors")
+        delhi = add_dealer(organization=result.organization, name="Delhi Motors")
         da = person(result, "da@apex.test")
         dms_at(da, [delhi])
         self.close(delhi)
@@ -256,7 +256,7 @@ class TestAClosure:
     def test_does_not_shut_out_somebody_the_grant_places_elsewhere(self, client):
         """Placed at the root, so one dealership closing does not shut them out."""
         result = found()
-        delhi = create_dealer(organization=result.organization, name="Delhi Motors")
+        delhi = add_dealer(organization=result.organization, name="Delhi Motors")
         wide = person(result, "wide@apex.test")
         dms_at(
             wide,
@@ -272,8 +272,8 @@ class TestAClosure:
 
     def test_one_of_two_dealerships_closed_still_lets_them_work(self):
         result = found()
-        delhi = create_dealer(organization=result.organization, name="Delhi Motors")
-        jaipur = create_dealer(organization=result.organization, name="Jaipur Auto")
+        delhi = add_dealer(organization=result.organization, name="Delhi Motors")
+        jaipur = add_dealer(organization=result.organization, name="Jaipur Auto")
         rep = person(result, "rep@apex.test")
         dms_at(rep, [delhi, jaipur], code="dms.manager")
         self.close(delhi)

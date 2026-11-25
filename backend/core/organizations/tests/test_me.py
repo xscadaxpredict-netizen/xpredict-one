@@ -172,7 +172,7 @@ class TestTheOwner:
         assert membership.unit_id is None
         assert membership.unit_name is None
 
-    def test_administration_comes_from_standing_with_all_thirty_permissions(self):
+    def test_administration_comes_from_standing_with_all_twenty_three_permissions(self):
         """
         Owners and org admins hold every `admin.*` permission and NOT through a
         Role row (C42) -- which is also why they get the dealers and roles
@@ -184,7 +184,8 @@ class TestTheOwner:
         and `applications`, the Admin panel's Profile and Applications pages; the
         owner's final list (C79, `permissions/0018`) made it twenty-nine, in the
         same modules, and the app tile's Edit (`admin.user.edit_app`, `0019`)
-        thirty.
+        thirty. The Dealers screen's seven (`admin.dealer.*`, `admin.territory.*`)
+        went with it (`0026`, 2026-11-25): twenty-three.
 
         `modules` IS THE ADMIN PANEL'S TREE since C79 (the owner, 2026-11-19):
         module -> sub-module -> tab, in menu order. Dealers and Territories
@@ -196,7 +197,7 @@ class TestTheOwner:
 
         assert admin.subscribed is True
         assert admin.accessible is True
-        assert len(admin.permissions) == 30
+        assert len(admin.permissions) == 23
         # The Admin panel's whole tree (C79): the old `dealers` word is gone
         # with the rest of the flat list -- Dealers is not in the tree (Q64).
         assert tree(admin.modules) == WHOLE_ADMIN_PANEL
@@ -388,8 +389,8 @@ class TestTheDealerAdmin:
 
         admin = app_of(me(user), "acme-motors", AppCode.ADMIN)
 
-        assert "admin.dealer.create" not in admin.permissions
-        assert "admin.dealer.view" not in admin.permissions
+        assert "admin.admin.assign_admin" not in admin.permissions
+        assert "admin.application.view" not in admin.permissions
         assert "admin.role.view" not in admin.permissions
 
     def test_dms_gives_them_read_access_so_the_sidebar_is_not_empty(self):
@@ -716,11 +717,19 @@ class TestTheAdminPanelTree:
 
     def test_a_permission_with_no_section_shows_nothing(self):
         """
-        Dealers and Territories are not in the tree yet (Q64): the old
-        `dealers` module word is no longer sent for the Admin panel.
+        An Admin panel permission not on the tree sends no module word. (Dealers
+        and Territories were the real ones until they went, 2026-11-25; one is
+        made here.)
         """
         result = found()
-        user = holding_only(result.organization, "admin.dealer.view")
+        Permission.objects.create(
+            code="admin.unlinked.view",
+            app_id=AppCode.ADMIN,
+            module="unlinked",
+            group="Unlinked",
+            label="Not on the tree",
+        )
+        user = holding_only(result.organization, "admin.unlinked.view")
 
         admin = app_of(me(user), result.organization.slug, AppCode.ADMIN)
 

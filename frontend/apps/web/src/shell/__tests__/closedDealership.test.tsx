@@ -19,11 +19,8 @@
  */
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { fireEvent, screen, waitFor, within } from "@testing-library/react";
+import { screen } from "@testing-library/react";
 
-import type * as dealersApi from "../admin/api/dealers";
-import { fetchDealers, setDealerStatus } from "../admin/api/dealers";
-import { DealersScreen } from "../admin/screens/DealersScreen";
 import { LauncherScreen } from "../screens/LauncherScreen";
 import { fetchMe } from "../api/auth";
 import type * as authApi from "../api/auth";
@@ -36,133 +33,13 @@ vi.mock("../api/auth", async (importOriginal) => ({
   logout: vi.fn().mockResolvedValue(undefined),
 }));
 
-vi.mock("../admin/api/dealers", async (importOriginal) => ({
-  ...(await importOriginal<typeof dealersApi>()),
-  fetchDealers: vi.fn(),
-  setDealerStatus: vi.fn(),
-}));
-
 const mockFetchMe = vi.mocked(fetchMe);
-const mockFetchDealers = vi.mocked(fetchDealers);
-const mockSetDealerStatus = vi.mocked(setDealerStatus);
-
-function dealer(overrides: Partial<dealersApi.Dealer> & { id: string }): dealersApi.Dealer {
-  return {
-    name: "Bangalore — Whitefield",
-    code: "BLR-WHF",
-    gstin: "29AAGCB7383J1Z4",
-    pan: "AAGCB7383J",
-    contact_person: "Vikram Nair",
-    email: "whitefield@acmemotors.in",
-    phone: "+91 80 4123 7788",
-    city: "Bengaluru",
-    state: "Karnataka",
-    postal_code: "560066",
-    status: "active",
-    user_count: 3,
-    created_at: "2026-01-04T09:00:00Z",
-    ...overrides,
-  };
-}
-
-const dealerRoutes = [
-  { path: "admin/dealers", element: <DealersScreen /> },
-  { path: "admin/dealers/:dealerId", element: <DealersScreen /> },
-];
 
 const launcherRoutes = [{ path: "", element: <LauncherScreen /> }];
 
 beforeEach(() => {
   vi.clearAllMocks();
   mockFetchMe.mockResolvedValue(me({ memberships: [ownerMembership()] }));
-  mockFetchDealers.mockResolvedValue([dealer({ id: "unit-1" })]);
-  mockSetDealerStatus.mockImplementation((_slug, _id, status) =>
-    Promise.resolve(dealer({ id: "unit-1", status })),
-  );
-});
-
-async function openPanel(dealerId: string, name: RegExp) {
-  renderRoute({ path: `/acme-motors/admin/dealers/${dealerId}`, children: dealerRoutes });
-  return screen.findByRole("complementary", { name });
-}
-
-/**
- * Radix menus open on pointerdown; Enter is the keyboard path jsdom supports.
- *
- * The same helper `userAdmin.test.tsx` wrote for the same reason -- a plain
- * `click` leaves the menu shut and the failure reads as "the item is missing"
- * rather than "the menu never opened".
- */
-function openActionsMenu(panel: HTMLElement) {
-  fireEvent.keyDown(within(panel).getByRole("button", { name: "More actions" }), {
-    key: "Enter",
-  });
-}
-
-describe("closing a dealership from Administration", () => {
-  it("asks the server rather than a fake", async () => {
-    /*
-     * THE WHOLE POINT OF THIS COMMIT. Before C63 this call went into module
-     * memory and no real dealership changed, which is why the assertion is on
-     * the arguments and not just on the screen.
-     */
-    const panel = await openPanel("unit-1", /Whitefield/);
-
-    openActionsMenu(panel);
-    fireEvent.click(await screen.findByText("Close dealership"));
-
-    await waitFor(() => {
-      expect(mockSetDealerStatus).toHaveBeenCalledWith("acme-motors", "unit-1", "disabled");
-    });
-  });
-
-  it("reopens a closed one", async () => {
-    mockFetchDealers.mockResolvedValue([dealer({ id: "unit-1", status: "disabled" })]);
-
-    const panel = await openPanel("unit-1", /Whitefield/);
-
-    openActionsMenu(panel);
-    fireEvent.click(await screen.findByText("Reopen dealership"));
-
-    await waitFor(() => {
-      expect(mockSetDealerStatus).toHaveBeenCalledWith("acme-motors", "unit-1", "active");
-    });
-  });
-
-  it("warns how many people it affects before the click, not after", async () => {
-    const panel = await openPanel("unit-1", /Whitefield/);
-
-    openActionsMenu(panel);
-
-    expect(await screen.findByText(/3 people are scoped to this dealer/i)).toBeInTheDocument();
-  });
-});
-
-describe("the dealership actions follow the viewer's permissions (the 2026-11-23 audit)", () => {
-  it("greys Add dealer, Edit and Close for somebody who may only view them", async () => {
-    mockFetchMe.mockResolvedValue(
-      me({
-        memberships: [
-          membership({
-            role: "admin",
-            apps: [appAccess("admin", { permissions: ["admin.dealer.view"] })],
-          }),
-        ],
-      }),
-    );
-    const panel = await openPanel("unit-1", /Whitefield/);
-
-    expect(screen.getByRole("button", { name: /Add dealer/ })).toHaveAttribute("aria-disabled", "true");
-    expect(within(panel).getByRole("button", { name: /Edit/ })).toHaveAttribute("aria-disabled", "true");
-    fireEvent.click(within(panel).getByRole("button", { name: /Edit/ }));
-    expect(screen.queryByRole("dialog")).toBeNull();
-
-    openActionsMenu(panel);
-    expect(await screen.findByRole("menuitem", { name: "Close dealership" })).toHaveAttribute(
-      "aria-disabled",
-      "true",
-    );
-  });
 });
 
 describe("somebody who works at a dealership that has closed", () => {

@@ -45,10 +45,6 @@ from core.organizations.exceptions import (
     AppNotSubscribedError,
     AppNotYetInUseError,
     BuiltInRoleUnchangeableError,
-    DealerAlreadyClosedError,
-    DealerAlreadyOpenError,
-    DealerCodeTakenError,
-    DealerNameTakenError,
     DealerScopedAppError,
     EmailAlreadyRegisteredError,
     GrantNeedsTerritoryError,
@@ -518,38 +514,6 @@ def _assert_territory_name_free(
 
 
 @transaction.atomic
-def create_territory(
-    *,
-    organization: Organization,
-    kind: str,
-    name: str,
-    parent_id: uuid.UUID | None = None,
-) -> Territory:
-    """
-    Add a region, branch or warehouse to the organization's tree.
-
-    Dealerships have their own door, `create_dealer`, because they carry the
-    GSTIN and the rest of the dealer details the dealers screen edits. Both
-    doors place through the same rule.
-    """
-    parent = _resolve_parent(organization, parent_id)
-    assert_placement_allowed(kind, parent)
-    _assert_territory_name_free(organization, name)
-
-    return _add_territory(organization, parent, {"kind": kind, "name": name})
-
-
-@transaction.atomic
-def rename_territory(*, territory: Territory, name: str) -> Territory:
-    """Change a territory's name -- any kind but the root. Unique across the tree."""
-    _assert_not_the_root(territory)
-    _assert_territory_name_free(territory.organization, name, excluding=territory.pk)
-    territory.name = name
-    territory.save(update_fields=["name", "updated_at"])
-    return territory
-
-
-@transaction.atomic
 def move_territory(*, territory: Territory, parent_id: uuid.UUID | None) -> Territory:
     """
     Put a territory -- and everything under it -- somewhere else in the tree.
@@ -586,8 +550,8 @@ def move_territory(*, territory: Territory, parent_id: uuid.UUID | None) -> Terr
 #
 # ONE DOOR FOR EVERY KIND, with every detail. C82 amended: any territory may
 # carry a code, GSTIN, PAN, contact and address, and an Active / Closed status
-# -- what only a dealership had. `create_territory` / `create_dealer` and the
-# dealer edits stay for the Admin panel's screens until they go (Q79).
+# -- what only a dealership had. The ONLY door since the Admin panel's Dealers
+# screen went (2026-11-25, Q79).
 #
 # The same rules as those doors, from the same helpers: placement by
 # `assert_placement_allowed`, one name and one code per DMS tree, the PAN
@@ -635,7 +599,7 @@ def add_territory(
     New Territory: a region, dealer, branch or warehouse in DMS's tree, under
     a parent its kind may sit in (`parent_id` None = the organisation).
 
-    KEYWORD-ONLY, for `create_dealer`'s reason: most arguments are strings,
+    KEYWORD-ONLY: most arguments are strings,
     and a positional call that swapped city and state would be silently wrong.
     """
     parent = _resolve_parent(organization, parent_id)
@@ -674,7 +638,8 @@ def update_territory(*, territory: Territory, **fields: str | None) -> Territory
     (`move_territory`, a later step on this screen); closing is its own
     endpoint. NOT THE ROOT: it is the organisation, named by the organisation.
 
-    The PAN comes back from the GSTIN when it is cleared, as `update_dealer`.
+    The PAN comes back from the GSTIN when it is cleared (a field that cannot
+    return to its default would be a one-way door).
     """
     _assert_not_the_root(territory)
 
@@ -742,7 +707,7 @@ def close_territory(*, territory: Territory) -> Territory:
     Close a territory, of any kind (C63, which was a dealership's; C82
     amended gives every territory a status).
 
-    ONE COLUMN ON ONE ROW, as `close_dealer`: nothing is written to people or
+    ONE COLUMN ON ONE ROW: nothing is written to people or
     records, so reopening restores exactly what was there. Somebody all of
     whose places are closed is shut out (`is_shut_out_by_closure`).
 
@@ -1053,197 +1018,6 @@ def _grant_administration_if_admin(
             territories=[Territory.objects.root_for(membership.organization, AppCode.ADMIN)],
             actor_id=actor_id,
         )
-
-
-@transaction.atomic
-def create_dealer(
-    *,
-    organization: Organization,
-    name: str,
-    parent_id: uuid.UUID | None = None,
-    code: str | None = None,
-    gstin: str = "",
-    pan: str = "",
-    contact_person: str = "",
-    email: str = "",
-    phone: str = "",
-    city: str = "",
-    state: str = "",
-    postal_code: str = "",
-) -> Territory:
-    """
-    Add a dealership to this organization.
-
-    KEYWORD-ONLY, because ten of the eleven arguments are strings and a
-    positional call that transposed `city` and `state` would be silently wrong
-    in a way no type checker could see.
-
-    The uniqueness checks below duplicate constraints the database also
-    enforces. That is deliberate: the constraint is what makes the rule true
-    under a race, and this is what makes the refusal say which field was wrong
-    instead of surfacing as a 500 (C9 -- a 5xx body carries no detail, so an
-    IntegrityError reaching the handler tells the caller nothing at all).
-
-    NO UNIQUENESS CHECK ON THE GSTIN, and that is a decision rather than an
-    omission: one registration legitimately covers several branches in the same
-    state as additional places of business, so refusing a duplicate would
-    refuse real data. The PAN is shared across every branch of one company in
-    any case.
-
-    `parent_id` PUTS IT INSIDE A REGION (C72); omitted, it sits at the top
-    level, as every dealership did before the tree existed.
-    """
-    parent = _resolve_parent(organization, parent_id)
-    assert_placement_allowed(TerritoryKind.DEALER, parent)
-    _assert_dealer_name_free(organization, name)
-    _assert_dealer_code_free(organization, code)
-
-    return _add_territory(
-        organization,
-        parent,
-        {
-            "kind": TerritoryKind.DEALER,
-            "name": name,
-            # NULL, never "", and the model comment explains why: MySQL treats
-            # every NULL in a unique index as distinct but two empty strings as
-            # a duplicate, so storing "" would let the first dealership without
-            # a code be created and refuse the second.
-            "code": code or None,
-            "gstin": gstin,
-            # DERIVED HERE, not in the browser. Characters 3-12 of a GSTIN are
-            # the holder's PAN, so a caller who sends one is overriding a
-            # default rather than supplying a fact we did not have -- and the
-            # default has to exist somewhere both a form and a shell session
-            # reach.
-            "pan": pan or extract_pan(gstin),
-            "contact_person": contact_person,
-            "email": email,
-            "phone": phone,
-            "city": city,
-            "state": state,
-            "postal_code": postal_code,
-        },
-    )
-
-
-@transaction.atomic
-def update_dealer(*, dealer: Territory, **fields: str | None) -> Territory:
-    """
-    Change a dealership's details.
-
-    NOT ITS STATUS, and not its organization. The payload carries neither, so
-    "correct a typo in the address" and "shut the branch" cannot be the same
-    request -- which is the frontend's reasoning for two endpoints and holds
-    just as well here.
-    """
-    name = fields.get("name")
-    if name is not None:
-        _assert_dealer_name_free(dealer.organization, name, excluding=dealer.pk)
-
-    if "code" in fields:
-        _assert_dealer_code_free(dealer.organization, fields["code"], excluding=dealer.pk)
-
-    # THE SAME DERIVATION AS CREATE, for the same reason. Clearing the PAN on
-    # an edit means "give me the one in the GSTIN back", not "store nothing" --
-    # otherwise the only way to recover the default is to retype it, and a
-    # field that cannot return to its default is a one-way door of the kind
-    # C55 was about.
-    if not fields.get("pan"):
-        gstin = fields.get("gstin", dealer.gstin) or ""
-        fields["pan"] = extract_pan(gstin)
-
-    for field, value in fields.items():
-        setattr(dealer, field, value or None if field == "code" else value)
-
-    dealer.save()
-    return dealer
-
-
-@transaction.atomic
-def close_dealer(*, dealer: Territory) -> Territory:
-    """
-    Shut a dealership (C63, answering Q21).
-
-    NOTHING IS WRITTEN TO ITS PEOPLE, AND THAT IS THE WHOLE DESIGN. One column
-    changes on one row; every membership, invitation, grant and record stays
-    exactly as it was.
-
-    The obvious alternative -- walk the memberships and set each to `disabled`
-    -- fails on the way back. Reopening would have to switch them on again, and
-    by then nothing distinguishes somebody switched off BECAUSE the branch
-    closed from somebody an admin deactivated individually last month. The
-    second person would quietly return to work. Deriving the refusal instead
-    (`OrgScopedAPIView` refuses a membership whose unit is closed) means
-    reopening restores precisely what was there, because nothing was disturbed.
-
-    SO THIS IS NOT "DEACTIVATE EVERYONE" WITH A TIDIER NAME. It is a statement
-    about the branch, and the consequences for its people are read from it.
-
-    THE RECORDS STAY, AND STAY VISIBLE (C63). A closed dealership's enquiries,
-    quotations and job cards are history the organisation still reports on, so
-    organisation-level people keep reading them; what stops is writing, and the
-    first DMS model is where that rule has to be honoured. There is no delete,
-    ever -- a dealership with history cannot be removed without taking the
-    history with it.
-    """
-    if dealer.status == UnitStatus.DISABLED:
-        raise DealerAlreadyClosedError
-
-    dealer.status = UnitStatus.DISABLED
-    dealer.save(update_fields=["status"])
-    return dealer
-
-
-@transaction.atomic
-def reopen_dealer(*, dealer: Territory) -> Territory:
-    """
-    Open a dealership again.
-
-    SYMMETRICAL, because `close_dealer` touched nothing else (C63). There are
-    no grants to reinstate and no people to switch back on: the moment the
-    status changes, every membership scoped here resolves the way it did
-    before, including the ones an admin had deactivated separately, which stay
-    deactivated.
-
-    That symmetry is the test worth keeping. A future change that makes closing
-    write to anything else has to make reopening undo it, and the pair of tests
-    in `test_dealers_api.py` is what will say so.
-    """
-    if dealer.status == UnitStatus.ACTIVE:
-        raise DealerAlreadyOpenError
-
-    dealer.status = UnitStatus.ACTIVE
-    dealer.save(update_fields=["status"])
-    return dealer
-
-
-def _assert_dealer_name_free(
-    organization: Organization, name: str, excluding: uuid.UUID | None = None
-) -> None:
-    existing = Territory.objects.of(organization, AppCode.DMS).filter(name=name)
-    # EXCLUDE THE ROW BEING EDITED, or saving a dealership without touching its
-    # name collides with itself -- the bug the frontend fake had to fix twice.
-    if excluding is not None:
-        existing = existing.exclude(pk=excluding)
-
-    if existing.exists():
-        raise DealerNameTakenError
-
-
-def _assert_dealer_code_free(
-    organization: Organization, code: str | None, excluding: uuid.UUID | None = None
-) -> None:
-    # The code is optional, so only a GIVEN one can collide. Clearing it is
-    # always allowed, however many other dealerships also have none.
-    if not code:
-        return
-
-    existing = Territory.objects.of(organization, AppCode.DMS).filter(code=code)
-    if excluding is not None:
-        existing = existing.exclude(pk=excluding)
-
-    if existing.exists():
-        raise DealerCodeTakenError
 
 
 # ---------------------------------------------------------------------------
