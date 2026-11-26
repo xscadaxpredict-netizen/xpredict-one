@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import re
+
 from rest_framework import serializers
 
 from core.organizations.identifiers import is_valid_gstin, is_valid_pan
@@ -152,8 +154,10 @@ class DmsTerritoryEditSerializer(serializers.Serializer):
     parent_id = serializers.UUIDField(required=False, allow_null=True)
 
     name = serializers.CharField(max_length=200)
-    # `allow_blank`: the form sends "" for an empty code; the service stores NULL.
-    code = serializers.CharField(max_length=40, allow_null=True, allow_blank=True, default=None)
+    # REQUIRED SINCE 2026-11-26 (the owner): the code is in every number filed
+    # there -- ENQ/DLM/26-27/0001 -- and makes those numbers unique across the
+    # organisation. Shape and capitals: `clean_territory_code()`.
+    code = serializers.CharField(max_length=20)
     # Optional here; a DEALER needs one, which is the service's rule (it knows the kind).
     gstin = serializers.CharField(max_length=15, required=False, allow_blank=True, default="")
     # Blank = derived from the GSTIN by the service.
@@ -168,6 +172,9 @@ class DmsTerritoryEditSerializer(serializers.Serializer):
     postal_code = serializers.CharField(
         max_length=20, required=False, allow_blank=True, default=""
     )
+
+    def validate_code(self, value: str) -> str:
+        return validated_territory_code(value)
 
     # The Dealers form's checks, word for word: uppercased first, one message
     # for a bad shape or a bad check digit.
@@ -200,6 +207,43 @@ class DmsTerritoryEditSerializer(serializers.Serializer):
                 dict.fromkeys(unexpected, "This field cannot be set here.")
             )
         return attrs
+
+
+class DmsRootCodeSerializer(serializers.Serializer):
+    """
+    Edit on the ORGANISATION's box (2026-11-26): its code and nothing else --
+    the box is the organisation, named by it, and never moves. Records the owner
+    files there are numbered with this code (ENQ/HO/26-27/0001).
+    """
+
+    code = serializers.CharField(max_length=20)
+
+    def validate_code(self, value: str) -> str:
+        return validated_territory_code(value)
+
+    def validate(self, attrs: dict) -> dict:
+        unexpected = sorted(set(self.initial_data) - set(self.fields))
+        if unexpected:
+            raise serializers.ValidationError(
+                dict.fromkeys(unexpected, "The organisation's box takes only its code.")
+            )
+        return attrs
+
+
+def validated_territory_code(value: str) -> str:
+    """
+    A territory's code, as it will appear in numbers: 2 to 10 letters, digits
+    or hyphens, starting with a letter or digit, stored in capitals (`dlm-01`
+    -> `DLM-01`). No slashes or spaces -- the code sits between the slashes of
+    ENQ/DLM-01/26-27/0001.
+    """
+    code = value.strip().upper()
+    if not re.fullmatch(r"[A-Z0-9][A-Z0-9-]{1,9}", code):
+        raise serializers.ValidationError(
+            "A code is 2 to 10 letters, digits or hyphens, like DLM-01. It appears in every "
+            "number filed here: ENQ/DLM/26-27/0001."
+        )
+    return code
 
 
 class DmsTerritoryNewSerializer(DmsTerritoryEditSerializer):

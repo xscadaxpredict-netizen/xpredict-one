@@ -27,13 +27,14 @@ Three things change, and each has a class below:
 
 from __future__ import annotations
 
+import uuid
 from types import SimpleNamespace
 
 import pytest
 from rest_framework.test import APIClient
 
 from config.routers import current_tenant_db
-from conftest import TEST_GSTIN, TEST_TENANT_ALIAS
+from conftest import TEST_GSTIN, TEST_TENANT_ALIAS, code_for
 from core.accounts.models import User
 from core.organizations.models import (
     ActivationCode,
@@ -82,6 +83,8 @@ def build_tree(organization) -> SimpleNamespace:
             parent_id=parent.pk if parent else None,
             # A dealer needs its GSTIN (Territory Management, 2026-11-24).
             gstin=TEST_GSTIN if kind == TerritoryKind.DEALER else "",
+            # Records are numbered with the territory's code (2026-11-26).
+            code=code_for(name),
         )
 
     north = add(TerritoryKind.REGION, "North")
@@ -194,7 +197,12 @@ class TestThroughTheApi:
     def enquiries(self, t):
         with territory_scope(None):
             return {
-                place: Enquiry.objects.create(territory_id=place.pk, customer_name="C", phone="1")
+                place: Enquiry.objects.create(
+                    enquiry_no=f"ENQ/TEST/{uuid.uuid4().hex[:12]}",
+                    territory_id=place.pk,
+                    customer_name="C",
+                    phone="1",
+                )
                 for place in (t.delhi, t.delhi_east, t.jaipur, t.chennai)
             }
 

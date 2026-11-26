@@ -90,10 +90,13 @@ def add_dealer(*, organization, name, parent_id=None, gstin=TEST_GSTIN, **detail
     """
     A dealership in DMS's tree, for tests. `create_dealer()` went with the
     Admin panel's Dealers screen (2026-11-25); this is Territory Management's
-    `add_territory()` with the kind filled in and a valid GSTIN by default.
+    `add_territory()` with the kind filled in and a valid GSTIN by default --
+    and a CODE, made from the name (2026-11-26: numbers carry it, and a
+    territory without one cannot have records numbered).
     """
     from core.organizations.services import add_territory
 
+    details.setdefault("code", code_for(name))
     return add_territory(
         organization=organization,
         kind="dealer",
@@ -102,3 +105,8 @@ def add_dealer(*, organization, name, parent_id=None, gstin=TEST_GSTIN, **detail
         gstin=gstin,
         **details,
     )
+
+
+def code_for(name: str) -> str:
+    """A territory code from a test territory's name: "Delhi Motors" -> DELHIMOTOR."""
+    return "".join(ch for ch in name.upper() if ch.isalnum())[:10] or "TEST"

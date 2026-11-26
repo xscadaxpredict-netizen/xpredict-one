@@ -35,6 +35,7 @@ from core.organizations.services import (
     remove_from_territory,
     reopen_territory,
     set_app_status,
+    set_root_code,
     territories_under,
     update_app_user,
 )
@@ -48,6 +49,7 @@ from .serializers import (
     DeleteTerritorySerializer,
     DmsEditSerializer,
     DmsInviteSerializer,
+    DmsRootCodeSerializer,
     DmsTerritoryEditSerializer,
     DmsTerritoryNewSerializer,
     DmsTerritorySerializer,
@@ -307,6 +309,13 @@ class DmsTerritoryDetailView(OrgScopedAPIView):
 
     def put(self, request: Request, org_slug: str, territory_id: str) -> Response:
         territory = _territory(self.organization, territory_id)
+
+        # The organisation's own box takes its code and nothing else (2026-11-26).
+        if territory.is_root:
+            root = DmsRootCodeSerializer(data=request.data)
+            root.is_valid(raise_exception=True)
+            set_root_code(territory=territory, code=root.validated_data["code"])
+            return Response(_territory_row(self.organization, territory.pk))
 
         payload = DmsTerritoryEditSerializer(data=request.data)
         payload.is_valid(raise_exception=True)

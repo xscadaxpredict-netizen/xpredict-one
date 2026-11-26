@@ -21,6 +21,7 @@ import { useAccess } from "../../../shell/access";
 import { useShellContext } from "../../../shell/context";
 import { RowMenu } from "@xpredict/ui";
 import { CloseTerritoryDialog } from "./CloseTerritoryDialog";
+import { RootCodeDialog } from "./RootCodeDialog";
 import { DeleteTerritoryDialog } from "./DeleteTerritoryDialog";
 import type { Tree, TreeNode } from "./territoryTree";
 import { useSetTerritoryStatus } from "./useTerritories";
@@ -37,7 +38,7 @@ export function TerritoryActions({ node, tree, onStatusError }: TerritoryActions
   const { territory } = node;
   const { membership } = useShellContext();
   const navigate = useNavigate();
-  const [opened, setOpened] = useState<"close" | "delete" | null>(null);
+  const [opened, setOpened] = useState<"close" | "delete" | "code" | null>(null);
   const { mutate: setStatus, isPending } = useSetTerritoryStatus();
   const access = useAccess();
   const canEdit = access.can("dms.territory.update");
@@ -53,14 +54,18 @@ export function TerritoryActions({ node, tree, onStatusError }: TerritoryActions
       <RowMenu
         label={`More actions for ${territory.name}`}
         items={[
-          {
-            label: "Edit",
-            disabled: !canEdit || isRoot,
-            onSelect: () =>
-              void navigate(
-                `/${membership.org_slug}/dms/settings/territories/${territory.id}/edit`,
-              ),
-          },
+          // The organisation's box: its code alone (2026-11-26) -- its name is the
+          // organisation's and it never moves.
+          isRoot
+            ? { label: "Edit code", disabled: !canEdit, onSelect: () => setOpened("code") }
+            : {
+                label: "Edit",
+                disabled: !canEdit,
+                onSelect: () =>
+                  void navigate(
+                    `/${membership.org_slug}/dms/settings/territories/${territory.id}/edit`,
+                  ),
+              },
           isClosed
             ? {
                 label: "Reopen",
@@ -90,7 +95,7 @@ export function TerritoryActions({ node, tree, onStatusError }: TerritoryActions
         ]}
         note={
           isRoot
-            ? "This is the organisation itself. It shows the organisation's name and is not changed here."
+            ? "This is the organisation itself: its name is the organisation's. Only its code, used in numbers filed here, changes here."
             : hasChildren && canDelete
               ? "To delete it, first move or delete the territories under it (Edit → Parent territory)."
               : !canEdit && !canSetStatus
@@ -99,6 +104,7 @@ export function TerritoryActions({ node, tree, onStatusError }: TerritoryActions
         }
       />
 
+      {opened === "code" && <RootCodeDialog territory={territory} onClose={() => setOpened(null)} />}
       {opened === "close" && (
         <CloseTerritoryDialog
           territory={territory}

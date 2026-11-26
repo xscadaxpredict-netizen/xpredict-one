@@ -120,6 +120,21 @@ export async function updateTerritory(
   });
 }
 
+/**
+ * The ORGANISATION's code (2026-11-26): its box takes its code and nothing
+ * else. Records filed at the organisation are numbered with it (ENQ/HO/...).
+ */
+export async function updateRootCode(
+  orgSlug: string,
+  territoryId: string,
+  code: string,
+): Promise<DmsTerritory> {
+  return request<DmsTerritory>(`/api/v1/orgs/${orgSlug}/dms/settings/territories/${territoryId}/`, {
+    method: "PUT",
+    body: JSON.stringify({ code }),
+  });
+}
+
 /** Close or Reopen a box (never the root); answers with the box. */
 export async function setTerritoryStatus(
   orgSlug: string,

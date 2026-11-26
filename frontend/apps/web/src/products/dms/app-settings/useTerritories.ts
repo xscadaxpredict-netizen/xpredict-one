@@ -10,6 +10,7 @@ import {
   movePerson,
   removePerson,
   setTerritoryStatus,
+  updateRootCode,
   updateTerritory,
   type NewTerritory,
   type TerritoryDetails,
@@ -53,6 +54,15 @@ export function useUpdateTerritory() {
       orgSlug,
       variables: { territoryId: string; body: TerritoryDetails & { parent_id?: string | null } },
     ) => updateTerritory(orgSlug, variables.territoryId, variables.body),
+    invalidates: TERRITORIES_CHANGED,
+  });
+}
+
+/** The organisation's own code (its box takes nothing else). */
+export function useUpdateRootCode() {
+  return useOrgMutation({
+    mutationFn: (orgSlug, variables: { territoryId: string; code: string }) =>
+      updateRootCode(orgSlug, variables.territoryId, variables.code),
     invalidates: TERRITORIES_CHANGED,
   });
 }

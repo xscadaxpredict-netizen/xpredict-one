@@ -33,6 +33,7 @@ Three parts:
 
 from __future__ import annotations
 
+import uuid
 from datetime import date
 
 import pytest
@@ -275,6 +276,7 @@ class TestAChildTakesItsParentsHome:
         t = build_tree(result.organization)
         with territory_scope(None):
             enquiry = Enquiry.objects.create(
+                enquiry_no=f"ENQ/TEST/{uuid.uuid4().hex[:12]}",
                 territory_id=t.delhi_east.pk, customer_name="C", phone="1"
             )
             followup = Followup.objects.create(enquiry=enquiry)
@@ -286,6 +288,7 @@ class TestAChildTakesItsParentsHome:
         t = build_tree(result.organization)
         with territory_scope(None):
             enquiry = Enquiry.objects.create(
+                enquiry_no=f"ENQ/TEST/{uuid.uuid4().hex[:12]}",
                 territory_id=t.delhi_east.pk, customer_name="C", phone="1"
             )
             followup = Followup.objects.create(enquiry=enquiry, territory_id=t.delhi.pk)
@@ -316,6 +319,7 @@ def make_site(territory_id) -> ConfirmedSite:
     enquiry CONFIRMED, and a confirmed AMC -- no AMC, no visit.
     """
     enquiry = Enquiry.objects.create(
+        enquiry_no=f"ENQ/TEST/{uuid.uuid4().hex[:12]}",
         territory_id=territory_id, customer_name="C", phone="1", status="CONFIRMED"
     )
     customer = Customer.objects.create(territory_id=territory_id, name="Customer")
@@ -359,6 +363,7 @@ class TestThroughTheApi:
         t, client, base = self.setup()
         with territory_scope(None):
             enquiry = Enquiry.objects.create(
+                enquiry_no=f"ENQ/TEST/{uuid.uuid4().hex[:12]}",
                 territory_id=t.delhi_east.pk, customer_name="C", phone="1"
             )
             bank = BankAccount.objects.create(

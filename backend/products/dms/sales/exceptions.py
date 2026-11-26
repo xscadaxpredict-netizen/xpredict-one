@@ -34,3 +34,21 @@ class DiscountExceedsLimitError(InvalidInputError):
 
     code = "discount_exceeds_limit"
     message = "The discount exceeds this dealer's limit."
+
+
+class TerritoryNeedsACodeError(ConflictError):
+    """
+    A record is being numbered at a territory with no code (2026-11-26). Codes
+    are required from then on, but territories made earlier may have none:
+    refused here, naming the territory, rather than a number with a hole in it.
+    """
+
+    code = "territory_code_missing"
+
+    def __init__(self, name: str) -> None:
+        super().__init__(
+            message=(
+                f"“{name}” has no code yet. Give it one in DMS settings → Territory "
+                "Management, then try again: every number carries it (ENQ/DLM/26-27/0001)."
+            )
+        )

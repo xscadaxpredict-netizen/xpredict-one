@@ -72,7 +72,7 @@ class AppTreeManager(MP_NodeManager):
     is of kind `organisation`, a position root holds nothing more.
     """
 
-    def _root_fields(self) -> dict:
+    def _root_fields(self, app: str) -> dict:
         return {}
 
     def root_for(self, organization, app: str):
@@ -97,7 +97,7 @@ class AppTreeManager(MP_NodeManager):
                     "app_id": app,
                     "name": "",
                     "is_root": True,
-                    **self._root_fields(),
+                    **self._root_fields(app),
                 }
             )
 
@@ -177,8 +177,11 @@ class TerritoryManager(AppTreeManager):
     `organisation`.
     """
 
-    def _root_fields(self) -> dict:
-        return {"kind": TerritoryKind.ORGANISATION}
+    def _root_fields(self, app: str) -> dict:
+        # DMS's top starts with the code "HO" (2026-11-26): every number filed
+        # there carries it (ENQ/HO/26-27/0001), so an organisation's first
+        # enquiry is never refused for a missing code. The owner may change it.
+        return {"kind": TerritoryKind.ORGANISATION, "code": "HO" if app == "dms" else None}
 
 
 class PositionManager(AppTreeManager):

@@ -661,6 +661,23 @@ def update_territory(*, territory: Territory, **fields: str | None) -> Territory
     return territory
 
 
+@transaction.atomic
+def set_root_code(*, territory: Territory, code: str) -> Territory:
+    """
+    The ORGANISATION's code in DMS's tree (2026-11-26): the one thing about
+    its box that may change -- it is named by the organisation and never
+    moves. Records filed at the organisation are numbered with it
+    (ENQ/HO/26-27/0001), so it is set once, like any territory's code, and is
+    unique in the tree.
+    """
+    if not territory.is_root:
+        raise ValueError("set_root_code() is for the organisation's box; use edit_territory().")
+    _assert_territory_code_free(territory.organization, code, excluding=territory.pk)
+    territory.code = code
+    territory.save(update_fields=["code", "updated_at"])
+    return territory
+
+
 _PARENT_UNCHANGED = object()
 
 

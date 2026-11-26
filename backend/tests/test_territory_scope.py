@@ -117,7 +117,12 @@ def make_member(organization) -> User:
 
 def enquiry_at(territory_id: uuid.UUID) -> Enquiry:
     with territory_scope(None):
-        return Enquiry.objects.create(territory_id=territory_id, customer_name="C", phone="1")
+        return Enquiry.objects.create(
+            enquiry_no=f"ENQ/TEST/{uuid.uuid4().hex[:12]}",
+            territory_id=territory_id,
+            customer_name="C",
+            phone="1",
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -136,7 +141,12 @@ class TestNobodyDecidedRefuses:
     def test_creating_through_objects_raises_too(self, tenant_db):
         """`.objects.create()` goes through the same manager."""
         with pytest.raises(TerritoryScopeMissingError):
-            Enquiry.objects.create(territory_id=uuid.uuid4(), customer_name="C", phone="1")
+            Enquiry.objects.create(
+                enquiry_no=f"ENQ/TEST/{uuid.uuid4().hex[:12]}",
+                territory_id=uuid.uuid4(),
+                customer_name="C",
+                phone="1",
+            )
 
     def test_all_units_is_unaffected(self, tenant_db):
         """The deliberate escape hatch reads every dealership, scope or not."""
@@ -234,7 +244,12 @@ class TestARequestStartsUndecided:
 
 def report_at(territory_id: uuid.UUID) -> ServiceReport:
     with territory_scope(None):
-        enquiry = Enquiry.objects.create(territory_id=territory_id, customer_name="C", phone="1")
+        enquiry = Enquiry.objects.create(
+            enquiry_no=f"ENQ/TEST/{uuid.uuid4().hex[:12]}",
+            territory_id=territory_id,
+            customer_name="C",
+            phone="1",
+        )
         customer = Customer.objects.create(territory_id=territory_id, name="Customer")
         site = ConfirmedSite.objects.create(
             territory_id=territory_id, enquiry=enquiry, customer=customer

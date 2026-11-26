@@ -19,7 +19,7 @@ from django.db import transaction
 from rest_framework.test import APIClient
 
 from config.routers import current_tenant_db
-from conftest import TEST_TENANT_ALIAS
+from conftest import TEST_TENANT_ALIAS, code_for
 from core.accounts.models import User
 from core.organizations.models import ActivationCode, Membership, TerritoryKind
 from core.organizations.services import (
@@ -69,6 +69,7 @@ def tenant():
 def enquiry_at(territory, name="Sharma Farms"):
     with tenant():
         return Enquiry.objects.create(
+            enquiry_no=f"ENQ/TEST/{uuid.uuid4().hex[:12]}",
             territory_id=territory.pk,
             customer_name=name,
             phone="1234567890",
@@ -88,13 +89,16 @@ def enquiry_url(result, enquiry):
 def setting():
     """North -> Delhi Motors, and Priya, a Manager placed at North (she sees Delhi's records)."""
     result = found()
-    north = add_territory(organization=result.organization, kind="region", name="North")
+    north = add_territory(
+        organization=result.organization, kind="region", name="North", code=code_for("North")
+    )
     delhi = add_territory(
         organization=result.organization,
         kind=TerritoryKind.DEALER,
         name="Delhi Motors",
         parent_id=north.pk,
         gstin="27AAPFU0939F1ZV",
+        code=code_for("Delhi Motors"),
     )
     priya = Membership.objects.create(
         user=User.objects.create_user(email="priya@acme.test", password="x"),
@@ -193,6 +197,7 @@ class TestTheGuardItself:
 
                 refused(
                     lambda: Enquiry.objects.create(
+                        enquiry_no=f"ENQ/TEST/{uuid.uuid4().hex[:12]}",
                         territory_id=delhi.pk,
                         customer_name="New",
                         phone="1",

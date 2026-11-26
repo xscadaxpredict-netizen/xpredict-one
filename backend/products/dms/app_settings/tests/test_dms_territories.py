@@ -324,7 +324,7 @@ class TestEachActIsItsOwnPermission:
 
     def test_edit(self, client, looker):
         result, north = looker
-        body = an_edit(name="Renamed", gstin="", code="")
+        body = an_edit(name="Renamed", gstin="", code="NEW-01")
         assert client.put(url(result, f"{north.pk}/"), body, format="json").status_code == 403
         north.refresh_from_db()
         assert north.name == "North"
@@ -386,7 +386,7 @@ class TestNewTerritory:
 
         response = as_owner(client, result).post(
             url(result),
-            a_new(kind=kind, name="The new one", code="", parent_id=str(parent.pk)),
+            a_new(kind=kind, name="The new one", code="NEW-01", parent_id=str(parent.pk)),
             format="json",
         )
 
@@ -405,7 +405,7 @@ class TestNewTerritory:
 
         response = as_owner(client, result).post(
             url(result),
-            a_new(kind=kind, name="The new one", code="", parent_id=str(parent.pk)),
+            a_new(kind=kind, name="The new one", code="NEW-01", parent_id=str(parent.pk)),
             format="json",
         )
 
@@ -435,7 +435,7 @@ class TestNewTerritory:
         result = found()
 
         response = as_owner(client, result).post(
-            url(result), a_new(kind="region", name="North", gstin="", code=""), format="json"
+            url(result), a_new(kind="region", name="North", gstin="", code="NEW-01"), format="json"
         )
 
         assert response.status_code == 201, response.content
@@ -469,14 +469,23 @@ class TestNewTerritory:
         assert response.status_code == 409
         assert response.json()["code"] == "territory_code_taken"
 
-    def test_any_number_may_have_no_code(self, client):
+    def test_a_code_is_required_and_kept_in_capitals(self, client):
+        """
+        REQUIRED SINCE 2026-11-26 (the owner): every number filed at a territory
+        carries its code (ENQ/DLM-01/26-27/0001). Was "any number may have no
+        code".
+        """
         result = found()
         owner = as_owner(client, result)
 
-        first = owner.post(url(result), a_new(code=""), format="json")
-        second = owner.post(url(result), a_new(name="Other Motors", code=""), format="json")
+        missing = owner.post(url(result), a_new(code=""), format="json")
+        bad = owner.post(url(result), a_new(code="DL/01"), format="json")
+        lower = owner.post(url(result), a_new(code="dlm-01"), format="json")
 
-        assert (first.status_code, second.status_code) == (201, 201)
+        assert missing.status_code == 422, missing.content
+        assert bad.status_code == 422, bad.content
+        assert lower.status_code == 201, lower.content
+        assert lower.json()["code"] == "DLM-01"
 
     def test_a_parent_in_another_organisation_is_not_found(self, client):
         ours = found()
@@ -532,7 +541,7 @@ class TestEdit:
 
         response = as_owner(client, result).put(
             url(result, f"{north.pk}/"),
-            {**an_edit(name="North", gstin="", code=""), field: "x"},
+            {**an_edit(name="North", gstin="", code="NEW-01"), field: "x"},
             format="json",
         )
 
@@ -600,7 +609,7 @@ class TestEdit:
 
         response = as_owner(client, result).put(
             url(result, f"{north.pk}/"),
-            {**an_edit(name="North", gstin="", code=""), "parent_id": str(inner.pk)},
+            {**an_edit(name="North", gstin="", code="NEW-01"), "parent_id": str(inner.pk)},
             format="json",
         )
 
@@ -678,15 +687,37 @@ class TestEdit:
 
         assert response.status_code == 409
 
-    def test_never_the_root(self, client):
+    def test_the_organisation_s_box_takes_its_code_and_nothing_else(self, client):
+        """
+        Was "never the root". Since 2026-11-26 the organisation's box has a code
+        -- "HO" from the start -- which its Edit may change; its name, place and
+        details are still the organisation's and are refused.
+        """
         result = found()
+        top = root(result)
+        owner = as_owner(client, result)
+        assert top.code == "HO"
+
+        everything = owner.put(
+            url(result, f"{top.pk}/"), an_edit(name="Renamed", gstin=""), format="json"
+        )
+        just_the_code = owner.put(url(result, f"{top.pk}/"), {"code": "hq"}, format="json")
+
+        assert everything.status_code == 422, everything.content
+        assert just_the_code.status_code == 200, just_the_code.content
+        top.refresh_from_db()
+        assert (top.code, top.name) == ("HQ", "")
+
+    def test_the_organisation_s_code_cannot_take_another_territory_s(self, client):
+        result = found()
+        box(result, "North", code="NTH")
 
         response = as_owner(client, result).put(
-            url(result, f"{root(result).pk}/"), an_edit(name="Renamed", gstin=""), format="json"
+            url(result, f"{root(result).pk}/"), {"code": "nth"}, format="json"
         )
 
         assert response.status_code == 409
-        assert response.json()["code"] == "territory_is_the_organisation"
+        assert response.json()["code"] == "territory_code_taken"
 
     def test_another_organisation_s_territory_is_not_found(self, client):
         ours = found()

@@ -73,14 +73,14 @@ class TestDealerAndColleagueIsolation:
                 enq_a = Enquiry.objects.create(
                     territory_id=dealer_a,
                     customer_name="Customer A",
-                    enquiry_no="ENQ/26-27/0001",
+                    enquiry_no="ENQ/T1/26-27/0001",
                     phone="1234567890",
                     created_by_user_id=user_a1,
                 )
                 enq_b = Enquiry.objects.create(
                     territory_id=dealer_b,
                     customer_name="Customer B",
-                    enquiry_no="ENQ/26-27/0001",
+                    enquiry_no="ENQ/T2/26-27/0001",
                     phone="9876543210",
                     created_by_user_id=user_b1,
                 )
@@ -120,14 +120,14 @@ class TestDealerAndColleagueIsolation:
             enq1 = Enquiry.objects.create(
                 territory_id=dealer_a,
                 customer_name="Rep 1 Lead",
-                enquiry_no="ENQ/26-27/0001",
+                enquiry_no="ENQ/T3/26-27/0001",
                 phone="1111111111",
                 created_by_user_id=user_rep1,
             )
             enq2 = Enquiry.objects.create(
                 territory_id=dealer_a,
                 customer_name="Rep 2 Lead",
-                enquiry_no="ENQ/26-27/0002",
+                enquiry_no="ENQ/T4/26-27/0002",
                 phone="2222222222",
                 created_by_user_id=user_rep2,
             )
@@ -176,8 +176,8 @@ class TestDealerAndColleagueIsolation:
         """API endpoints enforce dealer isolation, colleague privacy, and permissions."""
         client = APIClient()
         org = create_test_org("dms-isolation-org")
-        unit_a = Territory.objects.create(organization=org, name="Unit A")
-        unit_b = Territory.objects.create(organization=org, name="Unit B")
+        unit_a = Territory.objects.create(organization=org, name="Unit A", code="UNITA")
+        unit_b = Territory.objects.create(organization=org, name="Unit B", code="UNITB")
 
         user_rep1, _ = create_dealer_user(
             org,
@@ -301,8 +301,8 @@ class TestDealerAndColleagueIsolation:
         work, which makes this the one assertion that moves when it is removed.
         """
         org = create_test_org("dms-manager-cross-dealer-org")
-        unit_a = Territory.objects.create(organization=org, name="Unit A")
-        unit_b = Territory.objects.create(organization=org, name="Unit B")
+        unit_a = Territory.objects.create(organization=org, name="Unit A", code="UNITA")
+        unit_b = Territory.objects.create(organization=org, name="Unit B", code="UNITB")
 
         rep_a, _ = create_dealer_user(org, unit_a, "rep@unit-a-cross.test")
         manager_b, _ = create_dealer_user(

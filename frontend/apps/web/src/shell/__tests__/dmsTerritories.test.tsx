@@ -270,7 +270,7 @@ describe("a box's panel", () => {
     expect(boxNamed("Delhi Motors")).toHaveAttribute("aria-current", "true");
   });
 
-  it("offers nothing on the organisation itself", async () => {
+  it("offers only its code on the organisation itself", async () => {
     await showTree(`${PAGE}/root`);
 
     fireEvent.keyDown(screen.getByRole("button", { name: "More actions for Acme Motors" }), {
@@ -278,10 +278,11 @@ describe("a box's panel", () => {
     });
     const menu = await screen.findByRole("menu");
 
-    expect(within(menu).getByRole("menuitem", { name: "Edit" })).toHaveAttribute(
+    // Its code is all that changes (2026-11-26): numbers filed there carry it.
+    expect(within(menu).getByRole("menuitem", { name: "Edit code" })).not.toHaveAttribute(
       "aria-disabled",
-      "true",
     );
+    expect(within(menu).queryByRole("menuitem", { name: "Edit" })).not.toBeInTheDocument();
     expect(within(menu).getByRole("menuitem", { name: "Close" })).toHaveAttribute(
       "aria-disabled",
       "true",
@@ -420,6 +421,18 @@ describe("New Territory", () => {
     await waitFor(() => expect(router.state.location.pathname).toBe(`${PAGE}/chd`));
   });
 
+  it("needs a code, since every number filed there carries it", async () => {
+    await openNew();
+    fireEvent.change(screen.getByLabelText(/Kind/), { target: { value: "region" } });
+    fireEvent.change(screen.getByLabelText(/Name/), { target: { value: "East" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+
+    expect(
+      await screen.findByText("Enter a code: it appears in every number filed here."),
+    ).toBeInTheDocument();
+    expect(mockCreateTerritory).not.toHaveBeenCalled();
+  });
+
   it("shows the server's refusal on the field it names", async () => {
     mockCreateTerritory.mockRejectedValue(
       new ApiError({
@@ -435,6 +448,7 @@ describe("New Territory", () => {
     await openNew();
     fireEvent.change(screen.getByLabelText(/Kind/), { target: { value: "region" } });
     fireEvent.change(screen.getByLabelText(/Name/), { target: { value: "East" } });
+    fireEvent.change(screen.getByLabelText(/^Code/), { target: { value: "EST" } });
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
 
     expect(await screen.findByText("Enter a valid email address.")).toBeInTheDocument();
@@ -454,6 +468,7 @@ describe("New Territory", () => {
     await openNew();
     fireEvent.change(screen.getByLabelText(/Kind/), { target: { value: "region" } });
     fireEvent.change(screen.getByLabelText(/Name/), { target: { value: "North" } });
+    fireEvent.change(screen.getByLabelText(/^Code/), { target: { value: "NTH" } });
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
 
     expect(await screen.findByText("Another territory already uses that name.")).toBeInTheDocument();

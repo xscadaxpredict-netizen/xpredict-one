@@ -244,7 +244,11 @@ function TerritoryForm({ tree, editing, treePath, backPath }: TerritoryFormProps
 
     if (!values.name.trim()) found.name = "Enter a name for this territory.";
     else if (values.name.trim().length > 200) found.name = "Keep the name under 200 characters.";
-    if (values.code.trim().length > 40) found.code = "Keep the code under 40 characters.";
+    // Required since 2026-11-26: every number filed here carries it (ENQ/DLM/26-27/0001).
+    const code = values.code.trim().toUpperCase();
+    if (!code) found.code = "Enter a code: it appears in every number filed here.";
+    else if (!/^[A-Z0-9][A-Z0-9-]{1,9}$/.test(code))
+      found.code = "A code is 2 to 10 letters, digits or hyphens, like DLM-01.";
     if (!editing && !parentId) found.parent_id = "Choose where it sits.";
     if (isDealer && !gstin) found.gstin = "A dealer needs its GSTIN.";
     else if (gstin && !isValidGstin(gstin)) {
@@ -267,7 +271,7 @@ function TerritoryForm({ tree, editing, treePath, backPath }: TerritoryFormProps
 
     const details: TerritoryDetails = {
       name: values.name.trim(),
-      code: values.code.trim() || null,
+      code: values.code.trim().toUpperCase(),
       gstin: normaliseIdentifier(values.gstin),
       pan: normaliseIdentifier(values.pan),
       contact_person: values.contact_person.trim(),
@@ -407,12 +411,13 @@ function TerritoryForm({ tree, editing, treePath, backPath }: TerritoryFormProps
                 id="territory-code"
                 label="Code"
                 error={errors.code}
-                hint="Optional. Unique in your tree."
+                hint="Required. 2 to 10 letters, digits or hyphens, unique in your tree. Every number filed here carries it: ENQ/DLM/26-27/0001."
               >
                 <input
                   id="territory-code"
                   type="text"
-                  maxLength={40}
+                  maxLength={10}
+                  required
                   value={values.code}
                   onChange={(event) => set("code", event.target.value)}
                   className={page.input}

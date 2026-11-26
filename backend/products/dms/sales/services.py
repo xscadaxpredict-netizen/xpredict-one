@@ -22,6 +22,7 @@ from django.utils import timezone
 from config.transactions import tenant_atomic
 from shared.exceptions import ConflictError, InvalidInputError, not_found
 
+from .exceptions import TerritoryNeedsACodeError
 from .models import (
     AgentPayout,
     AgentPayoutAttachment,
@@ -709,39 +710,69 @@ def _financial_year_label(today: datetime.date) -> str:
     return f"{start % 100:02d}-{(start + 1) % 100:02d}"
 
 
-def enquiry_number(fy_label: str, seq: int) -> str:
-    """ENQ/26-27/0042. Shared with the migration that numbers old enquiries."""
-    return f"ENQ/{fy_label}/{seq:04d}"
+# ---------------------------------------------------------------------------
+# NUMBERS: <PREFIX>/<territory code>/<FY>/<NNNN> (the owner, 2026-11-26)
+#
+#   ENQ/DLM/26-27/0001   QT/DLM/26-27/0001   AMC/...   SPR/...   OC/DLM/26-27/0001
+#
+# Each territory counts its own 1, 2, 3 per prefix and financial year, and the
+# CODE makes every number unique in the organisation: Delete territory moves
+# records across territories and they keep their numbers without colliding.
+# Replaces `main`'s per-dealership `ENQ/26-27/0001` (PR #36) and the older
+# `STP/OC/26-27/001`.
+# ---------------------------------------------------------------------------
 
 
-def _generate_enquiry_number(territory_id: uuid.UUID) -> str:
+def _territory_code(territory_id: uuid.UUID) -> str:
+    """The code of the territory a record is filed at (control database)."""
+    from core.organizations.models import Territory
+
+    territory = (
+        Territory.objects.using("default").select_related("organization").get(pk=territory_id)
+    )
+    if not territory.code:
+        raise TerritoryNeedsACodeError(territory.display_name)
+    return territory.code
+
+
+def _next_number(model, field: str, prefix: str, territory_id: uuid.UUID) -> str:
     """
-    The territory's next enquiry number for the current financial year:
-    ENQ/26-27/0001, 0002, ... Runs inside create_enquiry's transaction and locks
-    the territory's enquiry rows first, so two enquiries saved at the same
-    moment queue up instead of reading the same last number. The unique
-    constraint on (territory_id, enquiry_no) is the backstop.
+    The next `<prefix>/<code>/<FY>/NNNN` for a record filed at `territory_id`.
+
+    Runs inside the creating transaction and locks the territory's rows of
+    `model` first, so two records saved at once queue up instead of reading
+    the same last number.
+
+    COUNTED BY THE NUMBER'S OWN PREFIX ACROSS THE WHOLE ORGANISATION (this
+    tenant database), not by the territory's rows: a record moved in from
+    elsewhere keeps its number, and a code once used by another territory can
+    never be handed out twice. `all_territories`, never `objects`: the scoped
+    manager would hide rows the caller may not see. The unique constraint on
+    the number is the backstop.
     """
     fy = _financial_year_label(timezone.now().astimezone(_FY_ZONE).date())
-    prefix = f"ENQ/{fy}/"
-    # Evaluated for the lock it takes, not for the rows. `all_territories`, not
-    # `objects`: the sequence is the territory's, whoever is asking -- the scoped
-    # manager would hide rows the caller may not see and hand out a taken number.
+    head = f"{prefix}/{_territory_code(territory_id)}/{fy}/"
+    # Evaluated for the lock it takes, not for the rows.
     list(
-        Enquiry.all_territories.select_for_update()
+        model.all_territories.select_for_update()
         .filter(territory_id=territory_id)
         .values_list("id", flat=True)
     )
     max_seq = 0
-    taken = Enquiry.all_territories.filter(territory_id=territory_id, enquiry_no__startswith=prefix)
-    for no in taken.values_list("enquiry_no", flat=True):
-        tail = no[len(prefix):]
+    taken = model.all_territories.filter(**{f"{field}__startswith": head})
+    for number in taken.values_list(field, flat=True):
+        tail = number[len(head):]
         if tail.isdigit():
             max_seq = max(max_seq, int(tail))
-    return enquiry_number(fy, max_seq + 1)
+    return f"{head}{max_seq + 1:04d}"
 
 
-#: Quote number prefix per quote type: QT/26-27/0001, AMC/26-27/0001, SPR/26-27/0001.
+def _generate_enquiry_number(territory_id: uuid.UUID) -> str:
+    """ENQ/DLM/26-27/0001, ... -- the enquiry's own number, never changed."""
+    return _next_number(Enquiry, "enquiry_no", "ENQ", territory_id)
+
+
+#: Quote number prefix per quote type, each with its own count (the owner).
 QUOTE_NUMBER_PREFIX = {
     QuoteType.NORMAL: "QT",
     QuoteType.AMC: "AMC",
@@ -750,60 +781,15 @@ QUOTE_NUMBER_PREFIX = {
 
 
 def _generate_quote_number(territory_id: uuid.UUID, quote_type: str) -> str:
-    """
-    The territory's next quote number for this type and financial year, e.g.
-    QT/26-27/0007. Short and sequential, so people can read it out and find it.
-    Runs inside save_quotation's transaction and locks the territory's quote
-    rows first, so two quotes saved at once queue up; the unique constraint on
-    (territory_id, quote_no) is the backstop.
-    """
-    fy = _financial_year_label(timezone.now().astimezone(_FY_ZONE).date())
-    prefix = f"{QUOTE_NUMBER_PREFIX.get(quote_type, 'QT')}/{fy}/"
-    # Evaluated for the lock it takes, not for the rows. `all_territories`, not
-    # `objects`: the sequence is the territory's, whoever is asking -- the scoped
-    # manager would hide rows the caller may not see and hand out a taken number.
-    list(
-        Quotation.all_territories.select_for_update()
-        .filter(territory_id=territory_id)
-        .values_list("id", flat=True)
+    """QT/DLM/26-27/0007 (or AMC/..., SPR/...): short and sequential, read out and found."""
+    return _next_number(
+        Quotation, "quote_no", QUOTE_NUMBER_PREFIX.get(quote_type, "QT"), territory_id
     )
-    max_seq = 0
-    taken = Quotation.all_territories.filter(territory_id=territory_id, quote_no__startswith=prefix)
-    for no in taken.values_list("quote_no", flat=True):
-        tail = no[len(prefix):]
-        if tail.isdigit():
-            max_seq = max(max_seq, int(tail))
-    return f"{prefix}{max_seq + 1:04d}"
 
 
 def _generate_sequential_oc_number(territory_id: uuid.UUID) -> str:
-    """
-    The dealership's next OC number for the current financial year, e.g.
-    STP/OC/26-27/001, then 002, ...
-
-    Must run inside the confirm transaction. It locks the dealership's site rows
-    first, so two people confirming at the same moment queue up instead of both
-    reading the same "last number" --- the (territory_id, oc_number) unique constraint
-    is conditional, and MySQL does not enforce conditional constraints at all.
-    """
-    prefix = f"STP/OC/{_financial_year_label(timezone.now().astimezone(_FY_ZONE).date())}/"
-    # Evaluated for the lock it takes, not for the rows.
-    list(
-        ConfirmedSite.objects.select_for_update()
-        .filter(territory_id=territory_id)
-        .values_list("id", flat=True)
-    )
-    existing_ocs = ConfirmedSite.objects.filter(
-        territory_id=territory_id,
-        oc_number__startswith=prefix,
-    ).values_list("oc_number", flat=True)
-
-    max_seq = 0
-    for oc in existing_ocs:
-        tail = oc[len(prefix):].strip()
-        if tail.isdigit():
-            max_seq = max(max_seq, int(tail))
-    return f"{prefix}{max_seq + 1:03d}"
+    """OC/DLM/26-27/0001 -- the confirmed order's number ("STP/" dropped, the owner)."""
+    return _next_number(ConfirmedSite, "oc_number", "OC", territory_id)
 
 
 @tenant_atomic

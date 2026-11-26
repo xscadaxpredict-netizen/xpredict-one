@@ -170,11 +170,11 @@ class Enquiry(TerritoryScopedModel):
     )
     remarks = models.TextField(blank=True, default="")
 
-    # THE ENQUIRY'S OWN NUMBER, e.g. ENQ/26-27/0042: per dealership, per
-    # financial year, assigned by the server at creation and never changed. It
-    # is what tells a customer's several enquiries apart (a name, a date or a
-    # remark can repeat). Unique per dealership with no condition, because
-    # MySQL does not enforce conditional unique constraints.
+    # THE ENQUIRY'S OWN NUMBER, e.g. ENQ/DLM/26-27/0042: its territory's code,
+    # the financial year and that territory's count (2026-11-26), assigned by
+    # the server at creation and never changed. It tells a customer's several
+    # enquiries apart (a name, a date or a remark can repeat). Unique across
+    # the organisation, with no condition: MySQL does not enforce those.
     enquiry_no = models.CharField(max_length=30, editable=False)
 
     # Set when a quote is confirmed.
@@ -197,9 +197,9 @@ class Enquiry(TerritoryScopedModel):
             models.Index(fields=["territory_id", "-created_at"]),
         ]
         constraints = [
-            models.UniqueConstraint(
-                fields=["territory_id", "enquiry_no"], name="uq_enquiry_territory_enquiry_no"
-            ),
+            # ORGANISATION-WIDE (2026-11-26): the number carries its territory's code
+            # (ENQ/DLM/26-27/0001), so it is unique across every territory.
+            models.UniqueConstraint(fields=["enquiry_no"], name="uq_enquiry_no"),
         ]
 
     @property
@@ -476,10 +476,8 @@ class Quotation(TerritoryScopedModel):
             models.Index(fields=["territory_id", "-created_at"]),
         ]
         constraints = [
-            models.UniqueConstraint(
-                fields=["territory_id", "quote_no"],
-                name="uq_quotation_unit_quote_no",
-            ),
+            # ORGANISATION-WIDE (2026-11-26): QT/DLM/26-27/0001 carries its code.
+            models.UniqueConstraint(fields=["quote_no"], name="uq_quotation_quote_no"),
         ]
 
     @property
@@ -628,9 +626,11 @@ class ConfirmedSite(TerritoryScopedModel):
             models.Index(fields=["territory_id", "-created_at"]),
         ]
         constraints = [
+            # ORGANISATION-WIDE (2026-11-26): OC/DLM/26-27/0001 carries its code.
+            # Conditional, so MySQL does not enforce it -- the generator does.
             models.UniqueConstraint(
-                fields=["territory_id", "oc_number"],
-                name="uq_site_unit_oc_number",
+                fields=["oc_number"],
+                name="uq_site_oc_number",
                 condition=~models.Q(oc_number=""),
             ),
         ]
