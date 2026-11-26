@@ -35,24 +35,6 @@ export function useTools(orgSlug: string) {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["marketing", orgSlug] }),
   });
 
-  const calcsQuery = useQuery({
-    queryKey: ["calculations", orgSlug],
-    queryFn: () => request<any[]>(`${basePath}/calculations/`),
-  });
-
-  const createCalcMutation = useMutation({
-    mutationFn: (data: any) => request(`${basePath}/calculations/`, {
-      method: "POST",
-      body: JSON.stringify(data),
-    }),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["calculations", orgSlug] }),
-  });
-
-  const deleteCalcMutation = useMutation({
-    mutationFn: (id: string) => request(`${basePath}/calculations/${id}/`, { method: "DELETE" }),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["calculations", orgSlug] }),
-  });
-
   // ---- EC Dosing Calculations --------------------------------------------
   const ecCalculationsQuery = useQuery({
     queryKey: ["ec-calculations", orgSlug],
@@ -165,10 +147,6 @@ export function useTools(orgSlug: string) {
     uploadMaterial: uploadMarketingMutation.mutate,
     deleteMaterial: deleteMarketingMutation.mutate,
 
-    calculations: calcsQuery.data ?? [],
-    calcsPending: calcsQuery.isPending,
-    createCalculation: createCalcMutation.mutate,
-    deleteCalculation: deleteCalcMutation.mutate,
 
     ecCalculations: ecCalculationsQuery.data ?? [],
     ecCalculationsPending: ecCalculationsQuery.isPending,

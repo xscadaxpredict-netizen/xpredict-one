@@ -5,12 +5,17 @@ import { AMCScreen } from "./screens/AMCScreen";
 import { SchedulingScreen } from "./screens/SchedulingScreen";
 import { ServiceReportsScreen } from "./screens/ServiceReportsScreen";
 import { WaterReportsScreen } from "./screens/WaterReportsScreen";
-import { ComplaintsScreen } from "./screens/ComplaintsScreen";
 
 /** Old bookmarks and links: the per-module dashboard now lives in Home -> Dashboard. */
 function ToConsolidatedDashboard({ view }: { view: string }) {
   const { membership } = useShellContext();
   return <Navigate to={`/${membership.org_slug}/dms/home?view=${view}`} replace />;
+}
+
+/** Tickets moved to Installation & Tech Support; old links and bookmarks follow. */
+function ToTickets() {
+  const { membership } = useShellContext();
+  return <Navigate to={`/${membership.org_slug}/dms/tech-support/tickets`} replace />;
 }
 
 export default function SiteServicesRoutes() {
@@ -23,7 +28,7 @@ export default function SiteServicesRoutes() {
         <Route path="scheduling" element={<SchedulingScreen />} />
         <Route path="reports" element={<ServiceReportsScreen />} />
         <Route path="water" element={<WaterReportsScreen />} />
-        <Route path="complaints" element={<ComplaintsScreen />} />
+        <Route path="complaints" element={<ToTickets />} />
       </Route>
     </Routes>
   );

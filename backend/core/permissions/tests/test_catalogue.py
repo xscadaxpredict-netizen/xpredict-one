@@ -22,7 +22,7 @@ pytestmark = pytest.mark.django_db
 
 
 class TestPermissions:
-    def test_there_are_81(self):
+    def test_there_are_80(self):
         """
         C42 settled on 48, C67 added seven, and C72 piece 1 added three
         (`admin.territory.view/create/update`, `permissions/0009`), and C78 one
@@ -36,13 +36,15 @@ class TestPermissions:
         Management's four (`dms.territory.*`, `0024`, 2026-11-24), and its Delete
         (`dms.territory.delete`, `0025`) -- then the Dealers screen's seven went
         (`admin.dealer.*`, `admin.territory.*`, `0026`, 2026-11-25), and the position
-        chart's four came (`dms.position.*`, `0027`, 2026-11-25). A number
+        chart's four came (`dms.position.*`, `0027`, 2026-11-25), and `main`'s
+        `permissions/0005` withdrew `dms.timer_calculation.delete` with the Timer
+        Calculation feature (merged 2026-11-26). A number
         that drifts is a decision nobody made -- which is exactly what this
         assertion is for, and it did its job: the seven codes were added with a
         comment saying the catalogue had grown and this test was not updated
         with them.
         """
-        assert Permission.objects.count() == 81
+        assert Permission.objects.count() == 80
 
     def test_split_by_app_as_decided(self):
         """
@@ -56,11 +58,11 @@ class TestPermissions:
         `dms.user.create` (its Invite User, `0022`), and 48 with its rows' Edit,
         Deactivate and Delete (`0023`), and 52 with Territory Management's four
         (`0024`), 53 with its Delete (`0025`), 57 with the position chart's four
-        (`0027`). Each app
+        (`0027`), 56 when `main`'s `0005` took the timer calculation's. Each app
         is asserted separately so a change to one cannot quietly reach another.
         """
         assert Permission.objects.filter(app_id=AppCode.ADMIN).count() == 23
-        assert Permission.objects.filter(app_id=AppCode.DMS).count() == 57
+        assert Permission.objects.filter(app_id=AppCode.DMS).count() == 56
         assert Permission.objects.filter(app_id=AppCode.CRM).count() == 1
 
     def test_every_code_is_app_resource_action(self):

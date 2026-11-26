@@ -6,7 +6,7 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('dms_sales', '0013_remove_confirmedsite_uq_site_unit_oc_number_and_more'),
+        ('dms_sales', '0016_remove_confirmedsite_uq_site_unit_oc_number_and_more'),
         ('dms_site_services', '0014_serviceschedule_history'),
     ]
 

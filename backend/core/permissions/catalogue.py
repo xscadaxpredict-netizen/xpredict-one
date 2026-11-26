@@ -178,13 +178,6 @@ PERMISSIONS: list[tuple[str, str, str, str, str]] = [
         "Calculator",
         "Change the capacity calculator's constants",
     ),
-    (
-        "dms.timer_calculation.delete",
-        "dms",
-        "tools",
-        "Calculator",
-        "Remove a saved calculation",
-    ),
     # --- DMS: E-commerce ----------------------------------------------------
     #
     # THIS IS THE `ecommerce` MODULE INSIDE DMS, not the deferred E-commerce
@@ -314,7 +307,6 @@ _MANAGER = [
     # and `allowed_territories` keeps them to their own either way.
     "dms.store_order.create",
     "dms.store_order.manage",
-    "dms.timer_calculation.delete",
 ]
 
 # WHAT THE WHOLE ORGANISATION SHARES, and why it is not in `_MANAGER`.

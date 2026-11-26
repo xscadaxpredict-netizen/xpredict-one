@@ -13,7 +13,6 @@ from products.dms.tools.models import (
     FeasibilityLineItem,
     FeasibilityReport,
     MarketingAsset,
-    TimerCalculation,
 )
 
 
@@ -149,18 +148,6 @@ class FeasibilityAttachmentAdmin(TenantAwareModelAdmin):
 @admin.register(CalculatorSettings)
 class CalculatorSettingsAdmin(TenantAwareModelAdmin):
     list_display = ("id", "created_at", "updated_at")
-    list_filter = ("created_at",)
-    readonly_fields = ("id", "created_at", "updated_at")
-
-
-@admin.register(TimerCalculation)
-class TimerCalculationAdmin(TenantAwareModelAdmin):
-    list_display = (
-        "id",
-        "site",
-        "territory_id",
-        "created_at",
-    )
     list_filter = ("created_at",)
     readonly_fields = ("id", "created_at", "updated_at")
 

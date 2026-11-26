@@ -54,7 +54,7 @@ export function GettingStarted() {
       module: "service",
       title: "Site Services & Scheduling",
       description:
-        "Complete after-sales operations: Annual Maintenance Contracts (AMC), scheduled engineer visits, water quality test reports, and customer complaint tracking.",
+        "Complete after-sales operations: Annual Maintenance Contracts (AMC), scheduled engineer visits and water quality test reports.",
       icon: Wrench,
       iconBg: "linear-gradient(135deg, #059669, #047857)",
       primaryPath: `${basePath}/home?view=service`,
@@ -65,7 +65,6 @@ export function GettingStarted() {
         { label: "Scheduled Services", path: `${basePath}/site-services/scheduling` },
         { label: "Service Reports", path: `${basePath}/site-services/reports` },
         { label: "Water Reports", path: `${basePath}/site-services/water` },
-        { label: "Complaint Box", path: `${basePath}/site-services/complaints` },
       ],
     },
     {
@@ -73,7 +72,7 @@ export function GettingStarted() {
       module: "tech-support",
       title: "Installation & Tech Support",
       description:
-        "Field enablement resources: interactive equipment manuals, instructional video library, on-demand callback requests, and timer calibration calculators.",
+        "Field enablement resources: interactive equipment manuals, instructional video library, on-demand callback requests, and support tickets.",
       icon: Headphones,
       iconBg: "linear-gradient(135deg, #7c3aed, #6d28d9)",
       primaryPath: `${basePath}/tech-support/manuals`,
@@ -82,7 +81,7 @@ export function GettingStarted() {
         { label: "User Manuals", path: `${basePath}/tech-support/manuals` },
         { label: "Machine Videos", path: `${basePath}/tech-support/videos` },
         { label: "Request for Call", path: `${basePath}/tech-support/calls` },
-        { label: "Timer Calculation", path: `${basePath}/tech-support/timer-calculation` },
+        { label: "Raise Ticket", path: `${basePath}/tech-support/tickets` },
       ],
     },
     {
@@ -153,7 +152,7 @@ export function GettingStarted() {
     {
       number: "Stage 06",
       name: "Parts & Support",
-      detail: "Genuine spares ordering, call requests, and complaint resolution.",
+      detail: "Genuine spares ordering, call requests, and ticket resolution.",
     },
   ];
 

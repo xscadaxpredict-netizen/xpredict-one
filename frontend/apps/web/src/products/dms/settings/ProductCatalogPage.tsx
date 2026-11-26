@@ -316,10 +316,6 @@ function ProductDetails({ product }: { product: ProductPreset }) {
         <dd>{product.gst_rate}%</dd>
       </div>
       <div>
-        <dt>Margin</dt>
-        <dd>{product.margin !== null && product.margin !== undefined ? `${product.margin}%` : "Set in the quote"}</dd>
-      </div>
-      <div>
         <dt>Base price</dt>
         <dd>{money(product.base_price)}</dd>
       </div>

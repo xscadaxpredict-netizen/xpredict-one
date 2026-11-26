@@ -34,7 +34,8 @@ def test_the_walk_finds_the_views_it_is_meant_to_check():
     names = {view.__name__ for view in ORG_VIEWS}
 
     assert len(ORG_VIEWS) > 40
-    assert {"UsersView", "AdminsView", "TimerCalculationListView", "EnquiryDetailView"} <= names
+    # `TimerCalculationListView` went with Timer Calculation (main, merged 2026-11-26).
+    assert {"UsersView", "AdminsView", "ECDosingCalculationListView", "EnquiryDetailView"} <= names
 
 
 def test_every_view_that_reads_and_writes_names_each_write():

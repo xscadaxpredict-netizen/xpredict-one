@@ -87,11 +87,21 @@ class QuotationReadSerializer(serializers.ModelSerializer):
     paid_amount = serializers.SerializerMethodField()
     balance_amount = serializers.SerializerMethodField()
     payouts = serializers.SerializerMethodField()
+    # WHAT THE QUOTE IS FOR: the enquiry always; for an AMC quote also the
+    # confirmed site and its OC number.
+    enquiry_id = serializers.UUIDField(read_only=True)
+    site_id = serializers.UUIDField(read_only=True, allow_null=True)
+    site_name = serializers.SerializerMethodField()
+    oc_number = serializers.SerializerMethodField()
 
     class Meta:
         model = Quotation
         fields = [
             "id",
+            "enquiry_id",
+            "site_id",
+            "site_name",
+            "oc_number",
             "title",
             "quote_no",
             "type",
@@ -119,6 +129,12 @@ class QuotationReadSerializer(serializers.ModelSerializer):
             "created_at",
         ]
         read_only_fields = fields
+
+    def get_site_name(self, obj: Quotation) -> str | None:
+        return obj.site.site_name if obj.site_id and obj.site else None
+
+    def get_oc_number(self, obj: Quotation) -> str | None:
+        return obj.site.oc_number if obj.site_id and obj.site else None
 
     def get_paid_amount(self, obj: Quotation) -> float:
         return float(sum((p.amount for p in obj.payouts.all()), 0))
@@ -185,6 +201,7 @@ class EnquiryReadSerializer(serializers.ModelSerializer):
         model = Enquiry
         fields = [
             "id",
+            "enquiry_no",
             "customer_id",
             "customer_name",
             "contact_person",
@@ -239,7 +256,6 @@ class BankAccountReadSerializer(serializers.ModelSerializer):
 class ProductPresetReadSerializer(serializers.ModelSerializer):
     type = serializers.CharField(source="product_type")
     hsn = serializers.CharField(source="hsn_code")
-    margin = serializers.DecimalField(source="margin_percent", max_digits=5, decimal_places=2)
     specs = serializers.SerializerMethodField()
     image = serializers.FileField(read_only=True)
     is_global = serializers.BooleanField(read_only=True)
@@ -261,7 +277,6 @@ class ProductPresetReadSerializer(serializers.ModelSerializer):
             "description",
             "hsn",
             "base_price",
-            "margin",
             "gst_rate",
             "specs",
             "image",
@@ -294,13 +309,6 @@ class ProductCatalogWriteSerializer(serializers.Serializer):
     description = serializers.CharField(required=False, allow_blank=True)
     hsn = serializers.CharField(max_length=20, source="hsn_code", required=False, allow_blank=True)
     base_price = serializers.DecimalField(max_digits=12, decimal_places=2)
-    margin = serializers.DecimalField(
-        max_digits=5,
-        decimal_places=2,
-        source="margin_percent",
-        allow_null=True,
-        required=False,
-    )
     gst_rate = serializers.DecimalField(max_digits=5, decimal_places=2, required=False, default=18)
     category = serializers.CharField(max_length=100, required=False, allow_blank=True)
     specs = serializers.CharField(required=False, allow_blank=True)
@@ -374,7 +382,8 @@ class QuotationItemCreateSerializer(serializers.Serializer):
 
 class QuotationCreateSerializer(serializers.Serializer):
     title = serializers.CharField(max_length=255)
-    quote_no = serializers.CharField(max_length=50)
+    # Assigned by the server (QT/26-27/0001); whatever a client sends is ignored.
+    quote_no = serializers.CharField(max_length=50, required=False, allow_blank=True)
     type = serializers.CharField(max_length=10)
     amc_type = serializers.CharField(
         max_length=20,
@@ -389,6 +398,9 @@ class QuotationCreateSerializer(serializers.Serializer):
         allow_blank=True,
     )
     status = serializers.CharField(max_length=20)
+    # AMC quotes only: the confirmed site the quote is for. The service checks
+    # it belongs to the enquiry; a sales or spares quote sent with one is refused.
+    site_id = serializers.UUIDField(required=False, allow_null=True, default=None)
     from_details = AddressDetailsSerializer()
     to_details = AddressDetailsSerializer()
     selected_bank_id = serializers.UUIDField()

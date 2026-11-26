@@ -81,7 +81,7 @@ export function ComplaintModal({ isOpen, isEditing, form, confirmedSites, onForm
     <div className={styles.modalOverlay} onClick={onClose}>
       <div className={styles.modalContent} onClick={e => e.stopPropagation()}>
         <div className={styles.modalHeader}>
-          <h3 className={styles.modalTitle}>{isEditing ? "Edit Complaint" : "Log a New Complaint"}</h3>
+          <h3 className={styles.modalTitle}>{isEditing ? "Edit Ticket" : "Raise a New Ticket"}</h3>
           <button type="button" className={styles.modalClose} onClick={onClose}><XIcon size={20} /></button>
         </div>
         <form onSubmit={onSubmit} className={styles.formContainer}>
@@ -156,7 +156,7 @@ export function ComplaintModal({ isOpen, isEditing, form, confirmedSites, onForm
 
             <div>
               <label className={styles.label}>
-                Describe the Issue / Complaint <span className={styles.required}>*</span>
+                Describe the Issue <span className={styles.required}>*</span>
               </label>
               <textarea 
                 required
@@ -252,7 +252,7 @@ export function ComplaintModal({ isOpen, isEditing, form, confirmedSites, onForm
           </div>
           <div className={styles.modalFooter}>
             <button type="button" className={styles.btnSecondary} onClick={onClose}>Cancel</button>
-            <button type="submit" className={styles.btnDanger}>{isEditing ? "Save Changes" : "Submit Complaint"}</button>
+            <button type="submit" className={styles.btnDanger}>{isEditing ? "Save Changes" : "Raise Ticket"}</button>
           </div>
         </form>
       </div>

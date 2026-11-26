@@ -254,7 +254,9 @@ class TestTheOwner:
         assert dms.permissions == sorted(
             Permission.objects.filter(app=AppCode.DMS).values_list("code", flat=True)
         )
-        assert len(dms.permissions) == 57
+        # 56: Timer Calculation's permission went with the feature (`main`'s
+        # `permissions/0005`, merged 2026-11-26).
+        assert len(dms.permissions) == 56
 
     def test_unbought_apps_are_shown_but_not_accessible(self):
         """

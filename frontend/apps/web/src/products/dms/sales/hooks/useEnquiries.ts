@@ -13,6 +13,7 @@ import {
   deleteFollowup,
   confirmOrder,
   confirmAmcQuote,
+  unconfirmAmcQuote,
   createEnquiry,
   deleteQuotation,
   getQuotationDependencies,
@@ -150,6 +151,16 @@ export function useConfirmAmcQuote() {
       orgSlug,
       variables: { enquiryId: string; quoteId: string },
     ) => confirmAmcQuote(orgSlug, variables.enquiryId, variables.quoteId),
+    invalidates: [salesKeys.enquiries(), ["site-services"]],
+  });
+}
+
+export function useUnconfirmAmcQuote() {
+  return useOrgMutation({
+    mutationFn: (
+      orgSlug,
+      variables: { enquiryId: string; quoteId: string; confirm: boolean },
+    ) => unconfirmAmcQuote(orgSlug, variables.enquiryId, variables.quoteId, variables.confirm),
     invalidates: [salesKeys.enquiries(), ["site-services"]],
   });
 }

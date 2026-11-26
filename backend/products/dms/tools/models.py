@@ -1,11 +1,11 @@
 """
-Tools models: MarketingAsset, TimerCalculation.
+Tools models.
 
 MarketingAsset inherits ``BaseModel`` (org-level, no territory_id) — same
 reasoning as UserManual and MachineVideo (schema review #04).
 
-TimerCalculation inherits ``TerritoryScopedModel`` — saved per-site by a
-dealer's technician.
+(TimerCalculation was removed on 2026-11-25 with the Timer Calculation
+feature; no screen ever saved to it.)
 """
 
 from __future__ import annotations
@@ -56,43 +56,6 @@ class MarketingAsset(BaseModel):
 
     def __str__(self) -> str:
         return f"{self.get_material_type_display()}: {self.title}"
-
-
-# ============================================================================
-# TimerCalculation
-# ============================================================================
-
-class TimerCalculation(TerritoryScopedModel):
-    """
-    A saved capacity/timer calculation for a specific site.
-
-    Frontend ref: CapacityInput — application, flowRate, tds, temperature.
-    CapacityResult — membraneCount, vesselCount, pumpPower, recoveryRate,
-    systemType.
-
-    Both input and output are stored as JSON for maximum flexibility — the
-    calculation formulas may evolve without requiring migrations.
-    """
-
-    # Lives wherever its site lives.
-    home_follows = ("site",)
-
-    site = models.ForeignKey(
-        "dms_sales.ConfirmedSite",
-        on_delete=models.CASCADE,
-        related_name="timer_calculations",
-    )
-    input_data = models.JSONField(default=dict)
-    output_data = models.JSONField(default=dict)
-
-    class Meta:
-        indexes = [
-            models.Index(fields=["territory_id", "site_id"]),
-            models.Index(fields=["territory_id", "-created_at"]),
-        ]
-
-    def __str__(self) -> str:
-        return f"Calculation for site {self.site_id}"
 
 
 # capacity calculator models

@@ -28,7 +28,7 @@ export function ComplaintTable({ reports, onView, onEdit, onMove, onDelete, curr
     return (
       <div className={styles.emptyState}>
         <AlertTriangleIcon size={36} className={styles.emptyIcon} />
-        <div>No Complaints Logged</div>
+        <div>No Tickets Logged</div>
         <div className={styles.muted}>Sites are running smoothly.</div>
       </div>
     );
@@ -106,16 +106,16 @@ export function ComplaintTable({ reports, onView, onEdit, onMove, onDelete, curr
                           onMove={(status) => onMove(report, status)}
                         />
                       )}
-                      <button type="button" className={styles.iconBtn} title="View Complaint" onClick={() => onView(report)}>
+                      <button type="button" className={styles.iconBtn} title="View Ticket" onClick={() => onView(report)}>
                         <EyeIcon size={16} />
                       </button>
                       {mayEdit(report) && (
-                        <button type="button" className={styles.iconBtnPrimary} title="Edit Complaint" onClick={() => onEdit(report)}>
+                        <button type="button" className={styles.iconBtnPrimary} title="Edit Ticket" onClick={() => onEdit(report)}>
                           <Edit3Icon size={16} />
                         </button>
                       )}
                       {canDeleteComplaint && (
-                        <button type="button" className={`${styles.iconBtn} ${styles.iconBtnDanger}`} title="Delete Complaint" onClick={() => onDelete(report)}>
+                        <button type="button" className={`${styles.iconBtn} ${styles.iconBtnDanger}`} title="Delete Ticket" onClick={() => onDelete(report)}>
                           <Trash2Icon size={16} />
                         </button>
                       )}

@@ -9,7 +9,6 @@ from .models import (
     FeasibilityLineItem,
     FeasibilityReport,
     MarketingAsset,
-    TimerCalculation,
 )
 
 
@@ -34,24 +33,6 @@ def create_marketing_asset(
 
 def delete_marketing_asset(asset_id: str) -> None:
     MarketingAsset.objects.filter(id=asset_id).delete()
-
-def create_timer_calculation(
-    *,
-    site_id: str,
-    input_data: dict,
-    output_data: dict,
-) -> TimerCalculation:
-    calc = TimerCalculation(
-        site_id=site_id,
-        input_data=input_data,
-        output_data=output_data
-    )
-    calc.save()
-    return calc
-
-def delete_timer_calculation(calc_id: str) -> None:
-    TimerCalculation.objects.filter(id=calc_id).delete()
-
 
 def get_standard_line_items_seed(
     capacity_kld: float = 15.0, model_name: str = "HIDREC EZ 1000"

@@ -90,10 +90,13 @@ def box(result, name, kind=TerritoryKind.REGION, parent=None):
 
 
 def enquiries_at(territory, count=1):
+    # Every enquiry has its own number (`main`'s, merged 2026-11-26), unique per
+    # territory: made unique across the test so a transfer never collides here.
     with tenant():
         return [
             Enquiry.objects.create(
                 territory_id=territory.pk,
+                enquiry_no=f"ENQ/TEST/{uuid.uuid4().hex[:12]}",
                 customer_name=f"Customer {n}",
                 phone="1234567890",
                 created_by_user_id=uuid.uuid4(),
@@ -187,7 +190,8 @@ class TestDelete:
         names = {model.__name__ for model in territory_record_models()}
 
         assert {"Enquiry", "Customer", "Complaint", "ServiceReport", "CallRequest"} <= names
-        assert len(names) >= 20
+        # 19: TimerCalculation went with Timer Calculation (`main`, merged 2026-11-26).
+        assert len(names) >= 19
 
 
 class TestRefusedBeforeAnythingMoves:

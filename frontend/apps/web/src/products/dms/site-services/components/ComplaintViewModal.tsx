@@ -59,7 +59,7 @@ export function ComplaintViewModal({ isOpen, report, onEdit, onToggleStatus, onC
             <div>
               {/* Whose report this is: the site's dealership, or the organisation for its own site. */}
               <div className={styles.bannerTitle}>{(report.company_name || membership.org_name || "").toUpperCase()}</div>
-              <div className={styles.bannerSubtitle}>Industrial Water & Wastewater Treatment | Complaint Ticket</div>
+              <div className={styles.bannerSubtitle}>Industrial Water & Wastewater Treatment | Support Ticket</div>
             </div>
             <div className={styles.bannerRight}>
               <div className={styles.reportCode}>{report.id}</div>

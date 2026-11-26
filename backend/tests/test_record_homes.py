@@ -67,7 +67,6 @@ from products.dms.site_services.models import (
     SiteServiceProfile,
     WaterReport,
 )
-from products.dms.tools.models import TimerCalculation
 from shared.base_models import HomeMissingError, TerritoryScopedModel, territory_scope
 from shared.exceptions import ConflictError
 from tests.test_subtrees import build_tree, found, person
@@ -410,7 +409,7 @@ class TestThroughTheApi:
         with territory_scope(None):
             site = make_site(t.delhi_east.pk)
             product = ProductCatalog.objects.create(
-                territory_id=t.delhi_east.pk, product_type="SPARES", base_price=10, margin_percent=0
+                territory_id=t.delhi_east.pk, product_type="SPARES", base_price=10
             )
         site_id = str(site.pk)
 
@@ -447,13 +446,7 @@ class TestThroughTheApi:
                 {"site_id": site_id, "items": [{"product_id": str(product.pk), "quantity": 2}]},
                 format="json",
             ),
-            # This one never worked: the service set no home at all, so every
-            # save reached the database without one.
-            "timer calculation": client.post(
-                f"{base}/tools/calculations/",
-                {"site": site_id, "input_data": {}, "output_data": {}},
-                format="json",
-            ),
+            # ("timer calculation" went with Timer Calculation: `main`, merged 2026-11-26.)
         }
         failed = {name: r.status_code for name, r in made.items() if r.status_code >= 300}
         assert not failed, failed
@@ -465,7 +458,6 @@ class TestThroughTheApi:
             WaterReport,
             Complaint,
             EcommerceOrder,
-            TimerCalculation,
         ):
             assert self.homes(model, site=site) == {t.delhi_east.pk}, model.__name__
         assert self.homes(EcommerceOrderItem, order__site=site) == {t.delhi_east.pk}

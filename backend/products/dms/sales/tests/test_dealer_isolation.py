@@ -73,12 +73,14 @@ class TestDealerAndColleagueIsolation:
                 enq_a = Enquiry.objects.create(
                     territory_id=dealer_a,
                     customer_name="Customer A",
+                    enquiry_no="ENQ/26-27/0001",
                     phone="1234567890",
                     created_by_user_id=user_a1,
                 )
                 enq_b = Enquiry.objects.create(
                     territory_id=dealer_b,
                     customer_name="Customer B",
+                    enquiry_no="ENQ/26-27/0001",
                     phone="9876543210",
                     created_by_user_id=user_b1,
                 )
@@ -118,12 +120,14 @@ class TestDealerAndColleagueIsolation:
             enq1 = Enquiry.objects.create(
                 territory_id=dealer_a,
                 customer_name="Rep 1 Lead",
+                enquiry_no="ENQ/26-27/0001",
                 phone="1111111111",
                 created_by_user_id=user_rep1,
             )
             enq2 = Enquiry.objects.create(
                 territory_id=dealer_a,
                 customer_name="Rep 2 Lead",
+                enquiry_no="ENQ/26-27/0002",
                 phone="2222222222",
                 created_by_user_id=user_rep2,
             )

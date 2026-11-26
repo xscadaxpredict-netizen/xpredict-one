@@ -7,7 +7,7 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('permissions', '0004_dms_library_tools_and_store_orders'),
+        ("permissions", "0005_remove_timer_calculation_permission"),
     ]
 
     operations = [

@@ -111,8 +111,8 @@ export function SiteServicesDashboardScreen() {
           <Link to={`${modulePath}/scheduling`} className={styles.secondaryBtn}>
             <CalendarIcon size={15} /> Scheduled Services
           </Link>
-          <Link to={`${modulePath}/complaints`} className={styles.secondaryBtn}>
-            <AlertTriangleIcon size={15} /> Complaint Box
+          <Link to={`/${membership.org_slug}/dms/tech-support/tickets`} className={styles.secondaryBtn}>
+            <AlertTriangleIcon size={15} /> Raise Ticket
           </Link>
           <button onClick={() => void navigate(`${modulePath}/scheduling`)} className={styles.primaryBtn}>
             <PlusIcon size={15} /> Schedule Visit
@@ -160,7 +160,7 @@ export function SiteServicesDashboardScreen() {
         {/* Card 3: Open Complaints */}
         <div className={styles.kpiCard}>
           <div className={styles.kpiHeader}>
-            <span className={styles.kpiLabel}>Open Complaints</span>
+            <span className={styles.kpiLabel}>Open Tickets</span>
             <div
               className={`${styles.kpiIconWrapper} ${
                 metrics.criticalComplaintsCount > 0 ? styles.iconRed : styles.iconAmber
@@ -253,17 +253,17 @@ export function SiteServicesDashboardScreen() {
           <div className={styles.panelHeader}>
             <div className={styles.panelTitle}>
               <AlertTriangleIcon size={18} color="var(--color-danger)" />
-              Active Customer Complaints
+              Active Customer Tickets
             </div>
-            <Link to={`${modulePath}/complaints`} className={styles.panelAction}>
-              Complaint Box <ArrowRightIcon size={12} style={{ display: "inline" }} />
+            <Link to={`/${membership.org_slug}/dms/tech-support/tickets`} className={styles.panelAction}>
+              Raise Ticket <ArrowRightIcon size={12} style={{ display: "inline" }} />
             </Link>
           </div>
 
           {metrics.openComplaints.length === 0 ? (
             <div className={styles.emptyState}>
               <CheckCircle2Icon size={28} color="var(--color-success)" style={{ margin: "0 auto 8px auto", display: "block" }} />
-              No open customer complaints. All clear!
+              No open customer tickets. All clear!
             </div>
           ) : (
             <div className={styles.complaintList}>

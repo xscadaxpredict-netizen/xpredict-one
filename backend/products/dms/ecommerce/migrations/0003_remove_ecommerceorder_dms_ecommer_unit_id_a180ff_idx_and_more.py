@@ -7,7 +7,7 @@ class Migration(migrations.Migration):
 
     dependencies = [
         ('dms_ecommerce', '0002_alter_ecommerceorder_site'),
-        ('dms_sales', '0013_remove_confirmedsite_uq_site_unit_oc_number_and_more'),
+        ('dms_sales', '0016_remove_confirmedsite_uq_site_unit_oc_number_and_more'),
     ]
 
     operations = [

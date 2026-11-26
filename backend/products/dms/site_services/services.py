@@ -405,6 +405,36 @@ def delete_schedule(*, schedule_id: uuid.UUID, confirmed: bool = False) -> None:
 
 
 @tenant_atomic
+def cancel_scheduled_visits_for_unconfirmed_amc(
+    *, quote_id: uuid.UUID, actor_user_id: uuid.UUID | None
+) -> int:
+    """
+    The AMC these visits were booked under was unconfirmed: call off the ones
+    that have not happened, saying why. They stay as cancelled visits with the
+    reason in their history (not deleted), and can be rescheduled once the site
+    has a confirmed AMC again. Idempotent --- a second run finds none scheduled.
+    """
+    reason = "AMC unconfirmed"
+    count = 0
+    for schedule in ServiceSchedule.objects.select_for_update().filter(
+        amc_quote_id=quote_id, status=ScheduleStatus.SCHEDULED
+    ):
+        schedule.status = ScheduleStatus.CANCELLED
+        schedule.cancelled_at = timezone.now()
+        schedule.cancel_reason = reason
+        schedule.updated_by_user_id = actor_user_id
+        _log(schedule, "cancelled", actor_user_id, date=schedule.scheduled_date, reason=reason)
+        schedule.save(
+            update_fields=[
+                "status", "cancelled_at", "cancel_reason", "history", "updated_by_user_id",
+                "updated_at",
+            ]
+        )
+        count += 1
+    return count
+
+
+@tenant_atomic
 def cancel_upcoming_visits_for_amc_quote(*, quote_id: uuid.UUID) -> int:
     """Delete the visits an AMC quote booked that have not happened yet."""
     upcoming = ServiceSchedule.objects.filter(

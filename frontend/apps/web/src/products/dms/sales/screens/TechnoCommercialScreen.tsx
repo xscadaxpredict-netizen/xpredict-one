@@ -17,7 +17,6 @@ import {
 import type { TechnoCommercialDocument } from "../api/technoCommercial";
 import { TechnoCommercialDialog } from "../components/TechnoCommercialDialog";
 import { DocumentViewerDialog } from "../components/DocumentViewerDialog";
-import { useDmsPermissions } from "../../shared/hooks/useDmsPermissions";
 import styles from "./TechnoCommercialScreen.module.css";
 
 // Software's standard design icons
@@ -108,8 +107,6 @@ export function TechnoCommercialScreen() {
   const updateMutation = useUpdateTechnoCommercialDocument();
   const deleteMutation = useDeleteTechnoCommercialDocument();
 
-  const { canCreateQuote, canEditQuote, isManagerOrAdmin } = useDmsPermissions();
-
   const handleOpenUpload = () => {
     setEditingDoc(null);
     setDialogOpen(true);
@@ -171,15 +168,13 @@ export function TechnoCommercialScreen() {
             />
           </label>
 
-          {canCreateQuote && (
-            <button
-              type="button"
-              className={styles.btnPrimary}
-              onClick={handleOpenUpload}
-            >
-              + Upload Document
-            </button>
-          )}
+          <button
+            type="button"
+            className={styles.btnPrimary}
+            onClick={handleOpenUpload}
+          >
+            + Upload Document
+          </button>
         </div>
       </div>
 
@@ -202,7 +197,7 @@ export function TechnoCommercialScreen() {
               : "Upload your techno-commercial document to view, edit, or download it anytime."
           }
           action={
-            canCreateQuote ? (
+            (
               <button
                 type="button"
                 className={styles.btnPrimary}
@@ -210,7 +205,7 @@ export function TechnoCommercialScreen() {
               >
                 + Upload Document
               </button>
-            ) : undefined
+            )
           }
         />
       ) : (
@@ -295,36 +290,32 @@ export function TechnoCommercialScreen() {
                             </>
                           )}
 
-                          {canEditQuote && (
-                            <button
-                              type="button"
-                              className={styles.iconBtn}
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                handleOpenEdit(doc);
-                              }}
-                              title="Edit Document"
-                            >
-                              <PencilIcon />
-                            </button>
-                          )}
+                          <button
+                            type="button"
+                            className={styles.iconBtn}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleOpenEdit(doc);
+                            }}
+                            title="Edit Document"
+                          >
+                            <PencilIcon />
+                          </button>
 
-                          {isManagerOrAdmin && (
-                            <button
-                              type="button"
-                              className={`${styles.iconBtn} ${styles.iconBtnDanger}`}
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setDeleteConfirmState({
-                                  id: doc.id,
-                                  title: doc.title,
-                                });
-                              }}
-                              title="Delete Document"
-                            >
-                              <TrashIcon />
-                            </button>
-                          )}
+                          <button
+                            type="button"
+                            className={`${styles.iconBtn} ${styles.iconBtnDanger}`}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setDeleteConfirmState({
+                                id: doc.id,
+                                title: doc.title,
+                              });
+                            }}
+                            title="Delete Document"
+                          >
+                            <TrashIcon />
+                          </button>
 
                           <button
                             type="button"
@@ -365,36 +356,32 @@ export function TechnoCommercialScreen() {
                                 </>
                               )}
 
-                              {canEditQuote && (
-                                <button
-                                  type="button"
-                                  className={styles.iconBtn}
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    handleOpenEdit(doc);
-                                  }}
-                                  title="Edit Document"
-                                >
-                                  <PencilIcon />
-                                </button>
-                              )}
+                              <button
+                                type="button"
+                                className={styles.iconBtn}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleOpenEdit(doc);
+                                }}
+                                title="Edit Document"
+                              >
+                                <PencilIcon />
+                              </button>
 
-                              {isManagerOrAdmin && (
-                                <button
-                                  type="button"
-                                  className={`${styles.iconBtn} ${styles.iconBtnDanger}`}
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    setDeleteConfirmState({
-                                      id: doc.id,
-                                      title: doc.title,
-                                    });
-                                  }}
-                                  title="Delete Document"
-                                >
-                                  <TrashIcon />
-                                </button>
-                              )}
+                              <button
+                                type="button"
+                                className={`${styles.iconBtn} ${styles.iconBtnDanger}`}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setDeleteConfirmState({
+                                    id: doc.id,
+                                    title: doc.title,
+                                  });
+                                }}
+                                title="Delete Document"
+                              >
+                                <TrashIcon />
+                              </button>
                             </div>
 
                             <div className={styles.detailGrid}>

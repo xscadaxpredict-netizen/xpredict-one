@@ -16,10 +16,11 @@ from decimal import Decimal
 from zoneinfo import ZoneInfo
 
 from django.db import IntegrityError
+from django.db.models import Q
 from django.utils import timezone
 
 from config.transactions import tenant_atomic
-from shared.exceptions import ConflictError, not_found
+from shared.exceptions import ConflictError, InvalidInputError, not_found
 
 from .models import (
     AgentPayout,
@@ -37,6 +38,7 @@ from .models import (
     QuoteType,
     TechnoCommercialDocument,
 )
+from .signals import amc_quote_unconfirmed
 
 logger = logging.getLogger(__name__)
 
@@ -120,6 +122,7 @@ def create_enquiry(
     lead_fee_status = "DUE" if lead_fee and float(lead_fee) > 0 else "NONE"
     enquiry = Enquiry.objects.create(
         territory_id=territory_id,
+        enquiry_no=_generate_enquiry_number(territory_id),
         created_by_user_id=created_by_user_id,
         customer=customer,
         customer_name=clean_name,
@@ -308,6 +311,133 @@ def _drop_commission_unless_allowed(quote_data: dict, quote_type: str) -> None:
         quote_data.update(_NO_COMMISSION)
 
 
+def _locked_base_price(item: dict, previous_prices: dict) -> Decimal:
+    """
+    THE BASE PRICE OF A CATALOGUE ITEM IS NOT THE QUOTE-MAKER'S TO SET. It
+    comes from the product catalogue; whoever builds the quote sets only the
+    margin. Whatever the client sent for a catalogue item is ignored.
+
+    - Editing a quote keeps the price that product already had on this quote,
+      so a catalogue price change never re-prices a quote already sent.
+    - A product new to the quote takes today's catalogue price.
+    - A custom line (no product) has no catalogue price, so the typed price
+      stands.
+    """
+    product_id = item.get("product_id")
+    if not product_id:
+        return item.get("base_price", 0)
+    if product_id in previous_prices:
+        return previous_prices[product_id]
+    product = ProductCatalog.all_units.filter(id=product_id, is_active=True).first()
+    if product is None:
+        raise InvalidInputError(
+            message="A product on this quote no longer exists in the catalogue. "
+            "Pick it again or remove the line.",
+            product_id=str(product_id),
+        )
+    return product.base_price
+
+
+#: Quote types raised on an open enquiry (a sale not yet won).
+ENQUIRY_QUOTE_TYPES = (QuoteType.NORMAL, QuoteType.SPARES)
+
+
+def _quote_site(
+    *,
+    enquiry: Enquiry,
+    quote_type: str,
+    site_id: uuid.UUID | None,
+    existing: Quotation | None,
+) -> ConfirmedSite | None:
+    """
+    WHAT A QUOTE IS FOR decides what it references, and the server decides it.
+
+    - A sales quotation (NORMAL) or a spares quote is raised on an OPEN enquiry:
+      it references the enquiry only, never a site, and a confirmed enquiry
+      takes no new one (the customer has already ordered; a new sale is a new
+      enquiry).
+    - An AMC quote is raised EITHER on a confirmed site (an OC) --- it then
+      references that site, and the enquiry is the site's own --- OR on an OPEN
+      enquiry for a site we have not sold (no site yet). Confirming the second
+      kind is not set up yet: see confirm_amc_quote.
+    - Once saved, a quote's type and reference are fixed. An edit cannot move
+      it to another type, enquiry or site.
+
+    Returns the site to store on the quote (None for enquiry quotes).
+    """
+    if quote_type not in QuoteType.values:
+        raise InvalidInputError(message="Unknown quote type.", quote_type=quote_type)
+
+    if existing is not None:
+        if quote_type != existing.quote_type:
+            raise InvalidInputError(
+                message="The type of a saved quote cannot be changed. Create a new quote instead.",
+                quote_id=str(existing.id),
+            )
+        if site_id and existing.site_id and str(site_id) != str(existing.site_id):
+            raise InvalidInputError(
+                message="A saved quote cannot be moved to another site.",
+                quote_id=str(existing.id),
+            )
+        if existing.site_id or quote_type != QuoteType.AMC:
+            return existing.site
+        # A legacy AMC quote saved before sites were recorded: fill it in now.
+
+    if quote_type in ENQUIRY_QUOTE_TYPES:
+        if site_id:
+            raise InvalidInputError(
+                message="A sales or spares quotation is raised on an enquiry, not on a site.",
+            )
+        if existing is None and enquiry.status == EnquiryStatus.CONFIRMED:
+            raise ConflictError(
+                code="enquiry_confirmed",
+                message="This enquiry is already confirmed. Raise a new enquiry for a new sale.",
+            )
+        return None
+
+    # AMC on a confirmed order: the enquiry's own active site with an OC number.
+    site = (
+        ConfirmedSite.objects.filter(enquiry=enquiry, is_active=True)
+        .exclude(oc_number="")
+        .first()
+    )
+    if site_id and (site is None or str(site_id) != str(site.id)):
+        raise InvalidInputError(
+            message="The selected site does not belong to this enquiry.",
+            site_id=str(site_id),
+        )
+    if site is not None:
+        # A confirmed customer's AMC always references their site --- and while
+        # that site has a confirmed AMC, a new AMC quote has no purpose.
+        _refuse_if_amc_active(site=site, enquiry=enquiry)
+        return site
+    if enquiry.status == EnquiryStatus.CONFIRMED:
+        raise ConflictError(
+            code="no_confirmed_site",
+            message="This enquiry is confirmed but has no active site with an OC number.",
+        )
+    # AMC on an open enquiry: no site yet.
+    return None
+
+
+def _active_amc(*, site: ConfirmedSite | None, enquiry: Enquiry) -> Quotation | None:
+    """The confirmed AMC quote covering this site (or enquiry, before it has a site)."""
+    amc = Quotation.objects.filter(quote_type=QuoteType.AMC, status=QuotationStatus.CONFIRMED)
+    if site is not None:
+        return amc.filter(Q(site=site) | Q(enquiry=enquiry)).first()
+    return amc.filter(enquiry=enquiry).first()
+
+
+def _refuse_if_amc_active(*, site: ConfirmedSite | None, enquiry: Enquiry, except_id=None) -> None:
+    active = _active_amc(site=site, enquiry=enquiry)
+    if active is not None and active.id != except_id:
+        raise ConflictError(
+            code="amc_active",
+            message=f"This site already has a confirmed AMC ({active.quote_no}). "
+            "Unconfirm it first to quote or confirm another.",
+        )
+
+
 @tenant_atomic
 def save_quotation(
     *,
@@ -365,10 +495,25 @@ def save_quotation(
                     exc_info=True,
                 )
 
+    existing = None
     if existing_quote_id:
-        quote = Quotation.objects.filter(id=existing_quote_id, enquiry=enquiry).first()
-        if not quote:
+        existing = Quotation.objects.filter(id=existing_quote_id, enquiry=enquiry).first()
+        if not existing:
             raise not_found("Quotation")
+    site = _quote_site(
+        enquiry=enquiry,
+        quote_type=quote_data.get("type"),
+        site_id=quote_data.pop("site_id", None),
+        existing=existing,
+    )
+
+    # THE QUOTE NUMBER IS THE SERVER'S. A saved quote keeps its number; a new one
+    # gets the next in sequence. A typed or client-made number is never used.
+    quote_data.pop("quote_no", None)
+
+    if existing is not None:
+        quote = existing
+        quote.site = site
 
         # A legacy non-machine quote whose commission has already been (partly)
         # paid keeps it: wiping the amount would contradict the payouts on record.
@@ -399,9 +544,17 @@ def save_quotation(
         quote.updated_by_user_id = actor_user_id
         quote.save()
 
-        # Recreate items (simplest approach for a draft)
+        # Recreate items (simplest approach for a draft). Remember what each
+        # product was priced at on THIS quote first, so editing an old quote
+        # does not silently re-price it from today's catalogue.
+        previous_prices = {
+            i.product_id: i.locked_base_price
+            for i in quote.items.all()
+            if i.product_id is not None
+        }
         quote.items.all().delete()
     else:
+        previous_prices = {}
         _drop_commission_unless_allowed(quote_data, quote_data["type"])
         comm_amount = quote_data.get("commission_amount", 0)
         comm_status = "NONE"
@@ -409,10 +562,14 @@ def save_quotation(
             comm_status = "PAYABLE" if quote_data.get("status") == "CONFIRMED" else "PENDING"
 
         quote = Quotation(
+            # The quote lives where its enquiry lives (`home_follows`), so it is
+            # numbered in the enquiry's territory's sequence.
+            quote_no=_generate_quote_number(enquiry.territory_id, quote_data["type"]),
             enquiry=enquiry,
             created_by_user_id=actor_user_id,
             bank_account_id=quote_data.pop("selected_bank_id"),
             quote_type=quote_data.pop("type"),
+            site=site,
             commission_status=comm_status,
             **quote_data,
         )
@@ -423,6 +580,7 @@ def save_quotation(
         quote.save()
 
     for item in items_data:
+        item["base_price"] = _locked_base_price(item, previous_prices)
         QuotationItem.objects.create(
             quotation=quote,
             product_id=item.get("product_id"),
@@ -549,6 +707,73 @@ def _financial_year_label(today: datetime.date) -> str:
     """26-27 for any date from 1 Apr 2026 to 31 Mar 2027."""
     start = today.year if today.month >= 4 else today.year - 1
     return f"{start % 100:02d}-{(start + 1) % 100:02d}"
+
+
+def enquiry_number(fy_label: str, seq: int) -> str:
+    """ENQ/26-27/0042. Shared with the migration that numbers old enquiries."""
+    return f"ENQ/{fy_label}/{seq:04d}"
+
+
+def _generate_enquiry_number(territory_id: uuid.UUID) -> str:
+    """
+    The territory's next enquiry number for the current financial year:
+    ENQ/26-27/0001, 0002, ... Runs inside create_enquiry's transaction and locks
+    the territory's enquiry rows first, so two enquiries saved at the same
+    moment queue up instead of reading the same last number. The unique
+    constraint on (territory_id, enquiry_no) is the backstop.
+    """
+    fy = _financial_year_label(timezone.now().astimezone(_FY_ZONE).date())
+    prefix = f"ENQ/{fy}/"
+    # Evaluated for the lock it takes, not for the rows. `all_territories`, not
+    # `objects`: the sequence is the territory's, whoever is asking -- the scoped
+    # manager would hide rows the caller may not see and hand out a taken number.
+    list(
+        Enquiry.all_territories.select_for_update()
+        .filter(territory_id=territory_id)
+        .values_list("id", flat=True)
+    )
+    max_seq = 0
+    taken = Enquiry.all_territories.filter(territory_id=territory_id, enquiry_no__startswith=prefix)
+    for no in taken.values_list("enquiry_no", flat=True):
+        tail = no[len(prefix):]
+        if tail.isdigit():
+            max_seq = max(max_seq, int(tail))
+    return enquiry_number(fy, max_seq + 1)
+
+
+#: Quote number prefix per quote type: QT/26-27/0001, AMC/26-27/0001, SPR/26-27/0001.
+QUOTE_NUMBER_PREFIX = {
+    QuoteType.NORMAL: "QT",
+    QuoteType.AMC: "AMC",
+    QuoteType.SPARES: "SPR",
+}
+
+
+def _generate_quote_number(territory_id: uuid.UUID, quote_type: str) -> str:
+    """
+    The territory's next quote number for this type and financial year, e.g.
+    QT/26-27/0007. Short and sequential, so people can read it out and find it.
+    Runs inside save_quotation's transaction and locks the territory's quote
+    rows first, so two quotes saved at once queue up; the unique constraint on
+    (territory_id, quote_no) is the backstop.
+    """
+    fy = _financial_year_label(timezone.now().astimezone(_FY_ZONE).date())
+    prefix = f"{QUOTE_NUMBER_PREFIX.get(quote_type, 'QT')}/{fy}/"
+    # Evaluated for the lock it takes, not for the rows. `all_territories`, not
+    # `objects`: the sequence is the territory's, whoever is asking -- the scoped
+    # manager would hide rows the caller may not see and hand out a taken number.
+    list(
+        Quotation.all_territories.select_for_update()
+        .filter(territory_id=territory_id)
+        .values_list("id", flat=True)
+    )
+    max_seq = 0
+    taken = Quotation.all_territories.filter(territory_id=territory_id, quote_no__startswith=prefix)
+    for no in taken.values_list("quote_no", flat=True):
+        tail = no[len(prefix):]
+        if tail.isdigit():
+            max_seq = max(max_seq, int(tail))
+    return f"{prefix}{max_seq + 1:04d}"
 
 
 def _generate_sequential_oc_number(territory_id: uuid.UUID) -> str:
@@ -784,16 +1009,93 @@ def confirm_amc_quote(
     if quote.status == QuotationStatus.CONFIRMED:
         raise ConflictError(code="already_confirmed", message="Quotation is already confirmed.")
 
+    _refuse_if_amc_active(
+        site=quote.site or ConfirmedSite.objects.filter(enquiry=enquiry, is_active=True).first(),
+        enquiry=enquiry,
+        except_id=quote.id,
+    )
+
+    if quote.site_id is None and not ConfirmedSite.objects.filter(
+        enquiry=enquiry, is_active=True
+    ).exclude(oc_number="").exists():
+        # An AMC raised on an open enquiry: there is no site for it to cover
+        # yet. How that site is created on confirmation is still to be decided,
+        # so it is refused rather than confirmed onto nothing.
+        raise ConflictError(
+            code="amc_without_site",
+            message="This AMC quote is for an enquiry with no confirmed site yet. "
+            "Confirming it (and creating the site) is not set up yet.",
+        )
+
     quote.status = QuotationStatus.CONFIRMED
     quote.save(update_fields=["status"])
 
-    site = ConfirmedSite.objects.filter(enquiry=enquiry).first()
-    if site:
-        quote.site = site
-        quote.save(update_fields=["site_id"])
+    if quote.site_id is None:
+        # Legacy AMC quote saved before its site was recorded.
+        site = ConfirmedSite.objects.filter(enquiry=enquiry).first()
+        if site:
+            quote.site = site
+            quote.save(update_fields=["site_id"])
 
     return enquiry
 
+
+
+#: Visit statuses that mean the service was (being) carried out.
+_DELIVERED_VISIT_STATUSES = ("IN_PROGRESS", "COMPLETED")
+
+
+@tenant_atomic
+def unconfirm_amc_quote(
+    *,
+    enquiry_id: uuid.UUID,
+    quote_id: uuid.UUID,
+    actor_user_id: uuid.UUID,
+    confirmed: bool = False,
+) -> Enquiry:
+    """
+    Take a confirmed AMC back to "quote sent", like unconfirming a sales order,
+    so another AMC quote for the site can be confirmed instead.
+
+    - REFUSED once service has been carried out under it (a visit in progress
+      or completed): that work happened under this contract.
+    - Its upcoming (scheduled) visits are cancelled, with the reason recorded
+      on each visit. The caller is told how many first and must confirm.
+    """
+    enquiry = Enquiry.objects.filter(id=enquiry_id).first()
+    if not enquiry:
+        raise not_found("Enquiry")
+    quote = (
+        Quotation.objects.select_for_update()
+        .filter(id=quote_id, enquiry=enquiry, quote_type=QuoteType.AMC)
+        .first()
+    )
+    if not quote:
+        raise not_found("Quotation")
+    if quote.status != QuotationStatus.CONFIRMED:
+        raise ConflictError(code="not_confirmed", message="This AMC quote is not confirmed.")
+
+    # Read through the reverse relation: counting needs no import of site_services.
+    visits = quote.service_schedules.all()
+    delivered = visits.filter(status__in=_DELIVERED_VISIT_STATUSES).count()
+    if delivered:
+        raise ConflictError(
+            code="amc_has_service",
+            message=f"{delivered} visit(s) under this AMC have already been carried out, "
+            "so it cannot be unconfirmed.",
+        )
+    upcoming = visits.filter(status="SCHEDULED").count()
+    if upcoming and not confirmed:
+        raise ConflictError(
+            code="has_dependents",
+            message=f"{upcoming} scheduled visit(s) under this AMC will be cancelled.",
+        )
+
+    quote.status = QuotationStatus.QUOTE_SENT
+    quote.updated_by_user_id = actor_user_id
+    quote.save(update_fields=["status", "updated_by_user_id", "updated_at"])
+    amc_quote_unconfirmed.send(sender=Quotation, quote_id=quote.id, actor_user_id=actor_user_id)
+    return enquiry
 
 # ============================================================================
 # Master Data (Bank Accounts & Products)
@@ -921,7 +1223,6 @@ def create_product_catalog(
     actor_user_id: uuid.UUID,
     product_type: str,
     base_price: float,
-    margin_percent: float,
     name: str = "",
     description: str = "",
     hsn_code: str = "",
@@ -945,7 +1246,6 @@ def create_product_catalog(
         description=description,
         hsn_code=hsn_code,
         base_price=base_price,
-        margin_percent=margin_percent,
         gst_rate=gst_rate,
         category=category,
     )

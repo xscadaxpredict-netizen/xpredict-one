@@ -17,7 +17,6 @@ import { NewEnquiryDialog } from "../components/NewEnquiryDialog";
 import { RecordPayoutModal, type PayoutTargetRecord } from "../components/RecordPayoutModal";
 import type { Enquiry, NewFollowup, NewEnquiry, Quotation } from "../api/types";
 import { useDialog } from "../../shared/hooks/useDialog";
-import { useDmsPermissions } from "../../shared/hooks/useDmsPermissions";
 import styles from "./ConfirmedOrdersScreen.module.css";
 import { formatDate, formatDateTime } from "../../shared/format/date";
 import { apiErrorMessage } from "../../shared/api/errorMessage";
@@ -36,7 +35,6 @@ export function ConfirmedOrdersScreen() {
     quote: import("../api/types").Quotation;
   } | null>(null);
   const [editingOrder, setEditingOrder] = useState<Enquiry | null>(null);
-  const { canEditQuote } = useDmsPermissions();
   const [payingCommissionRecord, setPayingCommissionRecord] = useState<PayoutTargetRecord | null>(null);
 
   const handleOpenAgentPayout = (quote: Quotation, order: Enquiry) => {
@@ -247,9 +245,7 @@ export function ConfirmedOrdersScreen() {
           quotation={viewingQuote.quote}
           enquiry={viewingQuote.enquiry}
           onEdit={
-            canEditQuote
-              ? () => setEditingQuote({ enquiryId: viewingQuote.enquiry.id, quoteId: viewingQuote.quote.id })
-              : undefined
+            () => setEditingQuote({ enquiryId: viewingQuote.enquiry.id, quoteId: viewingQuote.quote.id })
           }
         />
       )}
@@ -303,7 +299,6 @@ interface OrderRowProps {
 }
 
 function OrderRow({ order, isExpanded, isHistoryExpanded, onToggle, onToggleHistory, onFollowup, onUnconfirm, onEditOrder, onViewQuote, onRecordAgentPayout }: OrderRowProps) {
-  const { canEditEnquiry, canUnconfirmOrder } = useDmsPermissions();
   const confirmedQuote = order.quotes.find((q) => q.id === order.confirmed_quote_id);
 
   return (
@@ -411,16 +406,14 @@ function OrderRow({ order, isExpanded, isHistoryExpanded, onToggle, onToggleHist
                 Agent Payout
               </button>
             )}
-            {canEditEnquiry && (
-              <button
-                type="button"
-                className={styles.iconBtn}
-                title="Edit Order Details"
-                onClick={(e) => { e.stopPropagation(); onEditOrder(); }}
-              >
-                <PencilIcon />
-              </button>
-            )}
+            <button
+              type="button"
+              className={styles.iconBtn}
+              title="Edit Order Details"
+              onClick={(e) => { e.stopPropagation(); onEditOrder(); }}
+            >
+              <PencilIcon />
+            </button>
             {confirmedQuote && (
               <button
                 type="button"
@@ -431,25 +424,21 @@ function OrderRow({ order, isExpanded, isHistoryExpanded, onToggle, onToggleHist
                 <EyeIcon />
               </button>
             )}
-            {canEditEnquiry && (
-              <button
-                type="button"
-                className={styles.btnPrimary}
-                onClick={(e) => { e.stopPropagation(); onFollowup(); }}
-              >
-                <PlusIcon /> Follow-up
-              </button>
-            )}
-            {canUnconfirmOrder && (
-              <button
-                type="button"
-                className={styles.btnSecondary}
-                onClick={(e) => { e.stopPropagation(); onUnconfirm(); }}
-                title="Unconfirm Order (Revert to Pending)"
-              >
-                <ArrowLeftIcon /> Unconfirm
-              </button>
-            )}
+            <button
+              type="button"
+              className={styles.btnPrimary}
+              onClick={(e) => { e.stopPropagation(); onFollowup(); }}
+            >
+              <PlusIcon /> Follow-up
+            </button>
+            <button
+              type="button"
+              className={styles.btnSecondary}
+              onClick={(e) => { e.stopPropagation(); onUnconfirm(); }}
+              title="Unconfirm Order (Revert to Pending)"
+            >
+              <ArrowLeftIcon /> Unconfirm
+            </button>
             <button type="button" className={styles.expandBtn} aria-label="Toggle details">
               {isExpanded ? <ChevronUpIcon /> : <ChevronDownIcon />}
             </button>
@@ -475,15 +464,13 @@ function OrderRow({ order, isExpanded, isHistoryExpanded, onToggle, onToggleHist
                     👤 Agent Payout
                   </button>
                 )}
-                {canEditEnquiry && (
-                  <button
-                    type="button"
-                    className={styles.btnPrimary}
-                    onClick={(e) => { e.stopPropagation(); onFollowup(); }}
-                  >
-                    <PlusIcon /> Follow-up
-                  </button>
-                )}
+                <button
+                  type="button"
+                  className={styles.btnPrimary}
+                  onClick={(e) => { e.stopPropagation(); onFollowup(); }}
+                >
+                  <PlusIcon /> Follow-up
+                </button>
                 {confirmedQuote && (
                   <button
                     type="button"
@@ -494,26 +481,22 @@ function OrderRow({ order, isExpanded, isHistoryExpanded, onToggle, onToggleHist
                     <EyeIcon />
                   </button>
                 )}
-                {canEditEnquiry && (
-                  <button
-                    type="button"
-                    className={styles.iconBtn}
-                    title="Edit Order"
-                    onClick={(e) => { e.stopPropagation(); onEditOrder(); }}
-                  >
-                    <PencilIcon />
-                  </button>
-                )}
-                {canUnconfirmOrder && (
-                  <button
-                    type="button"
-                    className={styles.btnSecondary}
-                    title="Unconfirm Order"
-                    onClick={(e) => { e.stopPropagation(); onUnconfirm(); }}
-                  >
-                    <ArrowLeftIcon /> Unconfirm
-                  </button>
-                )}
+                <button
+                  type="button"
+                  className={styles.iconBtn}
+                  title="Edit Order"
+                  onClick={(e) => { e.stopPropagation(); onEditOrder(); }}
+                >
+                  <PencilIcon />
+                </button>
+                <button
+                  type="button"
+                  className={styles.btnSecondary}
+                  title="Unconfirm Order"
+                  onClick={(e) => { e.stopPropagation(); onUnconfirm(); }}
+                >
+                  <ArrowLeftIcon /> Unconfirm
+                </button>
               </div>
 
               <div className={styles.detailGrid}>
